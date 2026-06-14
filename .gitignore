@@ -22,3 +22,23 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Environment files
+.env
+.env.*
+
+# Runtime data
+server/data/
+uploads/
+storage/
+tmp/
+temp/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Large GIS files
+*.kmz
+*.kml
+*.geojson

@@ -344,6 +344,31 @@ Target boundaries:
 
 Separation should happen after active Baseline Graph work stabilizes and should avoid destabilizing Design.
 
+## Doctrine 19: Production Truth
+
+Chicago is the authoritative IOF runtime.
+
+Development features shall be validated in a non-production environment before promotion.
+
+Customer inventory, baselines, ScopeVersions, field closures, replay data, and operational telemetry constitute production truth and shall not be displaced by development deployments.
+
+Promotion path:
+
+```text
+Development
+  -> Integration/Test
+  -> Production
+```
+
+Never:
+
+```text
+Development
+  -> Production
+```
+
+Production deployments must preserve existing customer truth unless a governed migration, backup, rollback path, and explicit promotion approval are in place.
+
 ## Patent Alignment Notes
 
 These notes are architectural alignment points only. They are not legal advice and do not make legal conclusions.
