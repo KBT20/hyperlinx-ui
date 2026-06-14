@@ -1,0 +1,50 @@
+# Hyperlinx DAL Development
+
+This is a separate DAL development UI and runtime. It is intentionally isolated from the existing Chicago production/demo application.
+
+## Boundaries
+
+- The DAL app has its own Vite config.
+- The DAL app has its own environment files.
+- The DAL app has its own API config.
+- The DAL app has its own build output: `dist-dal`.
+- The production app does not import DAL code.
+- DAL code does not modify production startup, routes, or top-level state.
+
+## Environment
+
+Copy or edit `hyperlinx-dal-dev/.env`:
+
+```env
+VITE_DAL_API=http://127.0.0.1:3001
+VITE_DAL_BASELINE_GRAPH_API=http://127.0.0.1:3001
+VITE_DAL_APP_NAME=HYPERLINX DAL DEVELOPMENT
+```
+
+For DAL1 staging, point these values at the DAL1 API host.
+
+## Run
+
+```bash
+cd hyperlinx-dal-dev
+npm run dev
+```
+
+Default local UI: `http://127.0.0.1:5174`
+
+## Build
+
+```bash
+cd hyperlinx-dal-dev
+npm run build
+```
+
+Output: `hyperlinx-dal-dev/dist-dal`
+
+## Deploy To DAL1
+
+Build `dist-dal` and deploy that directory to the DAL1 web host. DAL1 API targets should come from DAL environment variables, not Chicago constants.
+
+## Promotion Rule
+
+DAL development must move through Integration/Test before Production. Development artifacts must not be deployed directly over Chicago production/demo infrastructure.
