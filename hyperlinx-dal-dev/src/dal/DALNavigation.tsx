@@ -1,10 +1,20 @@
 import { useDALState, type DALWorkspace } from "./DALState";
 
 const items: Array<{ id: DALWorkspace; label: string }> = [
-  { id: "inventory", label: "Inventory Graphs" },
-  { id: "design", label: "Design" },
-  { id: "prism", label: "Prism" },
   { id: "translate", label: "Translate" },
+  { id: "inventory", label: "Inventory Graphs" },
+  { id: "graphViewer", label: "Graph Viewer" },
+  { id: "graphExtensions", label: "Graph Extensions" },
+  { id: "prism", label: "Prism" },
+  { id: "siteDecision", label: "Site Decision" },
+  { id: "candidateSites", label: "Candidate Sites" },
+  { id: "networkAffinity", label: "Network Affinity" },
+  { id: "portfolio", label: "Portfolio" },
+  { id: "marketplace", label: "Marketplace" },
+  { id: "control", label: "Control" },
+  { id: "field", label: "Field" },
+  { id: "twin", label: "Twin" },
+  { id: "ops", label: "Operational Intelligence" },
 ];
 
 export default function DALNavigation() {

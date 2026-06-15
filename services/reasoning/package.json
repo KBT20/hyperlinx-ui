@@ -1,0 +1,20 @@
+{
+  "name": "@hyperlinx/reasoning-service",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "npm run build && node dist/index.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "~5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

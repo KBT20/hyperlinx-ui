@@ -1,86 +1,99 @@
-import { useEffect, useState } from "react";
-import {
-  DAL_BASELINE_GRAPH_API,
-  listDALBaselineGraphs,
-  loadDALBaselineGraphMetadata,
-  loadDALGraphChunk,
-  saveDALBaselineGraph,
-  type DALBaselineGraphMetadata,
-  type DALChunkType,
-  type DALGraphBundle,
-} from "../config/dalApi";
+import { useEffect, useMemo, useState } from "react";
+import { DAL_INVENTORY_GRAPH_API } from "../config/dalApi";
+import { deleteLocalInventoryGraph, listInventoryGraphs, loadInventoryGraph } from "../api/dalClient";
 import { useDALState } from "../dal/DALState";
+import type { InventoryGraph, InventoryGraphMetadata } from "../types/dal";
 
 function fmt(n: number | undefined) {
   return Number(n || 0).toLocaleString();
 }
 
+function mergeInventoryRecords(remote: InventoryGraphMetadata[], local: InventoryGraphMetadata[]) {
+  const merged = new Map<string, InventoryGraphMetadata>();
+  [...local, ...remote].forEach((item) => {
+    if (item.inventoryId) merged.set(item.inventoryId, item);
+  });
+  return Array.from(merged.values()).sort((a, b) => String(b.createdDate || "").localeCompare(String(a.createdDate || "")));
+}
+
 export default function DALInventoryWorkspace() {
-  const { selectedInventoryId, setSelectedInventoryId } = useDALState();
-  const [items, setItems] = useState<DALBaselineGraphMetadata[]>([]);
-  const [selected, setSelected] = useState<DALBaselineGraphMetadata | null>(null);
+  const {
+    selectedInventoryId,
+    setSelectedInventoryId,
+    selectedGraph,
+    setSelectedGraph,
+    inventorySummaries,
+    upsertInventorySummary,
+    setWorkspace,
+  } = useDALState();
+  const [remoteItems, setRemoteItems] = useState<InventoryGraphMetadata[]>([]);
+  const [selected, setSelected] = useState<InventoryGraph | null>(selectedGraph);
   const [status, setStatus] = useState("Inventory workspace ready.");
-  const [chunkPreview, setChunkPreview] = useState("");
+
+  const items = useMemo(() => mergeInventoryRecords(remoteItems, inventorySummaries), [remoteItems, inventorySummaries]);
+  const selectedMetadata = selected?.metadata ?? items.find((item) => item.inventoryId === selectedInventoryId);
+  const isLocalFallback = Boolean((selectedMetadata as any)?.localFallback);
 
   useEffect(() => {
     console.log("DAL INVENTORY WORKSPACE LOADED");
     void refreshInventory();
   }, []);
 
+  useEffect(() => {
+    if (selectedGraph && selectedGraph.inventoryId === selectedInventoryId) setSelected(selectedGraph);
+  }, [selectedGraph, selectedInventoryId]);
+
   async function refreshInventory() {
     try {
-      setStatus("Loading inventory metadata...");
-      const records = await listDALBaselineGraphs();
-      setItems(records);
-      setStatus(`Loaded ${records.length.toLocaleString()} inventory records from ${DAL_BASELINE_GRAPH_API}.`);
+      setStatus("Loading inventory graphs...");
+      const records = await listInventoryGraphs();
+      setRemoteItems(records);
+      records.forEach(upsertInventorySummary);
+      setStatus(`Loaded ${records.length.toLocaleString()} inventory graphs from ${DAL_INVENTORY_GRAPH_API}.`);
     } catch (err: any) {
       setStatus(`Inventory load failed: ${err?.message ?? String(err)}`);
     }
   }
 
-  async function selectInventory(inventoryId: string) {
+  async function loadSelectedInventory(inventoryId: string) {
     setSelectedInventoryId(inventoryId);
-    setChunkPreview("");
     if (!inventoryId) {
       setSelected(null);
+      setSelectedGraph(null);
       return;
     }
 
     try {
-      setStatus("Loading inventory metadata detail...");
-      const metadata = await loadDALBaselineGraphMetadata(inventoryId);
-      setSelected(metadata);
-      setStatus(`Selected ${metadata.name}.`);
+      setStatus("Loading full inventory graph...");
+      const graph = await loadInventoryGraph(inventoryId);
+      setSelected(graph);
+      setSelectedGraph(graph);
+      upsertInventorySummary(graph.metadata);
+      setStatus(`Loaded ${graph.metadata.name}.`);
     } catch (err: any) {
+      setSelected(null);
       setStatus(`Inventory detail failed: ${err?.message ?? String(err)}`);
     }
   }
 
-  async function uploadGraphBundle(file: File) {
-    try {
-      setStatus(`Reading ${file.name}...`);
-      const bundle = JSON.parse(await file.text()) as DALGraphBundle;
-      bundle.sourceFile = bundle.sourceFile ?? file.name;
-      const saved = await saveDALBaselineGraph(bundle, setStatus);
-      setItems((prev) => [saved, ...prev.filter((item) => item.inventoryId !== saved.inventoryId)]);
-      setSelected(saved);
-      setSelectedInventoryId(saved.inventoryId);
-      setStatus(`Saved ${saved.name}: ${fmt(saved.nodeCount)} nodes / ${fmt(saved.edgeCount)} edges.`);
-    } catch (err: any) {
-      setStatus(`Inventory save failed: ${err?.message ?? String(err)}`);
-    }
+  async function deleteSelectedLocalGraph() {
+    if (!selectedInventoryId || !isLocalFallback) return;
+    await deleteLocalInventoryGraph(selectedInventoryId);
+    setSelected(null);
+    setSelectedGraph(null);
+    setSelectedInventoryId("");
+    await refreshInventory();
+    setStatus("Deleted local fallback inventory graph.");
   }
 
-  async function loadChunkPreview(chunkType: DALChunkType) {
-    if (!selectedInventoryId) return;
-    try {
-      setStatus(`Loading ${chunkType} chunk 0...`);
-      const records = await loadDALGraphChunk(selectedInventoryId, chunkType, 0);
-      setChunkPreview(JSON.stringify(records.slice(0, 3), null, 2));
-      setStatus(`Loaded ${chunkType} chunk 0: ${records.length.toLocaleString()} records.`);
-    } catch (err: any) {
-      setStatus(`Chunk load failed: ${err?.message ?? String(err)}`);
-    }
+  function openGraphViewer() {
+    if (selected) setSelectedGraph(selected);
+    setWorkspace("graphViewer");
+  }
+
+  function sendToPrism() {
+    if (selected) setSelectedGraph(selected);
+    setWorkspace("prism");
   }
 
   return (
@@ -88,69 +101,75 @@ export default function DALInventoryWorkspace() {
       <div className="dal-workspace-header">
         <div>
           <h2>DAL Inventory Graphs</h2>
-          <p>Carrier inventory ingestion, baseline graph persistence, serviceability inputs, and opportunity seed staging.</p>
+          <p>Saved carrier inventory graphs, DAL fallback records, and graph handoff into Viewer and Prism.</p>
         </div>
         <button type="button" onClick={() => void refreshInventory()}>
           Refresh
         </button>
       </div>
 
-      <div className="dal-grid">
-        <div className="dal-panel">
-          <h3>Upload Graph Bundle</h3>
-          <p>Accepts JSON with `nodes`, `edges`, `stations`, and optional `routes` arrays.</p>
-          <input
-            type="file"
-            accept=".json,.geojson"
-            onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
-              if (file) void uploadGraphBundle(file);
-              event.currentTarget.value = "";
-            }}
-          />
-        </div>
-
-        <div className="dal-panel">
-          <h3>Inventory Records</h3>
-          <select value={selectedInventoryId} onChange={(event) => void selectInventory(event.target.value)}>
-            <option value="">Select inventory graph</option>
-            {items.map((item) => (
-              <option key={item.inventoryId} value={item.inventoryId}>
-                {item.name} ({fmt(item.edgeCount)} edges)
-              </option>
-            ))}
-          </select>
-          <div className="dal-status">{status}</div>
-        </div>
+      <div className="dal-panel">
+        <h3>Inventory Graphs</h3>
+        <select value={selectedInventoryId} onChange={(event) => void loadSelectedInventory(event.target.value)}>
+          <option value="">Select inventory graph</option>
+          {items.map((item) => (
+            <option key={item.inventoryId} value={item.inventoryId}>
+              {item.name} ({fmt(item.edgeCount)} edges)
+            </option>
+          ))}
+        </select>
+        <div className="dal-status">{status}</div>
       </div>
 
-      {selected && (
+      {selectedMetadata && (
         <div className="dal-panel">
-          <h3>{selected.name}</h3>
+          <div className="dal-panel-title-row">
+            <h3>{selectedMetadata.name}</h3>
+            <span className={`dal-badge ${(selectedMetadata.validationStatus ?? "PASS").toLowerCase()}`}>
+              {selectedMetadata.validationStatus ?? "PASS"}
+            </span>
+          </div>
           <div className="dal-metrics">
-            <span>Nodes: {fmt(selected.nodeCount)}</span>
-            <span>Edges: {fmt(selected.edgeCount)}</span>
-            <span>Stations: {fmt(selected.stationCount)}</span>
-            <span>Routes: {fmt(selected.chunkCounts?.routes)}</span>
-            <span>Miles: {Number(selected.routeMiles || 0).toFixed(2)}</span>
+            <span>Inventory ID: {selectedMetadata.inventoryId}</span>
+            <span>Graph ID: {selectedMetadata.graphId}</span>
+            <span>Source file: {selectedMetadata.sourceFile ?? "unknown"}</span>
+            <span>Created date: {selectedMetadata.createdDate}</span>
+            <span>Nodes: {fmt(selectedMetadata.nodeCount)}</span>
+            <span>Edges: {fmt(selectedMetadata.edgeCount)}</span>
+            <span>Stations: {fmt(selectedMetadata.stationCount)}</span>
+            <span>Routes: {fmt(selectedMetadata.routeCount)}</span>
+            <span>Route miles: {Number(selectedMetadata.routeMiles || 0).toFixed(2)}</span>
           </div>
           <div className="dal-actions">
-            <button type="button" onClick={() => void loadChunkPreview("nodes")}>
-              Nodes Chunk
+            <button type="button" disabled={!selected} onClick={openGraphViewer}>
+              Open Graph Viewer
             </button>
-            <button type="button" onClick={() => void loadChunkPreview("edges")}>
-              Edges Chunk
+            <button type="button" disabled={!selected} onClick={sendToPrism}>
+              Send To Prism
             </button>
-            <button type="button" onClick={() => void loadChunkPreview("stations")}>
-              Stations Chunk
-            </button>
-            <button type="button" onClick={() => void loadChunkPreview("routes")}>
-              Routes Chunk
+            <button type="button" disabled={!isLocalFallback} onClick={() => void deleteSelectedLocalGraph()}>
+              Delete Local
             </button>
           </div>
-          {chunkPreview && <pre className="dal-pre">{chunkPreview}</pre>}
+          {selected && (
+            <pre className="dal-pre">
+              {JSON.stringify(
+                {
+                  metadata: selected.metadata,
+                  validation: selected.validation,
+                  preview: {
+                    routes: selected.routes.slice(0, 2),
+                    stations: selected.stations.slice(0, 2),
+                  },
+                },
+                null,
+                2
+              )}
+            </pre>
+          )}
         </div>
       )}
     </section>
   );
 }
+

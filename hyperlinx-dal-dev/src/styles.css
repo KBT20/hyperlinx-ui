@@ -18,7 +18,8 @@ body {
 
 button,
 select,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -35,14 +36,25 @@ button:hover {
   background: #15517d;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 select,
-input[type="file"] {
+input,
+textarea {
   width: 100%;
   border: 1px solid #284662;
   background: #0c1b2d;
   color: #f8fbff;
   border-radius: 6px;
   padding: 10px;
+}
+
+textarea {
+  min-height: 86px;
+  resize: vertical;
 }
 
 .dal-shell {
@@ -123,6 +135,10 @@ input[type="file"] {
   max-width: 1280px;
 }
 
+.dal-workspace.wide {
+  max-width: 1680px;
+}
+
 .dal-workspace-header {
   display: flex;
   justify-content: space-between;
@@ -147,12 +163,23 @@ input[type="file"] {
   gap: 14px;
 }
 
+.dal-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .dal-panel {
   border: 1px solid #223b55;
   background: #0c1a2a;
   border-radius: 8px;
   padding: 14px;
   display: grid;
+  gap: 12px;
+}
+
+.dal-panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 
@@ -166,6 +193,11 @@ input[type="file"] {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.active-toggle {
+  border-color: #5eead4;
+  background: #0e4a52;
 }
 
 .dal-metrics span {
@@ -188,6 +220,351 @@ input[type="file"] {
   font-size: 12px;
 }
 
+.dal-badge,
+.dal-result {
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.dal-badge.pass,
+.dal-result.pass {
+  background: #123d2a;
+  color: #8ff0b4;
+}
+
+.dal-badge.warning,
+.dal-result.warning {
+  background: #4a3410;
+  color: #ffd782;
+}
+
+.dal-badge.fail,
+.dal-result.fail {
+  background: #4a1821;
+  color: #ff99a8;
+}
+
+.dal-badge.green,
+.dal-result.green {
+  background: #123d2a;
+  color: #8ff0b4;
+}
+
+.dal-badge.yellow,
+.dal-result.yellow {
+  background: #4a3410;
+  color: #ffd782;
+}
+
+.dal-badge.red,
+.dal-result.red {
+  background: #4a1821;
+  color: #ff99a8;
+}
+
+.dal-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dal-list-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(160px, 0.7fr);
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #18344e;
+  border-radius: 6px;
+  background: #071827;
+  padding: 9px;
+}
+
+.dal-list-row small {
+  color: #b7c9dc;
+  overflow-wrap: anywhere;
+}
+
+.dal-table-wrap {
+  overflow: auto;
+  border: 1px solid #18344e;
+  border-radius: 6px;
+  background: #071827;
+}
+
+.dal-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1180px;
+  font-size: 12px;
+}
+
+.dal-table th,
+.dal-table td {
+  border-bottom: 1px solid #18344e;
+  padding: 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.dal-table th {
+  position: sticky;
+  top: 0;
+  background: #0c1a2a;
+  z-index: 1;
+}
+
+.dal-table th button {
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.dal-table tr {
+  cursor: pointer;
+}
+
+.dal-table tr:hover,
+.dal-table tr.selected-row {
+  background: #123a5d;
+}
+
+.dal-map-wrap {
+  position: relative;
+  min-height: 520px;
+  border: 1px solid #223b55;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #06111f;
+}
+
+.dal-map-toolbar {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dal-map-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 520px;
+}
+
+.dal-map-empty {
+  border: 1px solid #223b55;
+  border-radius: 8px;
+  background: #06111f;
+  min-height: 360px;
+  display: grid;
+  place-items: center;
+  color: #b7c9dc;
+}
+
+.dal-leaflet-map {
+  position: relative;
+  min-height: 560px;
+  border: 1px solid #223b55;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #06111f;
+}
+
+.dal-basemap-layer,
+.dal-map-svg {
+  position: absolute;
+  inset: 0;
+}
+
+.dal-map-tile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  user-select: none;
+  pointer-events: none;
+}
+
+.dal-map-svg {
+  z-index: 1;
+}
+
+.dal-route-line,
+.dal-build-path-line,
+.dal-parcel-polygon {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.dal-route-line {
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.6));
+  opacity: 0.9;
+}
+
+.dal-build-path-line {
+  stroke: #ffd84d;
+  stroke-width: 5;
+  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.75));
+}
+
+.dal-parcel-polygon {
+  stroke: #66d9e8;
+  stroke-width: 2;
+  fill: rgba(102, 217, 232, 0.12);
+}
+
+.dal-map-marker {
+  stroke: #ffffff;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.dal-map-marker.candidate {
+  fill: #2f80ff;
+}
+
+.dal-map-marker.attachment {
+  fill: #27c26a;
+}
+
+.dal-map-marker.station {
+  fill: #a855f7;
+}
+
+.dal-map-marker.node {
+  fill: #06b6d4;
+}
+
+.dal-map-marker.crossing {
+  fill: #ef4444;
+}
+
+.dal-map-marker-halo {
+  fill: none;
+  stroke-width: 2;
+  opacity: 0.55;
+  vector-effect: non-scaling-stroke;
+}
+
+.dal-map-marker-halo.candidate {
+  stroke: #2f80ff;
+}
+
+.dal-crossing-icon {
+  stroke: #ffffff;
+  stroke-width: 2;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.dal-map-label {
+  paint-order: stroke;
+  stroke: #03101d;
+  stroke-width: 4;
+  fill: #f8fbff;
+  font-size: 12px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.dal-map-zoom {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.dal-map-zoom button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+
+.dal-map-attribution {
+  position: absolute;
+  z-index: 2;
+  right: 8px;
+  bottom: 6px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: rgba(3, 11, 20, 0.78);
+  color: #d7e7f5;
+  font-size: 11px;
+}
+
+.dal-reasoning-panel {
+  max-width: 1280px;
+  margin-top: 16px;
+  border: 1px solid #254760;
+  background: #091827;
+  border-radius: 8px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.dal-reasoning-badge {
+  display: inline-block;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: #4a3410;
+  color: #ffd782;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.dal-reasoning-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dal-reasoning-answer {
+  border: 1px solid #18344e;
+  background: #06111f;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.dal-reasoning-answer p,
+.dal-reasoning-answer li {
+  color: #d7e7f5;
+  line-height: 1.45;
+}
+
+.dal-reasoning-answer h4 {
+  margin: 12px 0 6px;
+}
+
+.dal-validation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dal-validation-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto auto minmax(220px, 2fr);
+  gap: 8px;
+  align-items: center;
+  border: 1px solid #18344e;
+  border-radius: 6px;
+  background: #071827;
+  padding: 8px;
+}
+
+.dal-validation-row small {
+  color: #b7c9dc;
+}
+
 @media (max-width: 800px) {
   .dal-header,
   .dal-workspace-header {
@@ -207,5 +584,13 @@ input[type="file"] {
   .dal-nav {
     border-right: 0;
     border-bottom: 1px solid #1d334a;
+  }
+
+  .dal-validation-row {
+    grid-template-columns: 1fr;
+  }
+
+  .dal-list-row {
+    grid-template-columns: 1fr;
   }
 }

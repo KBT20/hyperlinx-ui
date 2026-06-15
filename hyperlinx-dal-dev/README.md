@@ -18,6 +18,8 @@ Copy or edit `hyperlinx-dal-dev/.env`:
 ```env
 VITE_DAL_API=http://127.0.0.1:3001
 VITE_DAL_BASELINE_GRAPH_API=http://127.0.0.1:3001
+VITE_DAL_INVENTORY_GRAPH_API=http://127.0.0.1:3001
+VITE_DAL_REASONING_API=http://127.0.0.1:4100
 VITE_DAL_APP_NAME=HYPERLINX DAL DEVELOPMENT
 ```
 
@@ -40,6 +42,31 @@ npm run build
 ```
 
 Output: `hyperlinx-dal-dev/dist-dal`
+
+## Translate V1
+
+DAL Translate accepts CSV, KML, KMZ, and GeoJSON files. It builds:
+
+```json
+{
+  "inventoryId": "...",
+  "metadata": {
+    "graphId": "...",
+    "createdDate": "..."
+  },
+  "nodes": [],
+  "edges": [],
+  "stations": [],
+  "routes": []
+}
+```
+
+Save uses `POST /api/inventory-graphs`. Inventory Graphs uses:
+
+```text
+GET /api/inventory-graphs
+GET /api/inventory-graphs/:inventoryId
+```
 
 ## Deploy To DAL1
 
