@@ -1,6 +1,8 @@
 export type DALCoordinate = [number, number];
 
 export type ValidationStatus = "PASS" | "WARNING" | "FAIL";
+export type CertificationStatus = "CERTIFIED" | "WARNING" | "FAILED";
+export type ServiceabilityCertificationStatus = "SERVICEABLE" | "CONDITIONALLY_SERVICEABLE" | "NOT_SERVICEABLE";
 
 export type ValidationIssue = {
   check:
@@ -37,6 +39,9 @@ export type InventoryGraphMetadata = {
   stationCount: number;
   routeCount: number;
   routeMiles: number;
+  serializedSizeBytes?: number;
+  serializedSizeMB?: number;
+  storageWarning?: string;
 };
 
 export type InventoryNode = {
@@ -94,11 +99,7 @@ export type ScopeVersionStatus =
   | "ACTIVATED"
   | "IN_CONSTRUCTION"
   | "COMPLETE"
-  | "REJECTED"
-  | "CANDIDATE"
-  | "ACTIVE"
-  | "FIELD_CLOSED"
-  | "SUPERSEDED";
+  | "REJECTED";
 
 export type ScopeVersionCandidate = {
   candidateId: string;
@@ -112,10 +113,180 @@ export type ScopeVersionCandidate = {
   createdAt: string;
 };
 
+export type AttachmentPoint = {
+  attachmentId: string;
+  routeId: string;
+  routeSegmentId: string;
+  nodeId: string;
+  stationId: string;
+  latitude: number;
+  longitude: number;
+  distanceFeet: number;
+  confidenceScore: number;
+  certificationStatus: CertificationStatus;
+};
+
+export type ConstructionAssumptions = {
+  constructionType: "BURIED";
+  trenchCost: number;
+  boreCost: number;
+  crossingCost: number;
+  restorationCost: number;
+  costPerFoot: number;
+};
+
+export type LateralPath = {
+  lateralId: string;
+  attachmentId: string;
+  geometry: DALCoordinate[];
+  buildFeet: number;
+  buildMiles: number;
+  segmentCount: number;
+  crossings: number;
+  turns: number;
+  permitCount: number;
+  certificationStatus: CertificationStatus;
+  constructionAssumptions: ConstructionAssumptions;
+};
+
+export type ServiceabilityAssessment = {
+  serviceable: boolean;
+  attachmentCertified: boolean;
+  lateralCertified: boolean;
+  routeCertified: boolean;
+  permitRisk: number;
+  buildRisk: number;
+  confidenceScore: number;
+  status: ServiceabilityCertificationStatus;
+};
+
+export type CertificationSnapshot = {
+  attachmentPoint: AttachmentPoint;
+  lateralPath: LateralPath;
+  serviceabilityAssessment: ServiceabilityAssessment;
+  constructionAssumptions: ConstructionAssumptions;
+  certifiedAt: string;
+};
+
+export type ScopeVersionDecisionRecommendation = "GO" | "NO_GO" | "REVIEW";
+
+export type ScopeVersionGraphReference = {
+  inventoryId?: string;
+  graphId: string;
+  graphVersion: string;
+};
+
+export type ScopeVersionNetworkBasis = {
+  routeId: string;
+  routeName?: string;
+  nodeId: string;
+  nodeName?: string;
+  stationId: string;
+  stationName?: string;
+  attachmentPoint: DALCoordinate;
+  attachmentCoordinates: DALCoordinate;
+  capacityStatus?: string;
+  attachmentStrategy?: string;
+  networkAffinityScore?: number;
+  certificationStatus?: CertificationStatus;
+};
+
+export type ScopeVersionGeographicBasis = {
+  candidateLatitude: number;
+  candidateLongitude: number;
+  geocodeProvider?: string;
+  geocodeConfidence?: number;
+  geometry: DALCoordinate[];
+  buildPath: unknown;
+  routeGeometry: DALCoordinate[];
+  stationGeometry?: DALCoordinate;
+  nodeGeometry?: DALCoordinate;
+  attachmentGeometry?: DALCoordinate;
+  lateralGeometry?: DALCoordinate[];
+};
+
+export type ScopeVersionEngineeringBasis = {
+  buildFeet: number;
+  buildMiles: number;
+  constructionType?: string;
+  crossings?: unknown;
+  roadCrossings?: number;
+  railCrossings?: number;
+  waterCrossings?: number;
+  permits?: unknown;
+  permitAuthorities?: string[];
+  constructabilityScore?: number;
+  engineeringScore?: number;
+  constructionAssumptions?: ConstructionAssumptions;
+  attachmentCertification?: AttachmentPoint;
+  lateralCertification?: LateralPath;
+  serviceabilityAssessment?: ServiceabilityAssessment;
+};
+
+export type ScopeVersionFinancialBasis = {
+  estimatedConstructionCost: number;
+  estimatedEngineeringCost: number;
+  estimatedPermitCost: number;
+  estimatedCrossingCost: number;
+  estimatedEnvironmentalCost: number;
+  NRC: number;
+  MRC: number;
+  TCV: number;
+  payback?: number;
+  ROI?: number;
+  margin?: number;
+  financialScore?: number;
+};
+
+export type ScopeVersionRiskBasis = {
+  permitRisk?: number;
+  crossingRisk?: number;
+  constructionRisk?: number;
+  environmentalRisk?: number;
+  compositeRisk?: number;
+};
+
+export type ScopeVersionDecisionBasis = {
+  recommendation: ScopeVersionDecisionRecommendation;
+  compositeScore?: number;
+  strategicScore?: number;
+  engineeringScore?: number;
+  financialScore?: number;
+  riskScore?: number;
+  phase?: string;
+  priority?: string;
+};
+
+export type ScopeVersionCanonicalTruth = {
+  graphReference?: ScopeVersionGraphReference;
+  networkBasis?: ScopeVersionNetworkBasis;
+  geographicBasis?: ScopeVersionGeographicBasis;
+  engineeringBasis?: ScopeVersionEngineeringBasis;
+  financialBasis?: ScopeVersionFinancialBasis;
+  riskBasis?: ScopeVersionRiskBasis;
+  decisionBasis?: ScopeVersionDecisionBasis;
+  sourceCandidate?: {
+    candidateSiteId: string;
+    name?: string;
+    address?: string;
+  };
+  sourceOpportunity?: {
+    opportunitySeedId?: string;
+    opportunityId?: string;
+  };
+  certificationSnapshot?: CertificationSnapshot;
+  validation?: unknown;
+  [key: string]: unknown;
+};
+
 export type ScopeVersion = {
   scopeVersionId: string;
   inventoryId?: string;
   graphId?: string;
+  graphVersion?: string;
+  candidateSiteId?: string;
+  sourceOpportunityId?: string;
+  createdBy?: string;
   source: "InventoryGraph" | "GraphExtension" | "OpportunitySeed" | "PrismOpportunity" | "DesignCandidate" | "FieldClosure" | "Manual";
   status: ScopeVersionStatus;
   geometry?: DALCoordinate[];
@@ -135,13 +306,14 @@ export type ScopeVersion = {
   constructability?: unknown;
   financialInputs?: unknown;
   decisionRecommendation?: unknown;
+  certificationSnapshot?: CertificationSnapshot;
+  serviceabilityAssessment?: ServiceabilityAssessment;
   graphReference?: unknown;
-  graphVersion?: string;
   decisionTimestamp?: string;
   user?: string;
   station?: unknown;
   route?: unknown;
-  canonicalTruth: Record<string, unknown>;
+  canonicalTruth: ScopeVersionCanonicalTruth;
   createdAt: string;
   updatedAt: string;
   events: OperationalEvent[];

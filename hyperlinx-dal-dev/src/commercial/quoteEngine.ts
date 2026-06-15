@@ -1,4 +1,5 @@
 import { createId, now } from "../api/dalClient";
+import { DEFAULT_CONSTRUCTION_TYPE } from "../engineering/constructionModel";
 import type { MarketplaceQuote, OperationalEvent, ScopeVersion } from "../types/dal";
 
 function asNumber(value: unknown, fallback = 0) {
@@ -23,28 +24,40 @@ function event(type: string, entityId: string, entityType: string, payload: Reco
 
 export function scopeBuildPath(scopeVersion?: ScopeVersion | null) {
   const truth = scopeVersion?.canonicalTruth as any;
-  return (scopeVersion?.buildPath as any) ?? truth?.buildPath;
+  return truth?.geographicBasis?.buildPath ?? (scopeVersion?.buildPath as any) ?? truth?.buildPath;
 }
 
 export function scopeConstructability(scopeVersion?: ScopeVersion | null) {
   const truth = scopeVersion?.canonicalTruth as any;
-  return truth?.constructabilityAssessment ?? (scopeBuildPath(scopeVersion)?.constructabilityAssessment as any);
+  return truth?.constructabilityAssessment ?? truth?.engineeringBasis?.constructabilityAssessment ?? (scopeBuildPath(scopeVersion)?.constructabilityAssessment as any);
 }
 
 export function scopeCommercialBasis(scopeVersion?: ScopeVersion | null) {
   const truth = scopeVersion?.canonicalTruth as any;
+  const networkBasis = truth?.networkBasis ?? {};
+  const engineeringBasis = truth?.engineeringBasis ?? {};
+  const financialBasis = truth?.financialBasis ?? {};
+  const riskBasis = truth?.riskBasis ?? {};
   const buildPath = scopeBuildPath(scopeVersion);
   const constructability = scopeConstructability(scopeVersion);
   const costBasis = truth?.costBasis ?? {};
   const revenueBasis = truth?.revenueBasis ?? {};
   const crossingInventory = truth?.crossingInventory ?? {};
-  const permits = truth?.permitRequirements ?? constructability?.permitting;
-  const buildFeet = asNumber(buildPath?.buildFeet ?? buildPath?.distanceFeet ?? truth?.buildFeet);
-  const constructionType = String(buildPath?.constructionType ?? truth?.constructionBasis?.constructionType ?? "Mixed");
-  const crossings = asNumber(buildPath?.estimatedCrossings ?? crossingInventory?.estimatedCrossings);
-  const permitAuthorities = asArray(permits?.authorities);
+  const permits = engineeringBasis?.permits ?? truth?.permitRequirements ?? constructability?.permitting;
+  const buildFeet = asNumber(engineeringBasis?.buildFeet ?? buildPath?.buildFeet ?? buildPath?.distanceFeet ?? truth?.buildFeet);
+  const constructionType = String(engineeringBasis?.constructionType ?? buildPath?.constructionType ?? truth?.constructionBasis?.constructionType ?? DEFAULT_CONSTRUCTION_TYPE);
+  const engineeringCrossings =
+    asNumber(engineeringBasis?.roadCrossings) +
+    asNumber(engineeringBasis?.railCrossings) +
+    asNumber(engineeringBasis?.waterCrossings);
+  const crossings = asNumber(crossingInventory?.estimatedCrossings ?? (engineeringCrossings || undefined) ?? buildPath?.estimatedCrossings);
+  const permitAuthorities = asArray(engineeringBasis?.permitAuthorities?.length ? engineeringBasis.permitAuthorities : permits?.authorities);
   return {
     truth,
+    networkBasis,
+    engineeringBasis,
+    financialBasis,
+    riskBasis,
     buildPath,
     constructability,
     costBasis,
@@ -56,23 +69,23 @@ export function scopeCommercialBasis(scopeVersion?: ScopeVersion | null) {
     constructionType,
     crossings,
     permitAuthorities,
-    routeId: buildPath?.routeId ?? truth?.route?.routeId,
-    nodeId: buildPath?.nodeId ?? truth?.node?.nodeId,
-    stationId: buildPath?.stationId ?? truth?.station?.stationId,
-    attachmentType: truth?.opportunitySeed?.attachmentStrategy?.attachmentType ?? buildPath?.attachmentType,
+    routeId: networkBasis?.routeId ?? buildPath?.routeId ?? truth?.route?.routeId,
+    nodeId: networkBasis?.nodeId ?? buildPath?.nodeId ?? truth?.node?.nodeId,
+    stationId: networkBasis?.stationId ?? buildPath?.stationId ?? truth?.station?.stationId,
+    attachmentType: networkBasis?.attachmentStrategy ?? buildPath?.attachmentType,
   };
 }
 
 export function generatePreliminaryQuote(scopeVersion: ScopeVersion, termMonths = 36): MarketplaceQuote {
   const basis = scopeCommercialBasis(scopeVersion);
-  const riskScore = asNumber(basis.truth?.riskBasis?.compositeRisk ?? basis.buildPath?.riskScore, 45);
-  const constructionNrc = Math.round(asNumber(basis.costBasis?.buildCost ?? basis.buildPath?.estimatedCost, 15000 + basis.buildFeet * 22));
-  const engineeringNrc = Math.round(asNumber(basis.costBasis?.estimatedEngineeringCost ?? basis.buildPath?.estimatedEngineeringCost, constructionNrc * 0.12));
-  const permitNrc = Math.round(asNumber(basis.costBasis?.estimatedPermitCost ?? basis.buildPath?.estimatedPermitCost, Math.max(1, basis.permitAuthorities.length) * 3500));
-  const crossingNrc = Math.round(asNumber(basis.costBasis?.estimatedCrossingCost ?? basis.buildPath?.estimatedCrossingCost, basis.crossings * 25000));
+  const riskScore = asNumber(basis.riskBasis?.compositeRisk ?? basis.buildPath?.riskScore, 45);
+  const constructionNrc = Math.round(asNumber(basis.financialBasis?.estimatedConstructionCost ?? basis.costBasis?.buildCost ?? basis.buildPath?.estimatedCost, 15000 + basis.buildFeet * 22));
+  const engineeringNrc = Math.round(asNumber(basis.financialBasis?.estimatedEngineeringCost ?? basis.costBasis?.estimatedEngineeringCost ?? basis.buildPath?.estimatedEngineeringCost, constructionNrc * 0.12));
+  const permitNrc = Math.round(asNumber(basis.financialBasis?.estimatedPermitCost ?? basis.costBasis?.estimatedPermitCost ?? basis.buildPath?.estimatedPermitCost, Math.max(1, basis.permitAuthorities.length) * 3500));
+  const crossingNrc = Math.round(asNumber(basis.financialBasis?.estimatedCrossingCost ?? basis.costBasis?.estimatedCrossingCost ?? basis.buildPath?.estimatedCrossingCost, basis.crossings * 25000));
   const subtotal = constructionNrc + engineeringNrc + permitNrc + crossingNrc;
-  const nrc = Math.round(Math.max(asNumber(basis.revenueBasis?.estimatedNRC), subtotal * (1.08 + riskScore / 500)));
-  const monthlyService = Math.round(asNumber(basis.revenueBasis?.estimatedMRC, 850 + basis.buildFeet * 0.65));
+  const nrc = Math.round(Math.max(asNumber(basis.financialBasis?.NRC ?? basis.revenueBasis?.estimatedNRC), subtotal * (1.08 + riskScore / 500)));
+  const monthlyService = Math.round(asNumber(basis.financialBasis?.MRC ?? basis.revenueBasis?.estimatedMRC, 850 + basis.buildFeet * 0.65));
   const totalContractValue = nrc + monthlyService * termMonths;
   const deliveryCost = subtotal * 0.78 + monthlyService * termMonths * 0.26;
   const margin = (totalContractValue - deliveryCost) / Math.max(totalContractValue, 1);
@@ -154,9 +167,10 @@ export function generatePreliminaryQuote(scopeVersion: ScopeVersion, termMonths 
 
 export function applyQuoteToScopeVersion(scopeVersion: ScopeVersion, quote: MarketplaceQuote): ScopeVersion {
   const timestamp = now();
+  const nextStatus = scopeVersion.status === "ANALYZED" ? "QUOTED" : scopeVersion.status;
   return {
     ...scopeVersion,
-    status: "QUOTED",
+    status: nextStatus,
     updatedAt: timestamp,
     canonicalTruth: {
       ...scopeVersion.canonicalTruth,

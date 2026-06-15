@@ -8,6 +8,7 @@ import type { OpportunitySeed } from "../types/portfolio";
 export type DALWorkspace =
   | "translate"
   | "inventory"
+  | "inventoryRecovery"
   | "graphViewer"
   | "graphExtensions"
   | "design"

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createId, listOpportunitySeeds, listPrismOpportunities, now, saveOpportunitySeeds, savePrismOpportunity } from "../api/dalClient";
 import { useDALState } from "../dal/DALState";
 import { DEFAULT_BUILD_COST_MODEL } from "../prism/buildCostEstimator";
+import { generateOpportunitySeedForCandidate } from "../prism/opportunityGenerator";
 import { evaluatePortfolioOpportunities, generateCandidateSitesFromGraph, parseCandidateCsv } from "../prism/prismOpportunityEngine";
 import type { DALCoordinate, InventoryEdge, InventoryNode, InventoryStation, PrismOpportunity, ServiceabilityStatus } from "../types/dal";
 import type { CandidateType, ConstructionType, OpportunitySeed } from "../types/portfolio";
@@ -77,7 +78,7 @@ export default function PrismWorkspace() {
   const [candidateText, setCandidateText] = useState("");
   const [candidateType, setCandidateType] = useState<CandidateType>("enterprise");
   const [candidateCount, setCandidateCount] = useState(400);
-  const [constructionType, setConstructionType] = useState<ConstructionType>("Mixed");
+  const [constructionType, setConstructionType] = useState<ConstructionType>("BURIED");
   const [draft, setDraft] = useState<PrismOpportunity | null>(null);
   const [status, setStatus] = useState("Prism ready.");
 
@@ -125,12 +126,38 @@ export default function PrismWorkspace() {
       return;
     }
     setStatus(`Evaluating ${candidates.length.toLocaleString()} candidate sites...`);
-    const seeds = evaluatePortfolioOpportunities(
-      selectedGraph,
-      candidates,
-      { termMonths: 60, revenueMultiplier: 1 },
-      { ...DEFAULT_BUILD_COST_MODEL, constructionType }
-    );
+    const certifiedSeeds = candidates
+      .map((candidate) =>
+        generateOpportunitySeedForCandidate(
+          selectedGraph,
+          {
+            candidateId: candidate.id,
+            companyName: candidate.name,
+            address: "",
+            city: "",
+            state: "TX",
+            zipCode: "",
+            latitude: candidate.latitude,
+            longitude: candidate.longitude,
+            geocodeProvider: "portfolio-coordinate",
+            geocodeConfidence: 0.92,
+            geocodeStatus: "GEOCODED",
+            status: "ANALYZED",
+            createdAt: now(),
+          },
+          { termMonths: 60, revenueMultiplier: 1 },
+          { ...DEFAULT_BUILD_COST_MODEL, constructionType }
+        )
+      )
+      .filter(Boolean) as OpportunitySeed[];
+    const seeds = certifiedSeeds.length
+      ? certifiedSeeds
+      : evaluatePortfolioOpportunities(
+          selectedGraph,
+          candidates,
+          { termMonths: 60, revenueMultiplier: 1 },
+          { ...DEFAULT_BUILD_COST_MODEL, constructionType }
+        );
     const saved = await saveOpportunitySeeds(seeds);
     const ranked = saved.sort((a, b) => b.overallScore - a.overallScore).map((seed, index) => ({ ...seed, rank: index + 1 }));
     setPortfolioSeeds(ranked);
@@ -218,9 +245,10 @@ export default function PrismWorkspace() {
               <option value="residential_cluster">Residential Cluster</option>
             </select>
             <select value={constructionType} onChange={(event) => setConstructionType(event.target.value as ConstructionType)}>
-              <option value="Mixed">Mixed</option>
-              <option value="Aerial">Aerial</option>
-              <option value="Underground">Underground</option>
+              <option value="BURIED">Buried</option>
+              <option value="Mixed" disabled>Mixed (future)</option>
+              <option value="Aerial" disabled>Aerial (future)</option>
+              <option value="Underground" disabled>Underground (future)</option>
             </select>
           </div>
           <input type="number" min={1} max={5000} value={candidateCount} onChange={(event) => setCandidateCount(Number(event.target.value))} />

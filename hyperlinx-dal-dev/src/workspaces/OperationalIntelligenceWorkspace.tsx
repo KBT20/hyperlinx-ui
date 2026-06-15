@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { listCandidateSites, listControlWorkItems, listFieldClosures, listInventoryGraphs, listMarketplaceQuotes, listOpportunitySeeds, listPrismOpportunities, listScopeVersions, loadTwinState } from "../api/dalClient";
+import { testDalConnectivity, type DalConnectivityResult } from "../api/dalConnectivity";
+import { discoverInventoryRecovery, summarizeInventoryRecovery, type InventoryRecoveryRecord } from "../api/inventoryRecovery";
 import type { ControlWorkItem, FieldClosure, InventoryGraphMetadata, MarketplaceQuote, PrismOpportunity, ScopeVersion, TwinState } from "../types/dal";
 import type { CandidateSite } from "../types/candidateSite";
 import type { OpportunitySeed } from "../types/portfolio";
@@ -26,6 +28,8 @@ export default function OperationalIntelligenceWorkspace() {
   const [workItems, setWorkItems] = useState<ControlWorkItem[]>([]);
   const [closures, setClosures] = useState<FieldClosure[]>([]);
   const [twinState, setTwinState] = useState<TwinState | null>(null);
+  const [recoveryRecords, setRecoveryRecords] = useState<InventoryRecoveryRecord[]>([]);
+  const [connectivityResults, setConnectivityResults] = useState<DalConnectivityResult[]>([]);
   const [status, setStatus] = useState("Operational Intelligence ready.");
 
   useEffect(() => {
@@ -34,7 +38,7 @@ export default function OperationalIntelligenceWorkspace() {
 
   async function refresh() {
     try {
-      const [nextGraphs, nextSites, nextOpps, nextScopes, nextQuotes, nextSeeds, nextWork, nextClosures, nextTwin] = await Promise.all([
+      const [nextGraphs, nextSites, nextOpps, nextScopes, nextQuotes, nextSeeds, nextWork, nextClosures, nextTwin, nextRecovery, nextConnectivity] = await Promise.all([
         listInventoryGraphs(),
         listCandidateSites(),
         listPrismOpportunities(),
@@ -44,6 +48,8 @@ export default function OperationalIntelligenceWorkspace() {
         listControlWorkItems(),
         listFieldClosures(),
         loadTwinState(),
+        discoverInventoryRecovery(),
+        testDalConnectivity(),
       ]);
       setGraphs(nextGraphs);
       setCandidateSites(nextSites);
@@ -54,6 +60,8 @@ export default function OperationalIntelligenceWorkspace() {
       setWorkItems(nextWork);
       setClosures(nextClosures);
       setTwinState(nextTwin);
+      setRecoveryRecords(nextRecovery);
+      setConnectivityResults(nextConnectivity);
       setStatus("Operational summary refreshed.");
     } catch (err: any) {
       setStatus(`Operational summary failed: ${err?.message ?? String(err)}`);
@@ -61,13 +69,28 @@ export default function OperationalIntelligenceWorkspace() {
   }
 
   const activeWork = workItems.filter((item) => item.status === "ACTIVE").length;
-  const draftScopes = scopeVersions.filter((scope) => scope.status === "DRAFT" || scope.status === "ANALYZED");
+  const inventoryRecoverySummary = summarizeInventoryRecovery(recoveryRecords);
+  const reachableEndpoints = connectivityResults.filter((result) => result.reachable);
+  const dalConnectivityStatus = connectivityResults.length && reachableEndpoints.length === connectivityResults.length ? "ONLINE" : connectivityResults.length ? "DEGRADED" : "NOT TESTED";
+  const serverReachability = connectivityResults.find((result) => result.key === "baseline")?.reachable ? "REACHABLE" : "NOT REACHABLE";
+  const scopeFinancialValue = (scope: ScopeVersion, key: "NRC" | "MRC" | "TCV") => {
+    const truth = scope.canonicalTruth as any;
+    const quote = truth?.quoteBasis as MarketplaceQuote | undefined;
+    if (key === "NRC") return Number(truth?.financialBasis?.NRC ?? quote?.nrc ?? 0);
+    if (key === "MRC") return Number(truth?.financialBasis?.MRC ?? quote?.mrc ?? quote?.monthlyService ?? 0);
+    return Number(truth?.financialBasis?.TCV ?? quote?.totalContractValue ?? 0);
+  };
+  const draftScopes = scopeVersions.filter((scope) => scope.status === "DRAFT");
+  const analyzedScopes = scopeVersions.filter((scope) => scope.status === "ANALYZED");
   const quotedScopes = scopeVersions.filter((scope) => scope.status === "QUOTED");
   const approvedScopes = scopeVersions.filter((scope) => scope.status === "APPROVED");
-  const activatedScopes = scopeVersions.filter((scope) => scope.status === "ACTIVATED" || scope.status === "IN_CONSTRUCTION");
-  const projectedNrc = quotes.reduce((sum, quote) => sum + Number(quote.nrc ?? 0), 0);
-  const projectedMrc = quotes.reduce((sum, quote) => sum + Number(quote.mrc ?? quote.monthlyService ?? 0), 0);
-  const projectedTcv = quotes.reduce((sum, quote) => sum + Number(quote.totalContractValue ?? 0), 0);
+  const activatedScopes = scopeVersions.filter((scope) => scope.status === "ACTIVATED");
+  const constructionScopes = scopeVersions.filter((scope) => scope.status === "IN_CONSTRUCTION");
+  const completedScopes = scopeVersions.filter((scope) => scope.status === "COMPLETE");
+  const projectedNrc = scopeVersions.reduce((sum, scope) => sum + scopeFinancialValue(scope, "NRC"), 0);
+  const projectedMrc = scopeVersions.reduce((sum, scope) => sum + scopeFinancialValue(scope, "MRC"), 0);
+  const projectedTcv = scopeVersions.reduce((sum, scope) => sum + scopeFinancialValue(scope, "TCV"), 0);
+  const revenueForecast = projectedTcv;
   const recommended = seeds.filter((seed) => seed.overallScore >= 70);
   const averagePayback = seeds.reduce((sum, seed) => sum + seed.paybackMonths, 0) / Math.max(seeds.length, 1);
   const geocodedSites = candidateSites.filter((site) => Number.isFinite(site.latitude) && Number.isFinite(site.longitude));
@@ -129,15 +152,27 @@ export default function OperationalIntelligenceWorkspace() {
         <div className="dal-status">{status}</div>
         <div className="dal-metrics">
           <span>Graphs: {fmt(graphs.length)}</span>
+          <span>DAL Connectivity Status: {dalConnectivityStatus}</span>
+          <span>Server Reachability: {serverReachability}</span>
+          <span>Server Inventory Count: {fmt(inventoryRecoverySummary.serverInventoryCount)}</span>
+          <span>Browser Inventory Count: {fmt(inventoryRecoverySummary.browserInventoryCount)}</span>
+          <span>Synchronized Inventory Count: {fmt(inventoryRecoverySummary.synchronizedInventoryCount)}</span>
+          <span>Unsynchronized Inventory Count: {fmt(inventoryRecoverySummary.unsynchronizedInventoryCount)}</span>
+          <span>Server Inventory Size: {inventoryRecoverySummary.totalServerSizeMB.toLocaleString(undefined, { maximumFractionDigits: 2 })} MB</span>
+          <span>Browser Inventory Size: {inventoryRecoverySummary.totalBrowserSizeMB.toLocaleString(undefined, { maximumFractionDigits: 2 })} MB</span>
+          <span>Sync Failures: {fmt(inventoryRecoverySummary.syncFailures.length)}</span>
           <span>Sites Imported: {fmt(candidateSites.length)}</span>
           <span>Geocoded Sites: {fmt(geocodedSites.length)}</span>
           <span>Verified Sites: {fmt(verifiedSites.length)}</span>
           <span>Sites Evaluated: {fmt(candidateSites.filter((site) => site.status === "ANALYZED" || site.status === "QUALIFIED").length || seeds.length)}</span>
           <span>Recommended Opportunities: {fmt(recommended.length)}</span>
           <span>Draft Scopes: {fmt(draftScopes.length)}</span>
+          <span>Analyzed Scopes: {fmt(analyzedScopes.length)}</span>
           <span>Quoted Scopes: {fmt(quotedScopes.length)}</span>
           <span>Approved Scopes: {fmt(approvedScopes.length)}</span>
           <span>Activated Scopes: {fmt(activatedScopes.length)}</span>
+          <span>Construction Scopes: {fmt(constructionScopes.length)}</span>
+          <span>Completed Scopes: {fmt(completedScopes.length)}</span>
           <span>Buildable Opportunities: {fmt(buildableOpportunities.length)}</span>
           <span>Permit-Constrained Opportunities: {fmt(permitConstrainedOpportunities.length)}</span>
           <span>Crossing-Constrained Opportunities: {fmt(crossingConstrainedOpportunities.length)}</span>
@@ -150,6 +185,7 @@ export default function OperationalIntelligenceWorkspace() {
           <span>Projected NRC: {money(projectedNrc)}</span>
           <span>Projected MRC: {money(projectedMrc)}</span>
           <span>Projected TCV: {money(projectedTcv)}</span>
+          <span>Revenue Forecast: {money(revenueForecast)}</span>
           <span>Expected Revenue: {fmt(expectedRevenue)}</span>
           <span>Expected TCV: {fmt(expectedTcv)}</span>
           <span>Expected EBITDA: {fmt(expectedEbitda)}</span>
@@ -171,8 +207,38 @@ export default function OperationalIntelligenceWorkspace() {
 
       <div className="dal-grid">
         <div className="dal-panel">
+          <h3>DAL Connectivity</h3>
+          <div className="dal-list">
+            {connectivityResults.map((result) => (
+              <div key={result.key} className="dal-list-row">
+                <span>{result.label}</span>
+                <b>{result.reachable ? "REACHABLE" : "UNREACHABLE"}</b>
+                <small>{result.endpoint} / {fmt(result.responseTimeMs)} ms</small>
+              </div>
+            ))}
+            {!connectivityResults.length ? <div className="dal-status">Connectivity has not been tested.</div> : null}
+          </div>
+        </div>
+        <div className="dal-panel">
           <h3>Graph Summary</h3>
           <pre className="dal-pre">{JSON.stringify(graphs.slice(0, 5), null, 2)}</pre>
+        </div>
+        <div className="dal-panel">
+          <h3>Inventory Synchronization</h3>
+          <div className="dal-list">
+            {inventoryRecoverySummary.largestGraphs.map((record) => (
+              <div key={record.inventoryId} className="dal-list-row">
+                <span>{record.name}</span>
+                <b>{Number(record.graphSizeMB || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} MB</b>
+                <small>{record.storageLocation} / {record.syncStatus}</small>
+              </div>
+            ))}
+          </div>
+          {inventoryRecoverySummary.syncFailures.length ? (
+            <pre className="dal-pre">{JSON.stringify(inventoryRecoverySummary.syncFailures, null, 2)}</pre>
+          ) : (
+            <div className="dal-status">No inventory sync failures detected.</div>
+          )}
         </div>
         <div className="dal-panel">
           <h3>Portfolio Summary</h3>
@@ -186,10 +252,14 @@ export default function OperationalIntelligenceWorkspace() {
                 recommended: recommended.slice(0, 10),
                 lifecycle: {
                   draftScopes: draftScopes.length,
+                  analyzedScopes: analyzedScopes.length,
                   quotedScopes: quotedScopes.length,
                   approvedScopes: approvedScopes.length,
                   activatedScopes: activatedScopes.length,
+                  constructionScopes: constructionScopes.length,
+                  completedScopes: completedScopes.length,
                 },
+                inventoryRecovery: inventoryRecoverySummary,
                 commercial: {
                   projectedNrc,
                   projectedMrc,

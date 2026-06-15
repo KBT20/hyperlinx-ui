@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { createId, listControlWorkItems, listMarketplaceQuotes, listOpportunitySeeds, listScopeVersions, now, saveControlWorkItem, saveScopeVersion } from "../api/dalClient";
+import { createId, listControlWorkItems, listMarketplaceQuotes, listScopeVersions, now, saveControlWorkItem, saveScopeVersion } from "../api/dalClient";
 import { useDALState } from "../dal/DALState";
 import type { ControlWorkItem, ControlWorkStatus, MarketplaceQuote, OperationalEvent, ScopeVersion } from "../types/dal";
-import type { OpportunitySeed } from "../types/portfolio";
 
 const statuses: ControlWorkStatus[] = ["PENDING", "ACTIVE", "ON_HOLD", "COMPLETE", "CANCELLED"];
 const workTypes: NonNullable<ControlWorkItem["workType"]>[] = ["ENGINEERING", "PERMITTING", "CONSTRUCTION", "ACTIVATION", "VALIDATION"];
@@ -19,9 +18,8 @@ function controlEvent(scopeVersionId: string, payload: Record<string, unknown>):
 }
 
 export default function ControlWorkspace() {
-  const { selectedOpportunitySeed, selectedScopeVersion, selectedGraph, setSelectedScopeVersion, setSelectedScopeVersionId, setWorkspace } = useDALState();
+  const { selectedScopeVersion, selectedGraph, setSelectedScopeVersion, setSelectedScopeVersionId, setWorkspace } = useDALState();
   const [quotes, setQuotes] = useState<MarketplaceQuote[]>([]);
-  const [seeds, setSeeds] = useState<OpportunitySeed[]>([]);
   const [scopeVersions, setScopeVersions] = useState<ScopeVersion[]>([]);
   const [workItems, setWorkItems] = useState<ControlWorkItem[]>([]);
   const [title, setTitle] = useState("DAL field work package");
@@ -34,9 +32,8 @@ export default function ControlWorkspace() {
 
   async function refresh() {
     try {
-      const [nextQuotes, nextSeeds, nextScopes, nextWork] = await Promise.all([listMarketplaceQuotes(), listOpportunitySeeds(), listScopeVersions(), listControlWorkItems()]);
+      const [nextQuotes, nextScopes, nextWork] = await Promise.all([listMarketplaceQuotes(), listScopeVersions(), listControlWorkItems()]);
       setQuotes(nextQuotes);
-      setSeeds(nextSeeds);
       setScopeVersions(nextScopes);
       setWorkItems(nextWork);
       setStatus("Control data loaded.");
@@ -51,45 +48,61 @@ export default function ControlWorkspace() {
       setStatus("Select a ScopeVersion before creating Control work.");
       return;
     }
-    const quote = quotes.find((item) => item.scopeVersionId === scope.scopeVersionId) ?? quotes[0];
+    if (!["QUOTED", "APPROVED", "ACTIVATED", "IN_CONSTRUCTION"].includes(scope.status)) {
+      setStatus("Generate a quote and approve the ScopeVersion before Control activation.");
+      return;
+    }
+    const quote = quotes.find((item) => item.scopeVersionId === scope.scopeVersionId);
     const scopeTruth = scope.canonicalTruth as any;
-    const buildPath = (scope.buildPath as any) ?? scopeTruth?.buildPath;
-    const constructability = scope.constructability ?? scopeTruth?.constructabilityAssessment ?? quote?.constructabilityAssessment;
+    const networkBasis = scopeTruth?.networkBasis ?? {};
+    const geographicBasis = scopeTruth?.geographicBasis ?? {};
+    const engineeringBasis = scopeTruth?.engineeringBasis ?? {};
+    const buildPath = geographicBasis?.buildPath;
+    const constructability = scopeTruth?.constructabilityAssessment ?? scope.constructability;
     const timestamp = now();
     const base = {
       scopeVersionId: scope.scopeVersionId,
-      opportunitySeedId: scopeTruth?.opportunitySeedId ?? quote?.opportunitySeedId,
+      opportunitySeedId: scopeTruth?.sourceOpportunity?.opportunitySeedId ?? scopeTruth?.opportunitySeedId,
       quoteId: quote?.quoteId,
-      inventoryId: scope.inventoryId ?? quote?.inventoryId,
-      graphId: scope.graphId ?? quote?.graphId,
-      routeId: buildPath?.routeId ?? quote?.routeId ?? scopeTruth?.route?.routeId,
-      nodeId: buildPath?.nodeId ?? quote?.nodeId ?? scopeTruth?.node?.nodeId,
-      stationId: buildPath?.stationId ?? quote?.stationId ?? scopeTruth?.station?.stationId,
-      attachmentType: scopeTruth?.opportunitySeed?.attachmentStrategy?.attachmentType ?? quote?.attachmentType ?? buildPath?.attachmentType,
+      inventoryId: scope.inventoryId,
+      graphId: scope.graphId,
+      routeId: networkBasis?.routeId,
+      nodeId: networkBasis?.nodeId,
+      stationId: networkBasis?.stationId,
+      attachmentType: networkBasis?.attachmentStrategy,
       buildPath,
       constructabilityAssessment: constructability,
-      permitRequirements: scope.permits ?? scopeTruth?.permitRequirements ?? (constructability as any)?.permitting,
-      crossingInventory: scope.crossings ?? scopeTruth?.crossingInventory,
+      permitRequirements: engineeringBasis?.permits ?? scopeTruth?.permitRequirements,
+      crossingInventory: engineeringBasis?.crossings ?? scopeTruth?.crossingInventory,
     };
     const records: ControlWorkItem[] = workTypes.map((workType) => ({
       ...base,
       workItemId: createId("work"),
       workType,
       status: "PENDING",
-      title: `${workType.replace("_", " ")} Work: ${scopeTruth?.site?.companyName ?? scopeTruth?.candidateSite?.companyName ?? scope.scopeVersionId}`,
+      title: `${workType.replace("_", " ")} Work: ${scopeTruth?.sourceCandidate?.name ?? scope.scopeVersionId}`,
       notes:
         notes ||
-        `${scope.scopeVersionId}. ${workType} work generated from ScopeVersion truth. Route ${base.routeId ?? "n/a"} station ${base.stationId ?? "n/a"}. Build ${Math.round(Number(buildPath?.buildFeet ?? scope.buildFeet ?? 0)).toLocaleString()} ft. Quote ${quote?.quoteId ?? "not quoted"}.`,
+        `${scope.scopeVersionId}. ${workType} work generated from ScopeVersion truth. Route ${base.routeId ?? "n/a"} station ${base.stationId ?? "n/a"}. Build ${Math.round(Number(engineeringBasis?.buildFeet ?? 0)).toLocaleString()} ft. Quote ${quote?.quoteId ?? "not quoted"}.`,
       createdAt: timestamp,
       updatedAt: timestamp,
     }));
     const saved = await Promise.all(records.map((item) => saveControlWorkItem(item)));
     setWorkItems((prev) => [...saved, ...prev.filter((record) => !saved.some((item) => item.workItemId === record.workItemId))]);
+    const approvedScope =
+      scope.status === "QUOTED"
+        ? await saveScopeVersion({
+            ...scope,
+            status: "APPROVED",
+            updatedAt: timestamp,
+            events: [...scope.events, controlEvent(scope.scopeVersionId, { approvedForControl: true })],
+          })
+        : scope;
     const activatedScope = await saveScopeVersion({
-      ...scope,
-      status: "ACTIVATED",
+      ...approvedScope,
+      status: approvedScope.status === "IN_CONSTRUCTION" ? "IN_CONSTRUCTION" : "ACTIVATED",
       updatedAt: timestamp,
-      events: [...scope.events, controlEvent(scope.scopeVersionId, { workItemIds: saved.map((item) => item.workItemId) })],
+      events: [...approvedScope.events, controlEvent(scope.scopeVersionId, { workItemIds: saved.map((item) => item.workItemId) })],
     });
     setSelectedScopeVersion(activatedScope);
     setSelectedScopeVersionId(activatedScope.scopeVersionId);
@@ -128,13 +141,13 @@ export default function ControlWorkspace() {
         <div className="dal-panel">
           <h3>Context</h3>
           <div className="dal-metrics">
-            <span>Scope: {selectedScopeVersion?.scopeVersionId ?? quotes[0]?.scopeVersionId ?? "none"}</span>
+            <span>Scope: {selectedScopeVersion?.scopeVersionId ?? scopeVersions[0]?.scopeVersionId ?? "none"}</span>
             <span>Status: {selectedScopeVersion?.status ?? scopeVersions[0]?.status ?? "none"}</span>
-            <span>Inventory: {selectedGraph?.inventoryId ?? quotes[0]?.inventoryId ?? "none"}</span>
-            <span>Build feet: {Math.round(Number(((selectedScopeVersion?.buildPath as any) ?? (selectedScopeVersion?.canonicalTruth as any)?.buildPath)?.buildFeet ?? selectedScopeVersion?.buildFeet ?? 0)).toLocaleString()}</span>
-            <span>Attachment: {(selectedScopeVersion?.canonicalTruth as any)?.opportunitySeed?.attachmentStrategy?.attachmentType?.replaceAll("_", " ") ?? quotes[0]?.attachmentType?.replaceAll("_", " ") ?? "n/a"}</span>
-            <span>Route: {((selectedScopeVersion?.buildPath as any) ?? (selectedScopeVersion?.canonicalTruth as any)?.buildPath)?.routeId ?? quotes[0]?.routeId ?? (selectedScopeVersion?.canonicalTruth as any)?.route?.routeId ?? "n/a"}</span>
-            <span>Station: {((selectedScopeVersion?.buildPath as any) ?? (selectedScopeVersion?.canonicalTruth as any)?.buildPath)?.stationId ?? quotes[0]?.stationId ?? (selectedScopeVersion?.canonicalTruth as any)?.station?.stationId ?? "n/a"}</span>
+            <span>Inventory: {selectedScopeVersion?.inventoryId ?? selectedGraph?.inventoryId ?? "none"}</span>
+            <span>Build feet: {Math.round(Number((selectedScopeVersion?.canonicalTruth as any)?.engineeringBasis?.buildFeet ?? 0)).toLocaleString()}</span>
+            <span>Attachment: {(selectedScopeVersion?.canonicalTruth as any)?.networkBasis?.attachmentStrategy?.replaceAll("_", " ") ?? "n/a"}</span>
+            <span>Route: {(selectedScopeVersion?.canonicalTruth as any)?.networkBasis?.routeId ?? "n/a"}</span>
+            <span>Station: {(selectedScopeVersion?.canonicalTruth as any)?.networkBasis?.stationId ?? "n/a"}</span>
             <span>Quote TCV: {Math.round(Number(quotes.find((quote) => quote.scopeVersionId === selectedScopeVersion?.scopeVersionId)?.totalContractValue ?? 0)).toLocaleString()}</span>
             <span>Constructability: {Math.round(Number(((selectedScopeVersion?.constructability as any) ?? (selectedScopeVersion?.canonicalTruth as any)?.constructabilityAssessment)?.constructabilityScore ?? 0)).toLocaleString()}</span>
             <span>Permit Authorities: {(((selectedScopeVersion?.permits as any) ?? (selectedScopeVersion?.canonicalTruth as any)?.permitRequirements)?.authorities ?? []).join(", ") || "n/a"}</span>

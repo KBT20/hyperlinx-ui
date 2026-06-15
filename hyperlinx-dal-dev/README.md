@@ -15,15 +15,29 @@ This is a separate DAL development UI and runtime. It is intentionally isolated 
 
 Copy or edit `hyperlinx-dal-dev/.env`:
 
+Remote DAL mode:
+
+```env
+VITE_DAL_API=http://67.213.118.179:3001
+VITE_DAL_BASELINE_API=http://67.213.118.179:3001
+VITE_DAL_BASELINE_GRAPH_API=http://67.213.118.179:3001
+VITE_DAL_INVENTORY_GRAPH_API=http://67.213.118.179:3001
+VITE_DAL_REASONING_API=http://67.213.118.179:4100
+VITE_DAL_APP_NAME=HYPERLINX DAL DEVELOPMENT
+```
+
+Local mode:
+
 ```env
 VITE_DAL_API=http://127.0.0.1:3001
+VITE_DAL_BASELINE_API=http://127.0.0.1:3001
 VITE_DAL_BASELINE_GRAPH_API=http://127.0.0.1:3001
 VITE_DAL_INVENTORY_GRAPH_API=http://127.0.0.1:3001
 VITE_DAL_REASONING_API=http://127.0.0.1:4100
 VITE_DAL_APP_NAME=HYPERLINX DAL DEVELOPMENT
 ```
 
-For DAL1 staging, point these values at the DAL1 API host.
+DAL runtime API targets come from these environment values. If an API value is omitted, the DAL app derives the API host from the browser host and the expected service port.
 
 ## Run
 
@@ -32,7 +46,7 @@ cd hyperlinx-dal-dev
 npm run dev
 ```
 
-Default local UI: `http://127.0.0.1:5174`
+Default development UI: `http://<dal-ui-host>:5174`
 
 ## Build
 

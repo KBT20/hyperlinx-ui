@@ -3,6 +3,7 @@ import { useDALState, type DALWorkspace } from "./DALState";
 const items: Array<{ id: DALWorkspace; label: string }> = [
   { id: "translate", label: "Translate" },
   { id: "inventory", label: "Inventory Graphs" },
+  { id: "inventoryRecovery", label: "Inventory Recovery" },
   { id: "graphViewer", label: "Graph Viewer" },
   { id: "graphExtensions", label: "Graph Extensions" },
   { id: "prism", label: "Prism" },

@@ -18,6 +18,7 @@ import { geocodeCandidateSite, isValidGeocodeCoordinate, realGeocoderConfigured 
 import { LeafletMap, type GISBuildPath, type GISCrossing, type GISPoint, type GISRoute } from "../gis";
 import { generateOpportunitySeedForCandidate } from "../prism/opportunityGenerator";
 import { createScopeVersionFromSiteDecision } from "../scopeversion/scopeVersionUtils";
+import { validateScopeVersion } from "../scopeversion/scopeVersionValidation";
 import type { CandidateSite } from "../types/candidateSite";
 import type { DALCoordinate, InventoryGraph, InventoryGraphMetadata, InventoryNode, InventoryRoute, InventoryStation, MarketplaceQuote } from "../types/dal";
 import type { OpportunitySeed } from "../types/portfolio";
@@ -47,6 +48,9 @@ type DecisionEvidence = {
   tcv: string;
   roi: string;
   payback: string;
+  serviceabilityStatus: string;
+  certificationStatus: string;
+  attachmentConfidence: string;
 };
 
 type RouteTraceStep = {
@@ -71,7 +75,9 @@ type DecisionContext = {
 };
 
 type DecisionDiagnostics = {
-  serviceability: "SERVICEABLE" | "NON_SERVICEABLE" | "PENDING";
+  serviceability: "SERVICEABLE" | "CONDITIONALLY_SERVICEABLE" | "NOT_SERVICEABLE" | "NON_SERVICEABLE" | "PENDING";
+  attachmentCertification: string;
+  lateralCertification: string;
   siteCoordinates: string;
   attachmentCoordinates: string;
   routeCoordinates: {
@@ -128,6 +134,54 @@ function hasSyntheticCoordinateUnderRealGeocoder(site: CandidateSite) {
   return realGeocoderConfigured() && (site.geocodeStatus === "FALLBACK" || provider.includes("deterministic"));
 }
 
+function siteFromSeed(seed: OpportunitySeed | null | undefined): CandidateSite | null {
+  if (!seed || !Number.isFinite(seed.latitude) || !Number.isFinite(seed.longitude)) return null;
+  return {
+    candidateId: seed.candidateSiteId ?? seed.id,
+    companyName: seed.siteName ?? `Opportunity ${seed.id}`,
+    address: "",
+    city: "",
+    state: "TX",
+    zipCode: "",
+    latitude: seed.latitude,
+    longitude: seed.longitude,
+    geocodeProvider: "seed-coordinate",
+    geocodeConfidence: seed.confidence,
+    geocodeStatus: "GEOCODED",
+    facilityType: seed.facilityType,
+    marketSegment: seed.marketSegment,
+    status: "ANALYZED",
+    createdAt: seed.createdAt,
+  };
+}
+
+function serviceabilityForSeed(seed: OpportunitySeed | null | undefined) {
+  return seed?.serviceabilityAssessment ?? seed?.networkAffinity?.serviceabilityAssessment ?? seed?.certificationSnapshot?.serviceabilityAssessment;
+}
+
+function attachmentCertificationForSeed(seed: OpportunitySeed | null | undefined) {
+  return seed?.attachmentCertification ?? seed?.networkAffinity?.attachmentCertification ?? seed?.certificationSnapshot?.attachmentPoint;
+}
+
+function lateralCertificationForSeed(seed: OpportunitySeed | null | undefined) {
+  return seed?.lateralCertification ?? seed?.networkAffinity?.lateralCertification ?? seed?.certificationSnapshot?.lateralPath;
+}
+
+function hasScopeVersionCertification(seed: OpportunitySeed | null | undefined) {
+  const serviceability = serviceabilityForSeed(seed);
+  const attachment = attachmentCertificationForSeed(seed);
+  const lateral = lateralCertificationForSeed(seed);
+  return Boolean(
+    serviceability &&
+      attachment &&
+      lateral &&
+      serviceability.status !== "NOT_SERVICEABLE" &&
+      serviceability.serviceable &&
+      attachment.certificationStatus !== "FAILED" &&
+      lateral.certificationStatus !== "FAILED"
+  );
+}
+
 function routeSegmentForAttachment(route: InventoryRoute | undefined, attachmentPoint?: DALCoordinate, radius = 28) {
   const coordinates = route?.coordinates ?? [];
   if (!coordinates.length) return [];
@@ -148,6 +202,7 @@ function routeSegmentForAttachment(route: InventoryRoute | undefined, attachment
 
 function isServiceableSeed(seed: OpportunitySeed | null, route?: InventoryRoute, node?: InventoryNode, station?: InventoryStation) {
   const buildPath = seed?.buildPath ?? seed?.networkAffinity?.buildPath;
+  if (!hasScopeVersionCertification(seed)) return false;
   return Boolean(
     seed &&
       route &&
@@ -258,6 +313,9 @@ function evidenceFor(args: {
   const waterCrossings = Number(constructability?.water.waterCrossingCount ?? buildPath?.waterCrossingCount ?? 0);
   const totalCrossings = roadCrossings + railCrossings + waterCrossings;
   const buildFeet = Number(buildPath?.buildFeet ?? seed.distanceFeet ?? 0);
+  const serviceability = serviceabilityForSeed(seed);
+  const attachmentCertification = attachmentCertificationForSeed(seed);
+  const lateralCertification = lateralCertificationForSeed(seed);
   return {
     candidateAddress: [site.address, site.city, site.state, site.zipCode].filter(Boolean).join(", "),
     latLon: Number.isFinite(site.latitude) && Number.isFinite(site.longitude) ? `${Number(site.latitude).toFixed(6)}, ${Number(site.longitude).toFixed(6)}` : "n/a",
@@ -283,6 +341,12 @@ function evidenceFor(args: {
     tcv: money(quoteBasis?.totalContractValue ?? seed.estimatedTCV),
     roi: `${Number(seed.roi ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}x`,
     payback: `${fmt(Math.round(quoteBasis?.paybackMonths ?? seed.paybackMonths ?? 0))} mo`,
+    serviceabilityStatus: serviceability?.status ?? "n/a",
+    certificationStatus:
+      attachmentCertification?.certificationStatus && lateralCertification?.certificationStatus
+        ? `${attachmentCertification.certificationStatus} / ${lateralCertification.certificationStatus}`
+        : "n/a",
+    attachmentConfidence: attachmentCertification ? `${Math.round(attachmentCertification.confidenceScore)}%` : "n/a",
   };
 }
 
@@ -413,7 +477,7 @@ export default function PrismSiteDecisionWorkspace() {
       !nextCoordinate ||
       Math.abs(originalCoordinate[0] - nextCoordinate[0]) > 0.000001 ||
       Math.abs(originalCoordinate[1] - nextCoordinate[1]) > 0.000001;
-    const existingSeed = coordinateChanged ? undefined : seeds.find((item) => item.candidateSiteId === geocodedSite.candidateId && item.inventoryId === graph.inventoryId);
+    const existingSeed = coordinateChanged ? undefined : seeds.find((item) => item.candidateSiteId === geocodedSite.candidateId && item.inventoryId === graph.inventoryId && hasScopeVersionCertification(item));
     const seed = existingSeed ?? generateOpportunitySeedForCandidate(graph, geocodedSite);
     if (!seed) {
       await markNonServiceable(geocodedSite, "No route, node, station, or lateral path could be generated.");
@@ -464,13 +528,14 @@ export default function PrismSiteDecisionWorkspace() {
       setSelectedOpportunitySeed(seed);
       setSelectedOpportunitySeedId(seed.id);
       setInventoryId(seed.inventoryId);
-      const site = sites.find((item) => item.candidateId === seed.candidateSiteId) ?? selectedCandidateSite ?? null;
+      const site = sites.find((item) => item.candidateId === seed.candidateSiteId) ?? selectedCandidateSite ?? siteFromSeed(seed);
       if (site) {
         setCandidateId(site.candidateId);
         setSelectedCandidateSite(site);
         setSelectedCandidateSiteId(site.candidateId);
       }
       await ensureGraph(seed.inventoryId);
+      if (site) await buildDecisionForSite(site, seed.inventoryId);
     }
   }
 
@@ -485,19 +550,43 @@ export default function PrismSiteDecisionWorkspace() {
 
   async function createDecisionScopeVersion() {
     const graph = await ensureGraph();
-    const site = sites.find((item) => item.candidateId === candidateId) ?? selectedCandidateSite ?? undefined;
+    const site = sites.find((item) => item.candidateId === candidateId) ?? selectedCandidateSite ?? siteFromSeed(draftSeed) ?? undefined;
     if (!graph) {
       setStatus("Load an inventory graph before creating a ScopeVersion.");
       return;
     }
     let seed = draftSeed;
     if (!seed && site) seed = generateOpportunitySeedForCandidate(graph, site);
+    if (seed && site && !hasScopeVersionCertification(seed)) {
+      const regenerated = generateOpportunitySeedForCandidate(graph, site);
+      if (regenerated) seed = regenerated;
+    }
     if (!seed) {
       setStatus("Analyze a geocoded site or select an Opportunity Seed before creating a ScopeVersion.");
       return;
     }
+    if (!hasScopeVersionCertification(seed)) {
+      setStatus("ScopeVersion blocked: certified attachment, lateral, and serviceability assessment are required.");
+      return;
+    }
     const savedSeed = seeds.some((item) => item.id === seed?.id) ? seed : await saveOpportunitySeed(seed);
-    const scope = await saveScopeVersion(createScopeVersionFromSiteDecision({ site, seed: savedSeed, quoteBasis: null }));
+    const scopeBuildPath = savedSeed.buildPath ?? savedSeed.networkAffinity?.buildPath;
+    const scopeRoute = graph.routes.find((item) => item.routeId === (scopeBuildPath?.routeId ?? savedSeed.nearestRouteId));
+    const scopeNode = graph.nodes.find((item) => item.nodeId === (scopeBuildPath?.nodeId ?? savedSeed.nearestNodeId));
+    const scopeStation = graph.stations.find((item) => item.stationId === (scopeBuildPath?.stationId ?? savedSeed.nearestStationId));
+    let draftScope;
+    try {
+      draftScope = createScopeVersionFromSiteDecision({ site, seed: savedSeed, route: scopeRoute, node: scopeNode, station: scopeStation, quoteBasis: null });
+    } catch (err: any) {
+      setStatus(`ScopeVersion blocked: ${err?.message ?? String(err)}`);
+      return;
+    }
+    const validation = validateScopeVersion(draftScope);
+    if (!validation.valid) {
+      setStatus(`ScopeVersion validation failed: ${validation.errors.map((item) => item.message).join(" ")}`);
+      return;
+    }
+    const scope = await saveScopeVersion(draftScope);
     setDraftSeed(savedSeed);
     setSelectedOpportunitySeed(savedSeed);
     setSelectedOpportunitySeedId(savedSeed.id);
@@ -524,14 +613,21 @@ export default function PrismSiteDecisionWorkspace() {
   }
 
   const activeSite = useMemo(
-    () => sites.find((site) => site.candidateId === candidateId) ?? selectedCandidateSite ?? sites.find((site) => site.candidateId === draftSeed?.candidateSiteId) ?? null,
-    [candidateId, draftSeed?.candidateSiteId, selectedCandidateSite, sites]
+    () =>
+      sites.find((site) => site.candidateId === candidateId) ??
+      selectedCandidateSite ??
+      sites.find((site) => site.candidateId === draftSeed?.candidateSiteId) ??
+      siteFromSeed(draftSeed ?? selectedOpportunitySeed) ??
+      null,
+    [candidateId, draftSeed, selectedCandidateSite, selectedOpportunitySeed, sites]
   );
   const activeSeed = draftSeed ?? selectedOpportunitySeed ?? seeds.find((seed) => seed.candidateSiteId === activeSite?.candidateId) ?? seeds[0] ?? null;
   const activeScopeQuote = (selectedScopeVersion?.canonicalTruth as any)?.quoteBasis as MarketplaceQuote | undefined;
   const quoteBasis = useMemo(() => quoteWorksheet ?? activeScopeQuote ?? quoteBasisFor(activeSeed, quotes.find((quote) => quote.opportunitySeedId === activeSeed?.id)), [activeScopeQuote, activeSeed, quoteWorksheet, quotes]);
   const constructability = activeSeed?.constructabilityAssessment ?? activeSeed?.networkAffinity?.constructabilityAssessment ?? activeSeed?.buildPath?.constructabilityAssessment;
   const buildPath = activeSeed?.buildPath ?? activeSeed?.networkAffinity?.buildPath;
+  const certifiedLateral = lateralCertificationForSeed(activeSeed);
+  const certifiedLateralGeometry = certifiedLateral?.geometry ?? buildPath?.geometry ?? [];
   const route = decisionGraph?.routes.find((item) => item.routeId === (buildPath?.routeId ?? activeSeed?.nearestRouteId));
   const node = decisionGraph?.nodes.find((item) => item.nodeId === (buildPath?.nodeId ?? activeSeed?.nearestNodeId));
   const station = decisionGraph?.stations.find((item) => item.stationId === (buildPath?.stationId ?? activeSeed?.nearestStationId));
@@ -539,7 +635,10 @@ export default function PrismSiteDecisionWorkspace() {
 
   const decisionContext = useMemo<DecisionContext | null>(() => {
     if (!activeSite || !activeSeed || !decisionGraph) return null;
-    const attachmentPoint = activeSeed.networkAffinity?.preferredAttachmentPoint ?? (buildPath?.geometry?.length ? buildPath.geometry[buildPath.geometry.length - 1] : undefined);
+    const certifiedAttachment = attachmentCertificationForSeed(activeSeed);
+    const attachmentPoint = certifiedAttachment
+      ? ([certifiedAttachment.longitude, certifiedAttachment.latitude] as DALCoordinate)
+      : activeSeed.networkAffinity?.preferredAttachmentPoint ?? (buildPath?.geometry?.length ? buildPath.geometry[buildPath.geometry.length - 1] : undefined);
     const evidence = evidenceFor({ site: activeSite, seed: activeSeed, quoteBasis, route, node, station });
     const routeTrace: RouteTraceStep[] = [
       {
@@ -550,7 +649,7 @@ export default function PrismSiteDecisionWorkspace() {
             ? ([Number(activeSite.longitude), Number(activeSite.latitude)] as DALCoordinate)
             : undefined,
       },
-      { label: "Attachment", entityId: activeSeed.attachmentStrategy?.attachmentType ?? "attachment", coordinate: attachmentPoint },
+      { label: "Certified Attachment", entityId: certifiedAttachment?.attachmentId ?? activeSeed.attachmentStrategy?.attachmentType ?? "attachment", coordinate: attachmentPoint },
       { label: "Route", entityId: route?.routeId ?? buildPath?.routeId ?? activeSeed.nearestRouteId ?? "route" },
       { label: "Station", entityId: station?.stationId ?? buildPath?.stationId ?? activeSeed.nearestStationId ?? "station", coordinate: station ? [station.lon, station.lat] : undefined },
       { label: "Core", entityId: node?.nodeId ?? buildPath?.nodeId ?? activeSeed.nearestNodeId ?? "core", coordinate: node ? [node.lon, node.lat] : undefined },
@@ -650,17 +749,17 @@ export default function PrismSiteDecisionWorkspace() {
   );
   const mapBuildPaths = useMemo<GISBuildPath[]>(
     () =>
-      buildPath?.geometry?.length
+      certifiedLateralGeometry.length
         ? [
             {
               id: `${activeSeed?.id ?? "decision"}-lateral`,
-              label: "Proposed Lateral",
-              coordinates: buildPath.geometry,
-              payload: buildPath,
+              label: "Certified Lateral",
+              coordinates: certifiedLateralGeometry,
+              payload: certifiedLateral ?? buildPath,
             },
           ]
         : [],
-    [activeSeed?.id, buildPath]
+    [activeSeed?.id, buildPath, certifiedLateral, certifiedLateralGeometry]
   );
   const focusCoordinates = useMemo(() => {
     const coords: DALCoordinate[] = [];
@@ -675,7 +774,9 @@ export default function PrismSiteDecisionWorkspace() {
   }, [attachmentPoints, candidatePoints, crossings, mapBuildPaths, mapRoutes, nodePoints, stationPoints]);
   const diagnostics = useMemo<DecisionDiagnostics>(
     () => ({
-      serviceability: decisionContext ? "SERVICEABLE" : activeSite?.status === "NON_SERVICEABLE" ? "NON_SERVICEABLE" : "PENDING",
+      serviceability: serviceabilityForSeed(activeSeed)?.status ?? (decisionContext ? "SERVICEABLE" : activeSite?.status === "NON_SERVICEABLE" ? "NON_SERVICEABLE" : "PENDING"),
+      attachmentCertification: attachmentCertificationForSeed(activeSeed)?.certificationStatus ?? "PENDING",
+      lateralCertification: lateralCertificationForSeed(activeSeed)?.certificationStatus ?? "PENDING",
       siteCoordinates: coordinateLabel(candidateCoordinate(activeSite)),
       attachmentCoordinates: coordinateLabel(decisionContext?.attachmentPoint),
       routeCoordinates: {
@@ -692,53 +793,100 @@ export default function PrismSiteDecisionWorkspace() {
         attachments: attachmentPoints.length,
         backboneRouteCoordinates: route?.coordinates.length ?? 0,
         renderedBackboneSegmentCoordinates: backboneRouteSegment.length,
-        lateralCoordinates: buildPath?.geometry?.length ?? 0,
+        lateralCoordinates: certifiedLateralGeometry.length,
         stations: stationPoints.length,
         nodes: nodePoints.length,
         crossings: crossings.length,
       },
     }),
-    [activeSite, attachmentPoints.length, backboneRouteSegment, buildPath?.geometry?.length, candidatePoints.length, crossings.length, decisionContext, node, nodePoints.length, route, station, stationPoints.length]
+    [activeSeed, activeSite, attachmentPoints.length, backboneRouteSegment, certifiedLateralGeometry.length, candidatePoints.length, crossings.length, decisionContext, node, nodePoints.length, route, station, stationPoints.length]
   );
   const scopePreview = useMemo(
     () =>
       decisionContext
         ? {
-            network: {
+            networkBasis: {
               routeId: decisionContext.buildPath?.routeId ?? decisionContext.seed.nearestRouteId,
+              routeName: decisionContext.route?.name,
               nodeId: decisionContext.buildPath?.nodeId ?? decisionContext.seed.nearestNodeId,
+              nodeName: decisionContext.node?.nodeId,
               stationId: decisionContext.buildPath?.stationId ?? decisionContext.seed.nearestStationId,
+              stationName: decisionContext.station?.label,
               attachmentPoint: decisionContext.attachmentPoint,
+              attachmentCoordinates: decisionContext.attachmentPoint,
+              capacityStatus: decisionContext.seed.capacityStatus ?? decisionContext.seed.networkAffinity?.capacity.projectedUtilization,
               attachmentStrategy: decisionContext.seed.attachmentStrategy?.attachmentType,
-              graphReference: {
-                inventoryId: decisionContext.seed.inventoryId,
-                graphId: decisionContext.seed.graphId,
-                graphVersion: decisionContext.seed.graphId,
-              },
+              networkAffinityScore: decisionContext.seed.networkAffinityScore ?? decisionContext.seed.networkAffinity?.affinityScore,
+              certificationStatus: attachmentCertificationForSeed(decisionContext.seed)?.certificationStatus,
             },
-            construction: {
+            geographicBasis: {
+              candidateLatitude: decisionContext.site.latitude,
+              candidateLongitude: decisionContext.site.longitude,
+              geocodeProvider: decisionContext.site.geocodeProvider,
+              geocodeConfidence: decisionContext.site.geocodeConfidence,
+              geometry: decisionContext.buildPath?.geometry,
               buildPath: decisionContext.buildPath,
+              routeGeometry: decisionContext.route?.coordinates,
+              stationGeometry: decisionContext.station ? [decisionContext.station.lon, decisionContext.station.lat] : undefined,
+              nodeGeometry: decisionContext.node ? [decisionContext.node.lon, decisionContext.node.lat] : undefined,
+              attachmentGeometry: decisionContext.attachmentPoint,
+              lateralGeometry: lateralCertificationForSeed(decisionContext.seed)?.geometry,
+            },
+            engineeringBasis: {
               constructionType: decisionContext.evidence.constructionType,
               buildFeet: decisionContext.evidence.buildFeet,
               buildMiles: decisionContext.evidence.buildMiles,
-              estimatedCost: decisionContext.evidence.estimatedCost,
               crossings: decisionContext.crossings.map((crossing) => ({ id: crossing.id, type: crossing.crossingType, coordinate: crossing.coordinate })),
+              roadCrossings: decisionContext.evidence.roadCrossings,
+              railCrossings: decisionContext.evidence.railCrossings,
+              waterCrossings: decisionContext.evidence.waterCrossings,
               permits: constructability?.permitting,
+              permitAuthorities: constructability?.permitting.authorities,
+              constructabilityScore: activeSeed?.constructabilityScore ?? constructability?.constructabilityScore,
+              engineeringScore: activeSeed?.engineeringScore,
+              constructionAssumptions: decisionContext.seed.constructionAssumptions ?? decisionContext.seed.networkAffinity?.constructionAssumptions,
+              attachmentCertification: attachmentCertificationForSeed(decisionContext.seed),
+              lateralCertification: lateralCertificationForSeed(decisionContext.seed),
+              serviceabilityAssessment: serviceabilityForSeed(decisionContext.seed),
             },
-            financial: {
-              nrc: decisionContext.quoteBasis?.nrc ?? decisionContext.seed.estimatedNRC,
-              mrc: decisionContext.quoteBasis?.mrc ?? decisionContext.seed.estimatedMRC,
-              tcv: decisionContext.quoteBasis?.totalContractValue ?? decisionContext.seed.estimatedTCV,
-              roi: decisionContext.seed.roi,
-              paybackMonths: decisionContext.quoteBasis?.paybackMonths ?? decisionContext.seed.paybackMonths,
+            financialBasis: {
+              estimatedConstructionCost: activeSeed?.buildCost ?? decisionContext.buildPath?.estimatedCost,
+              estimatedEngineeringCost: activeSeed?.estimatedEngineeringCost ?? constructability?.estimatedEngineeringCost,
+              estimatedPermitCost: activeSeed?.estimatedPermitCost ?? constructability?.estimatedPermitCost,
+              estimatedCrossingCost: activeSeed?.estimatedCrossingCost ?? constructability?.estimatedCrossingCost,
+              estimatedEnvironmentalCost: activeSeed?.estimatedEnvironmentalCost ?? constructability?.estimatedEnvironmentalCost,
+              NRC: decisionContext.quoteBasis?.nrc ?? decisionContext.seed.estimatedNRC,
+              MRC: decisionContext.quoteBasis?.mrc ?? decisionContext.seed.estimatedMRC,
+              TCV: decisionContext.quoteBasis?.totalContractValue ?? decisionContext.seed.estimatedTCV,
+              ROI: decisionContext.seed.roi,
+              payback: decisionContext.quoteBasis?.paybackMonths ?? decisionContext.seed.paybackMonths,
+              margin: decisionContext.quoteBasis?.margin ?? decisionContext.seed.margin,
+              financialScore: activeSeed?.financialScore,
             },
-            risk: {
+            riskBasis: {
               permitRisk: constructability ? 100 - constructability.permitScore : undefined,
               crossingRisk: constructability ? 100 - constructability.crossingScore : undefined,
               constructionRisk: constructability?.constructionDifficulty,
               environmentalRisk: constructability?.environmentalRisk,
               compositeRisk: decisionContext.seed.riskScore,
             },
+            decisionBasis: {
+              recommendation: decisionContext.seed.overallScore >= 70 ? "GO" : decisionContext.seed.overallScore >= 50 ? "REVIEW" : "NO_GO",
+              compositeScore: decisionContext.seed.overallScore,
+              strategicScore: decisionContext.seed.strategicScore,
+              engineeringScore: decisionContext.seed.engineeringScore,
+              financialScore: decisionContext.seed.financialScore,
+              riskScore: decisionContext.seed.riskScore,
+              phase: phaseFor(decisionContext.seed),
+              priority: priorityFor(decisionContext.seed),
+            },
+            graphReference: {
+              inventoryId: decisionContext.seed.inventoryId,
+              graphId: decisionContext.seed.graphId,
+              graphVersion: decisionContext.seed.graphId,
+            },
+            certificationSnapshot: decisionContext.seed.certificationSnapshot ?? decisionContext.seed.networkAffinity?.certificationSnapshot,
+            serviceabilityAssessment: serviceabilityForSeed(decisionContext.seed),
             commercial: quoteWorksheet ?? activeScopeQuote ?? decisionContext.quoteBasis,
             scopeVersionMetadata: {
               scopeVersionId: selectedScopeVersion?.scopeVersionId ?? "pending",
@@ -756,6 +904,7 @@ export default function PrismSiteDecisionWorkspace() {
                 geocodeTimestamp: decisionContext.site.geocodeTimestamp ?? decisionContext.site.geocodedAt,
               },
             },
+            validation: selectedScopeVersion?.canonicalTruth.validation ?? "Validation runs before commit.",
           }
         : null,
     [activeScopeQuote, constructability, decisionContext, quoteWorksheet, selectedScopeVersion?.scopeVersionId, selectedScopeVersion?.status]
@@ -837,6 +986,26 @@ export default function PrismSiteDecisionWorkspace() {
             <span>Composite Score: {fmt(Math.round(activeSeed?.overallScore ?? 0))}</span>
           </div>
         </div>
+
+        <div className="dal-panel">
+          <h3>Executive Review</h3>
+          <div className="dal-metrics">
+            <span>Candidate: {activeSite?.companyName ?? activeSeed?.siteName ?? "n/a"}</span>
+            <span>Route: {buildPath?.routeId ?? activeSeed?.nearestRouteId ?? "n/a"}</span>
+            <span>Station: {buildPath?.stationId ?? activeSeed?.nearestStationId ?? "n/a"}</span>
+            <span>Build Feet: {feetLabel(certifiedLateral?.buildFeet ?? buildPath?.buildFeet ?? activeSeed?.distanceFeet)}</span>
+            <span>Build Cost: {money(activeSeed?.buildCost ?? buildPath?.estimatedCost)}</span>
+            <span>Payback: {fmt(Math.round(quoteBasis?.paybackMonths ?? activeSeed?.paybackMonths ?? 0))} mo</span>
+            <span>ROI: {Number(activeSeed?.roi ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}x</span>
+            <span>Serviceability: {serviceabilityForSeed(activeSeed)?.status ?? "PENDING"}</span>
+            <span>Certification: {attachmentCertificationForSeed(activeSeed)?.certificationStatus ?? "PENDING"} / {lateralCertificationForSeed(activeSeed)?.certificationStatus ?? "PENDING"}</span>
+          </div>
+          <div className="dal-actions">
+            <button type="button" onClick={() => void createDecisionScopeVersion()}>
+              Create Certified ScopeVersion
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="dal-grid">
@@ -908,6 +1077,8 @@ export default function PrismSiteDecisionWorkspace() {
           <h3>Decision Diagnostics</h3>
           <div className="dal-metrics">
             <span>Serviceability: {diagnostics.serviceability}</span>
+            <span>Attachment Certification: {diagnostics.attachmentCertification}</span>
+            <span>Lateral Certification: {diagnostics.lateralCertification}</span>
             <span>Site Coordinates: {diagnostics.siteCoordinates}</span>
             <span>Attachment Coordinates: {diagnostics.attachmentCoordinates}</span>
             <span>Station Coordinates: {diagnostics.stationCoordinates}</span>

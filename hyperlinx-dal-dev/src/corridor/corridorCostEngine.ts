@@ -1,15 +1,9 @@
 import type { CorridorCost, CorridorRisk, CorridorSegment } from "../types/corridor";
 import type { ConstructionType } from "../types/portfolio";
+import { DEFAULT_CONSTRUCTION_TYPE } from "../engineering/constructionModel";
 
-function constructionTypeFor(segments: CorridorSegment[]): ConstructionType {
-  const aerialFeet = segments
-    .filter((segment) => segment.corridorType === "UTILITY" || segment.corridorType === "ROAD")
-    .reduce((sum, segment) => sum + segment.distanceFeet, 0);
-  const totalFeet = segments.reduce((sum, segment) => sum + segment.distanceFeet, 0);
-  const aerialShare = totalFeet ? aerialFeet / totalFeet : 0;
-  if (aerialShare > 0.72) return "Aerial";
-  if (aerialShare < 0.25) return "Underground";
-  return "Mixed";
+function constructionTypeFor(_segments: CorridorSegment[]): ConstructionType {
+  return DEFAULT_CONSTRUCTION_TYPE;
 }
 
 export function estimateCorridorCost(segments: CorridorSegment[], risk: CorridorRisk): CorridorCost {
@@ -35,4 +29,3 @@ export function estimateCorridorCost(segments: CorridorSegment[], risk: Corridor
     costPerFoot: Math.round(nrcEstimate / Math.max(distanceFeet, 1)),
   };
 }
-

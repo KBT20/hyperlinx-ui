@@ -40,7 +40,7 @@ function routeSegmentForAttachment(route: InventoryRoute | undefined, attachment
 }
 
 export default function TwinWorkspace() {
-  const { selectedGraph, selectedNetworkAffinity, selectedOpportunitySeed, selectedScopeVersion } = useDALState();
+  const { selectedGraph, selectedScopeVersion } = useDALState();
   const [twinState, setTwinState] = useState<TwinState | null>(null);
   const [workItems, setWorkItems] = useState<ControlWorkItem[]>([]);
   const [closures, setClosures] = useState<FieldClosure[]>([]);
@@ -82,27 +82,30 @@ export default function TwinWorkspace() {
 
   const scopeTruth = selectedScopeVersion?.canonicalTruth as any;
   const extensionSummary = scopeTruth?.extensionSummary as any;
-  const proposedSeed = selectedOpportunitySeed ?? (scopeTruth?.opportunitySeed as OpportunitySeed | undefined) ?? seeds[0];
-  const proposedAffinity = selectedNetworkAffinity ?? proposedSeed?.networkAffinity;
-  const proposedBuildPath = proposedAffinity?.buildPath ?? proposedSeed?.buildPath ?? scopeTruth?.buildPath;
-  const proposedBuildFeet = Number(proposedBuildPath?.buildFeet ?? proposedSeed?.distanceFeet ?? extensionSummary?.addedFeet ?? 0);
+  const networkBasis = scopeTruth?.networkBasis ?? {};
+  const geographicBasis = scopeTruth?.geographicBasis ?? {};
+  const engineeringBasis = scopeTruth?.engineeringBasis ?? {};
+  const financialBasis = scopeTruth?.financialBasis ?? {};
+  const riskBasis = scopeTruth?.riskBasis ?? {};
+  const proposedBuildPath = geographicBasis?.buildPath;
+  const proposedBuildFeet = Number(engineeringBasis?.buildFeet ?? extensionSummary?.addedFeet ?? 0);
   const proposedRouteMiles = proposedBuildFeet / 5280;
-  const proposedNodes = proposedAffinity ? 2 : Number(extensionSummary?.addedNodeCount ?? 0);
-  const proposedCost = Number(proposedAffinity?.estimatedCost ?? proposedSeed?.buildCost ?? 0);
-  const proposedCrossings = Number(proposedBuildPath?.estimatedCrossings ?? scopeTruth?.crossingInventory?.estimatedCrossings ?? 0);
-  const proposedRisk = Number(proposedAffinity?.riskScore ?? proposedSeed?.riskScore ?? 0);
-  const constructability = proposedAffinity?.constructabilityAssessment ?? proposedSeed?.constructabilityAssessment ?? scopeTruth?.constructabilityAssessment;
-  const scopeSite = scopeTruth?.site ?? scopeTruth?.candidateSite;
-  const attachmentPoint = (selectedScopeVersion?.attachmentPoint ?? scopeTruth?.attachmentPoint ?? scopeTruth?.attachmentCoordinates) as DALCoordinate | undefined;
-  const plannedRoute = selectedGraph?.routes.find((route) => route.routeId === (proposedBuildPath?.routeId ?? scopeTruth?.route?.routeId));
+  const proposedNodes = proposedBuildPath?.geometry?.length ? 2 : Number(extensionSummary?.addedNodeCount ?? 0);
+  const proposedCost = Number(financialBasis?.estimatedConstructionCost ?? 0);
+  const proposedCrossings = Number(engineeringBasis?.roadCrossings ?? 0) + Number(engineeringBasis?.railCrossings ?? 0) + Number(engineeringBasis?.waterCrossings ?? 0);
+  const proposedRisk = Number(riskBasis?.compositeRisk ?? 0);
+  const constructability = scopeTruth?.constructabilityAssessment;
+  const scopeSite = scopeTruth?.sourceCandidate ?? scopeTruth?.site ?? scopeTruth?.candidateSite;
+  const attachmentPoint = networkBasis?.attachmentCoordinates as DALCoordinate | undefined;
+  const plannedRoute = selectedGraph?.routes.find((route) => route.routeId === networkBasis?.routeId);
   const plannedRouteSegment = routeSegmentForAttachment(plannedRoute, attachmentPoint);
   const plannedCandidatePoints: GISPoint[] =
-    Number.isFinite(Number(scopeSite?.longitude ?? selectedScopeVersion?.longitude)) && Number.isFinite(Number(scopeSite?.latitude ?? selectedScopeVersion?.latitude))
+    Number.isFinite(Number(geographicBasis?.candidateLongitude ?? selectedScopeVersion?.longitude)) && Number.isFinite(Number(geographicBasis?.candidateLatitude ?? selectedScopeVersion?.latitude))
       ? [
           {
             id: String(scopeSite?.candidateId ?? selectedScopeVersion?.scopeVersionId ?? "candidate"),
-            label: String(scopeSite?.companyName ?? "Candidate"),
-            coordinate: [Number(scopeSite?.longitude ?? selectedScopeVersion?.longitude), Number(scopeSite?.latitude ?? selectedScopeVersion?.latitude)],
+            label: String(scopeSite?.name ?? scopeSite?.companyName ?? "Candidate"),
+            coordinate: [Number(geographicBasis?.candidateLongitude ?? selectedScopeVersion?.longitude), Number(geographicBasis?.candidateLatitude ?? selectedScopeVersion?.latitude)],
             kind: "candidate",
           },
         ]
@@ -117,12 +120,12 @@ export default function TwinWorkspace() {
         },
       ]
     : [];
-  const plannedStations: GISPoint[] = scopeTruth?.station?.nearestStation?.coordinate
+  const plannedStations: GISPoint[] = geographicBasis?.stationGeometry
     ? [
         {
-          id: String(scopeTruth?.station?.stationId ?? "station"),
-          label: String(scopeTruth?.station?.stationId ?? "Station"),
-          coordinate: scopeTruth.station.nearestStation.coordinate,
+          id: String(networkBasis?.stationId ?? "station"),
+          label: String(networkBasis?.stationName ?? networkBasis?.stationId ?? "Station"),
+          coordinate: geographicBasis.stationGeometry,
           kind: "station",
         },
       ]
@@ -198,17 +201,17 @@ export default function TwinWorkspace() {
             <span>Added nodes: {fmt(extensionSummary?.addedNodeCount)}</span>
             <span>Added routes: {fmt(extensionSummary?.addedRouteCount)}</span>
             <span>Added feet: {fmt(Math.round(extensionSummary?.addedFeet ?? 0))}</span>
-            <span>Proposed attachment: {proposedAffinity?.preferredStrategy.attachmentType.replaceAll("_", " ") ?? proposedSeed?.attachmentStrategy?.attachmentType?.replaceAll("_", " ") ?? "n/a"}</span>
-          <span>Attachment route: {proposedBuildPath?.routeId ?? proposedSeed?.nearestRouteId ?? scopeTruth?.route?.routeId ?? "n/a"}</span>
-          <span>Attachment station: {proposedBuildPath?.stationId ?? proposedSeed?.nearestStationId ?? scopeTruth?.station?.stationId ?? "n/a"}</span>
+            <span>Proposed attachment: {networkBasis?.attachmentStrategy?.replaceAll("_", " ") ?? "n/a"}</span>
+          <span>Attachment route: {networkBasis?.routeId ?? "n/a"}</span>
+          <span>Attachment station: {networkBasis?.stationId ?? "n/a"}</span>
             <span>Added route miles: {proposedRouteMiles.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
             <span>Added nodes from path: {fmt(proposedNodes)}</span>
             <span>Projected build cost: {money(proposedCost)}</span>
           <span>Projected crossings: {fmt(proposedCrossings)}</span>
           <span>Projected risk: {fmt(Math.round(proposedRisk))}</span>
-          <span>Constructability: {fmt(Math.round(constructability?.constructabilityScore ?? proposedSeed?.constructabilityScore ?? 0))}</span>
+          <span>Constructability: {fmt(Math.round(engineeringBasis?.constructabilityScore ?? constructability?.constructabilityScore ?? 0))}</span>
           <span>Buildable: {constructability?.buildableStatus ?? "n/a"}</span>
-          <span>Capacity: {proposedAffinity?.capacity.projectedUtilization ?? proposedSeed?.capacityStatus ?? "n/a"}</span>
+          <span>Capacity: {networkBasis?.capacityStatus ?? "n/a"}</span>
         </div>
       </div>
 
@@ -241,11 +244,11 @@ export default function TwinWorkspace() {
               ]}
             />
             <div className="dal-metrics">
-              <span>Candidate: {scopeSite?.companyName ?? "n/a"}</span>
+              <span>Candidate: {scopeSite?.name ?? scopeSite?.companyName ?? "n/a"}</span>
               <span>Lateral Coordinates: {fmt(plannedBuildPaths[0]?.coordinates.length)}</span>
               <span>Backbone Coordinates: {fmt(plannedRoutes[0]?.coordinates.length)}</span>
               <span>Attachment: {attachmentPoint ? `${attachmentPoint[1].toFixed(6)}, ${attachmentPoint[0].toFixed(6)}` : "n/a"}</span>
-              <span>Service Path: {proposedBuildPath?.routeId ?? scopeTruth?.route?.routeId ?? "n/a"}</span>
+              <span>Service Path: {networkBasis?.routeId ?? "n/a"}</span>
             </div>
           </>
         ) : (

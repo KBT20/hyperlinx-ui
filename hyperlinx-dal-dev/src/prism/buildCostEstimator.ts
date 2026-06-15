@@ -1,9 +1,10 @@
 import type { BuildCostEstimate, BuildCostModel, CandidateType } from "../types/portfolio";
+import { BURIED_CONSTRUCTION_ASSUMPTIONS, DEFAULT_CONSTRUCTION_TYPE } from "../engineering/constructionModel";
 
 export const DEFAULT_BUILD_COST_MODEL: BuildCostModel = {
-  constructionType: "Mixed",
-  aerialCostPerFoot: 1.5,
-  undergroundCostPerFoot: 7.5,
+  constructionType: DEFAULT_CONSTRUCTION_TYPE,
+  aerialCostPerFoot: BURIED_CONSTRUCTION_ASSUMPTIONS.costPerFoot,
+  undergroundCostPerFoot: BURIED_CONSTRUCTION_ASSUMPTIONS.costPerFoot,
   mixedAerialShare: 0.45,
   crossingCost: 25000,
   regenerationCost: 85000,
@@ -14,6 +15,7 @@ export const DEFAULT_BUILD_COST_MODEL: BuildCostModel = {
 };
 
 function unitCost(model: BuildCostModel) {
+  if (model.constructionType === "BURIED") return BURIED_CONSTRUCTION_ASSUMPTIONS.costPerFoot;
   if (model.constructionType === "Aerial") return model.aerialCostPerFoot;
   if (model.constructionType === "Underground") return model.undergroundCostPerFoot;
   return model.aerialCostPerFoot * model.mixedAerialShare + model.undergroundCostPerFoot * (1 - model.mixedAerialShare);
@@ -37,4 +39,3 @@ export function estimateBuildCost(distanceFeet: number, candidateType: Candidate
     totalCost: Math.round(baseConstructionCost + crossingCost + regenerationCost + popCost),
   };
 }
-

@@ -1,4 +1,5 @@
 import type { DALCoordinate } from "./dal";
+import type { CertificationStatus } from "./dal";
 
 export type GraphExtensionStatus = "DRAFT" | "CANDIDATE" | "APPROVED" | "ACTIVE" | "SUPERSEDED";
 
@@ -53,6 +54,7 @@ export type GraphExtension = {
   graphId: string;
   type: GraphExtensionType;
   status: GraphExtensionStatus;
+  extensionCertificationStatus?: CertificationStatus;
   createdAt: string;
   updatedAt: string;
   metadata: Record<string, unknown>;

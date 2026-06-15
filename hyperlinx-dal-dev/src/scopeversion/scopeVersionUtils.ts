@@ -1,7 +1,20 @@
 import { createId, now } from "../api/dalClient";
 import type { GraphDiffSummary } from "../graph/graphDiff";
 import type { CandidateSite } from "../types/candidateSite";
-import type { FieldClosure, InventoryGraph, MarketplaceQuote, OperationalEvent, PrismOpportunity, ScopeVersion, ScopeVersionCandidate } from "../types/dal";
+import type {
+  CertificationSnapshot,
+  FieldClosure,
+  InventoryGraph,
+  InventoryNode,
+  InventoryRoute,
+  InventoryStation,
+  MarketplaceQuote,
+  OperationalEvent,
+  PrismOpportunity,
+  ScopeVersion,
+  ScopeVersionCandidate,
+  ScopeVersionDecisionRecommendation,
+} from "../types/dal";
 import type { GraphExtension } from "../types/graphExtension";
 import type { OpportunitySeed } from "../types/portfolio";
 
@@ -16,15 +29,43 @@ function event(type: string, entityId: string, entityType: string, payload: Reco
   };
 }
 
+let runtimeScopeVersionSequence = Math.floor(Date.now() % 1000000);
+
 function nextFormalScopeVersionId() {
-  const fallback = `SV-FBL-${Math.floor(Date.now() % 1000000)
-    .toString()
-    .padStart(6, "0")}`;
-  if (typeof localStorage === "undefined") return fallback;
-  const key = "hyperlinx-dal-dev.scopeVersionSequence";
-  const next = Number(localStorage.getItem(key) || "0") + 1;
-  localStorage.setItem(key, String(next));
-  return `SV-FBL-${next.toString().padStart(6, "0")}`;
+  runtimeScopeVersionSequence = (runtimeScopeVersionSequence + 1) % 1000000;
+  return `SV-FBL-${runtimeScopeVersionSequence.toString().padStart(6, "0")}`;
+}
+
+function asNumber(value: unknown, fallback = 0) {
+  const next = Number(value);
+  return Number.isFinite(next) ? next : fallback;
+}
+
+function recommendationFor(score: number): ScopeVersionDecisionRecommendation {
+  if (score >= 70) return "GO";
+  if (score >= 50) return "REVIEW";
+  return "NO_GO";
+}
+
+function permitAuthoritiesFor(permits: any): string[] {
+  return Array.isArray(permits?.authorities) ? permits.authorities.map((authority: unknown) => String(authority)) : [];
+}
+
+function assertCertificationAllowsScopeVersion(seed: OpportunitySeed) {
+  const snapshot = seed.certificationSnapshot ?? seed.networkAffinity?.certificationSnapshot;
+  const serviceability = seed.serviceabilityAssessment ?? seed.networkAffinity?.serviceabilityAssessment ?? snapshot?.serviceabilityAssessment;
+  const attachment = seed.attachmentCertification ?? seed.networkAffinity?.attachmentCertification ?? snapshot?.attachmentPoint;
+  const lateral = seed.lateralCertification ?? seed.networkAffinity?.lateralCertification ?? snapshot?.lateralPath;
+
+  if (!snapshot || !serviceability || !attachment || !lateral) {
+    throw new Error("ScopeVersion creation requires certified attachment, lateral, and serviceability truth.");
+  }
+  if (serviceability.status === "NOT_SERVICEABLE" || !serviceability.serviceable) {
+    throw new Error("ScopeVersion creation blocked: site is NOT_SERVICEABLE.");
+  }
+  if (attachment.certificationStatus === "FAILED" || lateral.certificationStatus === "FAILED") {
+    throw new Error("ScopeVersion creation blocked: attachment or lateral certification failed.");
+  }
 }
 
 export function createScopeVersionCandidateFromOpportunity(opportunity: PrismOpportunity, graph?: InventoryGraph): ScopeVersionCandidate {
@@ -73,7 +114,7 @@ export function createScopeVersionFromOpportunity(opportunity: PrismOpportunity,
     inventoryId: opportunity.inventoryId,
     graphId: opportunity.graphId,
     source: "PrismOpportunity",
-    status: "CANDIDATE",
+    status: "DRAFT",
     canonicalTruth: {
       opportunity,
       candidate,
@@ -86,12 +127,16 @@ export function createScopeVersionFromOpportunity(opportunity: PrismOpportunity,
 
 export function createScopeVersionFromGraphExtensions(graph: InventoryGraph, extensions: GraphExtension[], diff: GraphDiffSummary): ScopeVersion {
   const timestamp = now();
+  const failedExtensions = extensions.filter((extension) => extension.extensionCertificationStatus === "FAILED");
+  if (failedExtensions.length) {
+    throw new Error(`ScopeVersion creation blocked: ${failedExtensions.length} graph extension certification failed.`);
+  }
   return {
     scopeVersionId: createId("scope"),
     inventoryId: graph.inventoryId,
     graphId: graph.graphId,
     source: "GraphExtension",
-    status: "CANDIDATE",
+    status: "DRAFT",
     canonicalTruth: {
       inventoryGraphReference: {
         inventoryId: graph.inventoryId,
@@ -100,6 +145,13 @@ export function createScopeVersionFromGraphExtensions(graph: InventoryGraph, ext
       },
       extensionIds: extensions.map((extension) => extension.extensionId),
       extensions,
+      extensionCertifications: extensions.map((extension) => ({
+        extensionId: extension.extensionId,
+        status: extension.extensionCertificationStatus ?? extension.metadata.extensionCertificationStatus ?? "WARNING",
+        certifiedAttachmentPoint: extension.metadata.certifiedAttachmentPoint,
+        routeContinuityValidated: extension.metadata.routeContinuityValidated,
+        graphConnectivityValidated: extension.metadata.graphConnectivityValidated,
+      })),
       extensionSummary: diff,
       proposedState: {
         nodeCount: graph.nodes.length + diff.addedNodeCount,
@@ -128,7 +180,7 @@ export function createScopeVersionFromOpportunitySeed(seed: OpportunitySeed): Sc
     inventoryId: seed.inventoryId,
     graphId: seed.graphId,
     source: "OpportunitySeed",
-    status: "CANDIDATE",
+    status: "DRAFT",
     canonicalTruth: {
       inventoryGraphReference: {
         inventoryId: seed.inventoryId,
@@ -177,25 +229,53 @@ export function createScopeVersionFromOpportunitySeed(seed: OpportunitySeed): Sc
 export function createScopeVersionFromSiteDecision(args: {
   site?: CandidateSite;
   seed: OpportunitySeed;
+  route?: InventoryRoute;
+  node?: InventoryNode;
+  station?: InventoryStation;
   quoteBasis?: MarketplaceQuote | null;
   user?: string;
 }): ScopeVersion {
   const timestamp = now();
-  const { site, seed, quoteBasis, user = "DAL Operator" } = args;
+  const { site, seed, route, node, station, quoteBasis, user = "DAL Operator" } = args;
+  assertCertificationAllowsScopeVersion(seed);
   const affinity = seed.networkAffinity;
   const buildPath = seed.buildPath ?? affinity?.buildPath;
   const constructability = seed.constructabilityAssessment ?? affinity?.constructabilityAssessment ?? buildPath?.constructabilityAssessment;
-  const attachmentPoint = affinity?.preferredAttachmentPoint ?? (buildPath?.geometry?.length ? buildPath.geometry[buildPath.geometry.length - 1] : undefined);
-  const routeSnapshot = { routeId: buildPath?.routeId ?? seed.nearestRouteId, nearestRoute: affinity?.nearestRoute };
-  const nodeSnapshot = { nodeId: buildPath?.nodeId ?? seed.nearestNodeId, nearestNode: affinity?.nearestNode };
-  const stationSnapshot = { stationId: buildPath?.stationId ?? seed.nearestStationId, nearestStation: affinity?.nearestStation };
+  const certificationSnapshot = (seed.certificationSnapshot ?? affinity?.certificationSnapshot) as CertificationSnapshot;
+  const attachmentCertification = seed.attachmentCertification ?? affinity?.attachmentCertification ?? certificationSnapshot.attachmentPoint;
+  const lateralCertification = seed.lateralCertification ?? affinity?.lateralCertification ?? certificationSnapshot.lateralPath;
+  const serviceabilityAssessment = seed.serviceabilityAssessment ?? affinity?.serviceabilityAssessment ?? certificationSnapshot.serviceabilityAssessment;
+  const constructionAssumptions = seed.constructionAssumptions ?? affinity?.constructionAssumptions ?? certificationSnapshot.constructionAssumptions;
+  const attachmentPoint = [attachmentCertification.longitude, attachmentCertification.latitude] as [number, number];
+  const routeId = attachmentCertification.routeId || buildPath?.routeId || seed.nearestRouteId || affinity?.nearestRoute.routeId || "";
+  const nodeId = attachmentCertification.nodeId || buildPath?.nodeId || seed.nearestNodeId || affinity?.nearestNode.nodeId || "";
+  const stationId = attachmentCertification.stationId || buildPath?.stationId || seed.nearestStationId || affinity?.nearestStation.stationId || "";
+  const routeSnapshot = { routeId, routeName: route?.name ?? affinity?.nearestRoute.routeName ?? routeId, nearestRoute: affinity?.nearestRoute };
+  const nodeSnapshot = { nodeId, nodeName: nodeId, nearestNode: affinity?.nearestNode };
+  const stationSnapshot = { stationId, stationName: station?.label ?? stationId, nearestStation: affinity?.nearestStation };
+  const buildFeet = asNumber(lateralCertification.buildFeet ?? buildPath?.buildFeet ?? seed.distanceFeet);
+  const buildMiles = asNumber(lateralCertification.buildMiles ?? buildPath?.buildMiles ?? seed.buildMiles ?? buildFeet / 5280);
+  const roadCrossings = asNumber(buildPath?.highwayCrossingCount ?? lateralCertification.crossings ?? buildPath?.estimatedCrossings);
+  const railCrossings = asNumber(buildPath?.railCrossingCount ?? constructability?.rail.railCrossingCount);
+  const waterCrossings = asNumber(buildPath?.waterCrossingCount ?? constructability?.water.waterCrossingCount);
+  const permits = constructability?.permitting;
+  const permitAuthorities = permitAuthoritiesFor(permits);
+  const estimatedConstructionCost = asNumber(seed.buildCost ?? buildPath?.estimatedCost);
+  const estimatedEngineeringCost = asNumber(seed.estimatedEngineeringCost ?? constructability?.estimatedEngineeringCost ?? buildPath?.estimatedEngineeringCost, Math.round(estimatedConstructionCost * 0.12));
+  const estimatedPermitCost = asNumber(seed.estimatedPermitCost ?? constructability?.estimatedPermitCost ?? buildPath?.estimatedPermitCost, Math.max(1, permitAuthorities.length) * 3500);
+  const estimatedCrossingCost = asNumber(seed.estimatedCrossingCost ?? constructability?.estimatedCrossingCost ?? buildPath?.estimatedCrossingCost, (railCrossings + waterCrossings) * 25000);
+  const estimatedEnvironmentalCost = asNumber(seed.estimatedEnvironmentalCost ?? constructability?.estimatedEnvironmentalCost);
+  const NRC = asNumber(quoteBasis?.nrc ?? seed.estimatedNRC, estimatedConstructionCost + estimatedEngineeringCost + estimatedPermitCost + estimatedCrossingCost + estimatedEnvironmentalCost);
+  const MRC = asNumber(quoteBasis?.mrc ?? seed.estimatedMRC);
+  const TCV = asNumber(quoteBasis?.totalContractValue ?? seed.estimatedTCV, NRC + MRC * 36);
+  const recommendationValue = recommendationFor(asNumber(seed.overallScore));
   const crossingInventory = {
     rail: constructability?.rail,
     water: constructability?.water,
     estimatedCrossings: buildPath?.estimatedCrossings,
-    roadCrossings: buildPath?.highwayCrossingCount,
-    railCrossings: buildPath?.railCrossingCount ?? constructability?.rail.railCrossingCount,
-    waterCrossings: buildPath?.waterCrossingCount ?? constructability?.water.waterCrossingCount,
+    roadCrossings,
+    railCrossings,
+    waterCrossings,
   };
   const financialInputs = {
     estimatedNRC: seed.estimatedNRC,
@@ -206,49 +286,126 @@ export function createScopeVersionFromSiteDecision(args: {
     paybackMonths: seed.paybackMonths,
     roi: seed.roi,
     margin: seed.margin,
-    buildCost: seed.buildCost,
-    estimatedPermitCost: seed.estimatedPermitCost ?? constructability?.estimatedPermitCost,
-    estimatedCrossingCost: seed.estimatedCrossingCost ?? constructability?.estimatedCrossingCost,
-    estimatedEnvironmentalCost: seed.estimatedEnvironmentalCost ?? constructability?.estimatedEnvironmentalCost,
-    estimatedEngineeringCost: seed.estimatedEngineeringCost ?? constructability?.estimatedEngineeringCost,
+    buildCost: estimatedConstructionCost,
+    estimatedPermitCost,
+    estimatedCrossingCost,
+    estimatedEnvironmentalCost,
+    estimatedEngineeringCost,
   };
   const recommendation = {
+    recommendation: recommendationValue,
     phase: seed.rank && seed.rank <= 10 ? "Phase 1" : seed.rank && seed.rank <= 25 ? "Phase 2" : "Phase 3",
     priority: seed.overallScore >= 75 ? "HIGH" : seed.overallScore >= 55 ? "MEDIUM" : "LOW",
     strategicScore: seed.strategicScore,
     engineeringScore: seed.engineeringScore,
     financialScore: seed.financialScore,
     compositeScore: seed.overallScore,
+    riskScore: seed.riskScore ?? buildPath?.riskScore,
   };
   const graphReference = {
     inventoryId: seed.inventoryId,
     graphId: seed.graphId,
+    graphVersion: seed.graphId,
+  };
+  const networkBasis = {
+    routeId,
+    routeName: routeSnapshot.routeName,
+    nodeId,
+    nodeName: nodeSnapshot.nodeName,
+    stationId,
+    stationName: stationSnapshot.stationName,
+    attachmentPoint: attachmentPoint ?? ([Number.NaN, Number.NaN] as [number, number]),
+    attachmentCoordinates: attachmentPoint ?? ([Number.NaN, Number.NaN] as [number, number]),
+    capacityStatus: seed.capacityStatus ?? affinity?.capacity.projectedUtilization,
+    attachmentStrategy: seed.attachmentStrategy?.attachmentType ?? affinity?.preferredStrategy.attachmentType,
+    networkAffinityScore: seed.networkAffinityScore ?? affinity?.affinityScore,
+    certificationStatus: attachmentCertification.certificationStatus,
+  };
+  const geographicBasis = {
+    candidateLatitude: asNumber(site?.latitude ?? seed.latitude),
+    candidateLongitude: asNumber(site?.longitude ?? seed.longitude),
+    geocodeProvider: site?.geocodeProvider,
+    geocodeConfidence: site?.geocodeConfidence,
+    geometry: lateralCertification.geometry ?? buildPath?.geometry ?? [],
+    buildPath,
+    routeGeometry: route?.coordinates ?? [],
+    stationGeometry: station ? ([station.lon, station.lat] as [number, number]) : affinity?.nearestStation.coordinate,
+    nodeGeometry: node ? ([node.lon, node.lat] as [number, number]) : affinity?.nearestNode.coordinate,
+    attachmentGeometry: attachmentPoint,
+    lateralGeometry: lateralCertification.geometry,
+  };
+  const engineeringBasis = {
+    buildFeet,
+    buildMiles,
+    constructionType: constructionAssumptions.constructionType ?? seed.constructionType ?? buildPath?.constructionType,
+    crossings: crossingInventory,
+    roadCrossings,
+    railCrossings,
+    waterCrossings,
+    permits,
+    permitAuthorities,
+    constructabilityScore: seed.constructabilityScore ?? constructability?.constructabilityScore,
+    engineeringScore: seed.engineeringScore,
+    constructionAssumptions,
+    attachmentCertification,
+    lateralCertification,
+    serviceabilityAssessment,
+  };
+  const financialBasis = {
+    estimatedConstructionCost,
+    estimatedEngineeringCost,
+    estimatedPermitCost,
+    estimatedCrossingCost,
+    estimatedEnvironmentalCost,
+    NRC,
+    MRC,
+    TCV,
+    payback: quoteBasis?.paybackMonths ?? seed.paybackMonths,
+    ROI: quoteBasis?.roi ?? seed.roi,
+    margin: quoteBasis?.margin ?? seed.margin,
+    financialScore: seed.financialScore,
+  };
+  const riskBasis = {
+    permitRisk: constructability ? 100 - constructability.permitScore : undefined,
+    crossingRisk: constructability ? 100 - constructability.crossingScore : undefined,
+    constructionRisk: constructability?.constructionDifficulty,
+    environmentalRisk: constructability?.environmentalRisk,
+    compositeRisk: seed.riskScore ?? affinity?.riskScore ?? buildPath?.riskScore,
+  };
+  const decisionBasis = {
+    ...recommendation,
+    recommendation: recommendationValue,
   };
   return {
     scopeVersionId: nextFormalScopeVersionId(),
     inventoryId: seed.inventoryId,
     graphId: seed.graphId,
+    graphVersion: seed.graphId,
+    candidateSiteId: site?.candidateId ?? seed.candidateSiteId,
+    sourceOpportunityId: seed.id,
+    createdBy: user,
     source: "OpportunitySeed",
     status: "ANALYZED",
     candidateSite: site,
     latitude: site?.latitude ?? seed.latitude,
     longitude: site?.longitude ?? seed.longitude,
-    geometry: buildPath?.geometry,
+    geometry: lateralCertification.geometry ?? buildPath?.geometry,
     attachmentPoint,
     attachmentCoordinates: attachmentPoint,
     nearestRoute: routeSnapshot,
     nearestNode: nodeSnapshot,
     nearestStation: stationSnapshot,
     buildPath,
-    buildFeet: buildPath?.buildFeet ?? seed.distanceFeet,
-    buildMiles: buildPath?.buildMiles ?? seed.buildMiles,
+    buildFeet,
+    buildMiles,
     crossings: crossingInventory,
     permits: constructability?.permitting,
     constructability,
     financialInputs,
     decisionRecommendation: recommendation,
+    certificationSnapshot,
+    serviceabilityAssessment,
     graphReference,
-    graphVersion: seed.graphId,
     decisionTimestamp: timestamp,
     user,
     station: stationSnapshot,
@@ -256,6 +413,23 @@ export function createScopeVersionFromSiteDecision(args: {
     canonicalTruth: {
       decisionType: "PrismSiteDecision",
       graphReference,
+      networkBasis,
+      geographicBasis,
+      engineeringBasis,
+      financialBasis,
+      riskBasis,
+      decisionBasis,
+      certificationSnapshot,
+      serviceabilityAssessment,
+      constructionAssumptions,
+      sourceCandidate: {
+        candidateSiteId: site?.candidateId ?? seed.candidateSiteId ?? "",
+        name: site?.companyName ?? seed.siteName,
+        address: [site?.address, site?.city, site?.state, site?.zipCode].filter(Boolean).join(", "),
+      },
+      sourceOpportunity: {
+        opportunitySeedId: seed.id,
+      },
       graphVersion: seed.graphId,
       decisionTimestamp: timestamp,
       user,
@@ -270,28 +444,23 @@ export function createScopeVersionFromSiteDecision(args: {
       node: nodeSnapshot,
       station: stationSnapshot,
       buildPath,
-      buildFeet: buildPath?.buildFeet ?? seed.distanceFeet,
-      buildMiles: buildPath?.buildMiles ?? seed.buildMiles,
-      geometry: buildPath?.geometry,
+      buildFeet,
+      buildMiles,
+      geometry: lateralCertification.geometry ?? buildPath?.geometry,
       attachmentPoint,
       attachmentCoordinates: attachmentPoint,
+      attachmentCertification,
+      lateralCertification,
       constructabilityAssessment: constructability,
       permitRequirements: constructability?.permitting,
       crossings: crossingInventory,
       crossingInventory,
-      riskBasis: {
-        permitRisk: constructability ? 100 - constructability.permitScore : undefined,
-        crossingRisk: constructability ? 100 - constructability.crossingScore : undefined,
-        constructionRisk: constructability?.constructionDifficulty,
-        environmentalRisk: constructability?.environmentalRisk,
-        compositeRisk: seed.riskScore ?? affinity?.riskScore ?? buildPath?.riskScore,
-      },
       costBasis: {
-        buildCost: seed.buildCost,
-        estimatedPermitCost: seed.estimatedPermitCost ?? constructability?.estimatedPermitCost,
-        estimatedCrossingCost: seed.estimatedCrossingCost ?? constructability?.estimatedCrossingCost,
-        estimatedEnvironmentalCost: seed.estimatedEnvironmentalCost ?? constructability?.estimatedEnvironmentalCost,
-        estimatedEngineeringCost: seed.estimatedEngineeringCost ?? constructability?.estimatedEngineeringCost,
+        buildCost: estimatedConstructionCost,
+        estimatedPermitCost,
+        estimatedCrossingCost,
+        estimatedEnvironmentalCost,
+        estimatedEngineeringCost,
       },
       financialInputs,
       revenueBasis: {
@@ -315,9 +484,10 @@ export function createScopeVersionFromSiteDecision(args: {
         opportunitySeedId: seed.id,
         inventoryId: seed.inventoryId,
         graphId: seed.graphId,
-        routeId: buildPath?.routeId ?? seed.nearestRouteId,
-        nodeId: buildPath?.nodeId ?? seed.nearestNodeId,
-        stationId: buildPath?.stationId ?? seed.nearestStationId,
+        routeId,
+        nodeId,
+        stationId,
+        certificationStatus: serviceabilityAssessment.status,
         constructabilityScore: seed.constructabilityScore,
         overallScore: seed.overallScore,
       }),
@@ -332,7 +502,7 @@ export function createScopeVersionFromFieldClosure(closure: FieldClosure, prior?
     inventoryId: closure.inventoryId ?? prior?.inventoryId,
     graphId: closure.graphId ?? prior?.graphId,
     source: "FieldClosure",
-    status: "FIELD_CLOSED",
+    status: "COMPLETE",
     canonicalTruth: {
       ...(prior?.canonicalTruth ?? {}),
       latestClosure: closure,

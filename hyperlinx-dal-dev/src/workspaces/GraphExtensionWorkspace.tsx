@@ -11,6 +11,7 @@ import {
 import GraphMap, { type GraphLayerToggles, type GraphMapPath, type GraphMapPoint, type RenderedFeature } from "../components/GraphMap";
 import { diffInventoryGraphExtensions, formatGraphDiffSummary } from "../graph/graphDiff";
 import { useDALState } from "../dal/DALState";
+import { certifyGraphExtension } from "../engineering/certificationEngine";
 import { createScopeVersionFromGraphExtensions } from "../scopeversion/scopeVersionUtils";
 import type { DALCoordinate, InventoryGraphMetadata, InventoryNode, InventoryRoute } from "../types/dal";
 import type { GraphExtension, GraphExtensionType } from "../types/graphExtension";
@@ -180,7 +181,7 @@ export default function GraphExtensionWorkspace() {
   const extensionAttachmentPoints = useMemo(
     () =>
       graphExtensions.flatMap((extension) =>
-        extension.nodes.slice(-1).map(
+        extension.nodes.slice(0, 1).map(
           (node): GraphMapPoint => ({
             id: node.extensionNodeId,
             label: node.name,
@@ -331,11 +332,12 @@ export default function GraphExtensionWorkspace() {
         : [],
     };
 
-    const saved = await saveGraphExtension(extension);
+    const certifiedExtension = certifyGraphExtension(selectedGraph, extension);
+    const saved = await saveGraphExtension(certifiedExtension);
     setExtensions((prev) => [saved, ...prev.filter((item) => item.extensionId !== saved.extensionId)]);
     setSelectedExtension(saved);
     setSelectedExtensionId(saved.extensionId);
-    setStatus(`Created ${saved.type} extension ${saved.extensionId}.`);
+    setStatus(`Created ${saved.type} extension ${saved.extensionId}. Certification: ${saved.extensionCertificationStatus ?? "WARNING"}.`);
   }
 
   async function createScopeVersion() {
@@ -343,11 +345,24 @@ export default function GraphExtensionWorkspace() {
       setStatus("Create at least one graph extension before creating a ScopeVersion.");
       return;
     }
-    const scopeVersion = createScopeVersionFromGraphExtensions(selectedGraph, graphExtensions, diff);
-    const saved = await saveScopeVersion(scopeVersion);
-    setSelectedScopeVersion(saved);
-    setSelectedScopeVersionId(saved.scopeVersionId);
-    setStatus(`Created ScopeVersion ${saved.scopeVersionId}.`);
+    const certifiedExtensions = graphExtensions.map((extension) => (extension.extensionCertificationStatus ? extension : certifyGraphExtension(selectedGraph, extension)));
+    const failedExtensions = certifiedExtensions.filter((extension) => extension.extensionCertificationStatus === "FAILED");
+    if (failedExtensions.length) {
+      setStatus(`ScopeVersion blocked: ${failedExtensions.length} extension certification failed.`);
+      return;
+    }
+    try {
+      await Promise.all(certifiedExtensions.filter((extension) => !graphExtensions.find((item) => item.extensionId === extension.extensionId)?.extensionCertificationStatus).map(saveGraphExtension));
+      setExtensions((prev) => certifiedExtensions.concat(prev.filter((item) => !certifiedExtensions.some((extension) => extension.extensionId === item.extensionId))));
+      const nextDiff = diffInventoryGraphExtensions(selectedGraph, certifiedExtensions);
+      const scopeVersion = createScopeVersionFromGraphExtensions(selectedGraph, certifiedExtensions, nextDiff);
+      const saved = await saveScopeVersion(scopeVersion);
+      setSelectedScopeVersion(saved);
+      setSelectedScopeVersionId(saved.scopeVersionId);
+      setStatus(`Created ScopeVersion ${saved.scopeVersionId}.`);
+    } catch (err: any) {
+      setStatus(`ScopeVersion blocked: ${err?.message ?? String(err)}`);
+    }
   }
 
   return (
@@ -481,6 +496,9 @@ export default function GraphExtensionWorkspace() {
             <span>Inventory: {selectedGraph?.inventoryId ?? "none"}</span>
             <span>Graph: {selectedGraph?.graphId ?? "none"}</span>
             <span>Extension refs: {fmt(graphExtensions.length)}</span>
+            <span>Certified: {fmt(graphExtensions.filter((extension) => extension.extensionCertificationStatus === "CERTIFIED").length)}</span>
+            <span>Warnings: {fmt(graphExtensions.filter((extension) => extension.extensionCertificationStatus === "WARNING" || !extension.extensionCertificationStatus).length)}</span>
+            <span>Failed: {fmt(graphExtensions.filter((extension) => extension.extensionCertificationStatus === "FAILED").length)}</span>
             <span>Selected extension: {selectedExtension?.extensionId ?? "none"}</span>
           </div>
           <div className="dal-actions">
@@ -507,7 +525,7 @@ export default function GraphExtensionWorkspace() {
                   setSelectedExtensionId(extension.extensionId);
                 }}
               >
-                {extension.extensionId} | {extension.type} | {extension.status} | +{fmt(Math.round(extension.edges.reduce((sum, edge) => sum + edge.lengthFeet, 0)))} ft
+                {extension.extensionId} | {extension.type} | {extension.status} | {extension.extensionCertificationStatus ?? "WARNING"} | +{fmt(Math.round(extension.edges.reduce((sum, edge) => sum + edge.lengthFeet, 0)))} ft
               </button>
             ))}
           </div>

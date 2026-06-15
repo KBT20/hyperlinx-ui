@@ -2,6 +2,7 @@ import type { CandidateSite } from "../types/candidateSite";
 import type { InventoryGraph } from "../types/dal";
 import type { AttachmentStrategy, AttachmentType, CapacityAnalysis, NearestNodeResult, NearestRouteResult, NearestStationResult } from "../types/networkAffinity";
 import type { RevenueEstimate } from "../types/portfolio";
+import { BURIED_CONSTRUCTION_ASSUMPTIONS, DEFAULT_CONSTRUCTION_TYPE } from "../engineering/constructionModel";
 import { assessConstructability } from "../spatial/constructabilityEngine";
 import { clamp } from "./geo";
 import { buildPathForAttachment } from "./buildPathEngine";
@@ -70,7 +71,7 @@ export function compareAttachmentStrategies(args: {
         attachmentType,
       });
       const profile = strategyMultipliers[attachmentType];
-      const fallbackCost = Math.round((path.estimatedAerialFeet * 1.5 + path.estimatedUndergroundFeet * 7.5 + path.estimatedCrossings * 25000 + path.estimatedBores * 18000) * profile.cost);
+      const fallbackCost = Math.round((path.estimatedUndergroundFeet * BURIED_CONSTRUCTION_ASSUMPTIONS.costPerFoot + path.estimatedCrossings * BURIED_CONSTRUCTION_ASSUMPTIONS.crossingCost) * profile.cost);
       const constructabilityAssessment = assessConstructability(args.site, path);
       const spatialSoftCosts =
         constructabilityAssessment.estimatedPermitCost +
@@ -90,6 +91,7 @@ export function compareAttachmentStrategies(args: {
         estimatedCrossingCost: constructabilityAssessment.estimatedCrossingCost,
         estimatedEnvironmentalCost: constructabilityAssessment.estimatedEnvironmentalCost,
         estimatedEngineeringCost: constructabilityAssessment.estimatedEngineeringCost,
+        constructionAssumptions: BURIED_CONSTRUCTION_ASSUMPTIONS,
       };
       const capacity = analyzeCapacity(args.nearestRoute.routeId, args.nearestNode.nodeId, args.nearestStation.stationId, args.revenue.estimatedRevenueMonthly);
       const paybackMonths = estimatedCost / Math.max(args.revenue.estimatedMRC * 0.72, 1);
@@ -125,7 +127,7 @@ export function compareAttachmentStrategies(args: {
         roi,
         margin,
         riskScore,
-        constructionType: buildPath.constructionType ?? "Mixed",
+        constructionType: DEFAULT_CONSTRUCTION_TYPE,
         constructabilityScore: constructabilityAssessment.constructabilityScore,
         parcelScore: constructabilityAssessment.parcelScore,
         roadAccessScore: constructabilityAssessment.roadAccessScore,
@@ -142,6 +144,7 @@ export function compareAttachmentStrategies(args: {
         compositeScore,
         buildPath,
         capacity,
+        constructionAssumptions: BURIED_CONSTRUCTION_ASSUMPTIONS,
       };
     })
     .sort((a, b) => b.compositeScore - a.compositeScore);

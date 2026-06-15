@@ -1,4 +1,15 @@
 import { DAL_API, DAL_INVENTORY_GRAPH_API } from "../config/dalApi";
+import {
+  deleteRecord,
+  findRecord,
+  graphStorageTelemetry,
+  readCollection,
+  storagePressureWarning,
+  writeRecord,
+  writeRecords,
+} from "./dalStorage";
+import { listServerBaselineGraphMetadata, loadServerBaselineGraph } from "./inventoryRecovery";
+import { assertValidScopeVersion, mergeImmutableScopeVersion, validateScopeVersion } from "../scopeversion/scopeVersionValidation";
 import type {
   ControlWorkItem,
   FieldClosure,
@@ -13,19 +24,6 @@ import type {
 import type { CandidateSite } from "../types/candidateSite";
 import type { GraphExtension } from "../types/graphExtension";
 import type { OpportunitySeed } from "../types/portfolio";
-
-type CollectionName =
-  | "inventoryGraphs"
-  | "candidateSites"
-  | "graphExtensions"
-  | "scopeVersions"
-  | "opportunities"
-  | "opportunitySeeds"
-  | "quotes"
-  | "workItems"
-  | "closures";
-
-const STORAGE_PREFIX = "hyperlinx-dal-dev";
 
 function createId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return `${prefix}-${crypto.randomUUID()}`;
@@ -54,29 +52,6 @@ async function tryRemote<T>(url: string, init?: RequestInit): Promise<T | null> 
     console.warn("DAL LOCAL FALLBACK ACTIVE", url, err?.message ?? String(err));
     return null;
   }
-}
-
-function storageKey(collection: CollectionName) {
-  return `${STORAGE_PREFIX}.${collection}`;
-}
-
-function readCollection<T>(collection: CollectionName): T[] {
-  if (typeof localStorage === "undefined") return [];
-  try {
-    const parsed = JSON.parse(localStorage.getItem(storageKey(collection)) || "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeCollection<T>(collection: CollectionName, records: T[]) {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem(storageKey(collection), JSON.stringify(records));
-}
-
-function upsertById<T>(records: T[], idKey: keyof T, record: T) {
-  return [record, ...records.filter((item) => item[idKey] !== record[idKey])];
 }
 
 function unwrapList<T>(data: any, keys: string[]): T[] {
@@ -141,6 +116,7 @@ function normalizeGraphExtension(raw: any): GraphExtension {
     graphId: String(extension?.graphId ?? ""),
     type: extension?.type ?? "NEW_ROUTE",
     status: extension?.status ?? "DRAFT",
+    extensionCertificationStatus: extension?.extensionCertificationStatus ?? extension?.metadata?.extensionCertificationStatus,
     createdAt: timestamp,
     updatedAt: String(extension?.updatedAt ?? timestamp),
     metadata: extension?.metadata ?? {},
@@ -176,50 +152,113 @@ function normalizeCandidateSite(raw: any): CandidateSite {
   };
 }
 
+function stripRouteGeometryFromScopeVersion(scopeVersion: ScopeVersion): ScopeVersion {
+  const truth = scopeVersion.canonicalTruth ?? {};
+  const geographicBasis = truth.geographicBasis ? { ...truth.geographicBasis } : undefined;
+  const routeGeometry = geographicBasis?.routeGeometry;
+  const graphGeometryReference = Array.isArray(routeGeometry)
+    ? {
+        inventoryId: scopeVersion.inventoryId,
+        graphId: scopeVersion.graphId,
+        routeId: truth.networkBasis?.routeId,
+        routeCoordinateCount: routeGeometry.length,
+      }
+    : truth.graphGeometryReference;
+  if (geographicBasis && "routeGeometry" in geographicBasis) {
+    delete (geographicBasis as any).routeGeometry;
+  }
+  const route =
+    scopeVersion.route && typeof scopeVersion.route === "object"
+      ? (() => {
+          const next = { ...(scopeVersion.route as any) };
+          delete next.coordinates;
+          return next;
+        })()
+      : scopeVersion.route;
+  const canonicalRoute =
+    truth.route && typeof truth.route === "object"
+      ? (() => {
+          const next = { ...(truth.route as any) };
+          delete next.coordinates;
+          return next;
+        })()
+      : truth.route;
+
+  return {
+    ...scopeVersion,
+    route,
+    canonicalTruth: {
+      ...truth,
+      route: canonicalRoute,
+      ...(geographicBasis ? { geographicBasis } : {}),
+      ...(graphGeometryReference ? { graphGeometryReference } : {}),
+    },
+  };
+}
+
 export async function listInventoryGraphs() {
+  const baselineItems = await listServerBaselineGraphMetadata()
+    .then((items) => items.map((item) => ({ ...item, localFallback: false, serverBacked: true })))
+    .catch((err) => {
+      console.warn("DAL BASELINE GRAPH DISCOVERY FALLBACK", err instanceof Error ? err.message : String(err));
+      return [] as InventoryGraphMetadata[];
+    });
   const remote = await tryRemote<any>(apiUrl("/api/inventory-graphs", DAL_INVENTORY_GRAPH_API));
   const remoteItems = remote ? unwrapList<any>(remote, ["inventoryGraphs", "graphs"]).map(normalizeGraphMetadata) : [];
-  const localItems = readCollection<InventoryGraph>("inventoryGraphs").map((item) => ({
+  const localItems = (await readCollection<InventoryGraph>("inventoryGraphs")).map((item) => ({
     ...item.metadata,
     localFallback: true,
   })) as InventoryGraphMetadata[];
   const byId = new Map<string, InventoryGraphMetadata>();
-  [...localItems, ...remoteItems].forEach((item) => byId.set(item.inventoryId, item));
+  [...localItems, ...remoteItems, ...baselineItems].forEach((item) => byId.set(item.inventoryId, item));
   return Array.from(byId.values()).sort((a, b) => String(b.createdDate).localeCompare(String(a.createdDate)));
 }
 
 export async function loadInventoryGraph(inventoryId: string) {
+  const baseline = await loadServerBaselineGraph(inventoryId).catch((err) => {
+    console.warn("DAL BASELINE GRAPH LOAD FALLBACK", inventoryId, err instanceof Error ? err.message : String(err));
+    return null;
+  });
+  if (baseline) return normalizeInventoryGraph({ ...baseline, metadata: { ...baseline.metadata, localFallback: false, serverBacked: true } });
   const remote = await tryRemote<any>(apiUrl(`/api/inventory-graphs/${encodeURIComponent(inventoryId)}`, DAL_INVENTORY_GRAPH_API));
   if (remote) return normalizeInventoryGraph(remote?.inventoryGraph ?? remote?.graph ?? remote?.data ?? remote);
-  const local = readCollection<InventoryGraph>("inventoryGraphs").find((item) => item.inventoryId === inventoryId);
+  const local = await findRecord<InventoryGraph>("inventoryGraphs", inventoryId);
   if (!local) throw new Error(`Inventory graph not found: ${inventoryId}`);
   return normalizeInventoryGraph({ ...local, metadata: { ...local.metadata, localFallback: true } });
 }
 
 export async function saveInventoryGraph(payload: InventoryGraph) {
+  const telemetry = graphStorageTelemetry(payload);
+  const pressure = await storagePressureWarning(telemetry.serializedSizeBytes);
+  const payloadWithTelemetry: InventoryGraph = {
+    ...payload,
+    metadata: {
+      ...payload.metadata,
+      serializedSizeBytes: telemetry.serializedSizeBytes,
+      serializedSizeMB: telemetry.serializedSizeMB,
+      storageWarning: pressure.message,
+    },
+  };
   const remote = await tryRemote<any>(apiUrl("/api/inventory-graphs", DAL_INVENTORY_GRAPH_API), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payloadWithTelemetry),
   });
-  const graph = normalizeInventoryGraph(remote?.inventoryGraph ?? remote?.graph ?? remote?.data ?? remote ?? { ...payload, metadata: { ...payload.metadata, localFallback: true } });
+  const graph = normalizeInventoryGraph(remote?.inventoryGraph ?? remote?.graph ?? remote?.data ?? remote ?? { ...payloadWithTelemetry, metadata: { ...payloadWithTelemetry.metadata, localFallback: true } });
   if (!remote) {
-    writeCollection("inventoryGraphs", upsertById(readCollection<InventoryGraph>("inventoryGraphs"), "inventoryId", graph));
+    await writeRecord("inventoryGraphs", graph);
   }
   return graph.metadata;
 }
 
 export async function deleteLocalInventoryGraph(inventoryId: string) {
-  writeCollection(
-    "inventoryGraphs",
-    readCollection<InventoryGraph>("inventoryGraphs").filter((item) => item.inventoryId !== inventoryId)
-  );
+  await deleteRecord("inventoryGraphs", inventoryId);
 }
 
 export async function listCandidateSites() {
   const remote = await tryRemote<any>(apiUrl("/api/candidate-sites"));
   const remoteItems = remote ? unwrapList<any>(remote, ["candidateSites", "sites"]).map(normalizeCandidateSite) : [];
-  const localItems = readCollection<CandidateSite>("candidateSites");
+  const localItems = await readCollection<CandidateSite>("candidateSites");
   const byId = new Map<string, CandidateSite>();
   [...localItems, ...remoteItems].forEach((item) => byId.set(item.candidateId, item));
   return Array.from(byId.values()).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -232,7 +271,7 @@ export async function saveCandidateSite(site: CandidateSite) {
     body: JSON.stringify(site),
   });
   const saved = normalizeCandidateSite(remote ?? site);
-  if (!remote) writeCollection("candidateSites", upsertById(readCollection<CandidateSite>("candidateSites"), "candidateId", saved));
+  if (!remote) await writeRecord("candidateSites", saved);
   return saved;
 }
 
@@ -244,11 +283,7 @@ export async function saveCandidateSites(sites: CandidateSite[]) {
   });
   const saved = remote ? unwrapList<any>(remote, ["candidateSites", "sites"]).map(normalizeCandidateSite) : sites;
   if (!remote) {
-    const existing = readCollection<CandidateSite>("candidateSites");
-    writeCollection(
-      "candidateSites",
-      saved.reduce((records, site) => upsertById(records, "candidateId", site), existing)
-    );
+    await writeRecords("candidateSites", saved);
   }
   return saved;
 }
@@ -256,7 +291,7 @@ export async function saveCandidateSites(sites: CandidateSite[]) {
 export async function listGraphExtensions() {
   const remote = await tryRemote<any>(apiUrl("/api/graph-extensions"));
   const remoteItems = remote ? unwrapList<any>(remote, ["graphExtensions", "extensions"]).map(normalizeGraphExtension) : [];
-  const localItems = readCollection<GraphExtension>("graphExtensions");
+  const localItems = await readCollection<GraphExtension>("graphExtensions");
   const byId = new Map<string, GraphExtension>();
   [...localItems, ...remoteItems].forEach((item) => byId.set(item.extensionId, item));
   return Array.from(byId.values()).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -265,7 +300,7 @@ export async function listGraphExtensions() {
 export async function loadGraphExtension(extensionId: string) {
   const remote = await tryRemote<any>(apiUrl(`/api/graph-extensions/${encodeURIComponent(extensionId)}`));
   if (remote) return normalizeGraphExtension(remote);
-  const local = readCollection<GraphExtension>("graphExtensions").find((item) => item.extensionId === extensionId);
+  const local = await findRecord<GraphExtension>("graphExtensions", extensionId);
   if (!local) throw new Error(`Graph extension not found: ${extensionId}`);
   return local;
 }
@@ -277,15 +312,12 @@ export async function saveGraphExtension(extension: GraphExtension) {
     body: JSON.stringify(extension),
   });
   const saved = normalizeGraphExtension(remote ?? extension);
-  if (!remote) writeCollection("graphExtensions", upsertById(readCollection<GraphExtension>("graphExtensions"), "extensionId", saved));
+  if (!remote) await writeRecord("graphExtensions", saved);
   return saved;
 }
 
 export async function deleteLocalGraphExtension(extensionId: string) {
-  writeCollection(
-    "graphExtensions",
-    readCollection<GraphExtension>("graphExtensions").filter((item) => item.extensionId !== extensionId)
-  );
+  await deleteRecord("graphExtensions", extensionId);
 }
 
 export async function listScopeVersions() {
@@ -296,19 +328,31 @@ export async function listScopeVersions() {
 export async function loadScopeVersion(scopeVersionId: string) {
   const remote = await tryRemote<any>(apiUrl(`/api/scopeversions/${encodeURIComponent(scopeVersionId)}`));
   if (remote) return (remote?.scopeVersion ?? remote?.data ?? remote) as ScopeVersion;
-  const local = readCollection<ScopeVersion>("scopeVersions").find((item) => item.scopeVersionId === scopeVersionId);
+  const local = await findRecord<ScopeVersion>("scopeVersions", scopeVersionId);
   if (!local) throw new Error(`ScopeVersion not found: ${scopeVersionId}`);
   return local;
 }
 
 export async function saveScopeVersion(scopeVersion: ScopeVersion) {
+  const existingLocal = await findRecord<ScopeVersion>("scopeVersions", scopeVersion.scopeVersionId);
+  const candidate = mergeImmutableScopeVersion(existingLocal, scopeVersion);
+  const validation = validateScopeVersion(candidate);
+  const requiresStrictValidation = candidate.status !== "DRAFT" || (candidate.canonicalTruth as any)?.decisionType === "PrismSiteDecision";
+  if (requiresStrictValidation) assertValidScopeVersion(candidate);
+  const payload = stripRouteGeometryFromScopeVersion({
+    ...candidate,
+    canonicalTruth: {
+      ...candidate.canonicalTruth,
+      validation,
+    },
+  });
   const remote = await tryRemote<any>(apiUrl("/api/scopeversions"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(scopeVersion),
+    body: JSON.stringify(payload),
   });
-  const saved = (remote?.scopeVersion ?? remote?.data ?? remote ?? scopeVersion) as ScopeVersion;
-  if (!remote) writeCollection("scopeVersions", upsertById(readCollection<ScopeVersion>("scopeVersions"), "scopeVersionId", saved));
+  const saved = (remote?.scopeVersion ?? remote?.data ?? remote ?? payload) as ScopeVersion;
+  if (!remote) await writeRecord("scopeVersions", saved);
   return saved;
 }
 
@@ -320,7 +364,7 @@ export async function listPrismOpportunities() {
 export async function listOpportunitySeeds() {
   const remote = await tryRemote<any>(apiUrl("/api/opportunity-seeds"));
   const remoteItems = remote ? unwrapList<OpportunitySeed>(remote, ["opportunitySeeds", "seeds"]) : [];
-  const localItems = readCollection<OpportunitySeed>("opportunitySeeds");
+  const localItems = await readCollection<OpportunitySeed>("opportunitySeeds");
   const byId = new Map<string, OpportunitySeed>();
   [...localItems, ...remoteItems].forEach((item) => byId.set(item.id, item));
   return Array.from(byId.values()).sort((a, b) => (b.overallScore - a.overallScore) || String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -333,7 +377,7 @@ export async function saveOpportunitySeed(seed: OpportunitySeed) {
     body: JSON.stringify(seed),
   });
   const saved = (remote?.opportunitySeed ?? remote?.seed ?? remote?.data ?? remote ?? seed) as OpportunitySeed;
-  if (!remote) writeCollection("opportunitySeeds", upsertById(readCollection<OpportunitySeed>("opportunitySeeds"), "id", saved));
+  if (!remote) await writeRecord("opportunitySeeds", saved);
   return saved;
 }
 
@@ -345,11 +389,7 @@ export async function saveOpportunitySeeds(seeds: OpportunitySeed[]) {
   });
   const saved = remote ? unwrapList<OpportunitySeed>(remote, ["opportunitySeeds", "seeds"]) : seeds;
   if (!remote) {
-    const existing = readCollection<OpportunitySeed>("opportunitySeeds");
-    writeCollection(
-      "opportunitySeeds",
-      saved.reduce((records, seed) => upsertById(records, "id", seed), existing)
-    );
+    await writeRecords("opportunitySeeds", saved);
   }
   return saved;
 }
@@ -361,7 +401,7 @@ export async function savePrismOpportunity(opportunity: PrismOpportunity) {
     body: JSON.stringify(opportunity),
   });
   const saved = (remote?.opportunity ?? remote?.data ?? remote ?? opportunity) as PrismOpportunity;
-  if (!remote) writeCollection("opportunities", upsertById(readCollection<PrismOpportunity>("opportunities"), "opportunityId", saved));
+  if (!remote) await writeRecord("opportunities", saved);
   return saved;
 }
 
@@ -377,7 +417,7 @@ export async function saveMarketplaceQuote(quote: MarketplaceQuote) {
     body: JSON.stringify(quote),
   });
   const saved = (remote?.quote ?? remote?.data ?? remote ?? quote) as MarketplaceQuote;
-  if (!remote) writeCollection("quotes", upsertById(readCollection<MarketplaceQuote>("quotes"), "quoteId", saved));
+  if (!remote) await writeRecord("quotes", saved);
   return saved;
 }
 
@@ -393,7 +433,7 @@ export async function saveControlWorkItem(workItem: ControlWorkItem) {
     body: JSON.stringify(workItem),
   });
   const saved = (remote?.workItem ?? remote?.data ?? remote ?? workItem) as ControlWorkItem;
-  if (!remote) writeCollection("workItems", upsertById(readCollection<ControlWorkItem>("workItems"), "workItemId", saved));
+  if (!remote) await writeRecord("workItems", saved);
   return saved;
 }
 
@@ -409,15 +449,15 @@ export async function saveFieldClosure(closure: FieldClosure) {
     body: JSON.stringify(closure),
   });
   const saved = (remote?.closure ?? remote?.data ?? remote ?? closure) as FieldClosure;
-  if (!remote) writeCollection("closures", upsertById(readCollection<FieldClosure>("closures"), "closureId", saved));
+  if (!remote) await writeRecord("closures", saved);
   return saved;
 }
 
 export async function loadTwinState() {
   const remote = await tryRemote<any>(apiUrl("/api/twin/state"));
   if (remote) return (remote?.state ?? remote?.data ?? remote) as TwinState;
-  const closures = readCollection<FieldClosure>("closures");
-  const workItems = readCollection<ControlWorkItem>("workItems");
+  const closures = await readCollection<FieldClosure>("closures");
+  const workItems = await readCollection<ControlWorkItem>("workItems");
   const events: OperationalEvent[] = [
     ...workItems.map((item) => ({
       eventId: item.workItemId,

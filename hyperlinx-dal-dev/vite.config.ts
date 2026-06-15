@@ -6,11 +6,11 @@ export default defineConfig({
   envDir: ".",
   plugins: [react()],
   server: {
-    host: "127.0.0.1",
+    host: process.env.VITE_DAL_DEV_HOST || "0.0.0.0",
     port: 5174,
   },
   preview: {
-    host: "127.0.0.1",
+    host: process.env.VITE_DAL_PREVIEW_HOST || "0.0.0.0",
     port: 4174,
   },
   build: {

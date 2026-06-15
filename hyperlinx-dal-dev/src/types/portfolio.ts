@@ -1,6 +1,6 @@
 export type CandidateType = "enterprise" | "tower" | "data_center" | "wireless" | "carrier" | "hyperscaler" | "residential_cluster";
 
-export type ConstructionType = "Aerial" | "Underground" | "Mixed";
+export type ConstructionType = "BURIED" | "Aerial" | "Underground" | "Mixed";
 
 export interface CandidateSite {
   id: string;
@@ -160,6 +160,11 @@ export interface OpportunitySeed {
   estimatedEnvironmentalCost?: number;
   estimatedEngineeringCost?: number;
   constructabilityAssessment?: import("../spatial/types").ConstructabilityAssessment;
+  attachmentCertification?: import("./dal").AttachmentPoint;
+  lateralCertification?: import("./dal").LateralPath;
+  serviceabilityAssessment?: import("./dal").ServiceabilityAssessment;
+  certificationSnapshot?: import("./dal").CertificationSnapshot;
+  constructionAssumptions?: import("./dal").ConstructionAssumptions;
   roi?: number;
   margin?: number;
   buildMiles?: number;

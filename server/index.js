@@ -78,28 +78,83 @@ function createInventoryScopeVersion(record) {
     nodeCount: record.metadata.nodeCount,
     edgeCount: record.metadata.edgeCount,
     stationCount: record.metadata.stationCount,
+    routeCount: record.metadata.routeCount,
     status: "ACTIVE",
   };
 }
 
+function asNumber(value, fallback = 0) {
+  const next = Number(value);
+  return Number.isFinite(next) ? next : fallback;
+}
+
+function firstPositiveNumber(values, fallback = 0) {
+  for (const value of values) {
+    const next = Number(value);
+    if (Number.isFinite(next) && next > 0) return next;
+  }
+  return fallback;
+}
+
+function chunkTotal(record, chunkType) {
+  return asNumber(record.chunkState?.[chunkType]?.totalChunks, 0);
+}
+
+function chunkCountsFromRecord(record) {
+  return {
+    nodes: chunkTotal(record, "nodes"),
+    edges: chunkTotal(record, "edges"),
+    stations: chunkTotal(record, "stations"),
+    routes: chunkTotal(record, "routes"),
+  };
+}
+
+function recordsFromChunks(record, chunkType) {
+  return chunkTotal(record, chunkType) > 0 ? readAllChunks(record, chunkType) : null;
+}
+
+function countFromRecord(record, chunkType, memoryRecords, summaryCount, metadataCount) {
+  const chunkRecords = recordsFromChunks(record, chunkType);
+  if (chunkRecords) return chunkRecords.length;
+  if (Array.isArray(memoryRecords) && memoryRecords.length > 0) return memoryRecords.length;
+  return asNumber(summaryCount ?? metadataCount, 0);
+}
+
+function routeMilesFromRoutes(routes) {
+  if (!Array.isArray(routes) || !routes.length) return 0;
+  return routes.reduce((sum, route) => {
+    const directMiles = Number(route?.lengthMiles ?? route?.routeMiles ?? route?.metadata?.routeMiles);
+    if (Number.isFinite(directMiles) && directMiles > 0) return sum + directMiles;
+    const feet = Number(route?.lengthFeet ?? route?.metadata?.lengthFeet ?? route?.properties?.lengthFeet);
+    return Number.isFinite(feet) && feet > 0 ? sum + feet / 5280 : sum;
+  }, 0);
+}
+
 function graphMetadataFromRecord(record) {
   const summary = record.graphSummary || {};
+  const existing = record.metadata || {};
+  const chunkCounts = chunkCountsFromRecord(record);
+  const routeChunkRecords = recordsFromChunks(record, "routes");
+  const routeRecords = routeChunkRecords || record.routes || [];
+  const routeMilesFromChunks = routeMilesFromRoutes(routeRecords);
+  const nodeCount = countFromRecord(record, "nodes", record.nodes, summary.nodeCount, existing.nodeCount);
+  const edgeCount = countFromRecord(record, "edges", record.edges, summary.edgeCount, existing.edgeCount);
+  const stationCount = countFromRecord(record, "stations", record.stations, summary.stationCount, existing.stationCount);
+  const routeCount = routeChunkRecords
+    ? routeChunkRecords.length
+    : countFromRecord(record, "routes", record.routes, summary.routeCount, existing.routeCount);
   return {
     inventoryId: record.inventoryId,
     name: record.name,
-    nodeCount: Number(summary.nodeCount ?? record.nodes?.length ?? 0),
-    edgeCount: Number(summary.edgeCount ?? record.edges?.length ?? 0),
-    stationCount: Number(summary.stationCount ?? record.stations?.length ?? 0),
-    routeMiles: Number(summary.routeMiles ?? summary.totalLengthMiles ?? 0),
+    nodeCount,
+    edgeCount,
+    stationCount,
+    routeCount,
+    routeMiles: firstPositiveNumber([summary.routeMiles, summary.totalLengthMiles, existing.routeMiles, routeMilesFromChunks], 0),
     bbox: summary.bbox || summary.bounds || null,
     connectedComponents: summary.connectedComponents,
     longestSegment: summary.longestSegment,
-    chunkCounts: {
-      nodes: Number(record.chunkState?.nodes?.totalChunks ?? 0),
-      edges: Number(record.chunkState?.edges?.totalChunks ?? 0),
-      stations: Number(record.chunkState?.stations?.totalChunks ?? 0),
-      routes: Number(record.chunkState?.routes?.totalChunks ?? 0),
-    },
+    chunkCounts,
     importedAt: record.importedAt,
     baselineGraphId: summary.baselineId,
     inventoryScopeVersionId: `inventory-scope-${record.inventoryId}`,
@@ -158,6 +213,7 @@ function recordFromPersisted(persisted) {
     assembled: Boolean(persisted.assembled),
   };
   record.metadata = graphMetadataFromRecord(record);
+  record.inventoryScopeVersion = persisted.inventoryScopeVersion || createInventoryScopeVersion(record);
   return record;
 }
 
@@ -250,6 +306,7 @@ app.post("/api/baseline-graphs", (req, res) => {
       nodes: [],
       edges: [],
       stations: [],
+      routes: [],
       sourceFile: payload.sourceFile,
       importedAt,
       metadata: payload.metadata || {},

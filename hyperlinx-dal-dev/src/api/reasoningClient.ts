@@ -41,6 +41,8 @@ export type ReasoningContext = {
   workItemId?: string;
   closureId?: string;
   twinStateId?: string;
+  scopeVersionContext?: unknown;
+  scopeVersionBasis?: unknown;
   selectedFeature?: unknown;
   extensionSummary?: unknown;
   opportunitySeeds?: unknown;

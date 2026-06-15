@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { listMarketplaceQuotes, listOpportunitySeeds, listScopeVersions, saveMarketplaceQuote, saveScopeVersion } from "../api/dalClient";
+import { listMarketplaceQuotes, listScopeVersions, saveMarketplaceQuote, saveScopeVersion } from "../api/dalClient";
 import { applyQuoteToScopeVersion, generatePreliminaryQuote } from "../commercial/quoteEngine";
 import { useDALState } from "../dal/DALState";
 import type { MarketplaceQuote, ScopeVersion } from "../types/dal";
-import type { OpportunitySeed } from "../types/portfolio";
 
 function fmtMoney(n: number) {
   return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -16,13 +15,10 @@ function fmtPercent(n: number | undefined) {
 export default function MarketplaceWorkspace() {
   const {
     selectedScopeVersion,
-    setSelectedOpportunitySeed,
-    setSelectedOpportunitySeedId,
     setSelectedScopeVersion,
     setSelectedScopeVersionId,
     setWorkspace,
   } = useDALState();
-  const [opportunitySeeds, setOpportunitySeeds] = useState<OpportunitySeed[]>([]);
   const [scopeVersions, setScopeVersions] = useState<ScopeVersion[]>([]);
   const [quotes, setQuotes] = useState<MarketplaceQuote[]>([]);
   const [termMonths, setTermMonths] = useState(36);
@@ -34,7 +30,12 @@ export default function MarketplaceWorkspace() {
   }, []);
 
   const quoteDraft = useMemo(() => {
-    const scope = selectedScopeVersion ?? scopeVersions.find((item) => (item.canonicalTruth as any)?.decisionType === "PrismSiteDecision") ?? scopeVersions[0];
+    const canonicalScopes = scopeVersions.filter((item) => (item.canonicalTruth as any)?.networkBasis && (item.canonicalTruth as any)?.financialBasis);
+    const selectedCanonical =
+      selectedScopeVersion && (selectedScopeVersion.canonicalTruth as any)?.networkBasis && (selectedScopeVersion.canonicalTruth as any)?.financialBasis
+        ? selectedScopeVersion
+        : null;
+    const scope = selectedCanonical ?? canonicalScopes.find((item) => (item.canonicalTruth as any)?.decisionType === "PrismSiteDecision") ?? canonicalScopes[0];
     if (!scope) return null;
     const draft = generatePreliminaryQuote(scope, termMonths);
     return notes ? { ...draft, notes } : draft;
@@ -42,8 +43,7 @@ export default function MarketplaceWorkspace() {
 
   async function refresh() {
     try {
-      const [nextSeeds, nextQuotes, nextScopes] = await Promise.all([listOpportunitySeeds(), listMarketplaceQuotes(), listScopeVersions()]);
-      setOpportunitySeeds(nextSeeds);
+      const [nextQuotes, nextScopes] = await Promise.all([listMarketplaceQuotes(), listScopeVersions()]);
       setQuotes(nextQuotes);
       setScopeVersions(nextScopes);
       setStatus("Marketplace data loaded.");
@@ -136,11 +136,6 @@ export default function MarketplaceWorkspace() {
                 onClick={() => {
                   setSelectedScopeVersion(scope);
                   setSelectedScopeVersionId(scope.scopeVersionId);
-                  const seed = (scope.canonicalTruth as any)?.opportunitySeed as OpportunitySeed | undefined;
-                  if (seed) {
-                    setSelectedOpportunitySeed(seed);
-                    setSelectedOpportunitySeedId(seed.id);
-                  }
                 }}
               >
                 {scope.scopeVersionId} | {scope.status} | {(scope.canonicalTruth as any)?.site?.companyName ?? (scope.canonicalTruth as any)?.candidateSite?.companyName ?? scope.source}

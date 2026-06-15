@@ -7,6 +7,7 @@ import DALPlaceholderWorkspace from "../workspaces/DALPlaceholderWorkspace";
 import FieldWorkspace from "../workspaces/FieldWorkspace";
 import GraphExtensionWorkspace from "../workspaces/GraphExtensionWorkspace";
 import GraphViewerWorkspace from "../workspaces/GraphViewerWorkspace";
+import InventoryRecoveryWorkspace from "../workspaces/InventoryRecoveryWorkspace";
 import ControlWorkspace from "../workspaces/ControlWorkspace";
 import MarketplaceWorkspace from "../workspaces/MarketplaceWorkspace";
 import NetworkAffinityWorkspace from "../workspaces/NetworkAffinityWorkspace";
@@ -23,6 +24,7 @@ function DALWorkspaceOutlet() {
   const { workspace } = useDALState();
 
   if (workspace === "inventory") return <DALInventoryWorkspace />;
+  if (workspace === "inventoryRecovery") return <InventoryRecoveryWorkspace />;
   if (workspace === "graphViewer") return <GraphViewerWorkspace />;
   if (workspace === "graphExtensions") return <GraphExtensionWorkspace />;
   if (workspace === "design") return <DALPlaceholderWorkspace title="Design" />;
@@ -40,7 +42,7 @@ function DALWorkspaceOutlet() {
 }
 
 function reasoningWorkspace(workspace: ReturnType<typeof useDALState>["workspace"]): ReasoningWorkspace {
-  if (workspace === "graphViewer" || workspace === "graphExtensions") return "graph-viewer";
+  if (workspace === "graphViewer" || workspace === "graphExtensions" || workspace === "inventoryRecovery") return "graph-viewer";
   if (workspace === "siteDecision") return "prism";
   if (workspace === "portfolio" || workspace === "candidateSites" || workspace === "networkAffinity") return "portfolio";
   if (workspace === "ops") return "operational-intelligence";
@@ -50,6 +52,7 @@ function reasoningWorkspace(workspace: ReturnType<typeof useDALState>["workspace
 function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]) {
   if (workspace === "translate") return ["Explain what was extracted", "Which validation warnings matter?", "Suggest normalization corrections"];
   if (workspace === "inventory") return ["Summarize this inventory graph", "Identify graph anomalies", "What should I inspect next?"];
+  if (workspace === "inventoryRecovery") return ["Which graphs are browser only?", "What should be pushed to the server?", "Summarize sync failures"];
   if (workspace === "graphViewer") return ["Explain the selected graph context", "Summarize route structure", "Suggest extension candidates"];
   if (workspace === "graphExtensions")
     return [
@@ -122,6 +125,12 @@ function DALReasoningOutlet() {
     selectedScopeVersionId,
     selectedOpportunityId,
   } = useDALState();
+  const scopeTruth = selectedScopeVersion?.canonicalTruth as any;
+  const scopeNetworkBasis = scopeTruth?.networkBasis;
+  const scopeGeographicBasis = scopeTruth?.geographicBasis;
+  const scopeEngineeringBasis = scopeTruth?.engineeringBasis;
+  const scopeFinancialBasis = scopeTruth?.financialBasis;
+  const scopeRiskBasis = scopeTruth?.riskBasis;
   return (
     <ReasoningPanel
       title="DAL Reasoning"
@@ -135,35 +144,45 @@ function DALReasoningOutlet() {
         opportunityId: selectedOpportunityId,
         opportunitySeedId: selectedOpportunitySeedId || selectedOpportunitySeed?.id,
         candidateSiteId: selectedCandidateSiteId || selectedCandidateSite?.candidateId || selectedOpportunitySeed?.candidateSiteId,
-        attachmentRouteId: selectedNetworkAffinity?.buildPath.routeId ?? selectedOpportunitySeed?.buildPath?.routeId ?? selectedOpportunitySeed?.nearestRouteId,
-        attachmentNodeId: selectedNetworkAffinity?.buildPath.nodeId ?? selectedOpportunitySeed?.buildPath?.nodeId ?? selectedOpportunitySeed?.nearestNodeId,
-        attachmentStationId: selectedNetworkAffinity?.buildPath.stationId ?? selectedOpportunitySeed?.buildPath?.stationId ?? selectedOpportunitySeed?.nearestStationId,
-        buildFeet: selectedNetworkAffinity?.buildPath.buildFeet ?? selectedOpportunitySeed?.buildPath?.buildFeet ?? selectedOpportunitySeed?.distanceFeet,
-        buildMiles: selectedNetworkAffinity?.buildPath.buildMiles ?? selectedOpportunitySeed?.buildPath?.buildMiles ?? selectedOpportunitySeed?.buildMiles,
-        constructionType: selectedNetworkAffinity?.constructionType ?? selectedOpportunitySeed?.constructionType ?? selectedOpportunitySeed?.buildPath?.constructionType,
-        riskScore: selectedNetworkAffinity?.riskScore ?? selectedOpportunitySeed?.riskScore ?? selectedOpportunitySeed?.buildPath?.riskScore,
-        constructabilityScore: selectedNetworkAffinity?.constructabilityScore ?? selectedOpportunitySeed?.constructabilityScore,
+        attachmentRouteId: scopeNetworkBasis?.routeId ?? selectedNetworkAffinity?.buildPath.routeId ?? selectedOpportunitySeed?.buildPath?.routeId ?? selectedOpportunitySeed?.nearestRouteId,
+        attachmentNodeId: scopeNetworkBasis?.nodeId ?? selectedNetworkAffinity?.buildPath.nodeId ?? selectedOpportunitySeed?.buildPath?.nodeId ?? selectedOpportunitySeed?.nearestNodeId,
+        attachmentStationId: scopeNetworkBasis?.stationId ?? selectedNetworkAffinity?.buildPath.stationId ?? selectedOpportunitySeed?.buildPath?.stationId ?? selectedOpportunitySeed?.nearestStationId,
+        buildFeet: scopeEngineeringBasis?.buildFeet ?? selectedNetworkAffinity?.buildPath.buildFeet ?? selectedOpportunitySeed?.buildPath?.buildFeet ?? selectedOpportunitySeed?.distanceFeet,
+        buildMiles: scopeEngineeringBasis?.buildMiles ?? selectedNetworkAffinity?.buildPath.buildMiles ?? selectedOpportunitySeed?.buildPath?.buildMiles ?? selectedOpportunitySeed?.buildMiles,
+        constructionType: scopeEngineeringBasis?.constructionType ?? selectedNetworkAffinity?.constructionType ?? selectedOpportunitySeed?.constructionType ?? selectedOpportunitySeed?.buildPath?.constructionType,
+        riskScore: scopeRiskBasis?.compositeRisk ?? selectedNetworkAffinity?.riskScore ?? selectedOpportunitySeed?.riskScore ?? selectedOpportunitySeed?.buildPath?.riskScore,
+        constructabilityScore: scopeEngineeringBasis?.constructabilityScore ?? selectedNetworkAffinity?.constructabilityScore ?? selectedOpportunitySeed?.constructabilityScore,
         permitScore: selectedNetworkAffinity?.permitScore ?? selectedOpportunitySeed?.permitScore,
         parcelScore: selectedNetworkAffinity?.parcelScore ?? selectedOpportunitySeed?.parcelScore,
         roadAccessScore: selectedNetworkAffinity?.roadAccessScore ?? selectedOpportunitySeed?.roadAccessScore,
         crossingScore: selectedNetworkAffinity?.crossingScore ?? selectedOpportunitySeed?.crossingScore,
-        environmentalRisk: selectedNetworkAffinity?.constructabilityAssessment?.environmentalRisk ?? selectedOpportunitySeed?.environmentalRisk,
+        environmentalRisk: scopeRiskBasis?.environmentalRisk ?? selectedNetworkAffinity?.constructabilityAssessment?.environmentalRisk ?? selectedOpportunitySeed?.environmentalRisk,
         utilityConflictRisk: selectedNetworkAffinity?.constructabilityAssessment?.utilityConflictRisk ?? selectedOpportunitySeed?.utilityConflictRisk,
-        estimatedCost: selectedNetworkAffinity?.estimatedCost ?? selectedOpportunitySeed?.buildCost ?? selectedOpportunitySeed?.buildPath?.estimatedCost,
-        estimatedPayback: selectedNetworkAffinity?.estimatedPayback ?? selectedOpportunitySeed?.paybackMonths,
+        estimatedCost: scopeFinancialBasis?.estimatedConstructionCost ?? selectedNetworkAffinity?.estimatedCost ?? selectedOpportunitySeed?.buildCost ?? selectedOpportunitySeed?.buildPath?.estimatedCost,
+        estimatedPayback: scopeFinancialBasis?.payback ?? selectedNetworkAffinity?.estimatedPayback ?? selectedOpportunitySeed?.paybackMonths,
         selectedFeature: selectedGraphFeature,
         extensionSummary: selectedScopeVersion?.canonicalTruth?.extensionSummary,
         opportunitySeeds: selectedOpportunitySeed ? [selectedOpportunitySeed] : undefined,
         networkAffinity: selectedNetworkAffinity ?? selectedOpportunitySeed?.networkAffinity,
         attachmentStrategy: selectedNetworkAffinity?.preferredStrategy ?? selectedOpportunitySeed?.attachmentStrategy,
-        buildPath: selectedNetworkAffinity?.buildPath ?? selectedOpportunitySeed?.buildPath,
-        constructabilityAssessment: selectedNetworkAffinity?.constructabilityAssessment ?? selectedOpportunitySeed?.constructabilityAssessment,
-        permitRequirements: selectedNetworkAffinity?.constructabilityAssessment?.permitting ?? selectedOpportunitySeed?.constructabilityAssessment?.permitting,
-        crossingInventory: {
+        buildPath: scopeGeographicBasis?.buildPath ?? selectedNetworkAffinity?.buildPath ?? selectedOpportunitySeed?.buildPath,
+        constructabilityAssessment: selectedScopeVersion?.constructability ?? selectedNetworkAffinity?.constructabilityAssessment ?? selectedOpportunitySeed?.constructabilityAssessment,
+        permitRequirements: scopeEngineeringBasis?.permits ?? selectedNetworkAffinity?.constructabilityAssessment?.permitting ?? selectedOpportunitySeed?.constructabilityAssessment?.permitting,
+        crossingInventory: scopeEngineeringBasis?.crossings ?? {
           rail: selectedNetworkAffinity?.constructabilityAssessment?.rail ?? selectedOpportunitySeed?.constructabilityAssessment?.rail,
           water: selectedNetworkAffinity?.constructabilityAssessment?.water ?? selectedOpportunitySeed?.constructabilityAssessment?.water,
         },
-        capacityStatus: selectedNetworkAffinity?.capacity.projectedUtilization ?? selectedOpportunitySeed?.capacityStatus,
+        capacityStatus: scopeNetworkBasis?.capacityStatus ?? selectedNetworkAffinity?.capacity.projectedUtilization ?? selectedOpportunitySeed?.capacityStatus,
+        scopeVersionContext: selectedScopeVersion,
+        scopeVersionBasis: {
+          graphReference: scopeTruth?.graphReference,
+          networkBasis: scopeNetworkBasis,
+          geographicBasis: scopeGeographicBasis,
+          engineeringBasis: scopeEngineeringBasis,
+          financialBasis: scopeFinancialBasis,
+          riskBasis: scopeRiskBasis,
+          decisionBasis: scopeTruth?.decisionBasis,
+        },
         portfolioSummary: selectedScopeVersion?.canonicalTruth?.portfolioMetrics,
         portfolioMetrics: selectedScopeVersion?.canonicalTruth?.portfolioMetrics,
         phasePlan: selectedScopeVersion?.canonicalTruth?.phasePlan,

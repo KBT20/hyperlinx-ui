@@ -2,6 +2,7 @@ import type { CandidateSite } from "../types/candidateSite";
 import type { DALCoordinate, InventoryGraph } from "../types/dal";
 import type { AttachmentType, BuildPath } from "../types/networkAffinity";
 import { generateCorridorPathOptions, selectBestCorridorPath } from "../corridor/corridorPathEngine";
+import { DEFAULT_CONSTRUCTION_TYPE, estimateBuriedConstructionCost, BURIED_CONSTRUCTION_ASSUMPTIONS } from "../engineering/constructionModel";
 import { haversineFeet } from "./geo";
 
 export function buildPathForAttachment(args: {
@@ -30,10 +31,16 @@ export function buildPathForAttachment(args: {
         )
       : null;
   const buildFeet = haversineFeet(siteCoord, attach);
-  const undergroundShare = args.attachmentType === "EXISTING_NODE_ATTACH" || args.attachmentType === "EXISTING_STATION_ATTACH" ? 0.55 : 0.75;
   const routeableFeet = corridorPath?.distanceFeet ?? buildFeet;
-  const estimatedUndergroundFeet = Math.round(routeableFeet * undergroundShare);
-  const estimatedAerialFeet = Math.max(0, Math.round(routeableFeet - estimatedUndergroundFeet));
+  const estimatedUndergroundFeet = Math.round(routeableFeet);
+  const estimatedAerialFeet = 0;
+  const estimatedCrossings = corridorPath?.crossings ?? Math.max(0, Math.round(buildFeet / 1600));
+  const estimatedBores = Math.max(0, Math.round(estimatedUndergroundFeet / 2200));
+  const buriedCost = estimateBuriedConstructionCost({
+    buildFeet: routeableFeet,
+    boreFeet: estimatedBores * 180,
+    crossings: estimatedCrossings,
+  });
   return {
     siteId: args.site.candidateId,
     routeId: corridorPath?.attachmentRouteId ?? args.routeId,
@@ -43,8 +50,8 @@ export function buildPathForAttachment(args: {
     buildFeet: Math.round(routeableFeet),
     buildMiles: corridorPath?.buildMiles ?? routeableFeet / 5280,
     estimatedRouteMiles: corridorPath?.estimatedRouteMiles ?? routeableFeet / 5280,
-    estimatedCrossings: corridorPath?.crossings ?? Math.max(0, Math.round(buildFeet / 1600)),
-    estimatedBores: Math.max(0, Math.round(estimatedUndergroundFeet / 2200)),
+    estimatedCrossings,
+    estimatedBores,
     estimatedAerialFeet,
     estimatedUndergroundFeet,
     railCrossingCount: corridorPath?.railCrossingCount,
@@ -52,13 +59,14 @@ export function buildPathForAttachment(args: {
     waterCrossingCount: corridorPath?.waterCrossingCount,
     turnCount: corridorPath?.turnCount,
     segmentCount: corridorPath?.segmentCount,
-    constructionType: corridorPath?.constructionType,
-    estimatedCost: corridorPath?.cost.nrcEstimate,
+    constructionType: DEFAULT_CONSTRUCTION_TYPE,
+    estimatedCost: buriedCost.totalCost,
     riskScore: corridorPath?.risk.riskScore,
     constructabilityScore: corridorPath?.constructabilityScore,
     corridorPath: corridorPath ?? undefined,
     corridorCost: corridorPath?.cost,
     corridorRisk: corridorPath?.risk,
+    constructionAssumptions: BURIED_CONSTRUCTION_ASSUMPTIONS,
     geometry: corridorPath?.coordinates ?? [siteCoord, attach],
   };
 }

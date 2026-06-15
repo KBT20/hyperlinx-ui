@@ -1,4 +1,4 @@
-import type { DALCoordinate } from "./dal";
+import type { AttachmentPoint, CertificationSnapshot, ConstructionAssumptions, DALCoordinate, LateralPath, ServiceabilityAssessment } from "./dal";
 import type { BestBuildPath, CorridorAnalysis, CorridorCost, CorridorPath, CorridorRisk } from "./corridor";
 import type { ConstructionType } from "./portfolio";
 import type { ConstructabilityAssessment } from "../spatial/types";
@@ -69,6 +69,10 @@ export type BuildPath = {
   corridorPath?: CorridorPath;
   corridorCost?: CorridorCost;
   corridorRisk?: CorridorRisk;
+  attachmentCertification?: AttachmentPoint;
+  lateralCertification?: LateralPath;
+  serviceabilityAssessment?: ServiceabilityAssessment;
+  constructionAssumptions?: ConstructionAssumptions;
   geometry: DALCoordinate[];
 };
 
@@ -108,6 +112,10 @@ export type AttachmentStrategy = {
   compositeScore: number;
   buildPath: BuildPath;
   capacity: CapacityAnalysis;
+  attachmentCertification?: AttachmentPoint;
+  lateralCertification?: LateralPath;
+  serviceabilityAssessment?: ServiceabilityAssessment;
+  constructionAssumptions?: ConstructionAssumptions;
 };
 
 export type NetworkAffinity = {
@@ -143,4 +151,9 @@ export type NetworkAffinity = {
   estimatedPayback: number;
   roi: number;
   affinityScore: number;
+  attachmentCertification?: AttachmentPoint;
+  lateralCertification?: LateralPath;
+  serviceabilityAssessment?: ServiceabilityAssessment;
+  certificationSnapshot?: CertificationSnapshot;
+  constructionAssumptions?: ConstructionAssumptions;
 };
