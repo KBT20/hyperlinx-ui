@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type WheelEvent } from "react";
 import {
   MAP_LAYER_ORDER,
   resolveLayerStates,
@@ -38,6 +38,8 @@ const SVG_HEIGHT = 560;
 const TILE_SIZE = 256;
 const EMPTY_BOUNDS: MapBounds = { west: -100, south: 30, east: -99, north: 31 };
 const DEFAULT_CENTER: [number, number] = [-97.7431, 30.2672];
+const MAP_KERNEL_VIEW_STATE_KEY = "hyperlinx-dal-dev:map-kernel:engineering-view-state:v1";
+const FEET_PER_MILE = 5280;
 
 type Tile = {
   key: string;
@@ -53,6 +55,31 @@ type TileSource = {
   attribution: string;
   opacity?: number;
   url: (z: number, x: number, y: number) => string;
+};
+
+type GeographicViewState = {
+  center: [number, number];
+  zoom: number;
+  bearing: number;
+};
+
+type PersistedMapKernelViewState = {
+  centerLon: number;
+  centerLat: number;
+  zoom: number;
+  bearing: number;
+  activeLayers: string[];
+  mode?: MapKernelMode;
+  baseLayer?: MapKernelBaseLayer;
+  updatedAt: string;
+};
+
+type PanDragState = {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startCenterWorld: { x: number; y: number };
+  moved: boolean;
 };
 
 const BASE_LAYERS: Record<MapKernelBaseLayer, { label: string; sources: TileSource[] }> = {
@@ -136,6 +163,103 @@ function linePoints(bounds: MapBounds, coordinates: [number, number][]) {
   }).join(" ");
 }
 
+function safeNumber(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
+}
+
+function readPersistedViewState(): PersistedMapKernelViewState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(MAP_KERNEL_VIEW_STATE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<PersistedMapKernelViewState>;
+    const centerLon = safeNumber(parsed.centerLon);
+    const centerLat = safeNumber(parsed.centerLat);
+    const zoom = safeNumber(parsed.zoom);
+    if (centerLon === undefined || centerLat === undefined || zoom === undefined) return null;
+    if (!isCoordinate([centerLon, centerLat])) return null;
+    return {
+      centerLon,
+      centerLat,
+      zoom: Math.max(3, Math.min(20, Math.round(zoom))),
+      bearing: safeNumber(parsed.bearing) ?? 0,
+      activeLayers: Array.isArray(parsed.activeLayers) ? parsed.activeLayers.map(String) : [],
+      mode: parsed.mode === "geographic" || parsed.mode === "topology" ? parsed.mode : undefined,
+      baseLayer:
+        parsed.baseLayer === "street" || parsed.baseLayer === "satellite" || parsed.baseLayer === "hybrid" || parsed.baseLayer === "terrain"
+          ? parsed.baseLayer
+          : undefined,
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : new Date().toISOString(),
+    };
+  } catch (error) {
+    console.warn("MAP KERNEL VIEW STATE LOAD FAILED", error);
+    return null;
+  }
+}
+
+function writePersistedViewState(state: PersistedMapKernelViewState) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(MAP_KERNEL_VIEW_STATE_KEY, JSON.stringify(state));
+  } catch (error) {
+    console.warn("MAP KERNEL VIEW STATE SAVE FAILED", error);
+  }
+}
+
+function coordinatesFromBounds(bounds: MapBounds): [number, number][] {
+  return [
+    [bounds.west, bounds.south],
+    [bounds.east, bounds.north],
+  ];
+}
+
+function viewForCoordinates(coordinates: [number, number][], width: number, height: number): GeographicViewState {
+  return {
+    center: centerFromCoordinates(coordinates, DEFAULT_CENTER),
+    zoom: zoomForCoordinates(coordinates, width, height),
+    bearing: 0,
+  };
+}
+
+function visibleBoundsFromView(view: GeographicViewState, width: number, height: number): MapBounds {
+  const centerWorld = lonLatToWorld(view.center, view.zoom);
+  const northwest = worldToLonLat({ x: centerWorld.x - width / 2, y: centerWorld.y - height / 2 }, view.zoom);
+  const southeast = worldToLonLat({ x: centerWorld.x + width / 2, y: centerWorld.y + height / 2 }, view.zoom);
+  return {
+    west: Math.min(northwest[0], southeast[0]),
+    south: Math.min(northwest[1], southeast[1]),
+    east: Math.max(northwest[0], southeast[0]),
+    north: Math.max(northwest[1], southeast[1]),
+  };
+}
+
+function distanceFeet(a: [number, number], b: [number, number]) {
+  const radiusFeet = 20902231;
+  const lat1 = (a[1] * Math.PI) / 180;
+  const lat2 = (b[1] * Math.PI) / 180;
+  const deltaLat = ((b[1] - a[1]) * Math.PI) / 180;
+  const deltaLon = ((b[0] - a[0]) * Math.PI) / 180;
+  const hav =
+    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
+  return 2 * radiusFeet * Math.atan2(Math.sqrt(hav), Math.sqrt(1 - hav));
+}
+
+function lineLengthFeet(coordinates: [number, number][]) {
+  let total = 0;
+  for (let index = 1; index < coordinates.length; index += 1) {
+    total += distanceFeet(coordinates[index - 1], coordinates[index]);
+  }
+  return total;
+}
+
+function formatDistance(feet: number) {
+  if (!Number.isFinite(feet)) return "n/a";
+  if (feet >= FEET_PER_MILE) return `${(feet / FEET_PER_MILE).toLocaleString(undefined, { maximumFractionDigits: 2 })} mi`;
+  return `${Math.round(feet).toLocaleString()} ft`;
+}
+
 function collectPrimitiveCoordinates(primitives: MapKernelPrimitive[], editableRoute?: MapKernelEditableRoute) {
   const coordinates: [number, number][] = [];
   primitives.forEach((primitive) => {
@@ -177,15 +301,25 @@ export default function MapKernel({
   onSelectionChange,
   onMetricsChange,
 }: MapKernelProps) {
+  const persistedViewState = useMemo(() => readPersistedViewState(), []);
   const [selection, setSelectionState] = useState<MapSelection | null>(null);
   const [viewportRequest, requestViewport] = useState<MapViewportRequest | null>(null);
   const [draggingVertexIndex, setDraggingVertexIndex] = useState<number | null>(null);
-  const [mode, setMode] = useState<MapKernelMode>(initialMode);
-  const [baseLayer, setBaseLayer] = useState<MapKernelBaseLayer>(initialBaseLayer);
+  const [mode, setMode] = useState<MapKernelMode>(persistedViewState?.mode ?? initialMode);
+  const [baseLayer, setBaseLayer] = useState<MapKernelBaseLayer>(persistedViewState?.baseLayer ?? initialBaseLayer);
   const [geoSize, setGeoSize] = useState({ width: SVG_WIDTH, height });
-  const [geoView, setGeoView] = useState({ center: DEFAULT_CENTER, zoom: 16 });
+  const [geoView, setGeoView] = useState<GeographicViewState>({
+    center: persistedViewState ? [persistedViewState.centerLon, persistedViewState.centerLat] : DEFAULT_CENTER,
+    zoom: persistedViewState?.zoom ?? 16,
+    bearing: persistedViewState?.bearing ?? 0,
+  });
+  const [isPanning, setIsPanning] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const panDragRef = useRef<PanDragState | null>(null);
+  const suppressNextSelectionRef = useRef(false);
+  const autoFitInitializedRef = useRef(Boolean(persistedViewState));
+  const routeEditLocked = Boolean(editableRoute?.enabled);
   const primitives = useMemo(
     () => renderMapKernelPrimitives(specs, { layerVisibility, stationDensityFeet, showStationLabels }),
     [layerVisibility, showStationLabels, specs, stationDensityFeet]
@@ -212,9 +346,44 @@ export default function MapKernel({
       : null;
     return boundsFromPrimitives(editPrimitive ? [...primitives, editPrimitive] : primitives) ?? EMPTY_BOUNDS;
   }, [editableRoute?.geometry, editableRoute?.routeId, primitives, viewportRequest?.bounds]);
-  const layerStates = resolveLayerStates(layerVisibility);
+  const layerStates = useMemo(() => resolveLayerStates(layerVisibility), [layerVisibility]);
   const focusCoordinates = useMemo(() => collectPrimitiveCoordinates(primitives, editableRoute), [editableRoute, primitives]);
-  const focusKey = useMemo(() => specs.map((spec) => `${spec.specId}:${spec.sourceId}`).join("|"), [specs]);
+  const candidateCoordinates = useMemo(
+    () => collectPrimitiveCoordinates(primitives.filter((primitive) => primitive.ref.kind === "Site" || primitive.layerId === "site")),
+    [primitives]
+  );
+  const attachmentCoordinates = useMemo(
+    () => collectPrimitiveCoordinates(primitives.filter((primitive) => primitive.ref.kind === "Attachment" || primitive.layerId === "attachment")),
+    [primitives]
+  );
+  const routeCoordinates = useMemo(
+    () =>
+      collectPrimitiveCoordinates(
+        primitives.filter((primitive) => primitive.ref.kind === "Route" || primitive.ref.kind === "Lateral" || primitive.layerId === "lateral")
+      ),
+    [primitives]
+  );
+  const certifiedRouteCoordinates = useMemo(
+    () =>
+      collectPrimitiveCoordinates(
+        primitives.filter((primitive) => {
+          const authority = String(primitive.metadata?.renderAuthority ?? "");
+          return primitive.layerId === "lateral" || authority.includes("Certified");
+        })
+      ),
+    [primitives]
+  );
+  const visibleGeoBounds = useMemo(() => visibleBoundsFromView(geoView, geoSize.width, geoSize.height), [geoSize.height, geoSize.width, geoView]);
+  const viewWidthFeet = useMemo(
+    () => distanceFeet([visibleGeoBounds.west, geoView.center[1]], [visibleGeoBounds.east, geoView.center[1]]),
+    [geoView.center, visibleGeoBounds.east, visibleGeoBounds.west]
+  );
+  const viewHeightFeet = useMemo(
+    () => distanceFeet([geoView.center[0], visibleGeoBounds.south], [geoView.center[0], visibleGeoBounds.north]),
+    [geoView.center, visibleGeoBounds.north, visibleGeoBounds.south]
+  );
+  const routeLengthFeet = useMemo(() => lineLengthFeet(routeCoordinates), [routeCoordinates]);
+  const activeLayerIds = useMemo(() => layerStates.filter((layer) => layer.visible).map((layer) => layer.layerId), [layerStates]);
   const geoCenterWorld = useMemo(() => lonLatToWorld(geoView.center, geoView.zoom), [geoView.center, geoView.zoom]);
   const geoTiles = useMemo<Tile[]>(() => {
     const leftWorld = geoCenterWorld.x - geoSize.width / 2;
@@ -266,12 +435,28 @@ export default function MapKernel({
   }, []);
 
   useEffect(() => {
-    if (mode !== "geographic") return;
-    setGeoView({
-      center: centerFromCoordinates(focusCoordinates, DEFAULT_CENTER),
-      zoom: zoomForCoordinates(focusCoordinates, geoSize.width, geoSize.height),
+    writePersistedViewState({
+      centerLon: geoView.center[0],
+      centerLat: geoView.center[1],
+      zoom: geoView.zoom,
+      bearing: geoView.bearing,
+      activeLayers: activeLayerIds,
+      mode,
+      baseLayer,
+      updatedAt: new Date().toISOString(),
     });
-  }, [focusKey, geoSize.height, geoSize.width, mode]);
+  }, [activeLayerIds, baseLayer, geoView.bearing, geoView.center, geoView.zoom, mode]);
+
+  useEffect(() => {
+    if (mode !== "geographic" || routeEditLocked || autoFitInitializedRef.current || !focusCoordinates.length) return;
+    autoFitInitializedRef.current = true;
+    setGeoView(viewForCoordinates(focusCoordinates, geoSize.width, geoSize.height));
+  }, [focusCoordinates, geoSize.height, geoSize.width, mode, routeEditLocked]);
+
+  useEffect(() => {
+    if (mode !== "geographic" || routeEditLocked || !viewportRequest?.bounds) return;
+    setGeoView(viewForCoordinates(coordinatesFromBounds(viewportRequest.bounds), geoSize.width, geoSize.height));
+  }, [geoSize.height, geoSize.width, mode, routeEditLocked, viewportRequest]);
 
   function setSelection(selectionValue: MapSelection | null) {
     setSelectionState(selectionValue);
@@ -279,8 +464,93 @@ export default function MapKernel({
   }
 
   function selectPrimitive(primitive: MapKernelPrimitive) {
+    if (suppressNextSelectionRef.current) {
+      suppressNextSelectionRef.current = false;
+      return;
+    }
     if (primitive.metadata?.selectable === false) return;
     setSelection(createMapSelection(primitiveSelectionRef(primitive), primitive.payload));
+  }
+
+  function setGeoCenterFromWorld(point: { x: number; y: number }) {
+    setGeoView((prev) => ({
+      ...prev,
+      center: worldToLonLat(point, prev.zoom),
+    }));
+  }
+
+  function beginMapPan(event: PointerEvent<SVGSVGElement>) {
+    if (draggingVertexIndex !== null) return;
+    if (event.button !== 0 && event.button !== 1) return;
+    panDragRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startCenterWorld: geoCenterWorld,
+      moved: false,
+    };
+    setIsPanning(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function updateMapPan(event: PointerEvent<SVGSVGElement>) {
+    const drag = panDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startClientX;
+    const dy = event.clientY - drag.startClientY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      drag.moved = true;
+      suppressNextSelectionRef.current = true;
+    }
+    setGeoCenterFromWorld({
+      x: drag.startCenterWorld.x - dx,
+      y: drag.startCenterWorld.y - dy,
+    });
+  }
+
+  function endMapPan(event?: PointerEvent<SVGSVGElement>) {
+    const drag = panDragRef.current;
+    if (event && drag?.pointerId === event.pointerId) event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (drag?.moved) {
+      suppressNextSelectionRef.current = true;
+      window.setTimeout(() => {
+        suppressNextSelectionRef.current = false;
+      }, 0);
+    }
+    panDragRef.current = null;
+    setIsPanning(false);
+  }
+
+  function handleGeographicWheel(event: WheelEvent<SVGSVGElement>) {
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) {
+      if (routeEditLocked) return;
+      const nextZoom = Math.max(3, Math.min(20, geoView.zoom + (event.deltaY < 0 ? 1 : -1)));
+      if (nextZoom === geoView.zoom) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      const cursorX = event.clientX - rect.left;
+      const cursorY = event.clientY - rect.top;
+      const cursorWorldBefore = {
+        x: geoCenterWorld.x - geoSize.width / 2 + cursorX,
+        y: geoCenterWorld.y - geoSize.height / 2 + cursorY,
+      };
+      const cursorCoordinate = worldToLonLat(cursorWorldBefore, geoView.zoom);
+      const cursorWorldAfter = lonLatToWorld(cursorCoordinate, nextZoom);
+      const nextCenterWorld = {
+        x: cursorWorldAfter.x - cursorX + geoSize.width / 2,
+        y: cursorWorldAfter.y - cursorY + geoSize.height / 2,
+      };
+      setGeoView({
+        center: worldToLonLat(nextCenterWorld, nextZoom),
+        zoom: nextZoom,
+        bearing: geoView.bearing,
+      });
+      return;
+    }
+    setGeoCenterFromWorld({
+      x: geoCenterWorld.x + event.deltaX,
+      y: geoCenterWorld.y + event.deltaY,
+    });
   }
 
   function updateEditableVertex(event: MouseEvent<SVGSVGElement>) {
@@ -351,6 +621,12 @@ export default function MapKernel({
               strokeWidth={3}
               opacity={editableRoute.enabled === false ? 0.55 : 1}
               style={{ cursor: editableRoute.enabled === false ? "default" : "grab" }}
+              onPointerDown={(event) => {
+                if (editableRoute.enabled === false) return;
+                event.stopPropagation();
+                setDraggingVertexIndex(index);
+                editableRoute.onVertexSelect?.(index);
+              }}
               onMouseDown={(event) => {
                 if (editableRoute.enabled === false) return;
                 event.stopPropagation();
@@ -445,11 +721,30 @@ export default function MapKernel({
     return null;
   }
 
-  function fitGeographicView() {
-    setGeoView({
-      center: centerFromCoordinates(focusCoordinates, DEFAULT_CENTER),
-      zoom: zoomForCoordinates(focusCoordinates, geoSize.width, geoSize.height),
+  function fitGeographicView(coordinates: [number, number][], requestMode: MapViewportRequest["mode"], targetId: string) {
+    if (routeEditLocked || !coordinates.length) return;
+    const nextView = viewForCoordinates(coordinates, geoSize.width, geoSize.height);
+    setGeoView(nextView);
+    requestViewport({
+      mode: requestMode,
+      bounds: boundsFromPrimitives([
+        {
+          id: `${targetId}:fit-bounds`,
+          layerId: "object",
+          kind: "line",
+          ref: { kind: "Object", id: targetId },
+          coordinates,
+          metadata: { selectable: false, source: "map-kernel-fit" },
+        },
+      ]) ?? undefined,
+      targetId,
+      requestedAt: new Date().toISOString(),
     });
+  }
+
+  function zoomGeographicView(delta: number) {
+    if (routeEditLocked) return;
+    setGeoView((prev) => ({ ...prev, zoom: Math.max(3, Math.min(20, prev.zoom + delta)) }));
   }
 
   function renderBaseTiles(source: TileSource) {
@@ -498,28 +793,79 @@ export default function MapKernel({
         </div>
         <svg
           ref={svgRef}
-          className="dal-map-kernel-geographic-svg"
+          className={`dal-map-kernel-geographic-svg ${isPanning ? "panning" : ""}`}
           width={geoSize.width}
           height={geoSize.height}
           role="img"
           aria-label="Hyperlinx geographic engineering map"
+          onPointerDown={beginMapPan}
+          onPointerMove={updateMapPan}
+          onPointerUp={(event) => endMapPan(event)}
+          onPointerCancel={(event) => endMapPan(event)}
+          onWheel={handleGeographicWheel}
           onMouseMove={updateEditableVertex}
-          onMouseUp={() => setDraggingVertexIndex(null)}
-          onMouseLeave={() => setDraggingVertexIndex(null)}
+          onMouseUp={() => {
+            setDraggingVertexIndex(null);
+          }}
+          onMouseLeave={() => {
+            setDraggingVertexIndex(null);
+            endMapPan();
+          }}
         >
           {primitives.map(renderPrimitive)}
           {renderEditableRoute()}
         </svg>
         <div className="dal-map-kernel-geo-zoom">
-          <button type="button" onClick={() => setGeoView((prev) => ({ ...prev, zoom: Math.min(20, prev.zoom + 1) }))}>
+          <button type="button" onClick={() => zoomGeographicView(1)} disabled={routeEditLocked} title="Zoom in">
             +
           </button>
-          <button type="button" onClick={() => setGeoView((prev) => ({ ...prev, zoom: Math.max(3, prev.zoom - 1) }))}>
+          <button type="button" onClick={() => zoomGeographicView(-1)} disabled={routeEditLocked} title="Zoom out">
             -
           </button>
-          <button type="button" onClick={fitGeographicView}>
-            Fit
+          <button
+            type="button"
+            onClick={() => fitGeographicView(candidateCoordinates, "FIT_CANDIDATE", "candidate")}
+            disabled={routeEditLocked || !candidateCoordinates.length}
+          >
+            Fit Candidate
           </button>
+          <button
+            type="button"
+            onClick={() => fitGeographicView(attachmentCoordinates, "FIT_ATTACHMENT", "attachment")}
+            disabled={routeEditLocked || !attachmentCoordinates.length}
+          >
+            Fit Attachment
+          </button>
+          <button
+            type="button"
+            onClick={() => fitGeographicView(routeCoordinates, "FIT_ROUTE", "route")}
+            disabled={routeEditLocked || !routeCoordinates.length}
+          >
+            Fit Route
+          </button>
+          <button
+            type="button"
+            onClick={() => fitGeographicView(certifiedRouteCoordinates, "FIT_CERTIFIED_ROUTE", "certified-route")}
+            disabled={routeEditLocked || !certifiedRouteCoordinates.length}
+          >
+            Fit Certified Route
+          </button>
+          <button
+            type="button"
+            onClick={() => fitGeographicView(focusCoordinates, "FIT_ENTIRE_NETWORK", "entire-network")}
+            disabled={routeEditLocked || !focusCoordinates.length}
+          >
+            Fit Entire Network
+          </button>
+        </div>
+        <div className="dal-map-kernel-engineering-extent">
+          <span>Route Length: {formatDistance(routeLengthFeet)}</span>
+          <span>View Width: {formatDistance(viewWidthFeet)}</span>
+          <span>View Height: {formatDistance(viewHeightFeet)}</span>
+          <span>Scale: 1 px = {formatDistance(viewWidthFeet / Math.max(geoSize.width, 1))}</span>
+          <span>Zoom: {geoView.zoom}</span>
+          <span>Bearing: {Math.round(geoView.bearing)} deg</span>
+          {routeEditLocked ? <span>Route Edit Lock: ON</span> : <span>Route Edit Lock: OFF</span>}
         </div>
         <div className="dal-map-kernel-attribution">{layer.sources[0]?.attribution ?? layer.label}</div>
       </div>

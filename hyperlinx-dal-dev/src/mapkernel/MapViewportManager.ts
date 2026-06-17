@@ -9,7 +9,16 @@ export type MapBounds = {
   north: number;
 };
 
-export type MapViewportMode = "FIT_SCOPEVERSION" | "FIT_CORRIDOR" | "FIT_ROUTE" | "FIT_SELECTION" | "MANUAL";
+export type MapViewportMode =
+  | "FIT_SCOPEVERSION"
+  | "FIT_CORRIDOR"
+  | "FIT_ROUTE"
+  | "FIT_CANDIDATE"
+  | "FIT_ATTACHMENT"
+  | "FIT_CERTIFIED_ROUTE"
+  | "FIT_ENTIRE_NETWORK"
+  | "FIT_SELECTION"
+  | "MANUAL";
 
 export type MapViewportRequest = {
   mode: MapViewportMode;
