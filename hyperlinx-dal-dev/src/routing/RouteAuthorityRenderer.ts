@@ -1,6 +1,20 @@
 import type { MapKernelPrimitive, MapKernelRenderSpec } from "../mapkernel";
 import type { CertifiedRoute, RouteAuthorityState } from "./CertifiedRouteAuthority";
 
+function routeAuthorityLayer(state: RouteAuthorityState): MapKernelPrimitive["layerId"] {
+  if (state === "CERTIFIED_ROUTE" || state === "PROVISIONALLY_CERTIFIED") return "routeAuthorityCertified";
+  if (state === "DIRECT_FALLBACK") return "routeAuthorityDirectFallback";
+  if (state === "REJECTED_ROUTE" || state === "BLOCKED") return "routeAuthorityRejected";
+  return "routeAuthorityDraft";
+}
+
+function routeAuthoritySourceLayer(state: RouteAuthorityState) {
+  if (state === "CERTIFIED_ROUTE" || state === "PROVISIONALLY_CERTIFIED") return "ROUTE_AUTHORITY_CERTIFIED";
+  if (state === "DIRECT_FALLBACK") return "ROUTE_AUTHORITY_DIRECT_FALLBACK";
+  if (state === "REJECTED_ROUTE" || state === "BLOCKED") return "ROUTE_AUTHORITY_REJECTED";
+  return "ROUTE_AUTHORITY_DRAFT";
+}
+
 function routeStyle(state: RouteAuthorityState): MapKernelPrimitive["style"] {
   if (state === "CERTIFIED_ROUTE" || state === "PROVISIONALLY_CERTIFIED") {
     return { stroke: "#16a34a", strokeWidth: 5, opacity: 0.96, dasharray: "" };
@@ -49,17 +63,20 @@ export function renderCertifiedRouteAuthority(route: CertifiedRoute): MapKernelR
     },
     {
       id: `${route.certifiedRouteId}:route`,
-      layerId: "lateral",
+      layerId: routeAuthorityLayer(route.routeAuthorityState),
       kind: "line",
       coordinates: route.geometry,
       label: stateLabel(route.routeAuthorityState),
       payload: route,
       style: routeStyle(route.routeAuthorityState),
       metadata: {
-        sourceLayer: "routeAuthority",
+        sourceLayer: routeAuthoritySourceLayer(route.routeAuthorityState),
+        routeAuthorityId: route.certifiedRouteId,
+        routeAuthorityState: route.routeAuthorityState,
+        isRouteAuthority: true,
         renderAuthority: route.routeAuthorityState === "CERTIFIED_ROUTE" ? "Certified Geometry" : "Editable Geometry",
       },
-      ref: { kind: "Lateral", id: route.certifiedRouteId, scopeVersionId: route.scopeVersionId, routeId: route.certifiedRouteId },
+      ref: { kind: "Route", id: route.certifiedRouteId, scopeVersionId: route.scopeVersionId, routeId: route.certifiedRouteId },
     },
     {
       id: `${route.certifiedRouteId}:route-label`,

@@ -319,7 +319,7 @@ export default function MapKernel({
   const panDragRef = useRef<PanDragState | null>(null);
   const suppressNextSelectionRef = useRef(false);
   const autoFitInitializedRef = useRef(Boolean(persistedViewState));
-  const routeEditLocked = Boolean(editableRoute?.enabled);
+  const routeEditLocked = Boolean(editableRoute?.enabled && draggingVertexIndex !== null);
   const primitives = useMemo(
     () => renderMapKernelPrimitives(specs, { layerVisibility, stationDensityFeet, showStationLabels }),
     [layerVisibility, showStationLabels, specs, stationDensityFeet]
@@ -359,7 +359,14 @@ export default function MapKernel({
   const routeCoordinates = useMemo(
     () =>
       collectPrimitiveCoordinates(
-        primitives.filter((primitive) => primitive.ref.kind === "Route" || primitive.ref.kind === "Lateral" || primitive.layerId === "lateral")
+        primitives.filter(
+          (primitive) =>
+            primitive.ref.kind === "Route" ||
+            primitive.ref.kind === "Lateral" ||
+            primitive.layerId === "lateral" ||
+            primitive.metadata?.isRouteAuthority === true ||
+            String(primitive.metadata?.sourceLayer ?? "").startsWith("ROUTE_AUTHORITY_")
+        )
       ),
     [primitives]
   );
@@ -368,7 +375,8 @@ export default function MapKernel({
       collectPrimitiveCoordinates(
         primitives.filter((primitive) => {
           const authority = String(primitive.metadata?.renderAuthority ?? "");
-          return primitive.layerId === "lateral" || authority.includes("Certified");
+          const sourceLayer = String(primitive.metadata?.sourceLayer ?? "");
+          return primitive.metadata?.isRouteAuthority === true || sourceLayer.startsWith("ROUTE_AUTHORITY_") || primitive.layerId === "lateral" || authority.includes("Certified");
         })
       ),
     [primitives]
@@ -910,6 +918,8 @@ export default function MapKernel({
             <span>ScopeVersions: {metrics.visibleScopeVersions.toLocaleString()}</span>
             <span>IOF Packages: {metrics.visibleIofPackages.toLocaleString()}</span>
             <span>Routes: {metrics.visibleRoutes.toLocaleString()}</span>
+            <span>Inventory Routes: {metrics.visibleInventoryRoutes.toLocaleString()}</span>
+            <span>Route Authority Routes: {metrics.visibleRouteAuthorityRoutes.toLocaleString()}</span>
             <span>Stations: {metrics.visibleStations.toLocaleString()}</span>
             <span>Nodes: {metrics.visibleNodes.toLocaleString()}</span>
             <span>Objects: {metrics.visibleObjects.toLocaleString()}</span>

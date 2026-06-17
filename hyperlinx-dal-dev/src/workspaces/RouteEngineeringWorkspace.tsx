@@ -10,7 +10,7 @@ import {
 } from "../routing/RouteAuthorityEngine";
 import type { CertifiedRoute, CorridorBasis, RouteMode } from "../routing/CertifiedRouteAuthority";
 import { renderCertifiedRouteAuthority } from "../routing/RouteAuthorityRenderer";
-import { MapKernel } from "../mapkernel";
+import { MapKernel, renderMapKernelPrimitives } from "../mapkernel";
 import {
   certifyCertifiedRoute,
   createCertifiedRoute,
@@ -159,6 +159,24 @@ export default function RouteEngineeringWorkspace() {
   const activeRoute = draftRoute ?? certifiedRoutes.find((route) => route.certifiedRouteId === selectedCertifiedRouteId) ?? null;
   const evaluatedRoute = activeRoute ? evaluateRouteAuthority(activeRoute) : null;
   const routeSpec = useMemo(() => (evaluatedRoute ? renderCertifiedRouteAuthority(evaluatedRoute) : null), [evaluatedRoute]);
+  const routeRenderAudit = useMemo(() => {
+    const renderedPrimitives = routeSpec ? renderMapKernelPrimitives([routeSpec]) : [];
+    const routePrimitive = renderedPrimitives.find(
+      (primitive) =>
+        primitive.ref.kind === "Route" &&
+        (primitive.metadata?.isRouteAuthority === true || String(primitive.metadata?.sourceLayer ?? "").startsWith("ROUTE_AUTHORITY_"))
+    );
+    return {
+      certifiedRouteExists: Boolean(evaluatedRoute),
+      geometryCoordinateCount: evaluatedRoute?.geometry.length ?? 0,
+      renderedPrimitiveCount: renderedPrimitives.length,
+      routeAuthorityPrimitiveCount: renderedPrimitives.filter((primitive) => primitive.metadata?.isRouteAuthority === true).length,
+      fitRouteEnabled: Boolean(evaluatedRoute?.geometry && evaluatedRoute.geometry.length > 1),
+      fitCertifiedRouteEnabled: Boolean(evaluatedRoute?.geometry && evaluatedRoute.geometry.length > 1),
+      renderSourceLayer: String(routePrimitive?.metadata?.sourceLayer ?? "none"),
+      renderAuthorityId: String(routePrimitive?.metadata?.routeAuthorityId ?? evaluatedRoute?.certifiedRouteId ?? "none"),
+    };
+  }, [evaluatedRoute, routeSpec]);
 
   function createDraft() {
     if (!selectedInventory || !selectedTargetCoordinate) {
@@ -312,6 +330,20 @@ export default function RouteEngineeringWorkspace() {
           }
           height={680}
         />
+      </div>
+
+      <div className="dal-panel">
+        <h3>Route Render Audit</h3>
+        <div className="dal-metrics">
+          <span>CertifiedRoute Exists: {routeRenderAudit.certifiedRouteExists ? "TRUE" : "FALSE"}</span>
+          <span>Geometry Coordinates: {routeRenderAudit.geometryCoordinateCount.toLocaleString()}</span>
+          <span>Rendered Primitives: {routeRenderAudit.renderedPrimitiveCount.toLocaleString()}</span>
+          <span>Route Authority Primitives: {routeRenderAudit.routeAuthorityPrimitiveCount.toLocaleString()}</span>
+          <span>Fit Route Enabled: {routeRenderAudit.fitRouteEnabled ? "TRUE" : "FALSE"}</span>
+          <span>Fit Certified Route Enabled: {routeRenderAudit.fitCertifiedRouteEnabled ? "TRUE" : "FALSE"}</span>
+          <span>Render Source Layer: {routeRenderAudit.renderSourceLayer}</span>
+          <span>Render Authority ID: {routeRenderAudit.renderAuthorityId}</span>
+        </div>
       </div>
 
       <div className="dal-grid two">

@@ -8,6 +8,10 @@ export type MapLayerId =
   | "waterReference"
   | "terrainReference"
   | "inventory"
+  | "routeAuthorityDraft"
+  | "routeAuthorityCertified"
+  | "routeAuthorityDirectFallback"
+  | "routeAuthorityRejected"
   | "scopeVersion"
   | "iofPackage"
   | "streetCenterline"
@@ -135,6 +139,10 @@ export const MAP_LAYER_ORDER: MapLayerId[] = [
   "railroadReference",
   "streetReference",
   "inventory",
+  "routeAuthorityDirectFallback",
+  "routeAuthorityDraft",
+  "routeAuthorityRejected",
+  "routeAuthorityCertified",
   "streetCenterline",
   "scopeVersion",
   "iofPackage",
@@ -155,6 +163,10 @@ export const DEFAULT_MAP_LAYERS: Record<MapLayerId, MapLayerState> = {
   railroadReference: { layerId: "railroadReference", label: "Railroad Reference", visible: true, selectable: true, zIndex: 6 },
   streetReference: { layerId: "streetReference", label: "Street Reference", visible: true, selectable: true, zIndex: 7 },
   inventory: { layerId: "inventory", label: "Inventory Layer", visible: true, selectable: true, zIndex: 10 },
+  routeAuthorityDirectFallback: { layerId: "routeAuthorityDirectFallback", label: "ROUTE_AUTHORITY_DIRECT_FALLBACK", visible: true, selectable: true, zIndex: 32 },
+  routeAuthorityDraft: { layerId: "routeAuthorityDraft", label: "ROUTE_AUTHORITY_DRAFT", visible: true, selectable: true, zIndex: 34 },
+  routeAuthorityRejected: { layerId: "routeAuthorityRejected", label: "ROUTE_AUTHORITY_REJECTED", visible: true, selectable: true, zIndex: 36 },
+  routeAuthorityCertified: { layerId: "routeAuthorityCertified", label: "ROUTE_AUTHORITY_CERTIFIED", visible: true, selectable: true, zIndex: 38 },
   streetCenterline: { layerId: "streetCenterline", label: "Street Centerlines", visible: true, selectable: true, zIndex: 15 },
   scopeVersion: { layerId: "scopeVersion", label: "ScopeVersion Layer", visible: true, selectable: true, zIndex: 20 },
   iofPackage: { layerId: "iofPackage", label: "IOF Package Overlay", visible: true, selectable: true, zIndex: 25 },

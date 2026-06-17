@@ -19,6 +19,8 @@ export type MapKernelMetrics = {
   visibleScopeVersions: number;
   visibleIofPackages: number;
   visibleRoutes: number;
+  visibleInventoryRoutes: number;
+  visibleRouteAuthorityRoutes: number;
   visibleStations: number;
   visibleNodes: number;
   visibleEdges: number;
@@ -168,10 +170,18 @@ export function summarizeMapKernelMetrics(specs: MapKernelRenderSpec[], options:
   const primitives = renderMapKernelPrimitives(specs, options);
   const audit = auditMapKernelRenderAuthority(specs, options);
   const countRefs = (kind: string) => new Set(primitives.filter((primitive) => primitive.ref.kind === kind).map((primitive) => primitive.ref.id)).size;
+  const routeAuthorityRoutes = primitives.filter(
+    (primitive) =>
+      primitive.ref.kind === "Route" &&
+      (primitive.metadata?.isRouteAuthority === true || String(primitive.metadata?.sourceLayer ?? "").startsWith("ROUTE_AUTHORITY_"))
+  );
+  const inventoryRoutes = primitives.filter((primitive) => primitive.ref.kind === "Route" && primitive.layerId === "inventory");
   return {
     visibleScopeVersions: specs.filter((spec) => spec.sourceType === "ScopeVersion").length,
     visibleIofPackages: specs.filter((spec) => spec.sourceType === "IOFPackage").length,
     visibleRoutes: countRefs("Route"),
+    visibleInventoryRoutes: new Set(inventoryRoutes.map((primitive) => primitive.ref.id)).size,
+    visibleRouteAuthorityRoutes: new Set(routeAuthorityRoutes.map((primitive) => primitive.ref.id)).size,
     visibleStations: countRefs("Station"),
     visibleNodes: countRefs("Node"),
     visibleEdges: countRefs("Edge"),
