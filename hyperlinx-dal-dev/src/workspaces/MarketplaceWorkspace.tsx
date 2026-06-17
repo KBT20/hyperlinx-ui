@@ -40,6 +40,13 @@ export default function MarketplaceWorkspace() {
     const draft = generatePreliminaryQuote(scope, termMonths);
     return notes ? { ...draft, notes } : draft;
   }, [notes, scopeVersions, selectedScopeVersion, termMonths]);
+  const quoteScope = quoteDraft
+    ? selectedScopeVersion?.scopeVersionId === quoteDraft.scopeVersionId
+      ? selectedScopeVersion
+      : scopeVersions.find((scope) => scope.scopeVersionId === quoteDraft.scopeVersionId)
+    : null;
+  const routeAuthorityReference = quoteScope?.certifiedRouteReference;
+  const authoritativeQuoteAllowed = routeAuthorityReference?.routeAuthorityState === "CERTIFIED_ROUTE";
 
   async function refresh() {
     try {
@@ -98,6 +105,13 @@ export default function MarketplaceWorkspace() {
                 <span>Engineering Cost: {fmtMoney(Number(quoteDraft.estimatedEngineeringCost ?? 0))}</span>
                 <span>Constructability: {Math.round(Number((quoteDraft.constructabilityAssessment as any)?.constructabilityScore ?? 0))}</span>
                 <span>Quote Source: ScopeVersion geometry / build path / costs</span>
+                <span>Route Authority State: {routeAuthorityReference?.routeAuthorityState ?? "NO_CERTIFIED_ROUTE"}</span>
+                <span>Route Mode: {routeAuthorityReference?.routeMode ?? "UNKNOWN"}</span>
+                <span>Route Feet: {Math.round(Number(routeAuthorityReference?.routeFeet ?? quoteDraft.buildFeet ?? 0)).toLocaleString()} ft</span>
+                <span>Crow-Fly Feet: {routeAuthorityReference ? "see CertifiedRoute" : "n/a"}</span>
+                <span>Route/Crow-Fly Ratio: {routeAuthorityReference ? "see CertifiedRoute" : "n/a"}</span>
+                <span>Constraint Evidence: {routeAuthorityReference?.constraintEvidenceId ?? "MISSING"}</span>
+                <span>Quote Authority: {authoritativeQuoteAllowed ? "AUTHORITATIVE" : "PRELIMINARY_ROUTE_NOT_CERTIFIED"}</span>
                 <span>NRC: {fmtMoney(quoteDraft.nrc)}</span>
                 <span>MRC: {fmtMoney(quoteDraft.mrc)}</span>
                 <span>Construction NRC: {fmtMoney(Number(quoteDraft.constructionNrc ?? 0))}</span>
@@ -113,7 +127,7 @@ export default function MarketplaceWorkspace() {
               <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Quote notes" />
               <div className="dal-actions">
                 <button type="button" onClick={() => void saveQuote()}>
-                  Save Quote
+                  {authoritativeQuoteAllowed ? "Save Authoritative Quote" : "Save Preliminary Quote"}
                 </button>
                 <button type="button" onClick={() => setWorkspace("control")}>
                   Control

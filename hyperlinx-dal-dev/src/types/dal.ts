@@ -300,6 +300,31 @@ export type ScopeVersionGraphReference = {
   graphVersion: string;
 };
 
+export type ScopeVersionCertifiedRouteReference = {
+  certifiedRouteId: string;
+  geometryHash: string;
+  routeAuthorityState:
+    | "DRAFT_ROUTE"
+    | "DIRECT_FALLBACK"
+    | "ENGINEER_REVIEW_REQUIRED"
+    | "PROVISIONALLY_CERTIFIED"
+    | "CERTIFIED_ROUTE"
+    | "REJECTED_ROUTE"
+    | "BLOCKED";
+  routeMode:
+    | "DIRECT_FALLBACK"
+    | "ROAD_ROW"
+    | "UTILITY_EASEMENT"
+    | "EXISTING_TELECOM"
+    | "RAIL_CORRIDOR"
+    | "POWER_CORRIDOR"
+    | "PRIVATE_EASEMENT"
+    | "ENGINEER_DEFINED";
+  routeFeet: number;
+  routeMiles: number;
+  constraintEvidenceId?: string;
+};
+
 export type IOFPackageType =
   | "ENGINEERING"
   | "PERMITTING"
@@ -511,6 +536,7 @@ export type ScopeVersion = {
   certificationSnapshot?: CertificationSnapshot;
   serviceabilityAssessment?: ServiceabilityAssessment;
   graphReference?: unknown;
+  certifiedRouteReference?: ScopeVersionCertifiedRouteReference;
   decisionTimestamp?: string;
   user?: string;
   station?: unknown;

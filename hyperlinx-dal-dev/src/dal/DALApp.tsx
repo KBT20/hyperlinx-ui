@@ -16,6 +16,7 @@ import OperationalIntelligenceWorkspace from "../workspaces/OperationalIntellige
 import PortfolioWorkspace from "../workspaces/PortfolioWorkspace";
 import PrismWorkspace from "../workspaces/PrismWorkspace";
 import PrismSiteDecisionWorkspace from "../workspaces/PrismSiteDecisionWorkspace";
+import RouteEngineeringWorkspace from "../workspaces/RouteEngineeringWorkspace";
 import TranslateWorkspace from "../workspaces/TranslateWorkspace";
 import TwinWorkspace from "../workspaces/TwinWorkspace";
 import DALNavigation from "./DALNavigation";
@@ -31,6 +32,7 @@ function DALWorkspaceOutlet() {
   if (workspace === "design") return <DALPlaceholderWorkspace title="Design" />;
   if (workspace === "prism") return <PrismWorkspace />;
   if (workspace === "siteDecision") return <PrismSiteDecisionWorkspace />;
+  if (workspace === "routeEngineering") return <RouteEngineeringWorkspace />;
   if (workspace === "candidateSites") return <CandidateSitesWorkspace />;
   if (workspace === "networkAffinity") return <NetworkAffinityWorkspace />;
   if (workspace === "portfolio") return <PortfolioWorkspace />;
@@ -45,6 +47,7 @@ function DALWorkspaceOutlet() {
 function reasoningWorkspace(workspace: ReturnType<typeof useDALState>["workspace"]): ReasoningWorkspace {
   if (workspace === "graphViewer" || workspace === "graphExtensions" || workspace === "inventoryRecovery") return "graph-viewer";
   if (workspace === "siteDecision") return "prism";
+  if (workspace === "routeEngineering") return "prism";
   if (workspace === "portfolio" || workspace === "candidateSites" || workspace === "networkAffinity") return "portfolio";
   if (workspace === "ops") return "operational-intelligence";
   return workspace;
@@ -71,6 +74,14 @@ function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]
       "Which risks drive this decision?",
       "Which permits are likely required?",
       "Recommend deployment sequencing.",
+    ];
+  if (workspace === "routeEngineering")
+    return [
+      "Why is this route blocked?",
+      "What evidence is missing?",
+      "Can this route produce an authoritative quote?",
+      "Compare route feet to crow-fly feet.",
+      "What must happen before certification?",
     ];
   if (workspace === "portfolio")
     return [

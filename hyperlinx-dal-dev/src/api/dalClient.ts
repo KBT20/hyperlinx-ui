@@ -47,6 +47,7 @@ import type {
 import type { CandidateSite } from "../types/candidateSite";
 import type { GraphExtension } from "../types/graphExtension";
 import type { OpportunitySeed } from "../types/portfolio";
+import type { CertifiedRoute } from "../routing/CertifiedRouteAuthority";
 
 function createId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return `${prefix}-${crypto.randomUUID()}`;
@@ -427,6 +428,55 @@ export async function loadCloseEvent(closeEventId: string) {
 
 export async function saveCloseEvent(closeEvent: CloseEvent) {
   return createCloseEventRecord(closeEvent);
+}
+
+export async function listCertifiedRoutes() {
+  const remote = await requestJson<any>(apiUrl("/api/certified-routes"));
+  return unwrapList<CertifiedRoute>(remote, ["certifiedRoutes"]);
+}
+
+export async function getCertifiedRoute(id: string) {
+  const remote = await requestJson<any>(apiUrl(`/api/certified-routes/${encodeURIComponent(id)}`));
+  return (remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute;
+}
+
+export async function createCertifiedRoute(route: CertifiedRoute) {
+  const remote = await requestJson<any>(apiUrl("/api/certified-routes"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ certifiedRoute: route }),
+  });
+  return (remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute;
+}
+
+export async function updateCertifiedRoute(route: CertifiedRoute) {
+  const remote = await requestJson<any>(apiUrl(`/api/certified-routes/${encodeURIComponent(route.certifiedRouteId)}`), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ certifiedRoute: route }),
+  });
+  return (remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute;
+}
+
+export async function certifyCertifiedRoute(
+  id: string,
+  payload: { engineerName: string; certificationNotes?: string; provisionalReason?: string }
+) {
+  const remote = await requestJson<any>(apiUrl(`/api/certified-routes/${encodeURIComponent(id)}/certify`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return (remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute;
+}
+
+export async function rejectCertifiedRoute(id: string, payload: { reason: string }) {
+  const remote = await requestJson<any>(apiUrl(`/api/certified-routes/${encodeURIComponent(id)}/reject`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return (remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute;
 }
 
 export async function listPrismOpportunities() {

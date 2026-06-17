@@ -14,6 +14,7 @@ export const DIRS = {
   marketplaceQuotes: path.join(DATA_ROOT, "marketplace-quotes"),
   iofPackages: path.join(DATA_ROOT, "iof-packages"),
   closeEvents: path.join(DATA_ROOT, "close-events"),
+  certifiedRoutes: path.join(DATA_ROOT, "certified-routes"),
 };
 
 export function jsonResponse(res, statusCode, payload) {

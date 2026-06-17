@@ -7,6 +7,10 @@ function activeWork(item: ControlWorkItem) {
   return item.status === "ACTIVE" || item.status === "PENDING";
 }
 
+function hasCertifiedRouteAuthority(scope: ReturnType<typeof useDALState>["selectedScopeVersion"]) {
+  return scope?.certifiedRouteReference?.routeAuthorityState === "CERTIFIED_ROUTE";
+}
+
 export default function FieldWorkspace() {
   const { selectedGraph, selectedScopeVersion, setWorkspace } = useDALState();
   const [workItems, setWorkItems] = useState<ControlWorkItem[]>([]);
@@ -43,6 +47,10 @@ export default function FieldWorkspace() {
     const scopeVersionId = selectedScopeVersion?.scopeVersionId ?? item?.scopeVersionId;
     if (!scopeVersionId) {
       setStatus("Select active work with a ScopeVersion before submitting a closure.");
+      return;
+    }
+    if (!hasCertifiedRouteAuthority(selectedScopeVersion)) {
+      setStatus("Field closure blocked: selected ScopeVersion must reference a CERTIFIED_ROUTE.");
       return;
     }
     const closure: FieldClosure = {
@@ -97,7 +105,7 @@ export default function FieldWorkspace() {
           <input type="number" value={footage} onChange={(event) => setFootage(Number(event.target.value))} placeholder="Footage" />
           <input value={crew} onChange={(event) => setCrew(event.target.value)} placeholder="Crew" />
           <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Field notes" />
-          <button type="button" onClick={() => void submitClosure()}>
+          <button type="button" onClick={() => void submitClosure()} disabled={!hasCertifiedRouteAuthority(selectedScopeVersion)}>
             Submit Closure
           </button>
           <div className="dal-status">{status}</div>
@@ -108,6 +116,7 @@ export default function FieldWorkspace() {
           <div className="dal-metrics">
             <span>Inventory: {selectedGraph?.inventoryId ?? "none"}</span>
             <span>Scope: {selectedScopeVersion?.scopeVersionId ?? "none"}</span>
+            <span>Route Authority: {selectedScopeVersion?.certifiedRouteReference?.routeAuthorityState ?? "NO_CERTIFIED_ROUTE"}</span>
             <span>Stations: {selectedGraph?.stations.length.toLocaleString() ?? "0"}</span>
           </div>
         </div>

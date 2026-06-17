@@ -72,6 +72,7 @@ const IMMUTABLE_TOP_LEVEL_KEYS: Array<keyof ScopeVersion> = [
   "certificationSnapshot",
   "serviceabilityAssessment",
   "graphReference",
+  "certifiedRouteReference",
   "decisionTimestamp",
   "user",
   "station",
@@ -125,6 +126,7 @@ export function validateScopeVersion(scopeVersion: ScopeVersion): ScopeVersionVa
   const decision = truth.decisionBasis;
   const requiresEngineeringCertification = truth.decisionType === "PrismSiteDecision" || scopeVersion.status !== "DRAFT";
   const certificationSnapshot = truth.certificationSnapshot ?? scopeVersion.certificationSnapshot;
+  const certifiedRouteReference = scopeVersion.certifiedRouteReference ?? (truth as any).certifiedRouteReference;
   const serviceability = truth.serviceabilityAssessment ?? scopeVersion.serviceabilityAssessment ?? (certificationSnapshot as any)?.serviceabilityAssessment;
   const attachmentCertification = truth.engineeringBasis?.attachmentCertification ?? (certificationSnapshot as any)?.attachmentPoint;
   const lateralCertification = truth.engineeringBasis?.lateralCertification ?? (certificationSnapshot as any)?.lateralPath;
@@ -193,6 +195,11 @@ export function validateScopeVersion(scopeVersion: ScopeVersion): ScopeVersionVa
       errors.push(error("serviceabilityAssessment", "Serviceability assessment is required."));
     } else if ((serviceability as any).status === "NOT_SERVICEABLE" || !(serviceability as any).serviceable) {
       errors.push(error("serviceabilityAssessment", "ScopeVersion cannot be created from a NOT_SERVICEABLE site."));
+    }
+    if (!certifiedRouteReference) {
+      errors.push(error("certifiedRouteReference", "CertifiedRoute reference is required for authoritative ScopeVersion workflows."));
+    } else if (!["CERTIFIED_ROUTE", "PROVISIONALLY_CERTIFIED"].includes(String(certifiedRouteReference.routeAuthorityState))) {
+      errors.push(error("certifiedRouteReference.routeAuthorityState", "Route authority must be CERTIFIED_ROUTE or PROVISIONALLY_CERTIFIED."));
     }
   }
 

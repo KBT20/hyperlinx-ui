@@ -1,6 +1,7 @@
 import http from "node:http";
 import { DATA_ROOT, DIRS, PORT, errorResponse, jsonResponse } from "./routes/_shared.js";
 import { handleCandidateSites } from "./routes/candidate-sites.js";
+import { handleCertifiedRoutes } from "./routes/certified-routes.js";
 import { handleCloseEvents } from "./routes/close-events.js";
 import { handleGeocode } from "./routes/geocode.js";
 import { handleInventoryGraphs } from "./routes/inventory-graphs.js";
@@ -11,6 +12,7 @@ import { handleScopeVersions } from "./routes/scopeversions.js";
 
 const routes = [
   handleGeocode,
+  handleCertifiedRoutes,
   handleScopeVersions,
   handleCandidateSites,
   handleOpportunitySeeds,
@@ -39,6 +41,7 @@ const server = http.createServer(async (req, res) => {
           marketplaceQuotes: true,
           iofPackages: true,
           closeEvents: true,
+          certifiedRoutes: true,
           geocode: true,
         },
       });

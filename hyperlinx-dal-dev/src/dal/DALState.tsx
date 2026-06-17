@@ -14,6 +14,7 @@ export type DALWorkspace =
   | "design"
   | "prism"
   | "siteDecision"
+  | "routeEngineering"
   | "candidateSites"
   | "networkAffinity"
   | "portfolio"

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import ReasoningHealthDashboard from "../components/ReasoningHealthDashboard";
-import { listCandidateSites, listCloseEvents, listControlWorkItems, listFieldClosures, listInventoryGraphs, listIofPackages, listMarketplaceQuotes, listOpportunitySeeds, listPrismOpportunities, listScopeVersions, loadTwinState } from "../api/dalClient";
+import { listCandidateSites, listCertifiedRoutes, listCloseEvents, listControlWorkItems, listFieldClosures, listInventoryGraphs, listIofPackages, listMarketplaceQuotes, listOpportunitySeeds, listPrismOpportunities, listScopeVersions, loadTwinState } from "../api/dalClient";
 import { testDalConnectivity, type DalConnectivityResult } from "../api/dalConnectivity";
 import { listInventoryImportJobs } from "../api/inventoryImportJobs";
 import { discoverInventoryRecovery, summarizeInventoryRecovery, type InventoryRecoveryRecord } from "../api/inventoryRecovery";
@@ -9,6 +9,7 @@ import type { CloseEvent, ControlWorkItem, FieldClosure, InventoryGraphMetadata,
 import type { CandidateSite } from "../types/candidateSite";
 import type { OpportunitySeed } from "../types/portfolio";
 import { renderIOFPackage, renderScopeVersion, summarizeMapKernelMetrics } from "../mapkernel";
+import type { CertifiedRoute } from "../routing/CertifiedRouteAuthority";
 
 function fmt(n: number | undefined) {
   return Number(n || 0).toLocaleString();
@@ -29,6 +30,7 @@ export default function OperationalIntelligenceWorkspace() {
   const [scopeVersions, setScopeVersions] = useState<ScopeVersion[]>([]);
   const [iofPackages, setIofPackages] = useState<IOFPackage[]>([]);
   const [closeEvents, setCloseEvents] = useState<CloseEvent[]>([]);
+  const [certifiedRoutes, setCertifiedRoutes] = useState<CertifiedRoute[]>([]);
   const [quotes, setQuotes] = useState<MarketplaceQuote[]>([]);
   const [seeds, setSeeds] = useState<OpportunitySeed[]>([]);
   const [workItems, setWorkItems] = useState<ControlWorkItem[]>([]);
@@ -46,13 +48,17 @@ export default function OperationalIntelligenceWorkspace() {
 
   async function refresh() {
     try {
-      const [nextGraphs, nextSites, nextOpps, nextScopes, nextPackages, nextCloseEvents, nextQuotes, nextSeeds, nextWork, nextClosures, nextTwin, nextRecovery, nextConnectivity, nextImportJobs] = await Promise.all([
+      const [nextGraphs, nextSites, nextOpps, nextScopes, nextPackages, nextCloseEvents, nextCertifiedRoutes, nextQuotes, nextSeeds, nextWork, nextClosures, nextTwin, nextRecovery, nextConnectivity, nextImportJobs] = await Promise.all([
         listInventoryGraphs(),
         listCandidateSites(),
         listPrismOpportunities(),
         listScopeVersions(),
         listIofPackages(),
         listCloseEvents(),
+        listCertifiedRoutes().catch((error) => {
+          console.warn("ROUTE AUTHORITY METRICS UNAVAILABLE", error instanceof Error ? error.message : String(error));
+          return [] as CertifiedRoute[];
+        }),
         listMarketplaceQuotes(),
         listOpportunitySeeds(),
         listControlWorkItems(),
@@ -68,6 +74,7 @@ export default function OperationalIntelligenceWorkspace() {
       setScopeVersions(nextScopes);
       setIofPackages(nextPackages);
       setCloseEvents(nextCloseEvents);
+      setCertifiedRoutes(nextCertifiedRoutes);
       setQuotes(nextQuotes);
       setSeeds(nextSeeds);
       setWorkItems(nextWork);
@@ -155,6 +162,18 @@ export default function OperationalIntelligenceWorkspace() {
   const activePackages = iofPackages.filter((iofPackage) => iofPackage.status === "ACTIVE");
   const completedPackages = iofPackages.filter((iofPackage) => iofPackage.status === "COMPLETE");
   const closedPackages = iofPackages.filter((iofPackage) => iofPackage.status === "CLOSED");
+  const certifiedRouteCount = certifiedRoutes.filter((route) => route.routeAuthorityState === "CERTIFIED_ROUTE").length;
+  const draftRouteCount = certifiedRoutes.filter((route) => route.routeAuthorityState === "DRAFT_ROUTE").length;
+  const directFallbackRouteCount = certifiedRoutes.filter((route) => route.routeAuthorityState === "DIRECT_FALLBACK" || route.routeMode === "DIRECT_FALLBACK").length;
+  const routesAwaitingEngineerReview = certifiedRoutes.filter((route) => route.routeAuthorityState === "ENGINEER_REVIEW_REQUIRED").length;
+  const rejectedRouteCount = certifiedRoutes.filter((route) => route.routeAuthorityState === "REJECTED_ROUTE").length;
+  const authoritativeQuotesBlockedByRoute = certifiedRoutes.filter((route) => !route.authority.canGenerateAuthoritativeQuote).length;
+  const iofPackagesBlockedByRoute = certifiedRoutes.filter((route) => !route.authority.canCreateIOFPackage).length;
+  const controlWorkBlockedByRoute = certifiedRoutes.filter((route) => !route.authority.canCreateControlWork).length;
+  const averageRouteToCrowFlyRatio =
+    certifiedRoutes.reduce((sum, route) => sum + Number(route.routeToCrowFlyRatio || 0), 0) / Math.max(certifiedRoutes.length, 1);
+  const averageRouteConstructability =
+    certifiedRoutes.reduce((sum, route) => sum + Number(route.constructabilityScore || 0), 0) / Math.max(certifiedRoutes.length, 1);
   const packageProgress =
     iofPackages.reduce((sum, iofPackage) => sum + Number(iofPackage.progress?.percentComplete ?? 0), 0) / Math.max(iofPackages.length, 1);
   const projectedNrc = scopeVersions.reduce((sum, scope) => sum + scopeFinancialValue(scope, "NRC"), 0);
@@ -272,6 +291,16 @@ export default function OperationalIntelligenceWorkspace() {
           <span>Closed Packages: {fmt(closedPackages.length)}</span>
           <span>Close Events: {fmt(closeEvents.length)}</span>
           <span>Package Progress: {fmt(Math.round(packageProgress))}%</span>
+          <span>Certified Routes: {fmt(certifiedRouteCount)}</span>
+          <span>Draft Routes: {fmt(draftRouteCount)}</span>
+          <span>Direct Fallback Routes: {fmt(directFallbackRouteCount)}</span>
+          <span>Routes Awaiting Engineer Review: {fmt(routesAwaitingEngineerReview)}</span>
+          <span>Rejected Routes: {fmt(rejectedRouteCount)}</span>
+          <span>Authoritative Quotes Blocked by Route: {fmt(authoritativeQuotesBlockedByRoute)}</span>
+          <span>IOF Packages Blocked by Route: {fmt(iofPackagesBlockedByRoute)}</span>
+          <span>Control Work Blocked by Route: {fmt(controlWorkBlockedByRoute)}</span>
+          <span>Average Route/Crow-Fly Ratio: {averageRouteToCrowFlyRatio.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+          <span>Average Route Constructability: {fmt(Math.round(averageRouteConstructability))}</span>
           <span>Buildable Opportunities: {fmt(buildableOpportunities.length)}</span>
           <span>Permit-Constrained Opportunities: {fmt(permitConstrainedOpportunities.length)}</span>
           <span>Crossing-Constrained Opportunities: {fmt(crossingConstrainedOpportunities.length)}</span>

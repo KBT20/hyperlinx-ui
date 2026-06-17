@@ -96,6 +96,8 @@ export default function TwinWorkspace() {
   const proposedRisk = Number(riskBasis?.compositeRisk ?? 0);
   const constructability = scopeTruth?.constructabilityAssessment;
   const scopeSite = scopeTruth?.sourceCandidate ?? scopeTruth?.site ?? scopeTruth?.candidateSite;
+  const routeAuthorityState = selectedScopeVersion?.certifiedRouteReference?.routeAuthorityState ?? "NO_CERTIFIED_ROUTE";
+  const plannedStateAuthority = routeAuthorityState === "CERTIFIED_ROUTE" ? "PLANNED NETWORK TRUTH" : "ADVISORY ONLY";
   const attachmentPoint = networkBasis?.attachmentCoordinates as DALCoordinate | undefined;
   const plannedRoute = selectedGraph?.routes.find((route) => route.routeId === networkBasis?.routeId);
   const plannedRouteSegment = routeSegmentForAttachment(plannedRoute, attachmentPoint);
@@ -245,6 +247,8 @@ export default function TwinWorkspace() {
             />
             <div className="dal-metrics">
               <span>Candidate: {scopeSite?.name ?? scopeSite?.companyName ?? "n/a"}</span>
+              <span>Route Authority: {routeAuthorityState}</span>
+              <span>Twin Planned State: {plannedStateAuthority}</span>
               <span>Lateral Coordinates: {fmt(plannedBuildPaths[0]?.coordinates.length)}</span>
               <span>Backbone Coordinates: {fmt(plannedRoutes[0]?.coordinates.length)}</span>
               <span>Attachment: {attachmentPoint ? `${attachmentPoint[1].toFixed(6)}, ${attachmentPoint[0].toFixed(6)}` : "n/a"}</span>

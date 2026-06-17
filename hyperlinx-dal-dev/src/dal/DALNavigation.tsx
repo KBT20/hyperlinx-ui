@@ -8,6 +8,7 @@ const items: Array<{ id: DALWorkspace; label: string }> = [
   { id: "graphExtensions", label: "Graph Extensions" },
   { id: "prism", label: "Prism" },
   { id: "siteDecision", label: "Site Decision" },
+  { id: "routeEngineering", label: "Route Engineering" },
   { id: "candidateSites", label: "Candidate Sites" },
   { id: "networkAffinity", label: "Network Affinity" },
   { id: "portfolio", label: "Portfolio" },

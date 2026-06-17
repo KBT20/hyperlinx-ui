@@ -17,6 +17,10 @@ function controlEvent(scopeVersionId: string, payload: Record<string, unknown>):
   };
 }
 
+function hasCertifiedRouteAuthority(scope: ScopeVersion | null | undefined) {
+  return scope?.certifiedRouteReference?.routeAuthorityState === "CERTIFIED_ROUTE";
+}
+
 export default function ControlWorkspace() {
   const { selectedScopeVersion, selectedGraph, setSelectedScopeVersion, setSelectedScopeVersionId, setWorkspace } = useDALState();
   const [quotes, setQuotes] = useState<MarketplaceQuote[]>([]);
@@ -50,6 +54,10 @@ export default function ControlWorkspace() {
     }
     if (!["QUOTED", "APPROVED", "ACTIVATED", "IN_CONSTRUCTION"].includes(scope.status)) {
       setStatus("Generate a quote and approve the ScopeVersion before Control activation.");
+      return;
+    }
+    if (!hasCertifiedRouteAuthority(scope)) {
+      setStatus("Control work blocked: ScopeVersion must reference a CERTIFIED_ROUTE.");
       return;
     }
     const quote = quotes.find((item) => item.scopeVersionId === scope.scopeVersionId);
@@ -132,7 +140,7 @@ export default function ControlWorkspace() {
           <h3>Create Work Item</h3>
           <input value={title} onChange={(event) => setTitle(event.target.value)} />
           <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Control notes" />
-          <button type="button" onClick={() => void createWorkItem()}>
+          <button type="button" onClick={() => void createWorkItem()} disabled={!hasCertifiedRouteAuthority(selectedScopeVersion ?? scopeVersions[0])}>
             Generate Work From ScopeVersion
           </button>
           <div className="dal-status">{status}</div>
@@ -148,6 +156,7 @@ export default function ControlWorkspace() {
             <span>Attachment: {(selectedScopeVersion?.canonicalTruth as any)?.networkBasis?.attachmentStrategy?.replaceAll("_", " ") ?? "n/a"}</span>
             <span>Route: {(selectedScopeVersion?.canonicalTruth as any)?.networkBasis?.routeId ?? "n/a"}</span>
             <span>Station: {(selectedScopeVersion?.canonicalTruth as any)?.networkBasis?.stationId ?? "n/a"}</span>
+            <span>Route Authority: {(selectedScopeVersion ?? scopeVersions[0])?.certifiedRouteReference?.routeAuthorityState ?? "NO_CERTIFIED_ROUTE"}</span>
             <span>Quote TCV: {Math.round(Number(quotes.find((quote) => quote.scopeVersionId === selectedScopeVersion?.scopeVersionId)?.totalContractValue ?? 0)).toLocaleString()}</span>
             <span>Constructability: {Math.round(Number(((selectedScopeVersion?.constructability as any) ?? (selectedScopeVersion?.canonicalTruth as any)?.constructabilityAssessment)?.constructabilityScore ?? 0)).toLocaleString()}</span>
             <span>Permit Authorities: {(((selectedScopeVersion?.permits as any) ?? (selectedScopeVersion?.canonicalTruth as any)?.permitRequirements)?.authorities ?? []).join(", ") || "n/a"}</span>
