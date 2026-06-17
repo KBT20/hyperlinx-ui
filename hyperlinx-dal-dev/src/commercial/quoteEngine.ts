@@ -1,4 +1,5 @@
 import { createId, now } from "../api/dalClient";
+import { deriveRouteCertificationState } from "../certification/CertificationAuthority";
 import { DEFAULT_CONSTRUCTION_TYPE } from "../engineering/constructionModel";
 import type { MarketplaceQuote, OperationalEvent, ScopeVersion } from "../types/dal";
 
@@ -43,13 +44,18 @@ export function scopeCommercialBasis(scopeVersion?: ScopeVersion | null) {
   const costBasis = truth?.costBasis ?? {};
   const revenueBasis = truth?.revenueBasis ?? {};
   const crossingInventory = truth?.crossingInventory ?? {};
+  const constraintEvidencePackage = engineeringBasis?.constraintEvidencePackage ?? truth?.constraintEvidencePackage ?? truth?.routeCertification?.constraintEvidencePackage;
+  const routeCertification = engineeringBasis?.routeCertification ?? truth?.routeCertification;
+  const routeGeometryHash = routeCertification?.certifiedGeometryHash ?? engineeringBasis?.certifiedGeometryHash ?? truth?.certifiedGeometryHash ?? constraintEvidencePackage?.routeGeometryHash ?? "";
+  const certificationAuthority = engineeringBasis?.certificationAuthority ?? truth?.certificationAuthority ?? routeCertification?.certificationAuthority;
+  const constraintSummary = constraintEvidencePackage?.summary ?? engineeringBasis?.constraintSummary ?? {};
   const permits = engineeringBasis?.permits ?? truth?.permitRequirements ?? constructability?.permitting;
   const buildFeet = asNumber(engineeringBasis?.buildFeet ?? buildPath?.buildFeet ?? buildPath?.distanceFeet ?? truth?.buildFeet);
   const constructionType = String(engineeringBasis?.constructionType ?? buildPath?.constructionType ?? truth?.constructionBasis?.constructionType ?? DEFAULT_CONSTRUCTION_TYPE);
   const engineeringCrossings =
-    asNumber(engineeringBasis?.roadCrossings) +
-    asNumber(engineeringBasis?.railCrossings) +
-    asNumber(engineeringBasis?.waterCrossings);
+    asNumber(constraintSummary?.roadCrossings ?? engineeringBasis?.roadCrossings) +
+    asNumber(constraintSummary?.railroadCrossings ?? engineeringBasis?.railCrossings) +
+    asNumber(constraintSummary?.waterCrossings ?? engineeringBasis?.waterCrossings);
   const crossings = asNumber(crossingInventory?.estimatedCrossings ?? (engineeringCrossings || undefined) ?? buildPath?.estimatedCrossings);
   const permitAuthorities = asArray(engineeringBasis?.permitAuthorities?.length ? engineeringBasis.permitAuthorities : permits?.authorities);
   return {
@@ -63,6 +69,11 @@ export function scopeCommercialBasis(scopeVersion?: ScopeVersion | null) {
     costBasis,
     revenueBasis,
     crossingInventory,
+    constraintEvidencePackage,
+    routeCertification,
+    routeGeometryHash,
+    certificationAuthority,
+    constraintSummary,
     permits,
     buildFeet,
     buildMiles: asNumber(buildPath?.buildMiles ?? buildFeet / 5280),
@@ -78,6 +89,33 @@ export function scopeCommercialBasis(scopeVersion?: ScopeVersion | null) {
 
 export function generatePreliminaryQuote(scopeVersion: ScopeVersion, termMonths = 36): MarketplaceQuote {
   const basis = scopeCommercialBasis(scopeVersion);
+  const certificationAuthority =
+    basis.certificationAuthority ??
+    deriveRouteCertificationState({
+      routeGeometryHash: basis.routeGeometryHash,
+      constraintEvidencePackage: basis.constraintEvidencePackage,
+      engineerApproval: {
+        approved: basis.routeCertification?.status === "CERTIFIED_ROUTE" || basis.routeCertification?.status === "PROVISIONALLY_CERTIFIED",
+        rejected: basis.routeCertification?.status === "REJECTED_ROUTE",
+        notes: basis.routeCertification?.certificationNotes ?? basis.engineeringBasis?.engineerNotes,
+        certifiedBy: basis.routeCertification?.engineerName,
+        certifiedAt: basis.routeCertification?.certifiedAt,
+      },
+    });
+  const quoteStatus =
+    certificationAuthority.state === "CERTIFIED_ROUTE" && certificationAuthority.evidenceGrade === "COMPLETE_CONSTRAINT_EVIDENCE"
+      ? "PRELIMINARY_QUOTE_CERTIFIED_EVIDENCE"
+      : certificationAuthority.evidenceStatus === "CURRENT" && certificationAuthority.evidenceGrade === "INCOMPLETE_CONSTRAINT_EVIDENCE"
+        ? "PRELIMINARY_QUOTE_INCOMPLETE_EVIDENCE"
+        : "PRELIMINARY_QUOTE_REVIEW_REQUIRED";
+  const confidenceLevel =
+    certificationAuthority.state === "CERTIFIED_ROUTE"
+      ? "HIGH"
+      : certificationAuthority.state === "PROVISIONALLY_CERTIFIED"
+        ? "MEDIUM"
+        : certificationAuthority.evidenceStatus === "CURRENT"
+          ? "LOW"
+          : "REVIEW_REQUIRED";
   const riskScore = asNumber(basis.riskBasis?.compositeRisk ?? basis.buildPath?.riskScore, 45);
   const constructionNrc = Math.round(asNumber(basis.financialBasis?.estimatedConstructionCost ?? basis.costBasis?.buildCost ?? basis.buildPath?.estimatedCost, 15000 + basis.buildFeet * 22));
   const engineeringNrc = Math.round(asNumber(basis.financialBasis?.estimatedEngineeringCost ?? basis.costBasis?.estimatedEngineeringCost ?? basis.buildPath?.estimatedEngineeringCost, constructionNrc * 0.12));
@@ -122,13 +160,24 @@ export function generatePreliminaryQuote(scopeVersion: ScopeVersion, termMonths 
     estimatedCrossingCost: crossingNrc,
     estimatedEngineeringCost: engineeringNrc,
     constructabilityAssessment: basis.constructability,
+    constraintEvidenceId: basis.constraintEvidencePackage?.evidenceId,
+    routeGeometryHash: basis.routeGeometryHash || basis.constraintEvidencePackage?.routeGeometryHash,
+    quoteStatus,
+    evidenceGrade: certificationAuthority.evidenceGrade,
+    certificationAuthority,
+    missingConstraintLayers: certificationAuthority.missingConstraintLayers,
+    constraintCompletenessPercent: certificationAuthority.constraintCompletenessPercent,
+    confidenceLevel,
     quoteExplanation: {
-      summary: `Preliminary quote generated from ScopeVersion ${scopeVersion.scopeVersionId}: ${Math.round(basis.buildFeet).toLocaleString()} ft ${basis.constructionType} build to route ${basis.routeId ?? "n/a"}.`,
+      summary: `${quoteStatus} generated from ScopeVersion ${scopeVersion.scopeVersionId}: ${Math.round(basis.buildFeet).toLocaleString()} ft ${basis.constructionType} build to route ${basis.routeId ?? "n/a"} using ${certificationAuthority.evidenceGrade}.`,
       buildLengthFeet: Math.round(basis.buildFeet),
       constructionType: basis.constructionType,
       crossings: basis.crossings,
       permits: basis.permitAuthorities,
       engineeringFactors: [
+        `Certification Authority ${certificationAuthority.state}`,
+        `Evidence ${certificationAuthority.evidenceGrade}`,
+        `${Math.round(certificationAuthority.constraintCompletenessPercent)}% constraint completeness`,
         `${basis.buildPath?.segmentCount ?? "n/a"} path segments`,
         `${basis.buildPath?.turnCount ?? "n/a"} turns`,
         `${Math.round(riskScore)} composite risk`,
@@ -158,8 +207,17 @@ export function generatePreliminaryQuote(scopeVersion: ScopeVersion, termMonths 
       crossings: basis.crossings,
       permitAuthorities: basis.permitAuthorities,
       riskScore,
+      constraintEvidenceId: basis.constraintEvidencePackage?.evidenceId,
+      routeGeometryHash: basis.routeGeometryHash || basis.constraintEvidencePackage?.routeGeometryHash,
+      constraintSummary: basis.constraintSummary,
+      quoteStatus,
+      evidenceGrade: certificationAuthority.evidenceGrade,
+      certificationAuthority,
+      missingConstraintLayers: certificationAuthority.missingConstraintLayers,
+      constraintCompletenessPercent: certificationAuthority.constraintCompletenessPercent,
+      confidenceLevel,
     },
-    notes: `Generated from ScopeVersion geometry, build path, crossing inventory, permit requirements, and commercial basis. ${basis.permitAuthorities.length ? `Permits: ${basis.permitAuthorities.join(", ")}.` : "No permit authorities listed."}`,
+    notes: `Generated from ScopeVersion geometry, build path, crossing inventory, permit requirements, and commercial basis. Certification Authority: ${certificationAuthority.state}; Evidence: ${certificationAuthority.evidenceGrade}. ${basis.permitAuthorities.length ? `Permits: ${basis.permitAuthorities.join(", ")}.` : "No permit authorities listed."}`,
     createdAt: now(),
   };
   return quote;

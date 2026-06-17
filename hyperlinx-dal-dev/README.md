@@ -22,7 +22,10 @@ VITE_DAL_API=http://67.213.118.179:3001
 VITE_DAL_BASELINE_API=http://67.213.118.179:3001
 VITE_DAL_BASELINE_GRAPH_API=http://67.213.118.179:3001
 VITE_DAL_INVENTORY_GRAPH_API=http://67.213.118.179:3001
-VITE_DAL_REASONING_API=http://67.213.118.179:4100
+VITE_DAL_REASONING_PRIMARY_API=http://72.46.85.137:8000
+VITE_DAL_REASONING_PRIMARY_MODEL=mistralai/Mistral-7B-Instruct-v0.2
+VITE_DAL_REASONING_SECONDARY_API=
+VITE_DAL_REASONING_FALLBACK_API=
 VITE_DAL_APP_NAME=HYPERLINX DAL DEVELOPMENT
 ```
 
@@ -33,11 +36,20 @@ VITE_DAL_API=http://127.0.0.1:3001
 VITE_DAL_BASELINE_API=http://127.0.0.1:3001
 VITE_DAL_BASELINE_GRAPH_API=http://127.0.0.1:3001
 VITE_DAL_INVENTORY_GRAPH_API=http://127.0.0.1:3001
-VITE_DAL_REASONING_API=http://127.0.0.1:4100
+VITE_DAL_REASONING_PRIMARY_API=http://127.0.0.1:8000
+VITE_DAL_REASONING_PRIMARY_MODEL=Local OpenAI-Compatible Reasoning
+VITE_DAL_REASONING_SECONDARY_API=
+VITE_DAL_REASONING_FALLBACK_API=
 VITE_DAL_APP_NAME=HYPERLINX DAL DEVELOPMENT
 ```
 
-DAL runtime API targets come from these environment values. If an API value is omitted, the DAL app derives the API host from the browser host and the expected service port.
+DAL runtime truth-layer API targets come from these environment values. Reasoning is a separate fabric and is resolved through primary, secondary, fallback, or `VITE_DAL_REASONING_ENDPOINTS` registry configuration.
+
+Reasoning registry JSON example:
+
+```env
+VITE_DAL_REASONING_ENDPOINTS=[{"name":"DAL1-GPU","host":"72.46.85.137","port":8000,"protocol":"http","modelName":"mistralai/Mistral-7B-Instruct-v0.2","capabilities":["GRAPH_ANALYSIS","PRISM_ANALYSIS","TRANSLATION","AFFINITY","SYNTHESIS","GENERAL_REASONING"]}]
+```
 
 ## Run
 

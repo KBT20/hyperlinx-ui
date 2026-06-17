@@ -1,4 +1,5 @@
-import { DAL_API, DAL_BASELINE_GRAPH_API, DAL_REASONING_API } from "../config/dalApi";
+import { DAL_API, DAL_BASELINE_GRAPH_API } from "../config/dalApi";
+import { endpointBaseUrl, loadReasoningRegistryHealth } from "./reasoningRegistry";
 
 export type DalConnectivityKey = "dal" | "baseline" | "reasoning";
 
@@ -35,9 +36,9 @@ const CONNECTIVITY_TARGETS: Array<{
   },
   {
     key: "reasoning",
-    label: "Reasoning API",
-    endpoint: DAL_REASONING_API,
-    path: "/api/reasoning/health",
+    label: "Reasoning Fabric",
+    endpoint: "",
+    path: "/v1/models",
   },
 ];
 
@@ -87,7 +88,26 @@ async function testTarget(target: (typeof CONNECTIVITY_TARGETS)[number]): Promis
 }
 
 export async function testDalConnectivity() {
-  return Promise.all(CONNECTIVITY_TARGETS.map((target) => testTarget(target)));
+  const [dal, baseline, reasoning] = await Promise.all([
+    testTarget(CONNECTIVITY_TARGETS.find((target) => target.key === "dal")!),
+    testTarget(CONNECTIVITY_TARGETS.find((target) => target.key === "baseline")!),
+    loadReasoningRegistryHealth(),
+  ]);
+  const activeEndpoint = reasoning.activeEndpoint;
+  const reasoningResult: DalConnectivityResult = {
+    key: "reasoning",
+    label: "Reasoning Fabric",
+    endpoint: activeEndpoint ? endpointBaseUrl(activeEndpoint) : "not configured",
+    testUrl: activeEndpoint ? `${endpointBaseUrl(activeEndpoint)}/v1/models` : "not configured",
+    reachable: Boolean(activeEndpoint),
+    responseTimeMs: activeEndpoint?.latencyMs ?? 0,
+    statusText: activeEndpoint
+      ? `${activeEndpoint.name} ${activeEndpoint.healthStatus} ${activeEndpoint.provider ?? "unknown"} ${activeEndpoint.modelId ?? activeEndpoint.modelName}`
+      : "No reasoning endpoint configured or reachable",
+    checkedAt: reasoning.checkedAt,
+    error: activeEndpoint ? undefined : `${reasoning.failures} endpoint failure(s)`,
+  };
+  return [dal, baseline, reasoningResult];
 }
 
 export async function testBaselineGraphConnectivity() {

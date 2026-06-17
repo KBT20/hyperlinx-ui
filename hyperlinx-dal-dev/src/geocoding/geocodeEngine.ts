@@ -1,14 +1,44 @@
 import type { CandidateSite } from "../types/candidateSite";
-import { DAL_GEOCODER_PROVIDER, DAL_GOOGLE_GEOCODING_KEY, DAL_MAPBOX_GEOCODING_TOKEN } from "../config/dalApi";
+import { DAL_API, DAL_GEOCODER_PROVIDER, DAL_GOOGLE_GEOCODING_KEY, DAL_MAPBOX_GEOCODING_TOKEN } from "../config/dalApi";
 
-export type GeocodeProviderName = "priority" | "deterministic" | "census" | "nominatim" | "mapbox" | "google";
+export type GeocodeProviderName = "server" | "priority" | "deterministic" | "census" | "nominatim" | "mapbox" | "google";
 
 export type GeocodeResult = {
   latitude: number;
   longitude: number;
   confidence: number;
   provider: string;
+  normalizedAddress?: string;
+  candidates?: ServerGeocodeCandidate[];
   raw?: unknown;
+};
+
+export type ServerGeocodeCandidate = {
+  lat?: number;
+  lon?: number;
+  confidence?: number;
+  provider?: string;
+  normalizedAddress?: string;
+  raw?: unknown;
+};
+
+export type ServerGeocodeResponse = {
+  siteId: string;
+  status: "CERTIFIED" | "AMBIGUOUS" | "FAILED";
+  lat?: number;
+  lon?: number;
+  confidence: number;
+  provider: string;
+  geocodeMethod?: CandidateSite["geocodeMethod"];
+  rawAddress?: string;
+  lookupAddress?: string;
+  normalizedAddress?: string;
+  suiteDetail?: string;
+  addressIssueFlags?: string[];
+  suiteStrippingImprovedMatch?: boolean;
+  candidates?: ServerGeocodeCandidate[];
+  attempts?: CandidateSite["geocodeAttempts"];
+  failureReason?: string;
 };
 
 export type GeocodeProvider = {
@@ -21,7 +51,7 @@ export type GeocodeOptions = {
   fallbackToDeterministic?: boolean;
 };
 
-const realProviderNames = new Set(["priority", "google", "mapbox", "census", "nominatim"]);
+const realProviderNames = new Set(["server", "priority", "google", "mapbox", "census", "nominatim"]);
 
 function hashText(text: string) {
   let hash = 0;
@@ -83,6 +113,36 @@ export const deterministicGeocoder: GeocodeProvider = {
       ...deterministicTexasCoordinate(site),
       confidence: confidenceForSite(site) * 0.7,
       provider: "deterministic-local-texas",
+    };
+  },
+};
+
+export const serverProxyGeocoder: GeocodeProvider = {
+  name: "dal-server-geocode-proxy",
+  async geocode(site) {
+    const response = await fetch(`${DAL_API}/api/geocode`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        siteId: site.candidateId,
+        companyName: site.companyName,
+        address: site.address,
+        city: site.city,
+        state: site.state,
+        zip: site.zipCode,
+      }),
+    });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    const data = (await response.json()) as ServerGeocodeResponse;
+    if (!isValidGeocodeCoordinate(data.lat, data.lon)) return null;
+    return {
+      latitude: Number(data.lat),
+      longitude: Number(data.lon),
+      confidence: Number(data.confidence || 0),
+      provider: data.provider,
+      normalizedAddress: data.normalizedAddress,
+      candidates: data.candidates,
+      raw: data,
     };
   },
 };
@@ -195,6 +255,7 @@ export const priorityGeocoder: GeocodeProvider = {
 };
 
 export const geocodeProviders: Record<GeocodeProviderName, GeocodeProvider> = {
+  server: serverProxyGeocoder,
   priority: priorityGeocoder,
   deterministic: deterministicGeocoder,
   census: censusGeocoder,
@@ -218,6 +279,94 @@ function geocodeFailure(site: CandidateSite, providerName: string, reason: strin
     geocodeProvider: providerName,
     geocodeFailureReason: reason,
   };
+}
+
+export function certifiedGeocode(site: CandidateSite) {
+  return site.geocodeStatus === "CERTIFIED" || site.geocodeMethod === "HUMAN_APPROVED";
+}
+
+export async function geocodeCandidateSiteViaServer(site: CandidateSite, options: GeocodeOptions = {}): Promise<CandidateSite> {
+  const existingCertified = certifiedGeocode(site) && isValidGeocodeCoordinate(site.latitude, site.longitude);
+  if (!options.force && existingCertified) return site;
+  const timestamp = new Date().toISOString();
+  try {
+    const response = await fetch(`${DAL_API}/api/geocode`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        siteId: site.candidateId,
+        companyName: site.companyName,
+        address: site.address,
+        city: site.city,
+        state: site.state,
+        zip: site.zipCode,
+      }),
+    });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    const data = (await response.json()) as ServerGeocodeResponse;
+    const hasCoordinate = isValidGeocodeCoordinate(data.lat, data.lon);
+    if (data.status === "CERTIFIED" && hasCoordinate) {
+      return {
+        ...site,
+        latitude: Number(data.lat),
+        longitude: Number(data.lon),
+        status: "VERIFIED",
+        geocodeStatus: "CERTIFIED",
+        geocodeMethod: data.geocodeMethod ?? "SERVER_PROXY",
+        geocodeProvider: data.provider,
+        geocodeConfidence: data.confidence,
+        normalizedAddress: data.normalizedAddress ?? data.lookupAddress,
+        geocodeCandidates: data.candidates,
+        geocodeAttempts: data.attempts,
+        rawAddress: data.rawAddress,
+        suiteDetail: data.suiteDetail,
+        addressIssueFlags: data.addressIssueFlags,
+        suiteStrippingImprovedMatch: data.suiteStrippingImprovedMatch,
+        geocodeTimestamp: timestamp,
+        geocodedAt: timestamp,
+      };
+    }
+    if (data.status === "AMBIGUOUS") {
+      return {
+        ...site,
+        latitude: hasCoordinate ? Number(data.lat) : undefined,
+        longitude: hasCoordinate ? Number(data.lon) : undefined,
+        status: "AMBIGUOUS_GEOCODE",
+        geocodeStatus: "AMBIGUOUS",
+        geocodeMethod: data.geocodeMethod ?? "SERVER_PROXY",
+        geocodeProvider: data.provider,
+        geocodeConfidence: data.confidence,
+        normalizedAddress: data.normalizedAddress ?? data.lookupAddress,
+        geocodeCandidates: data.candidates,
+        geocodeAttempts: data.attempts,
+        rawAddress: data.rawAddress,
+        suiteDetail: data.suiteDetail,
+        addressIssueFlags: data.addressIssueFlags,
+        suiteStrippingImprovedMatch: data.suiteStrippingImprovedMatch,
+        geocodeFailureReason: data.failureReason ?? "Ambiguous geocode candidate. Human review required.",
+        geocodeTimestamp: timestamp,
+        geocodedAt: timestamp,
+      };
+    }
+    return {
+      ...geocodeFailure(site, data.provider || "dal-server-geocode-proxy", data.failureReason ?? "Server geocoder returned no certified coordinates"),
+      geocodeAttempts: data.attempts,
+      rawAddress: data.rawAddress,
+      normalizedAddress: data.normalizedAddress ?? data.lookupAddress,
+      suiteDetail: data.suiteDetail,
+      addressIssueFlags: data.addressIssueFlags,
+      suiteStrippingImprovedMatch: data.suiteStrippingImprovedMatch,
+      geocodeCandidates: data.candidates,
+    };
+  } catch (err) {
+    return geocodeFailure(site, "dal-server-geocode-proxy", err instanceof Error ? err.message : String(err));
+  }
+}
+
+export async function batchGeocodeCandidateSitesViaServer(sites: CandidateSite[], options: GeocodeOptions = {}) {
+  const geocoded: CandidateSite[] = [];
+  for (const site of sites) geocoded.push(await geocodeCandidateSiteViaServer(site, options));
+  return geocoded;
 }
 
 export async function geocodeCandidateSite(
@@ -263,6 +412,9 @@ export async function geocodeCandidateSite(
     geocodeProvider: result.provider,
     geocodeConfidence: result.confidence,
     geocodeStatus: result.provider === deterministicGeocoder.name ? "FALLBACK" : "GEOCODED",
+    geocodeMethod: result.provider === deterministicGeocoder.name ? "DETERMINISTIC_FALLBACK" : "BROWSER_PROVIDER",
+    normalizedAddress: result.normalizedAddress,
+    geocodeCandidates: result.candidates,
     geocodeFailureReason: failureReason,
     geocodeTimestamp: timestamp,
     geocodedAt: timestamp,

@@ -9,17 +9,40 @@ import {
   writeRecords,
 } from "./dalStorage";
 import { listServerBaselineGraphMetadata, loadServerBaselineGraph } from "./inventoryRecovery";
+import {
+  createScopeVersion as createScopeVersionRecord,
+  ensureInventoryScopeVersion,
+  listScopeVersions as listScopeVersionRecords,
+  loadScopeVersion as loadScopeVersionRecord,
+  updateScopeVersion as updateScopeVersionRecord,
+} from "./scopeVersionRepository";
+import {
+  archiveIofPackage as archiveIofPackageRecord,
+  closeIofPackage as closeIofPackageRecord,
+  createIofPackage as createIofPackageRecord,
+  generateIofPackagesForScopeVersion,
+  listIofPackages as listIofPackageRecords,
+  loadIofPackage as loadIofPackageRecord,
+  updateIofPackage as updateIofPackageRecord,
+} from "./iofPackageRepository";
+import {
+  createCloseEvent as createCloseEventRecord,
+  listCloseEvents as listCloseEventRecords,
+  loadCloseEvent as loadCloseEventRecord,
+} from "./closeEventRepository";
 import { assertValidScopeVersion, mergeImmutableScopeVersion, validateScopeVersion } from "../scopeversion/scopeVersionValidation";
 import type {
   ControlWorkItem,
   FieldClosure,
   InventoryGraph,
   InventoryGraphMetadata,
+  IOFPackage,
   MarketplaceQuote,
   OperationalEvent,
   PrismOpportunity,
   ScopeVersion,
   TwinState,
+  CloseEvent,
 } from "../types/dal";
 import type { CandidateSite } from "../types/candidateSite";
 import type { GraphExtension } from "../types/graphExtension";
@@ -141,12 +164,24 @@ function normalizeCandidateSite(raw: any): CandidateSite {
     geocodeProvider: site?.geocodeProvider,
     geocodeConfidence: Number.isFinite(Number(site?.geocodeConfidence)) ? Number(site.geocodeConfidence) : undefined,
     geocodeStatus: site?.geocodeStatus,
+    geocodeMethod: site?.geocodeMethod,
     geocodeFailureReason: site?.geocodeFailureReason,
     geocodeTimestamp: site?.geocodeTimestamp ?? site?.geocodedAt,
     geocodedAt: site?.geocodedAt ?? site?.geocodeTimestamp,
+    normalizedAddress: site?.normalizedAddress,
+    geocodeCandidates: Array.isArray(site?.geocodeCandidates) ? site.geocodeCandidates : undefined,
+    geocodeAttempts: Array.isArray(site?.geocodeAttempts) ? site.geocodeAttempts : undefined,
+    rawAddress: site?.rawAddress,
+    suiteDetail: site?.suiteDetail,
+    addressIssueFlags: Array.isArray(site?.addressIssueFlags) ? site.addressIssueFlags : undefined,
+    suiteStrippingImprovedMatch: site?.suiteStrippingImprovedMatch,
+    certifiedBy: site?.certifiedBy,
+    certifiedAt: site?.certifiedAt,
     county: site?.county,
     facilityType: site?.facilityType,
     marketSegment: site?.marketSegment,
+    classification: site?.classification,
+    sourceDatasetId: site?.sourceDatasetId,
     status: site?.status ?? "IMPORTED",
     createdAt: String(site?.createdAt ?? now()),
   };
@@ -245,6 +280,18 @@ export async function saveInventoryGraph(payload: InventoryGraph) {
     body: JSON.stringify(payloadWithTelemetry),
   });
   const graph = normalizeInventoryGraph(remote?.inventoryGraph ?? remote?.graph ?? remote?.data ?? remote ?? { ...payloadWithTelemetry, metadata: { ...payloadWithTelemetry.metadata, localFallback: true } });
+  const inventoryScopeVersion = await ensureInventoryScopeVersion(graph).catch((err) => {
+    console.warn("DAL INVENTORY SCOPEVERSION PERSISTENCE WARNING", graph.inventoryId, err instanceof Error ? err.message : String(err));
+    return null;
+  });
+  if (inventoryScopeVersion) {
+    graph.scopeVersionId = inventoryScopeVersion.scopeVersionId;
+    graph.metadata = {
+      ...graph.metadata,
+      scopeVersionId: inventoryScopeVersion.scopeVersionId,
+      certificationState: inventoryScopeVersion.certificationState,
+    };
+  }
   if (!remote) {
     await writeRecord("inventoryGraphs", graph);
   }
@@ -321,20 +368,15 @@ export async function deleteLocalGraphExtension(extensionId: string) {
 }
 
 export async function listScopeVersions() {
-  const remote = await tryRemote<any>(apiUrl("/api/scopeversions"));
-  return remote ? unwrapList<ScopeVersion>(remote, ["scopeVersions"]) : readCollection<ScopeVersion>("scopeVersions");
+  return listScopeVersionRecords();
 }
 
 export async function loadScopeVersion(scopeVersionId: string) {
-  const remote = await tryRemote<any>(apiUrl(`/api/scopeversions/${encodeURIComponent(scopeVersionId)}`));
-  if (remote) return (remote?.scopeVersion ?? remote?.data ?? remote) as ScopeVersion;
-  const local = await findRecord<ScopeVersion>("scopeVersions", scopeVersionId);
-  if (!local) throw new Error(`ScopeVersion not found: ${scopeVersionId}`);
-  return local;
+  return loadScopeVersionRecord(scopeVersionId);
 }
 
 export async function saveScopeVersion(scopeVersion: ScopeVersion) {
-  const existingLocal = await findRecord<ScopeVersion>("scopeVersions", scopeVersion.scopeVersionId);
+  const existingLocal = await loadScopeVersionRecord(scopeVersion.scopeVersionId).catch(() => undefined);
   const candidate = mergeImmutableScopeVersion(existingLocal, scopeVersion);
   const validation = validateScopeVersion(candidate);
   const requiresStrictValidation = candidate.status !== "DRAFT" || (candidate.canonicalTruth as any)?.decisionType === "PrismSiteDecision";
@@ -346,14 +388,45 @@ export async function saveScopeVersion(scopeVersion: ScopeVersion) {
       validation,
     },
   });
-  const remote = await tryRemote<any>(apiUrl("/api/scopeversions"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const saved = (remote?.scopeVersion ?? remote?.data ?? remote ?? payload) as ScopeVersion;
-  if (!remote) await writeRecord("scopeVersions", saved);
-  return saved;
+  return existingLocal ? updateScopeVersionRecord(payload) : createScopeVersionRecord(payload);
+}
+
+export async function listIofPackages() {
+  return listIofPackageRecords();
+}
+
+export async function loadIofPackage(packageId: string) {
+  return loadIofPackageRecord(packageId);
+}
+
+export async function saveIofPackage(iofPackage: IOFPackage) {
+  const existing = await loadIofPackageRecord(iofPackage.packageId).catch(() => undefined);
+  return existing ? updateIofPackageRecord(iofPackage) : createIofPackageRecord(iofPackage);
+}
+
+export async function createIofPackagesFromScopeVersion(scopeVersion: ScopeVersion) {
+  const packages = generateIofPackagesForScopeVersion(scopeVersion);
+  return Promise.all(packages.map((iofPackage) => createIofPackageRecord(iofPackage)));
+}
+
+export async function closeIofPackage(packageId: string) {
+  return closeIofPackageRecord(packageId);
+}
+
+export async function archiveIofPackage(packageId: string) {
+  return archiveIofPackageRecord(packageId);
+}
+
+export async function listCloseEvents() {
+  return listCloseEventRecords();
+}
+
+export async function loadCloseEvent(closeEventId: string) {
+  return loadCloseEventRecord(closeEventId);
+}
+
+export async function saveCloseEvent(closeEvent: CloseEvent) {
+  return createCloseEventRecord(closeEvent);
 }
 
 export async function listPrismOpportunities() {

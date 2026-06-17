@@ -29,6 +29,14 @@ export function lonLatToWorld(coordinate: DALCoordinate, zoom: number) {
   };
 }
 
+export function worldToLonLat(point: { x: number; y: number }, zoom: number): DALCoordinate {
+  const scale = TILE_SIZE * 2 ** zoom;
+  const lon = (point.x / scale) * 360 - 180;
+  const mercatorN = Math.PI - (2 * Math.PI * point.y) / scale;
+  const lat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(mercatorN) - Math.exp(-mercatorN)));
+  return [lon, clampLatitude(lat)];
+}
+
 export function worldToTile(value: number) {
   return Math.floor(value / TILE_SIZE);
 }

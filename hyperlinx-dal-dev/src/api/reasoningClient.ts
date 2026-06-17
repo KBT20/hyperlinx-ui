@@ -1,5 +1,7 @@
-import { DAL_REASONING_API } from "../config/dalApi";
+import { requestReasoningWithFailover, resolveReasoningEndpoint } from "./reasoningRegistry";
 
+// Runtime / AI guardrail: reasoning fabric output is bounded synthesis only.
+// Mistral, vLLM, and future models may propose candidate truth, but cannot mutate ScopeVersions.
 export type ReasoningWorkspace =
   | "translate"
   | "inventory"
@@ -86,19 +88,21 @@ export async function queryReasoning(args: {
   userPrompt: string;
   context: ReasoningContext;
 }) {
-  const res = await fetch(`${DAL_REASONING_API}/api/reasoning/query`, {
+  return requestReasoningWithFailover<ReasoningResponse>("/api/reasoning/query", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(args),
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${text ? `: ${text}` : ""}`);
-  return JSON.parse(text) as ReasoningResponse;
+  }, "GENERAL_REASONING");
 }
 
 export async function loadReasoningHealth() {
-  const res = await fetch(`${DAL_REASONING_API}/api/reasoning/health`);
-  const text = await res.text();
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}${text ? `: ${text}` : ""}`);
-  return JSON.parse(text) as { status: "ok"; mode: string; model: string; providerReachable: boolean; dryRun: boolean };
+  const activeEndpoint = await resolveReasoningEndpoint("GENERAL_REASONING");
+  return {
+    status: activeEndpoint.healthStatus,
+    mode: activeEndpoint.priority ?? "DISCOVERED",
+    model: activeEndpoint.modelName,
+    providerReachable: activeEndpoint.healthStatus === "ONLINE",
+    dryRun: activeEndpoint.healthStatus === "DEGRADED",
+    endpoint: activeEndpoint,
+  };
 }

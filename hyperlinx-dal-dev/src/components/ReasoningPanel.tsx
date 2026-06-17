@@ -56,6 +56,7 @@ export default function ReasoningPanel({
         <div>
           <h3>{title}</h3>
           <span className="dal-reasoning-badge">Human approval required</span>
+          <span className="dal-reasoning-badge">Advisory only</span>
         </div>
         <button type="button" onClick={() => setOpen((prev) => !prev)}>
           {open ? "Hide" : "Ask Reasoning"}
@@ -123,4 +124,3 @@ export default function ReasoningPanel({
     </aside>
   );
 }
-

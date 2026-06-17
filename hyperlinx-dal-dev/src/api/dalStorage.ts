@@ -1,8 +1,11 @@
 export type DALCollectionName =
   | "inventoryGraphs"
+  | "inventoryImportJobs"
   | "candidateSites"
   | "graphExtensions"
   | "scopeVersions"
+  | "iofPackages"
+  | "closeEvents"
   | "opportunities"
   | "opportunitySeeds"
   | "quotes"
@@ -28,14 +31,17 @@ export type StoragePressureWarning = {
 };
 
 const DB_NAME = "hyperlinx-dal-dev";
-const DB_VERSION = 2;
+const DB_VERSION = 4;
 const LEGACY_STORAGE_PREFIX = "hyperlinx-dal-dev";
 
 const COLLECTION_ID_KEYS: Record<DALCollectionName, string> = {
   inventoryGraphs: "inventoryId",
+  inventoryImportJobs: "jobId",
   candidateSites: "candidateId",
   graphExtensions: "extensionId",
   scopeVersions: "scopeVersionId",
+  iofPackages: "packageId",
+  closeEvents: "closeEventId",
   opportunities: "opportunityId",
   opportunitySeeds: "id",
   quotes: "quoteId",

@@ -91,6 +91,109 @@ export type InventoryGraph = {
   updatedAt: string;
 };
 
+export type InventoryImportJobStatus =
+  | "QUEUED"
+  | "UPLOADING"
+  | "IMPORTING"
+  | "CHUNKING"
+  | "VALIDATING"
+  | "REGISTERING"
+  | "COMPLETE"
+  | "FAILED";
+
+export type InventorySourceFormat =
+  | "HYPERLINX"
+  | "SHAPEFILE"
+  | "GEOJSON"
+  | "KMZ"
+  | "KML"
+  | "3GIS"
+  | "IQGEO"
+  | "CONNECTBASE"
+  | "FIBER_ENGINEERING_RECORDS"
+  | "UNKNOWN";
+
+export type HyperlinxInventoryPackage = {
+  packageVersion: string;
+  exportedAt: string;
+  sourceFormat: InventorySourceFormat;
+  inventoryMetadata: InventoryGraphMetadata & Record<string, unknown>;
+  nodes: InventoryNode[];
+  edges: InventoryEdge[];
+  stations: InventoryStation[];
+  routes: InventoryRoute[];
+  graphSummary: {
+    inventoryId: string;
+    graphId: string;
+    nodeCount: number;
+    edgeCount: number;
+    stationCount: number;
+    routeCount: number;
+    serializedSizeBytes: number;
+    serializedSizeMB: number;
+  };
+  validation?: ValidationResult | unknown;
+};
+
+export type InventoryUploadProgress = {
+  jobId: string;
+  status: InventoryImportJobStatus;
+  uploadedBytes: number;
+  totalBytes: number;
+  uploadedChunks: number;
+  totalChunks: number;
+  percentComplete: number;
+  responseTimeMs?: number;
+  retryCount?: number;
+  currentChunkIndex?: number;
+  message?: string;
+};
+
+export type InventoryImportJob = {
+  jobId: string;
+  inventoryId?: string;
+  graphId?: string;
+  sourceFile: string;
+  sourceFormat: InventorySourceFormat;
+  endpoint: string;
+  status: InventoryImportJobStatus;
+  createdAt: string;
+  updatedAt: string;
+  totalBytes: number;
+  uploadedBytes: number;
+  chunkSizeBytes: number;
+  totalChunks: number;
+  uploadedChunks: number;
+  retryCount: number;
+  serverSupported: boolean;
+  validationStatus?: ValidationStatus;
+  validationSummary?: Record<string, unknown>;
+  error?: string;
+};
+
+export type InventoryHealthMetrics = {
+  totalInventories: number;
+  serverInventories: number;
+  browserInventories: number;
+  synchronizedInventories: number;
+  unsynchronizedInventories: number;
+  totalNodes: number;
+  totalEdges: number;
+  totalStations: number;
+  totalRoutes: number;
+  serverSizeMB: number;
+  browserSizeMB: number;
+  largestInventories: Array<{
+    inventoryId: string;
+    name: string;
+    graphSizeMB: number;
+    storageLocation: string;
+  }>;
+  failedImports: number;
+  failedValidations: number;
+  syncFailures: number;
+};
+
 export type ScopeVersionStatus =
   | "DRAFT"
   | "ANALYZED"
@@ -100,6 +203,27 @@ export type ScopeVersionStatus =
   | "IN_CONSTRUCTION"
   | "COMPLETE"
   | "REJECTED";
+
+export type ScopeVersionTruthType = "INVENTORY" | "CANDIDATE" | "APPROVED" | "FIELD_CLOSED" | "AS_BUILT";
+
+export type ScopeVersionCertificationState = "DRAFT" | "CERTIFIED" | "REJECTED";
+
+export type ScopeVersionRelationshipType =
+  | "ROOT"
+  | "AMENDMENT"
+  | "GRAPH_EXTENSION"
+  | "LATERAL_EXTENSION"
+  | "REDESIGN"
+  | "FIELD_CLOSURE"
+  | "AS_BUILT"
+  | "SUPERSEDES";
+
+export type ScopeVersionGraphSummary = {
+  nodeCount: number;
+  edgeCount: number;
+  stationCount: number;
+  routeCount: number;
+};
 
 export type ScopeVersionCandidate = {
   candidateId: string;
@@ -176,6 +300,59 @@ export type ScopeVersionGraphReference = {
   graphVersion: string;
 };
 
+export type IOFPackageType =
+  | "ENGINEERING"
+  | "PERMITTING"
+  | "CONSTRUCTION"
+  | "SPLICING"
+  | "TESTING"
+  | "AS_BUILT"
+  | "REVENUE";
+
+export type IOFPackageStatus = "DRAFT" | "APPROVED" | "ACTIVE" | "COMPLETE" | "CLOSED";
+
+export type IOFPackageProgress = {
+  totalObjects: number;
+  completedObjects: number;
+  percentComplete: number;
+};
+
+export type IOFPackage = {
+  packageId: string;
+  scopeVersionId: string;
+  packageType: IOFPackageType;
+  status: IOFPackageStatus;
+  createdAt: string;
+  updatedAt: string;
+  corridorId?: string;
+  segmentId?: string;
+  route: unknown[];
+  stations: unknown[];
+  objects: unknown[];
+  closeEventId?: string;
+  progress?: IOFPackageProgress;
+  archivedAt?: string;
+  isArchived?: boolean;
+  metadata?: Record<string, unknown>;
+};
+
+export type CloseEventType =
+  | "ENGINEERING_CLOSE"
+  | "PERMIT_CLOSE"
+  | "CONSTRUCTION_CLOSE"
+  | "FIELD_CLOSE"
+  | "AS_BUILT_CLOSE";
+
+export type CloseEvent = {
+  closeEventId: string;
+  sourceScopeVersionId: string;
+  packageId: string;
+  eventType: CloseEventType;
+  timestamp: string;
+  childScopeVersionId?: string;
+  payload?: Record<string, unknown>;
+};
+
 export type ScopeVersionNetworkBasis = {
   routeId: string;
   routeName?: string;
@@ -185,6 +362,10 @@ export type ScopeVersionNetworkBasis = {
   stationName?: string;
   attachmentPoint: DALCoordinate;
   attachmentCoordinates: DALCoordinate;
+  attachmentAuthority?: unknown;
+  attachmentMethod?: string;
+  attachmentConfidence?: number;
+  attachmentAuthorityEvidence?: unknown;
   capacityStatus?: string;
   attachmentStrategy?: string;
   networkAffinityScore?: number;
@@ -218,9 +399,20 @@ export type ScopeVersionEngineeringBasis = {
   constructabilityScore?: number;
   engineeringScore?: number;
   constructionAssumptions?: ConstructionAssumptions;
+  attachmentAuthority?: unknown;
   attachmentCertification?: AttachmentPoint;
   lateralCertification?: LateralPath;
   serviceabilityAssessment?: ServiceabilityAssessment;
+  routingMode?: string;
+  routeCertification?: unknown;
+  certifiedGeometrySnapshot?: DALCoordinate[];
+  certifiedGeometryHash?: string;
+  constraintEvidenceId?: string;
+  constraintEvidencePackage?: unknown;
+  constraintSummary?: unknown;
+  constraints?: unknown;
+  unresolvedConstraints?: unknown;
+  certificationReadiness?: string;
 };
 
 export type ScopeVersionFinancialBasis = {
@@ -281,7 +473,12 @@ export type ScopeVersionCanonicalTruth = {
 
 export type ScopeVersion = {
   scopeVersionId: string;
+  type?: ScopeVersionTruthType;
+  parentScopeVersionId?: string;
+  rootScopeVersionId?: string;
+  relationshipType?: ScopeVersionRelationshipType;
   inventoryId?: string;
+  sourceInventoryId?: string;
   graphId?: string;
   graphVersion?: string;
   candidateSiteId?: string;
@@ -289,6 +486,11 @@ export type ScopeVersion = {
   createdBy?: string;
   source: "InventoryGraph" | "GraphExtension" | "OpportunitySeed" | "PrismOpportunity" | "DesignCandidate" | "FieldClosure" | "Manual";
   status: ScopeVersionStatus;
+  certificationState: ScopeVersionCertificationState;
+  isImmutable?: boolean;
+  closureEventId?: string;
+  graphSummary?: ScopeVersionGraphSummary;
+  iofPackageIds?: string[];
   geometry?: DALCoordinate[];
   attachmentPoint?: DALCoordinate;
   candidateSite?: unknown;
@@ -369,6 +571,14 @@ export type MarketplaceQuote = {
   estimatedEnvironmentalCost?: number;
   estimatedEngineeringCost?: number;
   constructabilityAssessment?: unknown;
+  constraintEvidenceId?: string;
+  routeGeometryHash?: string;
+  quoteStatus?: "PRELIMINARY_QUOTE_CERTIFIED_EVIDENCE" | "PRELIMINARY_QUOTE_INCOMPLETE_EVIDENCE" | "PRELIMINARY_QUOTE_REVIEW_REQUIRED";
+  evidenceGrade?: "COMPLETE_CONSTRAINT_EVIDENCE" | "INCOMPLETE_CONSTRAINT_EVIDENCE" | "STALE_CONSTRAINT_EVIDENCE" | "UNKNOWN_CONSTRAINT_EVIDENCE";
+  certificationAuthority?: unknown;
+  missingConstraintLayers?: string[];
+  constraintCompletenessPercent?: number;
+  confidenceLevel?: "HIGH" | "MEDIUM" | "LOW" | "REVIEW_REQUIRED";
   quoteExplanation?: {
     summary: string;
     buildLengthFeet?: number;

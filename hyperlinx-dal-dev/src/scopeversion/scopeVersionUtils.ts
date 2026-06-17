@@ -86,19 +86,52 @@ export function createScopeVersionCandidateFromOpportunity(opportunity: PrismOpp
 
 export function createScopeVersionFromInventoryGraph(graph: InventoryGraph): ScopeVersion {
   const timestamp = now();
+  const scopeVersionId = graph.scopeVersionId ?? graph.metadata.scopeVersionId ?? `SV-INV-${graph.inventoryId}`;
   return {
-    scopeVersionId: createId("scope"),
+    scopeVersionId,
+    type: "INVENTORY",
+    rootScopeVersionId: scopeVersionId,
+    relationshipType: "ROOT",
+    sourceInventoryId: graph.inventoryId,
     inventoryId: graph.inventoryId,
     graphId: graph.graphId,
+    graphVersion: graph.graphId,
     source: "InventoryGraph",
     status: "DRAFT",
+    certificationState: "DRAFT",
+    isImmutable: false,
+    graphSummary: {
+      nodeCount: graph.nodes.length,
+      edgeCount: graph.edges.length,
+      stationCount: graph.stations.length,
+      routeCount: graph.routes.length,
+    },
+    iofPackageIds: [],
+    createdBy: "DAL Inventory Import",
+    decisionTimestamp: timestamp,
     canonicalTruth: {
+      graphReference: {
+        inventoryId: graph.inventoryId,
+        graphId: graph.graphId,
+        graphVersion: graph.graphId,
+      },
+      inventoryGraphReference: {
+        inventoryId: graph.inventoryId,
+        graphId: graph.graphId,
+        name: graph.metadata.name,
+      },
       inventoryId: graph.inventoryId,
       graphId: graph.graphId,
       routeCount: graph.routes.length,
       stationCount: graph.stations.length,
       edgeCount: graph.edges.length,
       nodeCount: graph.nodes.length,
+      graphSummary: {
+        nodeCount: graph.nodes.length,
+        edgeCount: graph.edges.length,
+        stationCount: graph.stations.length,
+        routeCount: graph.routes.length,
+      },
       validation: graph.validation,
     },
     createdAt: timestamp,
@@ -109,12 +142,18 @@ export function createScopeVersionFromInventoryGraph(graph: InventoryGraph): Sco
 
 export function createScopeVersionFromOpportunity(opportunity: PrismOpportunity, candidate: ScopeVersionCandidate): ScopeVersion {
   const timestamp = now();
+  const scopeVersionId = candidate.candidateId.replace(/^candidate-/, "scope-");
   return {
-    scopeVersionId: candidate.candidateId.replace(/^candidate-/, "scope-"),
+    scopeVersionId,
+    type: "CANDIDATE",
+    rootScopeVersionId: scopeVersionId,
+    relationshipType: "ROOT",
     inventoryId: opportunity.inventoryId,
     graphId: opportunity.graphId,
     source: "PrismOpportunity",
     status: "DRAFT",
+    certificationState: "DRAFT",
+    isImmutable: false,
     canonicalTruth: {
       opportunity,
       candidate,
@@ -127,16 +166,24 @@ export function createScopeVersionFromOpportunity(opportunity: PrismOpportunity,
 
 export function createScopeVersionFromGraphExtensions(graph: InventoryGraph, extensions: GraphExtension[], diff: GraphDiffSummary): ScopeVersion {
   const timestamp = now();
+  const scopeVersionId = createId("scope");
+  const parentScopeVersionId = graph.scopeVersionId ?? graph.metadata.scopeVersionId ?? `SV-INV-${graph.inventoryId}`;
   const failedExtensions = extensions.filter((extension) => extension.extensionCertificationStatus === "FAILED");
   if (failedExtensions.length) {
     throw new Error(`ScopeVersion creation blocked: ${failedExtensions.length} graph extension certification failed.`);
   }
   return {
-    scopeVersionId: createId("scope"),
+    scopeVersionId,
+    type: "CANDIDATE",
+    parentScopeVersionId,
+    rootScopeVersionId: parentScopeVersionId,
+    relationshipType: "GRAPH_EXTENSION",
     inventoryId: graph.inventoryId,
     graphId: graph.graphId,
     source: "GraphExtension",
     status: "DRAFT",
+    certificationState: "DRAFT",
+    isImmutable: false,
     canonicalTruth: {
       inventoryGraphReference: {
         inventoryId: graph.inventoryId,
@@ -175,12 +222,18 @@ export function createScopeVersionFromGraphExtensions(graph: InventoryGraph, ext
 
 export function createScopeVersionFromOpportunitySeed(seed: OpportunitySeed): ScopeVersion {
   const timestamp = now();
+  const scopeVersionId = createId("scope");
   return {
-    scopeVersionId: createId("scope"),
+    scopeVersionId,
+    type: "CANDIDATE",
+    rootScopeVersionId: scopeVersionId,
+    relationshipType: "ROOT",
     inventoryId: seed.inventoryId,
     graphId: seed.graphId,
     source: "OpportunitySeed",
     status: "DRAFT",
+    certificationState: "DRAFT",
+    isImmutable: false,
     canonicalTruth: {
       inventoryGraphReference: {
         inventoryId: seed.inventoryId,
@@ -237,6 +290,7 @@ export function createScopeVersionFromSiteDecision(args: {
 }): ScopeVersion {
   const timestamp = now();
   const { site, seed, route, node, station, quoteBasis, user = "DAL Operator" } = args;
+  const scopeVersionId = nextFormalScopeVersionId();
   assertCertificationAllowsScopeVersion(seed);
   const affinity = seed.networkAffinity;
   const buildPath = seed.buildPath ?? affinity?.buildPath;
@@ -377,7 +431,10 @@ export function createScopeVersionFromSiteDecision(args: {
     recommendation: recommendationValue,
   };
   return {
-    scopeVersionId: nextFormalScopeVersionId(),
+    scopeVersionId,
+    type: "CANDIDATE",
+    rootScopeVersionId: scopeVersionId,
+    relationshipType: "ROOT",
     inventoryId: seed.inventoryId,
     graphId: seed.graphId,
     graphVersion: seed.graphId,
@@ -386,6 +443,8 @@ export function createScopeVersionFromSiteDecision(args: {
     createdBy: user,
     source: "OpportunitySeed",
     status: "ANALYZED",
+    certificationState: "DRAFT",
+    isImmutable: false,
     candidateSite: site,
     latitude: site?.latitude ?? seed.latitude,
     longitude: site?.longitude ?? seed.longitude,
@@ -497,17 +556,25 @@ export function createScopeVersionFromSiteDecision(args: {
 
 export function createScopeVersionFromFieldClosure(closure: FieldClosure, prior?: ScopeVersion): ScopeVersion {
   const timestamp = now();
+  const scopeVersionId = createId("scope");
   return {
-    scopeVersionId: prior?.scopeVersionId ?? createId("scope"),
+    scopeVersionId,
+    type: "FIELD_CLOSED",
+    parentScopeVersionId: prior?.scopeVersionId,
+    rootScopeVersionId: prior?.rootScopeVersionId ?? prior?.scopeVersionId ?? scopeVersionId,
+    relationshipType: prior ? "FIELD_CLOSURE" : "ROOT",
     inventoryId: closure.inventoryId ?? prior?.inventoryId,
     graphId: closure.graphId ?? prior?.graphId,
     source: "FieldClosure",
     status: "COMPLETE",
+    certificationState: "DRAFT",
+    isImmutable: false,
+    closureEventId: closure.closureId,
     canonicalTruth: {
       ...(prior?.canonicalTruth ?? {}),
       latestClosure: closure,
     },
-    createdAt: prior?.createdAt ?? timestamp,
+    createdAt: timestamp,
     updatedAt: timestamp,
     events: [...(prior?.events ?? []), event("field.closure.applied", closure.closureId, "FieldClosure", { closure })],
   };

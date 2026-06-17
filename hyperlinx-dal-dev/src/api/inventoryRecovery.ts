@@ -502,18 +502,12 @@ export async function synchronizeInventory(inventoryId: string) {
   if (browser && !server) return pushBrowserInventoryToServer(inventoryId);
   if (!browser && server) return pullServerInventoryToBrowser(inventoryId);
   if (browser && server) {
-    const browserMetadata = normalizeMetadata(browser, browser);
-    const serverRecordCount = totalGraphRecordCount(server);
-    const browserRecordCount = totalGraphRecordCount(browserMetadata);
-    if (metadataMismatch(browserMetadata, server)) {
-      if (browserRecordCount > serverRecordCount) return pushBrowserInventoryToServer(inventoryId);
-      if (serverRecordCount > browserRecordCount) return pullServerInventoryToBrowser(inventoryId);
-    }
-    const localUpdated = Date.parse(browser.updatedAt ?? browser.metadata?.createdDate ?? "");
-    const serverUpdated = Date.parse(String((server as any).updatedAt ?? server.createdDate ?? ""));
-    if (Number.isFinite(localUpdated) && Number.isFinite(serverUpdated) && localUpdated > serverUpdated) {
-      return pushBrowserInventoryToServer(inventoryId);
-    }
+    console.info("DAL SERVER AUTHORITY SELECTED", {
+      inventoryId,
+      browserRecordCount: totalGraphRecordCount(normalizeMetadata(browser, browser)),
+      serverRecordCount: totalGraphRecordCount(server),
+      rule: "Server-backed inventory wins unless user explicitly chooses Push Browser Truth.",
+    });
     return pullServerInventoryToBrowser(inventoryId);
   }
   throw new Error(`Inventory not found in browser or server: ${inventoryId}`);

@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
-import { listCandidateSites, listControlWorkItems, listFieldClosures, listInventoryGraphs, listMarketplaceQuotes, listOpportunitySeeds, listPrismOpportunities, listScopeVersions, loadTwinState } from "../api/dalClient";
+import ReasoningHealthDashboard from "../components/ReasoningHealthDashboard";
+import { listCandidateSites, listCloseEvents, listControlWorkItems, listFieldClosures, listInventoryGraphs, listIofPackages, listMarketplaceQuotes, listOpportunitySeeds, listPrismOpportunities, listScopeVersions, loadTwinState } from "../api/dalClient";
 import { testDalConnectivity, type DalConnectivityResult } from "../api/dalConnectivity";
+import { listInventoryImportJobs } from "../api/inventoryImportJobs";
 import { discoverInventoryRecovery, summarizeInventoryRecovery, type InventoryRecoveryRecord } from "../api/inventoryRecovery";
-import type { ControlWorkItem, FieldClosure, InventoryGraphMetadata, MarketplaceQuote, PrismOpportunity, ScopeVersion, TwinState } from "../types/dal";
+import { endpointBaseUrl, type ReasoningFabricHealth } from "../api/reasoningRegistry";
+import type { CloseEvent, ControlWorkItem, FieldClosure, InventoryGraphMetadata, InventoryHealthMetrics, InventoryImportJob, IOFPackage, MarketplaceQuote, PrismOpportunity, ScopeVersion, TwinState } from "../types/dal";
 import type { CandidateSite } from "../types/candidateSite";
 import type { OpportunitySeed } from "../types/portfolio";
+import { renderIOFPackage, renderScopeVersion, summarizeMapKernelMetrics } from "../mapkernel";
 
 function fmt(n: number | undefined) {
   return Number(n || 0).toLocaleString();
@@ -23,6 +27,8 @@ export default function OperationalIntelligenceWorkspace() {
   const [candidateSites, setCandidateSites] = useState<CandidateSite[]>([]);
   const [opportunities, setOpportunities] = useState<PrismOpportunity[]>([]);
   const [scopeVersions, setScopeVersions] = useState<ScopeVersion[]>([]);
+  const [iofPackages, setIofPackages] = useState<IOFPackage[]>([]);
+  const [closeEvents, setCloseEvents] = useState<CloseEvent[]>([]);
   const [quotes, setQuotes] = useState<MarketplaceQuote[]>([]);
   const [seeds, setSeeds] = useState<OpportunitySeed[]>([]);
   const [workItems, setWorkItems] = useState<ControlWorkItem[]>([]);
@@ -30,6 +36,8 @@ export default function OperationalIntelligenceWorkspace() {
   const [twinState, setTwinState] = useState<TwinState | null>(null);
   const [recoveryRecords, setRecoveryRecords] = useState<InventoryRecoveryRecord[]>([]);
   const [connectivityResults, setConnectivityResults] = useState<DalConnectivityResult[]>([]);
+  const [importJobs, setImportJobs] = useState<InventoryImportJob[]>([]);
+  const [reasoningFabricHealth, setReasoningFabricHealth] = useState<ReasoningFabricHealth | null>(null);
   const [status, setStatus] = useState("Operational Intelligence ready.");
 
   useEffect(() => {
@@ -38,11 +46,13 @@ export default function OperationalIntelligenceWorkspace() {
 
   async function refresh() {
     try {
-      const [nextGraphs, nextSites, nextOpps, nextScopes, nextQuotes, nextSeeds, nextWork, nextClosures, nextTwin, nextRecovery, nextConnectivity] = await Promise.all([
+      const [nextGraphs, nextSites, nextOpps, nextScopes, nextPackages, nextCloseEvents, nextQuotes, nextSeeds, nextWork, nextClosures, nextTwin, nextRecovery, nextConnectivity, nextImportJobs] = await Promise.all([
         listInventoryGraphs(),
         listCandidateSites(),
         listPrismOpportunities(),
         listScopeVersions(),
+        listIofPackages(),
+        listCloseEvents(),
         listMarketplaceQuotes(),
         listOpportunitySeeds(),
         listControlWorkItems(),
@@ -50,11 +60,14 @@ export default function OperationalIntelligenceWorkspace() {
         loadTwinState(),
         discoverInventoryRecovery(),
         testDalConnectivity(),
+        listInventoryImportJobs(),
       ]);
       setGraphs(nextGraphs);
       setCandidateSites(nextSites);
       setOpportunities(nextOpps);
       setScopeVersions(nextScopes);
+      setIofPackages(nextPackages);
+      setCloseEvents(nextCloseEvents);
       setQuotes(nextQuotes);
       setSeeds(nextSeeds);
       setWorkItems(nextWork);
@@ -62,6 +75,7 @@ export default function OperationalIntelligenceWorkspace() {
       setTwinState(nextTwin);
       setRecoveryRecords(nextRecovery);
       setConnectivityResults(nextConnectivity);
+      setImportJobs(nextImportJobs);
       setStatus("Operational summary refreshed.");
     } catch (err: any) {
       setStatus(`Operational summary failed: ${err?.message ?? String(err)}`);
@@ -69,10 +83,51 @@ export default function OperationalIntelligenceWorkspace() {
   }
 
   const activeWork = workItems.filter((item) => item.status === "ACTIVE").length;
+  const mapKernelSpecs = [...scopeVersions.map((scopeVersion) => renderScopeVersion(scopeVersion)), ...iofPackages.map((iofPackage) => renderIOFPackage(iofPackage))];
+  const mapKernelMetrics = summarizeMapKernelMetrics(mapKernelSpecs, {
+    layerVisibility: {
+      edge: true,
+      station: true,
+      node: true,
+      object: true,
+      site: true,
+      attachment: true,
+      lateral: true,
+      scopeVersion: true,
+      iofPackage: true,
+    },
+    showStationLabels: true,
+    stationDensityFeet: 300,
+  });
   const inventoryRecoverySummary = summarizeInventoryRecovery(recoveryRecords);
+  const inventoryHealth: InventoryHealthMetrics = {
+    totalInventories: recoveryRecords.length,
+    serverInventories: inventoryRecoverySummary.serverInventoryCount,
+    browserInventories: inventoryRecoverySummary.browserInventoryCount,
+    synchronizedInventories: inventoryRecoverySummary.synchronizedInventoryCount,
+    unsynchronizedInventories: inventoryRecoverySummary.unsynchronizedInventoryCount,
+    totalNodes: recoveryRecords.reduce((sum, record) => sum + record.nodeCount, 0),
+    totalEdges: recoveryRecords.reduce((sum, record) => sum + record.edgeCount, 0),
+    totalStations: recoveryRecords.reduce((sum, record) => sum + record.stationCount, 0),
+    totalRoutes: recoveryRecords.reduce((sum, record) => sum + record.routeCount, 0),
+    serverSizeMB: inventoryRecoverySummary.totalServerSizeMB,
+    browserSizeMB: inventoryRecoverySummary.totalBrowserSizeMB,
+    largestInventories: inventoryRecoverySummary.largestGraphs.map((record) => ({
+      inventoryId: record.inventoryId,
+      name: record.name,
+      graphSizeMB: record.graphSizeMB,
+      storageLocation: record.storageLocation,
+    })),
+    failedImports: importJobs.filter((job) => job.status === "FAILED").length,
+    failedValidations: recoveryRecords.filter((record) => record.validationStatus === "FAIL").length,
+    syncFailures: inventoryRecoverySummary.syncFailures.length,
+  };
   const reachableEndpoints = connectivityResults.filter((result) => result.reachable);
   const dalConnectivityStatus = connectivityResults.length && reachableEndpoints.length === connectivityResults.length ? "ONLINE" : connectivityResults.length ? "DEGRADED" : "NOT TESTED";
   const serverReachability = connectivityResults.find((result) => result.key === "baseline")?.reachable ? "REACHABLE" : "NOT REACHABLE";
+  const onlineReasoningModels = reasoningFabricHealth?.onlineModels.length ?? 0;
+  const offlineReasoningModels = reasoningFabricHealth?.offlineModels.length ?? 0;
+  const activeReasoningEndpoint = reasoningFabricHealth?.activeEndpoint;
   const scopeFinancialValue = (scope: ScopeVersion, key: "NRC" | "MRC" | "TCV") => {
     const truth = scope.canonicalTruth as any;
     const quote = truth?.quoteBasis as MarketplaceQuote | undefined;
@@ -87,6 +142,21 @@ export default function OperationalIntelligenceWorkspace() {
   const activatedScopes = scopeVersions.filter((scope) => scope.status === "ACTIVATED");
   const constructionScopes = scopeVersions.filter((scope) => scope.status === "IN_CONSTRUCTION");
   const completedScopes = scopeVersions.filter((scope) => scope.status === "COMPLETE");
+  const certifiedScopeVersions = scopeVersions.filter((scope) => scope.certificationState === "CERTIFIED");
+  const draftCertificationScopeVersions = scopeVersions.filter((scope) => !scope.certificationState || scope.certificationState === "DRAFT");
+  const rejectedScopeVersions = scopeVersions.filter((scope) => scope.certificationState === "REJECTED");
+  const immutableCertifiedScopeVersions = scopeVersions.filter((scope) => scope.certificationState === "CERTIFIED" && scope.isImmutable);
+  const childLineageScopeVersions = scopeVersions.filter((scope) => Boolean(scope.parentScopeVersionId));
+  const closureAuthorityScopeVersions = scopeVersions.filter((scope) => Boolean(scope.closureEventId));
+  const inventoryScopeVersions = scopeVersions.filter((scope) => scope.type === "INVENTORY" || scope.source === "InventoryGraph");
+  const candidateScopeVersions = scopeVersions.filter((scope) => scope.type === "CANDIDATE" || scope.source === "OpportunitySeed" || scope.source === "PrismOpportunity");
+  const approvedScopeVersions = scopeVersions.filter((scope) => scope.type === "APPROVED" || scope.status === "APPROVED");
+  const fieldClosedScopeVersions = scopeVersions.filter((scope) => scope.type === "FIELD_CLOSED" || scope.source === "FieldClosure");
+  const activePackages = iofPackages.filter((iofPackage) => iofPackage.status === "ACTIVE");
+  const completedPackages = iofPackages.filter((iofPackage) => iofPackage.status === "COMPLETE");
+  const closedPackages = iofPackages.filter((iofPackage) => iofPackage.status === "CLOSED");
+  const packageProgress =
+    iofPackages.reduce((sum, iofPackage) => sum + Number(iofPackage.progress?.percentComplete ?? 0), 0) / Math.max(iofPackages.length, 1);
   const projectedNrc = scopeVersions.reduce((sum, scope) => sum + scopeFinancialValue(scope, "NRC"), 0);
   const projectedMrc = scopeVersions.reduce((sum, scope) => sum + scopeFinancialValue(scope, "MRC"), 0);
   const projectedTcv = scopeVersions.reduce((sum, scope) => sum + scopeFinancialValue(scope, "TCV"), 0);
@@ -152,8 +222,18 @@ export default function OperationalIntelligenceWorkspace() {
         <div className="dal-status">{status}</div>
         <div className="dal-metrics">
           <span>Graphs: {fmt(graphs.length)}</span>
+          <span>Inventory Health: {inventoryHealth.failedImports || inventoryHealth.failedValidations || inventoryHealth.syncFailures ? "ATTENTION" : "HEALTHY"}</span>
           <span>DAL Connectivity Status: {dalConnectivityStatus}</span>
           <span>Server Reachability: {serverReachability}</span>
+          <span>Reasoning Fabric: {activeReasoningEndpoint ? activeReasoningEndpoint.healthStatus : "NOT CONFIGURED"}</span>
+          <span>Primary Endpoint: {activeReasoningEndpoint ? endpointBaseUrl(activeReasoningEndpoint) : "none"}</span>
+          <span>Reasoning Model: {activeReasoningEndpoint?.modelId ?? activeReasoningEndpoint?.modelName ?? "none"}</span>
+          <span>Reasoning Provider: {activeReasoningEndpoint?.provider ?? "unknown"}</span>
+          <span>Reasoning Health: {activeReasoningEndpoint?.healthStatus ?? "UNKNOWN"}</span>
+          <span>Online Models: {fmt(onlineReasoningModels)}</span>
+          <span>Offline Models: {fmt(offlineReasoningModels)}</span>
+          <span>Active Reasoning Endpoint: {activeReasoningEndpoint?.name ?? "none"}</span>
+          <span>Reasoning Response Time: {fmt(activeReasoningEndpoint?.latencyMs)} ms</span>
           <span>Server Inventory Count: {fmt(inventoryRecoverySummary.serverInventoryCount)}</span>
           <span>Browser Inventory Count: {fmt(inventoryRecoverySummary.browserInventoryCount)}</span>
           <span>Synchronized Inventory Count: {fmt(inventoryRecoverySummary.synchronizedInventoryCount)}</span>
@@ -161,6 +241,8 @@ export default function OperationalIntelligenceWorkspace() {
           <span>Server Inventory Size: {inventoryRecoverySummary.totalServerSizeMB.toLocaleString(undefined, { maximumFractionDigits: 2 })} MB</span>
           <span>Browser Inventory Size: {inventoryRecoverySummary.totalBrowserSizeMB.toLocaleString(undefined, { maximumFractionDigits: 2 })} MB</span>
           <span>Sync Failures: {fmt(inventoryRecoverySummary.syncFailures.length)}</span>
+          <span>Failed Imports: {fmt(inventoryHealth.failedImports)}</span>
+          <span>Failed Validations: {fmt(inventoryHealth.failedValidations)}</span>
           <span>Sites Imported: {fmt(candidateSites.length)}</span>
           <span>Geocoded Sites: {fmt(geocodedSites.length)}</span>
           <span>Verified Sites: {fmt(verifiedSites.length)}</span>
@@ -173,6 +255,23 @@ export default function OperationalIntelligenceWorkspace() {
           <span>Activated Scopes: {fmt(activatedScopes.length)}</span>
           <span>Construction Scopes: {fmt(constructionScopes.length)}</span>
           <span>Completed Scopes: {fmt(completedScopes.length)}</span>
+          <span>Total ScopeVersions: {fmt(scopeVersions.length)}</span>
+          <span>Certified ScopeVersions: {fmt(certifiedScopeVersions.length)}</span>
+          <span>Immutable Certified ScopeVersions: {fmt(immutableCertifiedScopeVersions.length)}</span>
+          <span>Child Lineage ScopeVersions: {fmt(childLineageScopeVersions.length)}</span>
+          <span>Closure Authority ScopeVersions: {fmt(closureAuthorityScopeVersions.length)}</span>
+          <span>Draft Certification ScopeVersions: {fmt(draftCertificationScopeVersions.length)}</span>
+          <span>Rejected ScopeVersions: {fmt(rejectedScopeVersions.length)}</span>
+          <span>Inventory ScopeVersions: {fmt(inventoryScopeVersions.length)}</span>
+          <span>Candidate ScopeVersions: {fmt(candidateScopeVersions.length)}</span>
+          <span>Approved Type ScopeVersions: {fmt(approvedScopeVersions.length)}</span>
+          <span>Field Closed ScopeVersions: {fmt(fieldClosedScopeVersions.length)}</span>
+          <span>Package Count: {fmt(iofPackages.length)}</span>
+          <span>Active Packages: {fmt(activePackages.length)}</span>
+          <span>Completed Packages: {fmt(completedPackages.length)}</span>
+          <span>Closed Packages: {fmt(closedPackages.length)}</span>
+          <span>Close Events: {fmt(closeEvents.length)}</span>
+          <span>Package Progress: {fmt(Math.round(packageProgress))}%</span>
           <span>Buildable Opportunities: {fmt(buildableOpportunities.length)}</span>
           <span>Permit-Constrained Opportunities: {fmt(permitConstrainedOpportunities.length)}</span>
           <span>Crossing-Constrained Opportunities: {fmt(crossingConstrainedOpportunities.length)}</span>
@@ -197,6 +296,11 @@ export default function OperationalIntelligenceWorkspace() {
           <span>Construction Backlog: {fmt(backlog)}</span>
           <span>Opportunities: {fmt(opportunities.length)}</span>
           <span>ScopeVersions: {fmt(scopeVersions.length)}</span>
+          <span>Map Visible ScopeVersions: {fmt(mapKernelMetrics.visibleScopeVersions)}</span>
+          <span>Map Visible Routes: {fmt(mapKernelMetrics.visibleRoutes)}</span>
+          <span>Map Visible Stations: {fmt(mapKernelMetrics.visibleStations)}</span>
+          <span>Map Visible Nodes: {fmt(mapKernelMetrics.visibleNodes)}</span>
+          <span>Map Visible Objects: {fmt(mapKernelMetrics.visibleObjects)}</span>
           <span>Site Decision Scopes: {fmt(siteDecisionScopes.length)}</span>
           <span>Work items: {fmt(workItems.length)}</span>
           <span>Active work: {fmt(activeWork)}</span>
@@ -206,6 +310,59 @@ export default function OperationalIntelligenceWorkspace() {
       </div>
 
       <div className="dal-grid">
+        <ReasoningHealthDashboard onHealthChange={setReasoningFabricHealth} />
+        <div className="dal-panel">
+          <h3>ScopeVersion Doctrine</h3>
+          <div className="dal-metrics">
+            <span>Certified ScopeVersions immutable: ENABLED</span>
+            <span>Child lineage enabled: ENABLED</span>
+            <span>Closure authority required: ENABLED</span>
+            <span>IOF Packages are execution artifacts: ENABLED</span>
+            <span>AI output advisory only: ENABLED</span>
+            <span>Immutable Certified: {fmt(immutableCertifiedScopeVersions.length)}</span>
+            <span>Child Lineage: {fmt(childLineageScopeVersions.length)}</span>
+            <span>Closure-Linked Children: {fmt(closureAuthorityScopeVersions.length)}</span>
+          </div>
+        </div>
+        <div className="dal-panel">
+          <h3>Map Kernel Metrics</h3>
+          <div className="dal-metrics">
+            <span>Visible ScopeVersions: {fmt(mapKernelMetrics.visibleScopeVersions)}</span>
+            <span>Visible IOF Packages: {fmt(mapKernelMetrics.visibleIofPackages)}</span>
+            <span>Visible Routes: {fmt(mapKernelMetrics.visibleRoutes)}</span>
+            <span>Visible Stations: {fmt(mapKernelMetrics.visibleStations)}</span>
+            <span>Visible Nodes: {fmt(mapKernelMetrics.visibleNodes)}</span>
+            <span>Visible Edges: {fmt(mapKernelMetrics.visibleEdges)}</span>
+            <span>Visible Objects: {fmt(mapKernelMetrics.visibleObjects)}</span>
+            <span>Visible Sites: {fmt(mapKernelMetrics.visibleSites)}</span>
+            <span>Visible Attachments: {fmt(mapKernelMetrics.visibleAttachments)}</span>
+            <span>Visible Laterals: {fmt(mapKernelMetrics.visibleLaterals)}</span>
+          </div>
+        </div>
+        <div className="dal-panel">
+          <h3>Inventory Health Dashboard</h3>
+          <div className="dal-metrics">
+            <span>Total Inventories: {fmt(inventoryHealth.totalInventories)}</span>
+            <span>Total Nodes: {fmt(inventoryHealth.totalNodes)}</span>
+            <span>Total Edges: {fmt(inventoryHealth.totalEdges)}</span>
+            <span>Total Stations: {fmt(inventoryHealth.totalStations)}</span>
+            <span>Total Routes: {fmt(inventoryHealth.totalRoutes)}</span>
+            <span>Server Size: {inventoryHealth.serverSizeMB.toLocaleString(undefined, { maximumFractionDigits: 2 })} MB</span>
+            <span>Browser Size: {inventoryHealth.browserSizeMB.toLocaleString(undefined, { maximumFractionDigits: 2 })} MB</span>
+            <span>Import Jobs: {fmt(importJobs.length)}</span>
+            <span>Failed Imports: {fmt(inventoryHealth.failedImports)}</span>
+            <span>Failed Validations: {fmt(inventoryHealth.failedValidations)}</span>
+          </div>
+          <div className="dal-list">
+            {inventoryHealth.largestInventories.map((record) => (
+              <div key={record.inventoryId} className="dal-list-row">
+                <span>{record.name}</span>
+                <b>{record.graphSizeMB.toLocaleString(undefined, { maximumFractionDigits: 2 })} MB</b>
+                <small>{record.storageLocation}</small>
+              </div>
+            ))}
+          </div>
+        </div>
         <div className="dal-panel">
           <h3>DAL Connectivity</h3>
           <div className="dal-list">
@@ -217,6 +374,31 @@ export default function OperationalIntelligenceWorkspace() {
               </div>
             ))}
             {!connectivityResults.length ? <div className="dal-status">Connectivity has not been tested.</div> : null}
+          </div>
+        </div>
+        <div className="dal-panel">
+          <h3>Execution Chain</h3>
+          <div className="dal-metrics">
+            <span>ScopeVersion = Truth</span>
+            <span>IOF Package = Work</span>
+            <span>Close Event = Authorized Transformation</span>
+            <span>Child ScopeVersion = New Truth</span>
+            <span>Package Count: {fmt(iofPackages.length)}</span>
+            <span>Active Packages: {fmt(activePackages.length)}</span>
+            <span>Completed Packages: {fmt(completedPackages.length)}</span>
+            <span>Closed Packages: {fmt(closedPackages.length)}</span>
+            <span>Close Events: {fmt(closeEvents.length)}</span>
+            <span>Average Package Progress: {fmt(Math.round(packageProgress))}%</span>
+          </div>
+          <div className="dal-list">
+            {iofPackages.slice(0, 8).map((iofPackage) => (
+              <div key={iofPackage.packageId} className="dal-list-row">
+                <span>{iofPackage.packageType}</span>
+                <b>{iofPackage.status}</b>
+                <small>{iofPackage.scopeVersionId} / {fmt(iofPackage.progress?.percentComplete)}%</small>
+              </div>
+            ))}
+            {!iofPackages.length ? <div className="dal-status">No IOF Packages have been persisted yet.</div> : null}
           </div>
         </div>
         <div className="dal-panel">

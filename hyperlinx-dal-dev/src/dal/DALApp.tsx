@@ -1,6 +1,7 @@
-import { DAL_API, DAL_APP_NAME, DAL_BASELINE_GRAPH_API, DAL_INVENTORY_GRAPH_API, DAL_REASONING_API } from "../config/dalApi";
+import { DAL_API, DAL_APP_NAME, DAL_BASELINE_GRAPH_API, DAL_INVENTORY_GRAPH_API } from "../config/dalApi";
 import ReasoningPanel from "../components/ReasoningPanel";
 import type { ReasoningWorkspace } from "../api/reasoningClient";
+import { endpointBaseUrl, getReasoningEndpointCandidates } from "../api/reasoningRegistry";
 import CandidateSitesWorkspace from "../workspaces/CandidateSitesWorkspace";
 import DALInventoryWorkspace from "../workspaces/DALInventoryWorkspace";
 import DALPlaceholderWorkspace from "../workspaces/DALPlaceholderWorkspace";
@@ -194,6 +195,7 @@ function DALReasoningOutlet() {
 }
 
 function DALShell() {
+  const reasoningCandidates = getReasoningEndpointCandidates();
   return (
     <div className="dal-shell">
       <header className="dal-header">
@@ -205,7 +207,7 @@ function DALShell() {
           <span>DAL API: {DAL_API}</span>
           <span>Baseline Graph API: {DAL_BASELINE_GRAPH_API}</span>
           <span>Inventory API: {DAL_INVENTORY_GRAPH_API}</span>
-          <span>Reasoning API: {DAL_REASONING_API}</span>
+          <span>Reasoning Fabric: {reasoningCandidates.length ? reasoningCandidates.map(endpointBaseUrl).join(", ") : "not configured"}</span>
         </div>
       </header>
       <div className="dal-layout">
