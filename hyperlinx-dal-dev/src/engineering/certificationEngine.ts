@@ -190,8 +190,7 @@ export function certifyLateralPath(args: {
   const candidateCoord: DALCoordinate = [Number(args.site.longitude), Number(args.site.latitude)];
   const attachmentCoord: DALCoordinate = [Number(args.attachmentPoint.longitude), Number(args.attachmentPoint.latitude)];
   const sourceGeometry = args.buildPath?.geometry?.filter(validCoord) ?? [];
-  const middle = sourceGeometry.length > 2 ? sourceGeometry.slice(1, -1) : [];
-  const geometry = validCoord(candidateCoord) && validCoord(attachmentCoord) ? [candidateCoord, ...middle, attachmentCoord] : [];
+  const geometry = sourceGeometry.length >= 2 && validCoord(candidateCoord) && validCoord(attachmentCoord) ? sourceGeometry : [];
   const buildFeet = Math.round(pathLengthFeet(geometry));
   const crossings = Number(args.buildPath?.estimatedCrossings ?? 0);
   const turns = Number(args.buildPath?.turnCount ?? countTurns(geometry));
@@ -217,6 +216,10 @@ export function certifyLateralPath(args: {
     routingMode: args.buildPath?.routingMode,
     routingClassification: args.buildPath?.routingClassification,
     pathConfidence: args.buildPath?.pathConfidence,
+    routeStatus: args.buildPath?.routeStatus,
+    routeFailureReason: args.buildPath?.routeFailureReason,
+    routingAudit: args.buildPath?.routingAudit,
+    streetGraphRoute: args.buildPath?.streetGraphRoute,
     roadSegmentCount: args.buildPath?.roadSegmentCount,
     roadNamesTraversed: args.buildPath?.roadNamesTraversed,
     roadClassesTraversed: args.buildPath?.roadClassesTraversed,

@@ -274,6 +274,10 @@ export type LateralPath = {
   routingMode?: string;
   routingClassification?: string;
   pathConfidence?: "LOW" | "MEDIUM" | "HIGH";
+  routeStatus?: "VALID" | "ROUTE_NOT_FOUND" | "INVALID";
+  routeFailureReason?: string;
+  routingAudit?: unknown;
+  streetGraphRoute?: unknown;
   roadSegmentCount?: number;
   roadNamesTraversed?: string[];
   roadClassesTraversed?: string[];
@@ -440,6 +444,10 @@ export type ScopeVersionEngineeringBasis = {
   routingMode?: string;
   routingClassification?: string;
   pathConfidence?: string;
+  routeStatus?: "VALID" | "ROUTE_NOT_FOUND" | "INVALID";
+  routeFailureReason?: string;
+  routingAudit?: unknown;
+  streetGraphRoute?: unknown;
   roadSegmentCount?: number;
   roadNamesTraversed?: string[];
   roadClassesTraversed?: string[];

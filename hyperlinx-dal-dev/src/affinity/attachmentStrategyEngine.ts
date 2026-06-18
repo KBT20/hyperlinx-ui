@@ -2,6 +2,7 @@ import type { CandidateSite } from "../types/candidateSite";
 import type { InventoryGraph } from "../types/dal";
 import type { AttachmentStrategy, AttachmentType, CapacityAnalysis, NearestNodeResult, NearestRouteResult, NearestStationResult } from "../types/networkAffinity";
 import type { RevenueEstimate } from "../types/portfolio";
+import type { StreetCenterline } from "../street/streetTypes";
 import { BURIED_CONSTRUCTION_ASSUMPTIONS, DEFAULT_CONSTRUCTION_TYPE } from "../engineering/constructionModel";
 import { assessConstructability } from "../spatial/constructabilityEngine";
 import { clamp } from "./geo";
@@ -41,6 +42,7 @@ export function compareAttachmentStrategies(args: {
   nearestNode: NearestNodeResult;
   nearestStation: NearestStationResult;
   revenue: RevenueEstimate;
+  streetCenterlines?: StreetCenterline[];
 }) {
   const strategyTypes: AttachmentType[] = [
     "LATERAL",
@@ -69,8 +71,10 @@ export function compareAttachmentStrategies(args: {
         nodeId: args.nearestNode.nodeId,
         stationId: args.nearestStation.stationId,
         attachmentType,
+        streetCenterlines: args.streetCenterlines,
       });
       const profile = strategyMultipliers[attachmentType];
+      const routeValid = path.routeStatus === "VALID" && path.geometry.length >= 2;
       const fallbackCost = Math.round((path.estimatedUndergroundFeet * BURIED_CONSTRUCTION_ASSUMPTIONS.costPerFoot + path.estimatedCrossings * BURIED_CONSTRUCTION_ASSUMPTIONS.crossingCost) * profile.cost);
       const constructabilityAssessment = assessConstructability(args.site, path);
       const spatialSoftCosts =
@@ -78,7 +82,7 @@ export function compareAttachmentStrategies(args: {
         constructabilityAssessment.estimatedCrossingCost +
         constructabilityAssessment.estimatedEnvironmentalCost +
         constructabilityAssessment.estimatedEngineeringCost;
-      const estimatedCost = Math.round((path.estimatedCost ?? fallbackCost) * profile.cost + spatialSoftCosts);
+      const estimatedCost = routeValid ? Math.round((path.estimatedCost ?? fallbackCost) * profile.cost + spatialSoftCosts) : 0;
       const buildPath = {
         ...path,
         constructabilityScore: constructabilityAssessment.constructabilityScore,
@@ -94,10 +98,10 @@ export function compareAttachmentStrategies(args: {
         constructionAssumptions: BURIED_CONSTRUCTION_ASSUMPTIONS,
       };
       const capacity = analyzeCapacity(args.nearestRoute.routeId, args.nearestNode.nodeId, args.nearestStation.stationId, args.revenue.estimatedRevenueMonthly);
-      const paybackMonths = estimatedCost / Math.max(args.revenue.estimatedMRC * 0.72, 1);
-      const riskScore = clamp((path.riskScore ?? 45) * 0.55 + constructabilityAssessment.riskScore * 0.45);
-      const roi = args.revenue.estimatedTCV / Math.max(estimatedCost, 1);
-      const margin = (args.revenue.estimatedTCV - estimatedCost) / Math.max(args.revenue.estimatedTCV, 1);
+      const paybackMonths = routeValid ? estimatedCost / Math.max(args.revenue.estimatedMRC * 0.72, 1) : 0;
+      const riskScore = routeValid ? clamp((path.riskScore ?? 45) * 0.55 + constructabilityAssessment.riskScore * 0.45) : 100;
+      const roi = routeValid ? args.revenue.estimatedTCV / Math.max(estimatedCost, 1) : 0;
+      const margin = routeValid ? (args.revenue.estimatedTCV - estimatedCost) / Math.max(args.revenue.estimatedTCV, 1) : 0;
       const engineeringScore = clamp(
         profile.engineering -
           path.buildFeet / 250 -
@@ -106,10 +110,10 @@ export function compareAttachmentStrategies(args: {
           constructabilityAssessment.constructabilityScore * 0.22 +
           constructabilityAssessment.roadAccessScore * 0.06
       );
-      const financialScore = clamp(100 - paybackMonths * 2.2 + roi * 6 - riskScore * 0.12 - constructabilityAssessment.permitComplexity * 0.05);
+      const financialScore = routeValid ? clamp(100 - paybackMonths * 2.2 + roi * 6 - riskScore * 0.12 - constructabilityAssessment.permitComplexity * 0.05) : 0;
       const strategicScore = clamp(profile.strategic + facilityStrategicBoost(args.site, attachmentType));
       const compositeScore = Math.round(
-        financialScore * 0.3 +
+        (routeValid ? financialScore : 0) * 0.3 +
           strategicScore * 0.22 +
           engineeringScore * 0.22 +
           constructabilityAssessment.constructabilityScore * 0.14 +
@@ -138,10 +142,10 @@ export function compareAttachmentStrategies(args: {
         estimatedEnvironmentalCost: constructabilityAssessment.estimatedEnvironmentalCost,
         estimatedEngineeringCost: constructabilityAssessment.estimatedEngineeringCost,
         constructabilityAssessment,
-        engineeringScore,
-        financialScore,
+        engineeringScore: routeValid ? engineeringScore : 0,
+        financialScore: routeValid ? financialScore : 0,
         strategicScore,
-        compositeScore,
+        compositeScore: routeValid ? compositeScore : 0,
         buildPath,
         capacity,
         constructionAssumptions: BURIED_CONSTRUCTION_ASSUMPTIONS,

@@ -5,6 +5,7 @@ import type { CorridorAnalysis } from "../types/corridor";
 import { BURIED_CONSTRUCTION_ASSUMPTIONS, DEFAULT_CONSTRUCTION_TYPE } from "../engineering/constructionModel";
 import { certifySiteDecision } from "../engineering/certificationEngine";
 import { estimateRevenue } from "../prism/revenueEstimator";
+import { getConstraintRegistryAnalysisContext, streetCenterlinesFromConstraintFeatures } from "../reference/ConstraintGeometryRegistry";
 import { compareAttachmentStrategies } from "./attachmentStrategyEngine";
 import { clamp } from "./geo";
 import { findNearestNode } from "./nearestNodeEngine";
@@ -19,12 +20,28 @@ function candidateType(site: CandidateSite) {
   return "enterprise";
 }
 
+function paddedStreetLookupBounds(a: DALCoordinate, b: DALCoordinate, paddingDegrees = 0.03) {
+  return [
+    Math.min(a[0], b[0]) - paddingDegrees,
+    Math.min(a[1], b[1]) - paddingDegrees,
+    Math.max(a[0], b[0]) + paddingDegrees,
+    Math.max(a[1], b[1]) + paddingDegrees,
+  ] as [number, number, number, number];
+}
+
 export function analyzeNetworkAffinity(graph: InventoryGraph, site: CandidateSite): NetworkAffinity | null {
   if (!Number.isFinite(site.latitude) || !Number.isFinite(site.longitude)) return null;
   const target: DALCoordinate = [Number(site.longitude), Number(site.latitude)];
   const nearestRoute = findNearestRoute(graph, target);
   const nearestNode = findNearestNode(graph, target);
   const nearestStation = findNearestStation(graph, target);
+  const attachmentCoordinate = nearestRoute.coordinate ?? nearestStation.coordinate ?? nearestNode.coordinate;
+  const streetCenterlines = streetCenterlinesFromConstraintFeatures(
+    getConstraintRegistryAnalysisContext({
+      bbox: attachmentCoordinate ? paddedStreetLookupBounds(target, attachmentCoordinate) : undefined,
+      requiredLayers: ["STREETS"],
+    }).constraintRegistryFeatures
+  );
   const revenue = estimateRevenue({
     id: site.candidateId,
     name: site.companyName,
@@ -33,7 +50,7 @@ export function analyzeNetworkAffinity(graph: InventoryGraph, site: CandidateSit
     longitude: Number(site.longitude),
     tags: [site.facilityType ?? "", site.marketSegment ?? ""].filter(Boolean),
   });
-  const strategies = compareAttachmentStrategies({ graph, site, nearestRoute, nearestNode, nearestStation, revenue });
+  const strategies = compareAttachmentStrategies({ graph, site, nearestRoute, nearestNode, nearestStation, revenue, streetCenterlines });
   const preferredStrategy = strategies[0];
   if (!preferredStrategy) return null;
   const capacityScore = preferredStrategy.capacity.projectedUtilization === "LOW" ? 100 : preferredStrategy.capacity.projectedUtilization === "MEDIUM" ? 76 : preferredStrategy.capacity.projectedUtilization === "HIGH" ? 48 : 20;

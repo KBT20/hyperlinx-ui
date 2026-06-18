@@ -25,12 +25,14 @@ import { useDALState } from "../dal/DALState";
 import { geocodeCandidateSite, isValidGeocodeCoordinate, realGeocoderConfigured } from "../geocoding/geocodeEngine";
 import { MapKernel, buildMapKernelDiagnostics, renderScopeVersion, type MapKernelRenderSpec, type MapSelection } from "../mapkernel";
 import { generateOpportunitySeedForCandidate } from "../prism/opportunityGenerator";
-import { boundsForRouteGeometry, constraintFeaturesToReferenceLayers, getConstraintRegistryAnalysisContext } from "../reference/ConstraintGeometryRegistry";
+import { boundsForRouteGeometry, constraintFeaturesToReferenceLayers, getConstraintRegistryAnalysisContext, streetCenterlinesFromConstraintFeatures } from "../reference/ConstraintGeometryRegistry";
 import { renderReferenceLayers } from "../reference/ReferenceLayerManager";
 import { generateAttachmentAwareRouteAlternatives, type AttachmentAwareRouteResult } from "../routing/AttachmentAwareRouteEngine";
 import { analyzeRouteConstraints, renderConstraintAnalysis } from "../routing/ConstraintAnalysisEngine";
+import { fallbackAuditReport } from "../routing/fallbackAuditReport";
+import { renderStreetGraphRoutingDiagnostics, type StreetGraphRouteResult } from "../routing/StreetGraphRouter";
 import { canCreateScopeVersionFromRoute, type RouteCertificationSnapshot, type RouteCertificationState } from "../serviceability/routeCertification";
-import { buildDeterministicStreetCenterlines, renderStreetCenterlineLayer } from "../street/StreetCenterlineLayer";
+import { renderStreetCenterlineLayer } from "../street/StreetCenterlineLayer";
 import { canUseSnapForRoute, resolveSnapAuthority } from "../street/SnapAuthorityEngine";
 import type { SnapAuthorityResult, SnapCertificationSnapshot, SnapCertificationState, StreetCenterline } from "../street/streetTypes";
 import { createScopeVersionFromSiteDecision } from "../scopeversion/scopeVersionUtils";
@@ -38,6 +40,8 @@ import { validateScopeVersion } from "../scopeversion/scopeVersionValidation";
 import type { CandidateSite } from "../types/candidateSite";
 import type { DALCoordinate, InventoryGraph, InventoryGraphMetadata, InventoryNode, InventoryRoute, InventoryStation, MarketplaceQuote, ScopeVersion } from "../types/dal";
 import type { OpportunitySeed } from "../types/portfolio";
+
+const SHOW_ROUTE_ENGINEERING_DIAGNOSTICS = false;
 
 type DecisionEvidence = {
   candidateAddress: string;
@@ -67,6 +71,8 @@ type DecisionEvidence = {
   serviceabilityStatus: string;
   certificationStatus: string;
   attachmentConfidence: string;
+  routeStatus: string;
+  routeFailureReason: string;
   routingMode: string;
   pathConfidence: string;
   roadSegmentCount: string;
@@ -177,6 +183,15 @@ function coordinateLabel(coordinate?: DALCoordinate | null) {
   return coordinate ? `${coordinate[1].toFixed(6)}, ${coordinate[0].toFixed(6)}` : "n/a";
 }
 
+function paddedStreetLookupBounds(a: DALCoordinate, b: DALCoordinate, paddingDegrees = 0.03) {
+  return [
+    Math.min(a[0], b[0]) - paddingDegrees,
+    Math.min(a[1], b[1]) - paddingDegrees,
+    Math.max(a[0], b[0]) + paddingDegrees,
+    Math.max(a[1], b[1]) + paddingDegrees,
+  ] as [number, number, number, number];
+}
+
 function candidateCoordinate(site: CandidateSite | null | undefined): DALCoordinate | null {
   return isValidGeocodeCoordinate(site?.latitude, site?.longitude) ? ([Number(site?.longitude), Number(site?.latitude)] as DALCoordinate) : null;
 }
@@ -217,6 +232,222 @@ function attachmentCertificationForSeed(seed: OpportunitySeed | null | undefined
 
 function lateralCertificationForSeed(seed: OpportunitySeed | null | undefined) {
   return seed?.lateralCertification ?? seed?.networkAffinity?.lateralCertification ?? seed?.certificationSnapshot?.lateralPath;
+}
+
+function streetGraphRouteForSeed(seed: OpportunitySeed | null | undefined): StreetGraphRouteResult | null {
+  const value = seed?.buildPath?.streetGraphRoute ?? seed?.networkAffinity?.buildPath?.streetGraphRoute ?? seed?.lateralCertification?.streetGraphRoute;
+  if (!value || typeof value !== "object") return null;
+  const record = value as Partial<StreetGraphRouteResult>;
+  return record.audit?.routingEngine === "StreetGraphRouter" ? (record as StreetGraphRouteResult) : null;
+}
+
+type RouteRenderSource = "STREET_GRAPH" | "ATTACHMENT_ROUTE" | "DIRECT_LINE" | "FALLBACK" | "UNKNOWN";
+type RouteValidationBanner = "STREET_GRAPH_ROUTE_VERIFIED" | "DIRECT_LINE_RENDERING_DETECTED" | "NO_STREET_PATH_FOUND" | "EMPTY_STREET_GRAPH" | "SNAP_FAILURE";
+type MapRoutePrimitive = MapKernelRenderSpec["primitives"][number];
+
+type RoutingTruthDiagnostic = {
+  routeId: string;
+  renderSource: RouteRenderSource;
+  streetNodes: number;
+  streetEdges: number;
+  startNodeId: string;
+  endNodeId: string;
+  pathFound: boolean;
+  pathNodeCount: number;
+  pathSegmentCount: number;
+  renderedVertexCount: number;
+  routeLengthFeet: number;
+  fallbackUsed: boolean;
+  failureReason: string;
+  sourceLayer: string;
+  renderAuthorityId: string;
+  candidateCoordinate?: DALCoordinate;
+  attachmentCoordinate?: DALCoordinate;
+  snappedStartCoordinate?: DALCoordinate;
+  snappedEndCoordinate?: DALCoordinate;
+  distanceToStartNode?: number;
+  distanceToEndNode?: number;
+  validationFlags: string[];
+};
+
+function routePrimitiveSourceLayer(primitive: MapRoutePrimitive, spec: MapKernelRenderSpec) {
+  return String(primitive.metadata?.sourceLayer ?? primitive.ref.sourceLayer ?? spec.specId ?? "UNKNOWN");
+}
+
+function routePrimitiveId(primitive: MapRoutePrimitive) {
+  return primitive.ref.routeId ?? primitive.ref.id ?? primitive.id;
+}
+
+function validLineCoordinates(primitive: MapRoutePrimitive) {
+  return (primitive.coordinates ?? []).filter((coordinate): coordinate is DALCoordinate => Array.isArray(coordinate) && Number.isFinite(coordinate[0]) && Number.isFinite(coordinate[1]));
+}
+
+function routeLineFeet(coordinates: DALCoordinate[]) {
+  let total = 0;
+  for (let index = 1; index < coordinates.length; index += 1) total += haversineFeet(coordinates[index - 1], coordinates[index]);
+  return Math.round(total);
+}
+
+function coordinatesClose(a?: DALCoordinate, b?: DALCoordinate, toleranceFeet = 20) {
+  return Boolean(a && b && haversineFeet(a, b) <= toleranceFeet);
+}
+
+function routeCoordinatesMatch(coordinates: DALCoordinate[], route: StreetGraphRouteResult | null) {
+  if (!route?.audit.pathFound || route.routeStatus !== "VALID") return false;
+  if (
+    route.streetGraphPath.length >= 2 &&
+    coordinates.length === route.streetGraphPath.length &&
+    coordinatesClose(coordinates[0], route.streetGraphPath[0]) &&
+    coordinatesClose(coordinates[coordinates.length - 1], route.streetGraphPath[route.streetGraphPath.length - 1])
+  ) {
+    return true;
+  }
+  return (
+    route.geometry.length >= 2 &&
+    coordinates.length === route.geometry.length &&
+    coordinatesClose(coordinates[0], route.geometry[0]) &&
+    coordinatesClose(coordinates[coordinates.length - 1], route.geometry[route.geometry.length - 1])
+  );
+}
+
+function routeRenderSource(primitive: MapRoutePrimitive, spec: MapKernelRenderSpec, route: StreetGraphRouteResult | null): RouteRenderSource {
+  const sourceLayer = routePrimitiveSourceLayer(primitive, spec).toUpperCase();
+  if (sourceLayer === "STREET_GRAPH_COMPUTED_PATH") return "STREET_GRAPH";
+  if (primitive.layerId === "routeAuthorityDirectFallback" || sourceLayer.includes("DIRECT_FALLBACK") || sourceLayer.includes("FALLBACK")) return "FALLBACK";
+  const coordinates = validLineCoordinates(primitive);
+  if (routeCoordinatesMatch(coordinates, route)) return "STREET_GRAPH";
+  if (primitive.ref.kind === "Route" && primitive.layerId === "inventory") return "ATTACHMENT_ROUTE";
+  if (coordinates.length === 2 && (primitive.ref.kind === "Lateral" || primitive.layerId === "lateral" || primitive.layerId.startsWith("routeAuthority"))) return "DIRECT_LINE";
+  if (primitive.ref.kind === "Route") return "ATTACHMENT_ROUTE";
+  return "UNKNOWN";
+}
+
+function buildRoutingTruthDiagnostics(specs: MapKernelRenderSpec[], route: StreetGraphRouteResult | null): RoutingTruthDiagnostic[] {
+  const audit = route?.audit;
+  return specs.flatMap((spec) =>
+    spec.primitives
+      .filter((primitive) => {
+        const coordinates = validLineCoordinates(primitive);
+        if (primitive.kind !== "line" || coordinates.length < 2) return false;
+        return primitive.ref.kind === "Route" || primitive.ref.kind === "Lateral" || primitive.layerId === "lateral" || primitive.layerId.startsWith("routeAuthority");
+      })
+      .map((primitive) => {
+        const coordinates = validLineCoordinates(primitive);
+        const renderSource = routeRenderSource(primitive, spec, route);
+        const renderedVertexCount = coordinates.length;
+        const validationFlags = [
+          renderedVertexCount === 2 ? "SUSPECT_DIRECT_LINE_RENDERING" : "",
+          renderSource === "FALLBACK" ? "FALLBACK_ROUTE_RENDERED" : "",
+          renderSource === "UNKNOWN" ? "UNKNOWN_ROUTE_RENDER_SOURCE" : "",
+        ].filter(Boolean);
+        return {
+          routeId: routePrimitiveId(primitive),
+          renderSource,
+          streetNodes: audit?.graphNodes ?? 0,
+          streetEdges: audit?.graphEdges ?? 0,
+          startNodeId: audit?.startNode ?? "",
+          endNodeId: audit?.endNode ?? "",
+          pathFound: Boolean(audit?.pathFound),
+          pathNodeCount: audit?.pathNodeCount ?? 0,
+          pathSegmentCount: audit?.pathSegmentCount ?? audit?.pathEdgeCount ?? 0,
+          renderedVertexCount,
+          routeLengthFeet: routeLineFeet(coordinates),
+          fallbackUsed: Boolean(audit?.fallbackUsed || renderSource === "FALLBACK"),
+          failureReason: route?.failureReason ?? audit?.failureReason ?? "",
+          sourceLayer: routePrimitiveSourceLayer(primitive, spec),
+          renderAuthorityId: String(primitive.renderIdentity?.key ?? primitive.id),
+          candidateCoordinate: audit?.candidateCoordinate,
+          attachmentCoordinate: audit?.attachmentCoordinate,
+          snappedStartCoordinate: audit?.snappedStartCoordinate,
+          snappedEndCoordinate: audit?.snappedEndCoordinate,
+          distanceToStartNode: audit?.distanceToStartNode,
+          distanceToEndNode: audit?.distanceToEndNode,
+          validationFlags,
+        };
+      })
+  );
+}
+
+function routingTruthBanner(diagnostics: RoutingTruthDiagnostic[], route: StreetGraphRouteResult | null): RouteValidationBanner {
+  const failureReason = route?.failureReason ?? route?.audit.failureReason;
+  if (failureReason === "EMPTY_STREET_GRAPH") return "EMPTY_STREET_GRAPH";
+  if (failureReason === "SNAP_FAILURE") return "SNAP_FAILURE";
+  if (!route || route.routeStatus !== "VALID" || !route.audit.pathFound) return "NO_STREET_PATH_FOUND";
+  const decisionRoutes = diagnostics.filter((diagnostic) => diagnostic.renderSource !== "ATTACHMENT_ROUTE");
+  if (decisionRoutes.some((diagnostic) => diagnostic.renderSource === "DIRECT_LINE" || diagnostic.renderSource === "FALLBACK" || diagnostic.renderedVertexCount === 2)) return "DIRECT_LINE_RENDERING_DETECTED";
+  if (
+    decisionRoutes.some(
+      (diagnostic) =>
+        diagnostic.renderSource === "STREET_GRAPH" &&
+        diagnostic.pathFound &&
+        diagnostic.pathNodeCount > 10 &&
+        diagnostic.renderedVertexCount > 10 &&
+        !diagnostic.fallbackUsed
+    )
+  ) {
+    return "STREET_GRAPH_ROUTE_VERIFIED";
+  }
+  return "DIRECT_LINE_RENDERING_DETECTED";
+}
+
+function RoutingAuditPanel({ route }: { route: StreetGraphRouteResult | null }) {
+  const audit = route?.audit;
+  return (
+    <div className="dal-panel">
+      <h3>Routing Audit</h3>
+      <div className="dal-metrics">
+        <span>Routing Engine: {audit?.routingEngine ?? "StreetGraphRouter"}</span>
+        <span>Graph Nodes: {fmt(audit?.graphNodes)}</span>
+        <span>Graph Edges: {fmt(audit?.graphEdges)}</span>
+        <span>Start Node: {audit?.startNode ?? "n/a"}</span>
+        <span>End Node: {audit?.endNode ?? "n/a"}</span>
+        <span>Path Found: {audit?.pathFound ? "TRUE" : "FALSE"}</span>
+        <span>Path Nodes: {fmt(audit?.pathNodeCount)}</span>
+        <span>Path Edges: {fmt(audit?.pathEdgeCount)}</span>
+        <span>Path Segments: {fmt(audit?.pathSegmentCount)}</span>
+        <span>Total Traversed Length: {feetLabel(audit?.totalTraversedLength)}</span>
+        <span>Routing Method: {audit?.routingMethod ?? "ASTAR"}</span>
+        <span>Execution Time: {fmt(audit?.routingExecutionTime)} ms</span>
+        <span>Fallback Used: {audit?.fallbackUsed ? "TRUE" : "FALSE"}</span>
+        <span>Route Status: {audit?.routeStatus ?? route?.routeStatus ?? "ROUTE_NOT_FOUND"}</span>
+        <span>Failure Reason: {route?.failureReason ?? audit?.failureReason ?? "none"}</span>
+        <span>Candidate Coordinate: {coordinateLabel(audit?.candidateCoordinate)}</span>
+        <span>Attachment Coordinate: {coordinateLabel(audit?.attachmentCoordinate)}</span>
+        <span>Snapped Start Coordinate: {coordinateLabel(audit?.snappedStartCoordinate)}</span>
+        <span>Snapped End Coordinate: {coordinateLabel(audit?.snappedEndCoordinate)}</span>
+        <span>Distance To Start Node: {feetLabel(audit?.distanceToStartNode)}</span>
+        <span>Distance To End Node: {feetLabel(audit?.distanceToEndNode)}</span>
+      </div>
+      <pre className="dal-pre">{JSON.stringify(route?.audit ?? { routeStatus: "ROUTE_NOT_FOUND", fallbackUsed: false }, null, 2)}</pre>
+    </div>
+  );
+}
+
+function RoutingTruthDiagnosticsPanel({ diagnostics, banner }: { diagnostics: RoutingTruthDiagnostic[]; banner: RouteValidationBanner }) {
+  const streetGraphRoutes = diagnostics.filter((diagnostic) => diagnostic.renderSource === "STREET_GRAPH");
+  const directLineRoutes = diagnostics.filter((diagnostic) => diagnostic.renderSource === "DIRECT_LINE" || diagnostic.validationFlags.includes("SUSPECT_DIRECT_LINE_RENDERING"));
+  const fallbackRoutes = diagnostics.filter((diagnostic) => diagnostic.renderSource === "FALLBACK" || diagnostic.fallbackUsed);
+  return (
+    <div className="dal-panel">
+      <h3>Routing Truth Diagnostics</h3>
+      <div className="dal-status">{banner}</div>
+      <div className="dal-metrics">
+        <span>Rendered Routes: {fmt(diagnostics.length)}</span>
+        <span>Street Graph Routes: {fmt(streetGraphRoutes.length)}</span>
+        <span>Direct-Line Routes: {fmt(directLineRoutes.length)}</span>
+        <span>Fallback Routes: {fmt(fallbackRoutes.length)}</span>
+        <span>Fallback Locations: {fmt(fallbackAuditReport.fallbackLocations.length)}</span>
+        <span>Geometry-Risk Fallbacks: {fmt(fallbackAuditReport.fallbackLocations.filter((item) => item.routeGeometryRisk).length)}</span>
+      </div>
+      {diagnostics.map((diagnostic) => (
+        <div className="dal-status" key={`${diagnostic.renderAuthorityId}:${diagnostic.routeId}`}>
+          {diagnostic.routeId}: {diagnostic.renderSource} | vertices {diagnostic.renderedVertexCount} | path nodes {diagnostic.pathNodeCount} | fallback {diagnostic.fallbackUsed ? "TRUE" : "FALSE"}
+          {diagnostic.validationFlags.length ? ` | ${diagnostic.validationFlags.join(", ")}` : ""}
+        </div>
+      ))}
+      <pre className="dal-pre">{JSON.stringify({ routes: diagnostics, fallbackLocations: fallbackAuditReport.fallbackLocations }, null, 2)}</pre>
+    </div>
+  );
 }
 
 function hasScopeVersionCertification(seed: OpportunitySeed | null | undefined) {
@@ -429,6 +660,8 @@ function evidenceFor(args: {
         ? `Attachment ${attachmentCertification.certificationStatus} / Lateral ${lateralCertification.certificationStatus}`
         : "n/a",
     attachmentConfidence: attachmentCertification ? `${Math.round(attachmentCertification.confidenceScore)}%` : "n/a",
+    routeStatus: routeDiagnostics?.routeStatus ?? "ROUTE_NOT_FOUND",
+    routeFailureReason: routeDiagnostics?.routeFailureReason ?? "none",
     routingMode: routeDiagnostics?.routingMode ?? "n/a",
     pathConfidence: routeDiagnostics?.pathConfidence ?? "n/a",
     roadSegmentCount: fmt(routeDiagnostics?.roadSegmentCount),
@@ -530,6 +763,10 @@ function createDecisionMapScopeVersion(decision: DecisionContext): ScopeVersion 
         routingMode: lateralCertification?.routingMode ?? decision.buildPath?.routingMode,
         routingClassification: lateralCertification?.routingClassification ?? decision.buildPath?.routingClassification,
         pathConfidence: lateralCertification?.pathConfidence ?? decision.buildPath?.pathConfidence,
+        routeStatus: lateralCertification?.routeStatus ?? decision.buildPath?.routeStatus,
+        routeFailureReason: lateralCertification?.routeFailureReason ?? decision.buildPath?.routeFailureReason,
+        routingAudit: lateralCertification?.routingAudit ?? decision.buildPath?.routingAudit,
+        streetGraphRoute: lateralCertification?.streetGraphRoute ?? decision.buildPath?.streetGraphRoute,
         roadSegmentCount: lateralCertification?.roadSegmentCount ?? decision.buildPath?.roadSegmentCount,
         roadNamesTraversed: lateralCertification?.roadNamesTraversed ?? decision.buildPath?.roadNamesTraversed,
         roadClassesTraversed: lateralCertification?.roadClassesTraversed ?? decision.buildPath?.roadClassesTraversed,
@@ -786,7 +1023,7 @@ function renderSnapAuthoritySpec(snapAuthority: SnapAuthorityResult | null, sour
         metadata: { sourceLayer: "attachment", rootScopeVersionId: sourceId, renderAuthority: "Constructability Evidence" },
         ref: { kind: "Attachment", id: `${sourceId}:selected-attachment`, scopeVersionId: sourceId },
       },
-      ...(corridorGeometry.length >= 2
+      ...(SHOW_ROUTE_ENGINEERING_DIAGNOSTICS && corridorGeometry.length >= 2
         ? [
             {
               id: `${sourceId}:snap-corridor`,
@@ -1151,14 +1388,6 @@ export default function PrismSiteDecisionWorkspace() {
       setStatus("ScopeVersion blocked: certified attachment, lateral, and serviceability assessment are required.");
       return;
     }
-    if (!snapCertification || !canUseSnapForRoute(snapCertification)) {
-      setStatus("ScopeVersion blocked: certified street snap evidence is required before route geometry can be used.");
-      return;
-    }
-    if (!routeCertification || !canCreateScopeVersionFromRoute(routeCertification)) {
-      setStatus(`ScopeVersion blocked by Certification Authority: ${routeAuthority?.state ?? "ENGINEER_REVIEW_REQUIRED"}.`);
-      return;
-    }
     const savedSeed = seeds.some((item) => item.id === seed?.id) ? seed : await saveOpportunitySeed(seed);
     const scopeBuildPath = savedSeed.buildPath ?? savedSeed.networkAffinity?.buildPath;
     const scopeRoute = graph.routes.find((item) => item.routeId === (scopeBuildPath?.routeId ?? savedSeed.nearestRouteId));
@@ -1167,8 +1396,6 @@ export default function PrismSiteDecisionWorkspace() {
     let draftScope;
     try {
       draftScope = createScopeVersionFromSiteDecision({ site, seed: savedSeed, route: scopeRoute, node: scopeNode, station: scopeStation, quoteBasis: null });
-      const parentScopeVersionId = graph.scopeVersionId ?? graph.metadata.scopeVersionId ?? `SV-INV-${graph.inventoryId}`;
-      draftScope = applyCertifiedRouteToScopeVersion(draftScope, routeCertification, snapCertification, snapStreetCenterlines, parentScopeVersionId);
     } catch (err: any) {
       setStatus(`ScopeVersion blocked: ${err?.message ?? String(err)}`);
       return;
@@ -1218,6 +1445,7 @@ export default function PrismSiteDecisionWorkspace() {
   const quoteBasis = useMemo(() => quoteWorksheet ?? activeScopeQuote ?? quoteBasisFor(activeSeed, quotes.find((quote) => quote.opportunitySeedId === activeSeed?.id)), [activeScopeQuote, activeSeed, quoteWorksheet, quotes]);
   const constructability = activeSeed?.constructabilityAssessment ?? activeSeed?.networkAffinity?.constructabilityAssessment ?? activeSeed?.buildPath?.constructabilityAssessment;
   const buildPath = activeSeed?.buildPath ?? activeSeed?.networkAffinity?.buildPath;
+  const activeStreetGraphRoute = useMemo(() => streetGraphRouteForSeed(activeSeed), [activeSeed]);
   const certifiedLateral = lateralCertificationForSeed(activeSeed);
   const certifiedLateralGeometry = useMemo(() => certifiedLateral?.geometry ?? buildPath?.geometry ?? [], [buildPath?.geometry, certifiedLateral?.geometry]);
   const route = decisionGraph?.routes.find((item) => item.routeId === (buildPath?.routeId ?? activeSeed?.nearestRouteId));
@@ -1276,14 +1504,15 @@ export default function PrismSiteDecisionWorkspace() {
     const evidence = evidenceFor({ site: activeSite, seed: activeSeed, quoteBasis, route, node, station });
     const lateralDiagnostics = lateralCertificationForSeed(activeSeed);
     const accessPoints = lateralDiagnostics?.routeAccessPoints ?? buildPath?.routeAccessPoints;
+    const streetGraphRoute = streetGraphRouteForSeed(activeSeed);
     const routeTrace: RouteTraceStep[] = [
       { label: "Existing Inventory Route", entityId: route?.routeId ?? buildPath?.routeId ?? activeSeed.nearestRouteId ?? "route" },
       { label: "Nearest Station", entityId: station?.stationId ?? buildPath?.stationId ?? activeSeed.nearestStationId ?? "station", coordinate: station ? [station.lon, station.lat] : undefined },
-      { label: "Certified Attachment", entityId: certifiedAttachment?.attachmentId ?? activeSeed.attachmentStrategy?.attachmentType ?? "attachment", coordinate: attachmentPoint },
-      { label: "Road Access", entityId: "road-access", coordinate: accessPoints?.roadAccess ?? accessPoints?.streetSnap },
-      { label: "Parking Access Lane", entityId: "parking-access", coordinate: accessPoints?.parkingAccess },
-      { label: "Driveway", entityId: "driveway-access", coordinate: accessPoints?.drivewayAccess },
-      { label: "Building Entrance", entityId: "building-entrance", coordinate: accessPoints?.buildingEntrance },
+      { label: "Inventory Attachment", entityId: certifiedAttachment?.attachmentId ?? activeSeed.attachmentStrategy?.attachmentType ?? "attachment", coordinate: attachmentPoint },
+      { label: "Street Graph Start Node", entityId: streetGraphRoute?.audit.startNode ?? "start-node", coordinate: accessPoints?.streetGraphStartNode },
+      { label: "Street Graph Traversal", entityId: `${fmt(streetGraphRoute?.audit.pathEdgeCount)} edges`, coordinate: streetGraphRoute?.streetGraphPath[0] },
+      { label: "Street Graph End Node", entityId: streetGraphRoute?.audit.endNode ?? "end-node", coordinate: accessPoints?.streetGraphEndNode },
+      { label: "Final Driveway Access", entityId: "candidate-driveway", coordinate: streetGraphRoute?.endNode?.coordinate },
       {
         label: "Candidate",
         entityId: activeSite.candidateId,
@@ -1321,7 +1550,7 @@ export default function PrismSiteDecisionWorkspace() {
     const candidate = candidateCoordinate(decisionContext.site);
     const lateralDiagnostics = lateralCertificationForSeed(decisionContext.seed);
     const accessPoints = lateralDiagnostics?.routeAccessPoints ?? decisionContext.buildPath?.routeAccessPoints;
-    const snapped = accessPoints?.streetSnap ?? accessPoints?.roadAccess ?? certifiedLateralGeometry[1] ?? certifiedLateralGeometry[0] ?? candidate;
+    const snapped = accessPoints?.streetGraphEndNode ?? certifiedLateralGeometry[certifiedLateralGeometry.length - 2] ?? certifiedLateralGeometry[0] ?? candidate;
     const attachment = decisionContext.attachmentPoint ?? certifiedLateralGeometry[certifiedLateralGeometry.length - 1] ?? snapped;
     if (!candidate || !snapped || !attachment) {
       setSnapAuthority(null);
@@ -1330,13 +1559,8 @@ export default function PrismSiteDecisionWorkspace() {
       setSnapCertificationState("REJECTED_SNAP");
       return;
     }
-    const streets = buildDeterministicStreetCenterlines({
-      candidateId: decisionContext.site.candidateId,
-      candidateCoordinate: candidate,
-      snappedCoordinate: snapped,
-      streetName: "Candidate access centerline",
-      streetClass: "Local",
-    });
+    const registryContext = getConstraintRegistryAnalysisContext({ bbox: paddedStreetLookupBounds(candidate, attachment), requiredLayers: ["STREETS"] });
+    const streets = streetCenterlinesFromConstraintFeatures(registryContext.constraintRegistryFeatures);
     const resolved = resolveSnapAuthority({
       candidateCoordinate: candidate,
       attachmentCoordinate: attachment,
@@ -1346,7 +1570,6 @@ export default function PrismSiteDecisionWorkspace() {
       edgeCoordinate: attachment,
       routeCoordinate: decisionContext.route?.coordinates[0],
     });
-    const registryContext = getConstraintRegistryAnalysisContext({ bbox: boundsForRouteGeometry([candidate, attachment]) });
     const constructabilitySnap =
       decisionContext.attachmentAuthority
         ? resolveConstructabilityAwareSnap({
@@ -1375,8 +1598,8 @@ export default function PrismSiteDecisionWorkspace() {
       candidateCoordinate: { lon: candidate[0], lat: candidate[1] },
       proposedGeometry: routeGeometry,
       referenceLayers: { streets: snapStreetCenterlines, ...registryContext },
-      routeGeometrySource: routeCertification?.status === "CERTIFIED_ROUTE" || routeCertification?.status === "PROVISIONALLY_CERTIFIED" ? "CERTIFIED_ROUTE" : "ENGINEER_EDITED",
-      analysisMode: routeCertification?.status === "CERTIFIED_ROUTE" || routeCertification?.status === "PROVISIONALLY_CERTIFIED" ? "CERTIFIED_SNAPSHOT" : "ENGINEER_EDITED",
+      routeGeometrySource: "SERVICEABILITY_PROPOSED",
+      analysisMode: "REFERENCE_LAYER_ASSISTED",
       supersedesEvidenceId: routeCertification?.constraintEvidenceId,
     });
   }, [decisionContext, routeCertification?.constraintEvidenceId, routeCertification?.status, routeGeometry, snapStreetCenterlines]);
@@ -1408,6 +1631,7 @@ export default function PrismSiteDecisionWorkspace() {
   }, [decisionRouteConstraintAnalysis, routeCertification, routeCertificationNotes, routeEngineerName, snapCertification?.status, snapCertificationState]);
 
   const decisionRouteAlternatives = useMemo<AttachmentAwareRouteResult[]>(() => {
+    if (!SHOW_ROUTE_ENGINEERING_DIAGNOSTICS) return [];
     const candidate = decisionContext ? candidateCoordinate(decisionContext.site) : null;
     if (!decisionContext?.attachmentAuthority || !decisionContext.attachmentPoint || !candidate) return [];
     const registryContext = getConstraintRegistryAnalysisContext();
@@ -1429,19 +1653,17 @@ export default function PrismSiteDecisionWorkspace() {
       (!activeSite || selectedScopeVersion.candidateSiteId === activeSite.candidateId || (selectedScopeVersion.canonicalTruth as any)?.sourceCandidate?.candidateSiteId === activeSite.candidateId);
     if (selectedMatchesDecision) return selectedScopeVersion;
     if (!decisionContext || !hasScopeVersionCertification(decisionContext.seed)) return null;
-    const preview = createDecisionMapScopeVersion(decisionContext);
-    if (routeCertification && routeAuthority.canCreateChildScopeVersion) {
-      const parentScopeVersionId = decisionContext.graph.scopeVersionId ?? decisionContext.graph.metadata.scopeVersionId ?? `SV-INV-${decisionContext.graph.inventoryId}`;
-      return snapCertification ? applyCertifiedRouteToScopeVersion(preview, routeCertification, snapCertification, snapStreetCenterlines, parentScopeVersionId) : preview;
-    }
-    return preview;
-  }, [activeSeed, activeSite, decisionContext, routeAuthority.canCreateChildScopeVersion, routeCertification, selectedScopeVersion, snapCertification, snapStreetCenterlines]);
+    return createDecisionMapScopeVersion(decisionContext);
+  }, [activeSeed, activeSite, decisionContext, selectedScopeVersion]);
   const decisionMapSpec = useMemo(() => (decisionMapScopeVersion ? renderScopeVersion(decisionMapScopeVersion) : null), [decisionMapScopeVersion]);
-  const decisionStreetSpec = useMemo(() => (snapStreetCenterlines.length ? renderStreetCenterlineLayer(snapStreetCenterlines, activeSeed?.id ?? activeSite?.candidateId ?? "site-decision") : null), [
-    activeSeed?.id,
-    activeSite?.candidateId,
-    snapStreetCenterlines,
-  ]);
+  const decisionStreetGraphSpec = useMemo(
+    () => renderStreetGraphRoutingDiagnostics(activeStreetGraphRoute, activeSeed?.id ?? activeSite?.candidateId ?? "site-decision"),
+    [activeSeed?.id, activeSite?.candidateId, activeStreetGraphRoute]
+  );
+  const decisionStreetSpec = useMemo(
+    () => (SHOW_ROUTE_ENGINEERING_DIAGNOSTICS && snapStreetCenterlines.length ? renderStreetCenterlineLayer(snapStreetCenterlines, activeSeed?.id ?? activeSite?.candidateId ?? "site-decision") : null),
+    [activeSeed?.id, activeSite?.candidateId, snapStreetCenterlines]
+  );
   const decisionSnapSpec = useMemo(() => renderSnapAuthoritySpec(snapAuthority, activeSeed?.id ?? activeSite?.candidateId ?? "site-decision"), [activeSeed?.id, activeSite?.candidateId, snapAuthority]);
   const decisionConstraintSpec = useMemo(
     () =>
@@ -1453,13 +1675,18 @@ export default function PrismSiteDecisionWorkspace() {
     [activeSeed?.id, activeSite?.candidateId, decisionMapScopeVersion?.scopeVersionId, decisionRouteConstraintAnalysis]
   );
   const decisionRegistrySpecs = useMemo(
-    () => renderReferenceLayers(constraintFeaturesToReferenceLayers(getConstraintRegistryAnalysisContext({ bbox: boundsForRouteGeometry(routeGeometry) }).constraintRegistryFeatures)),
+    () =>
+      SHOW_ROUTE_ENGINEERING_DIAGNOSTICS
+        ? renderReferenceLayers(constraintFeaturesToReferenceLayers(getConstraintRegistryAnalysisContext({ bbox: boundsForRouteGeometry(routeGeometry) }).constraintRegistryFeatures))
+        : [],
     [decisionRouteConstraintAnalysis?.evidenceId, routeGeometry]
   );
   const decisionMapSpecs = useMemo(
-    () => [decisionStreetSpec, ...decisionRegistrySpecs, decisionMapSpec, decisionSnapSpec, decisionConstraintSpec].filter((spec): spec is MapKernelRenderSpec => Boolean(spec)),
-    [decisionConstraintSpec, decisionMapSpec, decisionRegistrySpecs, decisionSnapSpec, decisionStreetSpec]
+    () => [decisionStreetSpec, ...decisionRegistrySpecs, decisionMapSpec, decisionStreetGraphSpec, decisionSnapSpec, decisionConstraintSpec].filter((spec): spec is MapKernelRenderSpec => Boolean(spec)),
+    [decisionConstraintSpec, decisionMapSpec, decisionRegistrySpecs, decisionSnapSpec, decisionStreetGraphSpec, decisionStreetSpec]
   );
+  const routingTruthDiagnostics = useMemo(() => buildRoutingTruthDiagnostics(decisionMapSpecs, activeStreetGraphRoute), [activeStreetGraphRoute, decisionMapSpecs]);
+  const routeValidationBanner = useMemo(() => routingTruthBanner(routingTruthDiagnostics, activeStreetGraphRoute), [activeStreetGraphRoute, routingTruthDiagnostics]);
   const mapKernelDiagnostics = useMemo(() => buildMapKernelDiagnostics(decisionMapScopeVersion, decisionMapSpecs), [decisionMapScopeVersion, decisionMapSpecs]);
   const diagnostics = useMemo<DecisionDiagnostics>(
     () => ({
@@ -1667,7 +1894,7 @@ export default function PrismSiteDecisionWorkspace() {
             <button type="button" onClick={() => void analyzeDecision()}>
               Analyze Decision
             </button>
-            <button type="button" onClick={() => void createDecisionScopeVersion()} disabled={!canUseSnapForRoute(snapCertification) || !routeAuthority.canCreateChildScopeVersion || !canCreateScopeVersionFromRoute(routeCertification)}>
+            <button type="button" onClick={() => void createDecisionScopeVersion()} disabled={!decisionContext || !hasScopeVersionCertification(decisionContext.seed)}>
               Create ScopeVersion
             </button>
             <button type="button" onClick={() => void generateQuoteFromScopeVersion()}>
@@ -1704,22 +1931,17 @@ export default function PrismSiteDecisionWorkspace() {
             <span>ROI: {Number(activeSeed?.roi ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}x</span>
             <span>Serviceability: {serviceabilityForSeed(activeSeed)?.status ?? "PENDING"}</span>
             <span>Attachment / Lateral: {attachmentCertificationForSeed(activeSeed)?.certificationStatus ?? "PENDING"} / {lateralCertificationForSeed(activeSeed)?.certificationStatus ?? "PENDING"}</span>
-            <span>Snap Certification: {snapCertification?.status ?? snapCertificationState}</span>
-            <span>Route Certification Authority: {routeAuthority.state}</span>
-            <span>Evidence Grade: {routeAuthority.evidenceGrade}</span>
+            <span>Route Geometry: Deterministic Inventory Extension</span>
+            <span>Extension Vertices: {fmt(certifiedLateralGeometry.length)}</span>
           </div>
-          <CertificationAuthorityStrip title="Decision Certification Authority" decision={routeAuthority} />
-          <div className="dal-actions">
-            <button type="button" onClick={() => void createDecisionScopeVersion()} disabled={!canUseSnapForRoute(snapCertification) || !routeAuthority.canCreateChildScopeVersion || !canCreateScopeVersionFromRoute(routeCertification)}>
-              Create Certified ScopeVersion
-            </button>
-          </div>
+          {SHOW_ROUTE_ENGINEERING_DIAGNOSTICS ? <CertificationAuthorityStrip title="Decision Certification Authority" decision={routeAuthority} /> : null}
         </div>
       </div>
 
       <div className="dal-grid">
         <div className="dal-panel">
           <h3>Decision Map</h3>
+          <div className="dal-status">{routeValidationBanner}</div>
           {decisionMapSpecs.length ? (
             <MapKernel
               specs={decisionMapSpecs}
@@ -1744,14 +1966,18 @@ export default function PrismSiteDecisionWorkspace() {
               height={520}
               initialMode="geographic"
               initialBaseLayer="hybrid"
-              editableRoute={{
-                routeId: activeSeed ? `${activeSeed.id}:decision-engineering-route` : "decision-engineering-route",
-                geometry: routeGeometry,
-                enabled: Boolean(decisionContext),
-                selectedVertexIndex: selectedRouteVertexIndex,
-                onGeometryChange: updateDecisionRouteGeometry,
-                onVertexSelect: setSelectedRouteVertexIndex,
-              }}
+              editableRoute={
+                SHOW_ROUTE_ENGINEERING_DIAGNOSTICS
+                  ? {
+                      routeId: activeSeed ? `${activeSeed.id}:decision-engineering-route` : "decision-engineering-route",
+                      geometry: routeGeometry,
+                      enabled: Boolean(decisionContext),
+                      selectedVertexIndex: selectedRouteVertexIndex,
+                      onGeometryChange: updateDecisionRouteGeometry,
+                      onVertexSelect: setSelectedRouteVertexIndex,
+                    }
+                  : undefined
+              }
               onSelectionChange={setMapSelection}
             />
           ) : (
@@ -1790,6 +2016,9 @@ export default function PrismSiteDecisionWorkspace() {
           )}
         </div>
 
+        <RoutingAuditPanel route={activeStreetGraphRoute} />
+        <RoutingTruthDiagnosticsPanel diagnostics={routingTruthDiagnostics} banner={routeValidationBanner} />
+
         <SnapAuthorityPanel
           snapAuthority={snapAuthority}
           certification={snapCertification}
@@ -1804,41 +2033,43 @@ export default function PrismSiteDecisionWorkspace() {
           onReject={rejectDecisionSnap}
         />
 
-        <RouteEngineeringPanel
-          title="Route Engineering"
-          candidateLabel={activeSite?.companyName ?? activeSeed?.siteName}
-          routeLabel={route?.name ?? buildPath?.routeId ?? activeSeed?.nearestRouteId}
-          stationLabel={station?.label ?? buildPath?.stationId ?? activeSeed?.nearestStationId}
-          nodeLabel={node?.nodeId ?? buildPath?.nodeId ?? activeSeed?.nearestNodeId}
-          attachmentLabel={coordinateLabel(decisionContext?.attachmentPoint)}
-          geometry={routeGeometry}
-          originalGeometry={certifiedLateralGeometry}
-          selectedVertexIndex={selectedRouteVertexIndex}
-          certificationState={routeCertificationState}
-          certification={routeCertification ?? undefined}
-          engineerName={routeEngineerName}
-          certificationNotes={routeCertificationNotes}
-          metricHints={{
-            roadCrossings: Number(buildPath?.highwayCrossingCount ?? buildPath?.estimatedCrossings ?? 0),
-            railCrossings: Number(constructability?.rail.railCrossingCount ?? buildPath?.railCrossingCount ?? 0),
-            waterCrossings: Number(constructability?.water.waterCrossingCount ?? buildPath?.waterCrossingCount ?? 0),
-            constructabilityScore: Number(activeSeed?.constructabilityScore ?? constructability?.constructabilityScore ?? 0),
-            permitRisk: constructability ? 100 - constructability.permitScore : undefined,
-            environmentalRisk: Number(constructability?.environmentalRisk ?? activeSeed?.environmentalRisk ?? 0),
-          }}
-          routingMode={selectedRouteAlternativeId ? decisionRouteAlternatives.find((route) => route.routeId === selectedRouteAlternativeId)?.routingMode : "ENGINEER_EDITED"}
-          constraintAnalysis={decisionRouteConstraintAnalysis}
-          routeAlternatives={decisionRouteAlternatives}
-          selectedRouteAlternativeId={selectedRouteAlternativeId}
-          onPromoteRouteAlternative={promoteDecisionRouteAlternative}
-          onGeometryChange={updateDecisionRouteGeometry}
-          onVertexSelect={setSelectedRouteVertexIndex}
-          onStateChange={setRouteCertificationState}
-          onEngineerNameChange={setRouteEngineerName}
-          onCertificationNotesChange={setRouteCertificationNotes}
-          onCertify={certifyDecisionRoute}
-          onReject={rejectDecisionRoute}
-        />
+        {SHOW_ROUTE_ENGINEERING_DIAGNOSTICS ? (
+          <RouteEngineeringPanel
+            title="Route Engineering Diagnostics"
+            candidateLabel={activeSite?.companyName ?? activeSeed?.siteName}
+            routeLabel={route?.name ?? buildPath?.routeId ?? activeSeed?.nearestRouteId}
+            stationLabel={station?.label ?? buildPath?.stationId ?? activeSeed?.nearestStationId}
+            nodeLabel={node?.nodeId ?? buildPath?.nodeId ?? activeSeed?.nearestNodeId}
+            attachmentLabel={coordinateLabel(decisionContext?.attachmentPoint)}
+            geometry={routeGeometry}
+            originalGeometry={certifiedLateralGeometry}
+            selectedVertexIndex={selectedRouteVertexIndex}
+            certificationState={routeCertificationState}
+            certification={routeCertification ?? undefined}
+            engineerName={routeEngineerName}
+            certificationNotes={routeCertificationNotes}
+            metricHints={{
+              roadCrossings: Number(buildPath?.highwayCrossingCount ?? buildPath?.estimatedCrossings ?? 0),
+              railCrossings: Number(constructability?.rail.railCrossingCount ?? buildPath?.railCrossingCount ?? 0),
+              waterCrossings: Number(constructability?.water.waterCrossingCount ?? buildPath?.waterCrossingCount ?? 0),
+              constructabilityScore: Number(activeSeed?.constructabilityScore ?? constructability?.constructabilityScore ?? 0),
+              permitRisk: constructability ? 100 - constructability.permitScore : undefined,
+              environmentalRisk: Number(constructability?.environmentalRisk ?? activeSeed?.environmentalRisk ?? 0),
+            }}
+            routingMode={selectedRouteAlternativeId ? decisionRouteAlternatives.find((route) => route.routeId === selectedRouteAlternativeId)?.routingMode : "ENGINEER_EDITED"}
+            constraintAnalysis={decisionRouteConstraintAnalysis}
+            routeAlternatives={decisionRouteAlternatives}
+            selectedRouteAlternativeId={selectedRouteAlternativeId}
+            onPromoteRouteAlternative={promoteDecisionRouteAlternative}
+            onGeometryChange={updateDecisionRouteGeometry}
+            onVertexSelect={setSelectedRouteVertexIndex}
+            onStateChange={setRouteCertificationState}
+            onEngineerNameChange={setRouteEngineerName}
+            onCertificationNotesChange={setRouteCertificationNotes}
+            onCertify={certifyDecisionRoute}
+            onReject={rejectDecisionRoute}
+          />
+        ) : null}
       </div>
 
       <div className="dal-grid">
@@ -1993,7 +2224,7 @@ export default function PrismSiteDecisionWorkspace() {
                 currentGeometry={routeGeometry}
                 title="Quote Constraint Evidence"
               />
-              <CertificationAuthorityStrip title="Quote Certification Authority" decision={routeAuthority} />
+              {SHOW_ROUTE_ENGINEERING_DIAGNOSTICS ? <CertificationAuthorityStrip title="Quote Certification Authority" decision={routeAuthority} /> : null}
               <div className="dal-metrics">
                 <span>Quote Status: {quoteBasis.quoteStatus ?? "PRELIMINARY_QUOTE"}</span>
                 <span>Evidence Grade: {quoteBasis.evidenceGrade ?? routeAuthority.evidenceGrade}</span>
@@ -2045,7 +2276,7 @@ export default function PrismSiteDecisionWorkspace() {
             currentGeometry={routeGeometry}
             title="ScopeVersion Preview Constraint Evidence"
           />
-          <CertificationAuthorityStrip title="ScopeVersion Preview Certification Authority" decision={routeAuthority} />
+          {SHOW_ROUTE_ENGINEERING_DIAGNOSTICS ? <CertificationAuthorityStrip title="ScopeVersion Preview Certification Authority" decision={routeAuthority} /> : null}
           <pre className="dal-pre">{JSON.stringify(scopePreview ?? {}, null, 2)}</pre>
         </div>
 

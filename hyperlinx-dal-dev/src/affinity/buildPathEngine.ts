@@ -1,17 +1,9 @@
 import type { CandidateSite } from "../types/candidateSite";
 import type { DALCoordinate, InventoryGraph } from "../types/dal";
 import type { AttachmentType, BuildPath } from "../types/networkAffinity";
-import { generateCorridorPathOptions, selectBestCorridorPath } from "../corridor/corridorPathEngine";
+import type { StreetCenterline } from "../street/streetTypes";
 import { DEFAULT_CONSTRUCTION_TYPE, estimateBuriedConstructionCost, BURIED_CONSTRUCTION_ASSUMPTIONS } from "../engineering/constructionModel";
-import { buildDeterministicStreetDrivewayRoute } from "../routing/DeterministicStreetDrivewayRouting";
-import { haversineFeet } from "./geo";
-
-function stationCoordinateFor(graph: InventoryGraph | undefined, stationId?: string, routeId?: string): DALCoordinate | undefined {
-  const station =
-    (stationId ? graph?.stations.find((item) => item.stationId === stationId) : undefined) ??
-    (routeId ? graph?.stations.find((item) => item.routeId === routeId) : undefined);
-  return station ? [station.lon, station.lat] : undefined;
-}
+import { routeInventoryExtensionViaStreetGraph } from "../routing/StreetGraphRouter";
 
 export function buildPathForAttachment(args: {
   graph?: InventoryGraph;
@@ -21,35 +13,19 @@ export function buildPathForAttachment(args: {
   nodeId?: string;
   stationId?: string;
   attachmentType: AttachmentType;
+  streetCenterlines?: StreetCenterline[];
 }): BuildPath {
   const siteCoord: DALCoordinate = [Number(args.site.longitude), Number(args.site.latitude)];
   const attach = args.attachmentCoordinate ?? siteCoord;
-  const deterministicRoute = buildDeterministicStreetDrivewayRoute({
+  const streetGraphRoute = routeInventoryExtensionViaStreetGraph({
     candidateCoordinate: siteCoord,
     attachmentCoordinate: attach,
-    stationCoordinate: stationCoordinateFor(args.graph, args.stationId, args.routeId),
-    site: args.site,
-    variant: args.attachmentType.toLowerCase(),
+    streetCenterlines: args.streetCenterlines,
   });
-  const corridorPath =
-    args.graph && args.attachmentCoordinate
-      ? selectBestCorridorPath(
-          generateCorridorPathOptions({
-            graph: args.graph,
-            site: args.site,
-            attachmentCoordinate: args.attachmentCoordinate,
-            routeId: args.routeId,
-            nodeId: args.nodeId,
-            stationId: args.stationId,
-            attachmentType: args.attachmentType,
-          })
-        )
-      : null;
-  const buildFeet = haversineFeet(siteCoord, attach);
-  const routeableFeet = deterministicRoute.distanceFeet || corridorPath?.distanceFeet || buildFeet;
+  const routeableFeet = streetGraphRoute.routeStatus === "VALID" ? streetGraphRoute.routeFeet : 0;
   const estimatedUndergroundFeet = Math.round(routeableFeet);
   const estimatedAerialFeet = 0;
-  const estimatedCrossings = corridorPath?.crossings ?? Math.max(0, Math.round(routeableFeet / 2200));
+  const estimatedCrossings = streetGraphRoute.routeStatus === "VALID" ? Math.max(0, Math.round(routeableFeet / 2200)) : 0;
   const estimatedBores = Math.max(0, Math.round(estimatedUndergroundFeet / 2200));
   const buriedCost = estimateBuriedConstructionCost({
     buildFeet: routeableFeet,
@@ -58,9 +34,9 @@ export function buildPathForAttachment(args: {
   });
   return {
     siteId: args.site.candidateId,
-    routeId: corridorPath?.attachmentRouteId ?? args.routeId,
-    nodeId: corridorPath?.attachmentNodeId ?? args.nodeId,
-    stationId: corridorPath?.attachmentStationId ?? args.stationId,
+    routeId: args.routeId,
+    nodeId: args.nodeId,
+    stationId: args.stationId,
     attachmentType: args.attachmentType,
     buildFeet: Math.round(routeableFeet),
     buildMiles: routeableFeet / 5280,
@@ -69,28 +45,32 @@ export function buildPathForAttachment(args: {
     estimatedBores,
     estimatedAerialFeet,
     estimatedUndergroundFeet,
-    railCrossingCount: corridorPath?.railCrossingCount,
-    highwayCrossingCount: corridorPath?.highwayCrossingCount,
-    waterCrossingCount: corridorPath?.waterCrossingCount,
-    turnCount: Math.max(0, deterministicRoute.geometry.length - 2),
-    segmentCount: deterministicRoute.roadSegmentCount,
+    railCrossingCount: 0,
+    highwayCrossingCount: estimatedCrossings,
+    waterCrossingCount: 0,
+    turnCount: Math.max(0, streetGraphRoute.geometry.length - 2),
+    segmentCount: streetGraphRoute.roadSegmentCount,
     constructionType: DEFAULT_CONSTRUCTION_TYPE,
     estimatedCost: buriedCost.totalCost,
-    riskScore: corridorPath?.risk.riskScore,
-    constructabilityScore: corridorPath?.constructabilityScore,
-    corridorPath: corridorPath ?? undefined,
-    corridorCost: corridorPath?.cost,
-    corridorRisk: corridorPath?.risk,
+    riskScore: streetGraphRoute.routeStatus === "VALID" ? undefined : 100,
+    constructabilityScore: streetGraphRoute.routeStatus === "VALID" ? undefined : 0,
     constructionAssumptions: BURIED_CONSTRUCTION_ASSUMPTIONS,
-    routingMode: deterministicRoute.routingMode,
-    routingClassification: deterministicRoute.routingClassification,
-    pathConfidence: deterministicRoute.pathConfidence,
-    roadSegmentCount: deterministicRoute.roadSegmentCount,
-    roadNamesTraversed: deterministicRoute.roadNamesTraversed,
-    roadClassesTraversed: deterministicRoute.roadClassesTraversed,
-    attachmentMethod: deterministicRoute.attachmentMethod,
-    missingRoutingDependencies: deterministicRoute.missingDependencies,
-    routeAccessPoints: deterministicRoute.accessPoints,
-    geometry: deterministicRoute.geometry.length >= 2 ? deterministicRoute.geometry : corridorPath?.coordinates ?? [siteCoord, attach],
+    routingMode: "STREET_GRAPH_TRAVERSAL",
+    routingClassification: "STREET_GRAPH_ASTAR",
+    pathConfidence: streetGraphRoute.routeStatus === "VALID" ? "HIGH" : "LOW",
+    routeStatus: streetGraphRoute.routeStatus,
+    routeFailureReason: streetGraphRoute.failureReason,
+    routingAudit: streetGraphRoute.audit,
+    streetGraphRoute,
+    roadSegmentCount: streetGraphRoute.roadSegmentCount,
+    roadNamesTraversed: streetGraphRoute.roadNamesTraversed,
+    roadClassesTraversed: streetGraphRoute.roadClassesTraversed,
+    attachmentMethod: streetGraphRoute.routeStatus === "VALID" ? "STREET_GRAPH_ATTACHMENT" : "ROUTE_NOT_FOUND",
+    missingRoutingDependencies: streetGraphRoute.routeStatus === "VALID" ? [] : [streetGraphRoute.failureReason ?? "NO_REACHABLE_PATH"],
+    routeAccessPoints: {
+      streetGraphStartNode: streetGraphRoute.startNode?.coordinate,
+      streetGraphEndNode: streetGraphRoute.endNode?.coordinate,
+    },
+    geometry: streetGraphRoute.routeStatus === "VALID" ? streetGraphRoute.geometry : [],
   };
 }
