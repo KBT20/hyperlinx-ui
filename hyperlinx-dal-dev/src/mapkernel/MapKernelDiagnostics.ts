@@ -47,8 +47,23 @@ export function buildMapKernelDiagnostics(scopeVersion: ScopeVersion | null | un
   const siteRefs = refsByKind(primitives, "Site");
   const attachmentRefs = refsByKind(primitives, "Attachment");
   const lateralRefs = refsByKind(primitives, "Lateral");
+  const routeAuthorityRefs = new Set(
+    primitives
+      .filter((primitive) => primitive.metadata?.isRouteAuthority === true || String(primitive.metadata?.sourceLayer ?? "").startsWith("ROUTE_AUTHORITY_"))
+      .map((primitive) => primitive.ref.id)
+  );
   const labels = stationLabels(primitives);
   const bounds = boundsFromPrimitives(primitives);
+  const routableBounds = boundsFromPrimitives(
+    primitives.filter(
+      (primitive) =>
+        primitive.ref.kind === "Route" ||
+        primitive.ref.kind === "Lateral" ||
+        primitive.layerId === "lateral" ||
+        primitive.metadata?.isRouteAuthority === true ||
+        String(primitive.metadata?.sourceLayer ?? "").startsWith("ROUTE_AUTHORITY_")
+    )
+  );
   const selectableKinds = Array.from(
     new Set(primitives.filter((primitive) => primitive.metadata?.selectable !== false).map((primitive) => primitive.ref.kind))
   ).sort();
@@ -64,6 +79,7 @@ export function buildMapKernelDiagnostics(scopeVersion: ScopeVersion | null | un
     siteCount: siteRefs.size,
     attachmentCount: attachmentRefs.size,
     lateralCount: lateralRefs.size,
+    routeAuthorityCount: routeAuthorityRefs.size,
     primitiveCount: primitives.length,
     metrics: summarizeMapKernelMetrics(specs, renderOptions),
     renderAuthority: {
@@ -94,9 +110,10 @@ export function buildMapKernelDiagnostics(scopeVersion: ScopeVersion | null | un
     },
     viewport: {
       fitScopeVersion: Boolean(bounds && primitives.length),
-      fitRoute: Boolean(bounds && routeRefs.size),
+      fitRoute: Boolean(routableBounds && (routeRefs.size || lateralRefs.size || routeAuthorityRefs.size)),
       fitSelection: selectableKinds.length > 0,
       bounds,
+      routableBounds,
       source: "MapViewportContext",
     },
     extensionHooks: {

@@ -271,6 +271,15 @@ export type LateralPath = {
   permitCount: number;
   certificationStatus: CertificationStatus;
   constructionAssumptions: ConstructionAssumptions;
+  routingMode?: string;
+  routingClassification?: string;
+  pathConfidence?: "LOW" | "MEDIUM" | "HIGH";
+  roadSegmentCount?: number;
+  roadNamesTraversed?: string[];
+  roadClassesTraversed?: string[];
+  attachmentMethod?: string;
+  missingRoutingDependencies?: string[];
+  routeAccessPoints?: Record<string, DALCoordinate | undefined>;
 };
 
 export type ServiceabilityAssessment = {
@@ -429,6 +438,14 @@ export type ScopeVersionEngineeringBasis = {
   lateralCertification?: LateralPath;
   serviceabilityAssessment?: ServiceabilityAssessment;
   routingMode?: string;
+  routingClassification?: string;
+  pathConfidence?: string;
+  roadSegmentCount?: number;
+  roadNamesTraversed?: string[];
+  roadClassesTraversed?: string[];
+  attachmentMethod?: string;
+  missingRoutingDependencies?: string[];
+  routeAccessPoints?: Record<string, DALCoordinate | undefined>;
   routeCertification?: unknown;
   certifiedGeometrySnapshot?: DALCoordinate[];
   certifiedGeometryHash?: string;

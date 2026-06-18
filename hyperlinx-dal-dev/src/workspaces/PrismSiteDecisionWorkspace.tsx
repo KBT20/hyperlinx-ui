@@ -67,6 +67,13 @@ type DecisionEvidence = {
   serviceabilityStatus: string;
   certificationStatus: string;
   attachmentConfidence: string;
+  routingMode: string;
+  pathConfidence: string;
+  roadSegmentCount: string;
+  roadNamesTraversed: string;
+  roadClassesTraversed: string;
+  attachmentMethod: string;
+  missingRoutingDependencies: string;
 };
 
 type RouteTraceStep = {
@@ -390,6 +397,7 @@ function evidenceFor(args: {
   const serviceability = serviceabilityForSeed(seed);
   const attachmentCertification = attachmentCertificationForSeed(seed);
   const lateralCertification = lateralCertificationForSeed(seed);
+  const routeDiagnostics = lateralCertification ?? buildPath;
   return {
     candidateAddress: [site.address, site.city, site.state, site.zipCode].filter(Boolean).join(", "),
     latLon: Number.isFinite(site.latitude) && Number.isFinite(site.longitude) ? `${Number(site.latitude).toFixed(6)}, ${Number(site.longitude).toFixed(6)}` : "n/a",
@@ -421,6 +429,13 @@ function evidenceFor(args: {
         ? `Attachment ${attachmentCertification.certificationStatus} / Lateral ${lateralCertification.certificationStatus}`
         : "n/a",
     attachmentConfidence: attachmentCertification ? `${Math.round(attachmentCertification.confidenceScore)}%` : "n/a",
+    routingMode: routeDiagnostics?.routingMode ?? "n/a",
+    pathConfidence: routeDiagnostics?.pathConfidence ?? "n/a",
+    roadSegmentCount: fmt(routeDiagnostics?.roadSegmentCount),
+    roadNamesTraversed: routeDiagnostics?.roadNamesTraversed?.join(" -> ") || "n/a",
+    roadClassesTraversed: routeDiagnostics?.roadClassesTraversed?.join(" -> ") || "n/a",
+    attachmentMethod: routeDiagnostics?.attachmentMethod ?? "n/a",
+    missingRoutingDependencies: routeDiagnostics?.missingRoutingDependencies?.join(", ") || "none",
   };
 }
 
@@ -512,6 +527,15 @@ function createDecisionMapScopeVersion(decision: DecisionContext): ScopeVersion 
       engineeringBasis: {
         buildFeet: Number(lateralCertification?.buildFeet ?? decision.buildPath?.buildFeet ?? decision.seed.distanceFeet ?? 0),
         buildMiles: Number(lateralCertification?.buildMiles ?? decision.buildPath?.buildMiles ?? decision.seed.buildMiles ?? 0),
+        routingMode: lateralCertification?.routingMode ?? decision.buildPath?.routingMode,
+        routingClassification: lateralCertification?.routingClassification ?? decision.buildPath?.routingClassification,
+        pathConfidence: lateralCertification?.pathConfidence ?? decision.buildPath?.pathConfidence,
+        roadSegmentCount: lateralCertification?.roadSegmentCount ?? decision.buildPath?.roadSegmentCount,
+        roadNamesTraversed: lateralCertification?.roadNamesTraversed ?? decision.buildPath?.roadNamesTraversed,
+        roadClassesTraversed: lateralCertification?.roadClassesTraversed ?? decision.buildPath?.roadClassesTraversed,
+        attachmentMethod: lateralCertification?.attachmentMethod ?? decision.buildPath?.attachmentMethod,
+        missingRoutingDependencies: lateralCertification?.missingRoutingDependencies ?? decision.buildPath?.missingRoutingDependencies,
+        routeAccessPoints: lateralCertification?.routeAccessPoints ?? decision.buildPath?.routeAccessPoints,
         attachmentAuthority: decision.attachmentAuthority,
         attachmentCertification,
         lateralCertification,
@@ -1250,7 +1274,16 @@ export default function PrismSiteDecisionWorkspace() {
         })
       : null;
     const evidence = evidenceFor({ site: activeSite, seed: activeSeed, quoteBasis, route, node, station });
+    const lateralDiagnostics = lateralCertificationForSeed(activeSeed);
+    const accessPoints = lateralDiagnostics?.routeAccessPoints ?? buildPath?.routeAccessPoints;
     const routeTrace: RouteTraceStep[] = [
+      { label: "Existing Inventory Route", entityId: route?.routeId ?? buildPath?.routeId ?? activeSeed.nearestRouteId ?? "route" },
+      { label: "Nearest Station", entityId: station?.stationId ?? buildPath?.stationId ?? activeSeed.nearestStationId ?? "station", coordinate: station ? [station.lon, station.lat] : undefined },
+      { label: "Certified Attachment", entityId: certifiedAttachment?.attachmentId ?? activeSeed.attachmentStrategy?.attachmentType ?? "attachment", coordinate: attachmentPoint },
+      { label: "Road Access", entityId: "road-access", coordinate: accessPoints?.roadAccess ?? accessPoints?.streetSnap },
+      { label: "Parking Access Lane", entityId: "parking-access", coordinate: accessPoints?.parkingAccess },
+      { label: "Driveway", entityId: "driveway-access", coordinate: accessPoints?.drivewayAccess },
+      { label: "Building Entrance", entityId: "building-entrance", coordinate: accessPoints?.buildingEntrance },
       {
         label: "Candidate",
         entityId: activeSite.candidateId,
@@ -1259,10 +1292,6 @@ export default function PrismSiteDecisionWorkspace() {
             ? ([Number(activeSite.longitude), Number(activeSite.latitude)] as DALCoordinate)
             : undefined,
       },
-      { label: "Certified Attachment", entityId: certifiedAttachment?.attachmentId ?? activeSeed.attachmentStrategy?.attachmentType ?? "attachment", coordinate: attachmentPoint },
-      { label: "Route", entityId: route?.routeId ?? buildPath?.routeId ?? activeSeed.nearestRouteId ?? "route" },
-      { label: "Station", entityId: station?.stationId ?? buildPath?.stationId ?? activeSeed.nearestStationId ?? "station", coordinate: station ? [station.lon, station.lat] : undefined },
-      { label: "Core", entityId: node?.nodeId ?? buildPath?.nodeId ?? activeSeed.nearestNodeId ?? "core", coordinate: node ? [node.lon, node.lat] : undefined },
     ];
     return {
       site: activeSite,
@@ -1290,7 +1319,9 @@ export default function PrismSiteDecisionWorkspace() {
       return;
     }
     const candidate = candidateCoordinate(decisionContext.site);
-    const snapped = certifiedLateralGeometry[0] ?? candidate;
+    const lateralDiagnostics = lateralCertificationForSeed(decisionContext.seed);
+    const accessPoints = lateralDiagnostics?.routeAccessPoints ?? decisionContext.buildPath?.routeAccessPoints;
+    const snapped = accessPoints?.streetSnap ?? accessPoints?.roadAccess ?? certifiedLateralGeometry[1] ?? certifiedLateralGeometry[0] ?? candidate;
     const attachment = decisionContext.attachmentPoint ?? certifiedLateralGeometry[certifiedLateralGeometry.length - 1] ?? snapped;
     if (!candidate || !snapped || !attachment) {
       setSnapAuthority(null);

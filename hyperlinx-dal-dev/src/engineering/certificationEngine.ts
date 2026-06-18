@@ -195,6 +195,7 @@ export function certifyLateralPath(args: {
   const buildFeet = Math.round(pathLengthFeet(geometry));
   const crossings = Number(args.buildPath?.estimatedCrossings ?? 0);
   const turns = Number(args.buildPath?.turnCount ?? countTurns(geometry));
+  const routeAccessPoints = args.buildPath?.routeAccessPoints;
   const certificationStatus: CertificationStatus =
     args.attachmentPoint.certificationStatus === "FAILED" || geometry.length < 2 || buildFeet <= 0
       ? "FAILED"
@@ -213,6 +214,15 @@ export function certifyLateralPath(args: {
     permitCount: Number(args.permitCount ?? 0),
     certificationStatus,
     constructionAssumptions: BURIED_CONSTRUCTION_ASSUMPTIONS,
+    routingMode: args.buildPath?.routingMode,
+    routingClassification: args.buildPath?.routingClassification,
+    pathConfidence: args.buildPath?.pathConfidence,
+    roadSegmentCount: args.buildPath?.roadSegmentCount,
+    roadNamesTraversed: args.buildPath?.roadNamesTraversed,
+    roadClassesTraversed: args.buildPath?.roadClassesTraversed,
+    attachmentMethod: args.buildPath?.attachmentMethod,
+    missingRoutingDependencies: args.buildPath?.missingRoutingDependencies,
+    routeAccessPoints,
   };
 }
 

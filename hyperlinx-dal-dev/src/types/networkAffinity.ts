@@ -73,6 +73,15 @@ export type BuildPath = {
   lateralCertification?: LateralPath;
   serviceabilityAssessment?: ServiceabilityAssessment;
   constructionAssumptions?: ConstructionAssumptions;
+  routingMode?: string;
+  routingClassification?: string;
+  pathConfidence?: "LOW" | "MEDIUM" | "HIGH";
+  roadSegmentCount?: number;
+  roadNamesTraversed?: string[];
+  roadClassesTraversed?: string[];
+  attachmentMethod?: string;
+  missingRoutingDependencies?: string[];
+  routeAccessPoints?: Record<string, DALCoordinate | undefined>;
   geometry: DALCoordinate[];
 };
 

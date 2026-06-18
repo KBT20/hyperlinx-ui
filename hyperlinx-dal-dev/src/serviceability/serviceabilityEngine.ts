@@ -9,7 +9,7 @@ import { deriveRouteCertificationState } from "../certification/CertificationAut
 import { certifySiteDecision } from "../engineering/certificationEngine";
 import { DEFAULT_CONSTRUCTION_TYPE, estimateBuriedConstructionCost } from "../engineering/constructionModel";
 import { renderConstraintAnalysis, analyzeRouteConstraints, type ConstraintAnalysisResult } from "../routing/ConstraintAnalysisEngine";
-import { boundsForRouteGeometry, getConstraintRegistryAnalysisContext } from "../reference/ConstraintGeometryRegistry";
+import { boundsForRouteGeometry, getConstraintRegistryAnalysisContext, streetCenterlinesFromConstraintFeatures } from "../reference/ConstraintGeometryRegistry";
 import type { CandidateSite } from "../types/candidateSite";
 import type { DALCoordinate, InventoryEdge, InventoryGraph, InventoryNode, InventoryRoute, InventoryStation, ScopeVersion } from "../types/dal";
 import type { MapKernelRenderSpec, MapKernelPrimitive } from "../mapkernel";
@@ -463,7 +463,10 @@ export function analyzeSiteAgainstInventory(site: CandidateSite, inventoryScopeV
     confidenceScore: certification.attachmentPoint.confidenceScore,
     certificationStatus: certification.attachmentPoint.certificationStatus,
   };
-  const streetCenterlines =
+  const attachmentCoord: DALCoordinate = [attachmentPoint.lon, attachmentPoint.lat];
+  const initialRegistryContext = getConstraintRegistryAnalysisContext({ bbox: boundsForRouteGeometry([coordinate, attachmentCoord]) });
+  const registryStreetCenterlines = streetCenterlinesFromConstraintFeatures(initialRegistryContext.constraintRegistryFeatures);
+  const deterministicStreetCenterlines =
     streetSnap
       ? buildDeterministicStreetCenterlines({
           candidateId: site.candidateId,
@@ -473,7 +476,7 @@ export function analyzeSiteAgainstInventory(site: CandidateSite, inventoryScopeV
           streetClass: streetSnap.roadClass,
         })
       : [];
-  const attachmentCoord: DALCoordinate = [attachmentPoint.lon, attachmentPoint.lat];
+  const streetCenterlines = registryStreetCenterlines.length ? [...registryStreetCenterlines, ...deterministicStreetCenterlines] : deterministicStreetCenterlines;
   const attachmentAuthority = resolveAttachmentAuthority({
     candidate: site,
     candidateCoordinate: coordinate,
@@ -506,7 +509,7 @@ export function analyzeSiteAgainstInventory(site: CandidateSite, inventoryScopeV
     edgeCoordinate: edge?.coordinates?.[0] ?? nearestRouteResult.coordinate,
     routeCoordinate: nearestRouteResult.coordinate,
   });
-  const snapRegistryContext = getConstraintRegistryAnalysisContext({ bbox: boundsForRouteGeometry([coordinate, attachmentCoord]) });
+  const snapRegistryContext = initialRegistryContext;
   const constructabilitySnap =
     attachmentAuthority
       ? resolveConstructabilityAwareSnap({
@@ -546,6 +549,9 @@ export function analyzeSiteAgainstInventory(site: CandidateSite, inventoryScopeV
       ? buildStreetConstrainedPath({
           siteSnapPoint: { lon: snapCoordinate[0], lat: snapCoordinate[1] },
           attachmentPoint: { lat: selectedAttachmentPoint.lat, lon: selectedAttachmentPoint.lon },
+          candidatePoint: { lon: coordinate[0], lat: coordinate[1] },
+          stationPoint: station ? { lon: station.lon, lat: station.lat } : nearestStationResult.coordinate ? { lon: nearestStationResult.coordinate[0], lat: nearestStationResult.coordinate[1] } : undefined,
+          streetCenterlines,
           constraints: { constructionType: DEFAULT_CONSTRUCTION_TYPE },
         })
       : null;
