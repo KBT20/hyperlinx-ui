@@ -5,6 +5,7 @@ import type {
   ScopeVersionStatus,
   ValidationStatus,
 } from "../types/dal";
+import { validateScopeVersionStationing } from "./ScopeVersionStationingValidator";
 
 export type ScopeVersionValidationIssue = {
   field: string;
@@ -40,6 +41,10 @@ const IMMUTABLE_CANONICAL_KEYS: Array<keyof ScopeVersionCanonicalTruth> = [
   "decisionBasis",
   "sourceCandidate",
   "sourceOpportunity",
+  "stations",
+  "objects",
+  "stationing",
+  "objectPlacement",
   "certificationSnapshot",
 ];
 
@@ -201,6 +206,9 @@ export function validateScopeVersion(scopeVersion: ScopeVersion): ScopeVersionVa
     } else if (!["CERTIFIED_ROUTE", "PROVISIONALLY_CERTIFIED"].includes(String(certifiedRouteReference.routeAuthorityState))) {
       errors.push(error("certifiedRouteReference.routeAuthorityState", "Route authority must be CERTIFIED_ROUTE or PROVISIONALLY_CERTIFIED."));
     }
+    const stationingValidation = validateScopeVersionStationing(scopeVersion);
+    stationingValidation.errors.forEach((item) => errors.push(error(item.field, item.message)));
+    stationingValidation.warnings.forEach((item) => warnings.push(warning(item.field, item.message)));
   }
 
   const status: ValidationStatus = errors.length ? "FAIL" : warnings.length ? "WARNING" : "PASS";

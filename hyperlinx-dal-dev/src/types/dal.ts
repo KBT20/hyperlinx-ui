@@ -354,6 +354,81 @@ export type ScopeVersionCertifiedRouteReference = {
   constraintEvidenceId?: string;
 };
 
+export type RouteStationState = "PLANNED" | "RELEASED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "REJECTED";
+
+export type ScopeObjectState = "PLANNED" | "RELEASED" | "INSTALLED" | "TESTED" | "COMPLETE" | "BLOCKED" | "REJECTED";
+
+export type ScopeObjectCategory = "INFRASTRUCTURE" | "CONSTRAINT";
+
+export type ScopeInfrastructureObjectType =
+  | "SERVICE_LOCATION"
+  | "BUILDING_ENTRANCE"
+  | "DUCT"
+  | "FIBER"
+  | "SPLICE"
+  | "HANDHOLE"
+  | "VAULT"
+  | "ATTACHMENT_POINT"
+  | "ROAD_CROSSING"
+  | "PARCEL"
+  | "BUILDING"
+  | "RAILROAD"
+  | "WATERWAY"
+  | "TERRAIN_ZONE"
+  | "UTILITY_CONFLICT"
+  | "PERMIT_AUTHORITY";
+
+export type RouteStation = {
+  stationId: string;
+  scopeVersionId: string;
+  certifiedRouteId: string;
+  routeId: string;
+  measureFeet: number;
+  stationLabel: string;
+  coordinate: DALCoordinate;
+  stationState: RouteStationState;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ScopeInfrastructureObject = {
+  objectId: string;
+  scopeVersionId: string;
+  stationId: string;
+  objectCategory: ScopeObjectCategory;
+  objectType: ScopeInfrastructureObjectType;
+  objectState: ScopeObjectState;
+  label: string;
+  coordinate: DALCoordinate;
+  measureFeet: number;
+  quantity: number;
+  unit: string;
+  specification: string;
+  parentObjectId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ScopeVersionStationingSummary = {
+  stationIntervalFeet: number;
+  routeFeet: number;
+  stationCount: number;
+  firstStationId?: string;
+  finalStationId?: string;
+  finalStationMeasureFeet: number;
+  certifiedRouteId: string;
+  geometryHash: string;
+};
+
+export type ScopeVersionObjectPlacementSummary = {
+  objectCount: number;
+  objectTypes: ScopeInfrastructureObjectType[];
+  objectsByStation: Record<string, string[]>;
+  productionFeetPlanned: number;
+  productionFeetComplete: number;
+  percentComplete: number;
+};
+
 export type IOFPackageType =
   | "ENGINEERING"
   | "PERMITTING"
@@ -550,6 +625,10 @@ export type ScopeVersionCanonicalTruth = {
     opportunitySeedId?: string;
     opportunityId?: string;
   };
+  stations?: Array<RouteStation | InventoryStation>;
+  objects?: ScopeInfrastructureObject[];
+  stationing?: ScopeVersionStationingSummary;
+  objectPlacement?: ScopeVersionObjectPlacementSummary;
   certificationSnapshot?: CertificationSnapshot;
   validation?: unknown;
   [key: string]: unknown;

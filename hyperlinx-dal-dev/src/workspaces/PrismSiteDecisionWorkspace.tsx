@@ -42,6 +42,8 @@ import { renderStreetCenterlineLayer } from "../street/StreetCenterlineLayer";
 import { canUseSnapForRoute, resolveSnapAuthority } from "../street/SnapAuthorityEngine";
 import type { SnapAuthorityResult, SnapCertificationSnapshot, SnapCertificationState, StreetCenterline } from "../street/streetTypes";
 import { createScopeVersionFromSiteDecision } from "../scopeversion/scopeVersionUtils";
+import { applyLateralStationingAndObjects } from "../scopeversion/ScopeVersionObjectFactory";
+import { summarizeScopeVersionStationingDiagnostics } from "../scopeversion/ScopeVersionStationingValidator";
 import { validateScopeVersion } from "../scopeversion/scopeVersionValidation";
 import type { CandidateSite } from "../types/candidateSite";
 import type { CertificationSnapshot, DALCoordinate, InventoryGraph, InventoryGraphMetadata, InventoryNode, InventoryRoute, InventoryStation, MarketplaceQuote, ScopeVersion, ScopeVersionCertifiedRouteReference } from "../types/dal";
@@ -1792,7 +1794,10 @@ export default function PrismSiteDecisionWorkspace() {
         station: scopeStation,
         constraintEvidence: decisionRouteConstraintAnalysis,
       });
-      scopeWithCertifiedRoute = attachCertifiedRouteReferenceToScopeVersion(draftScope, certifiedRouteReferenceFromRoute(certifiedRoute));
+      scopeWithCertifiedRoute = applyLateralStationingAndObjects({
+        scopeVersion: attachCertifiedRouteReferenceToScopeVersion(draftScope, certifiedRouteReferenceFromRoute(certifiedRoute)),
+        certifiedRoute,
+      });
     } catch (err: any) {
       setStatus(`CERTIFIED_ROUTE_REQUIRED: ${err?.message ?? String(err)}`);
       return;
@@ -2109,6 +2114,10 @@ export default function PrismSiteDecisionWorkspace() {
   const routingTruthDiagnostics = useMemo(() => buildRoutingTruthDiagnostics(decisionMapSpecs, activeStreetGraphRoute), [activeStreetGraphRoute, decisionMapSpecs]);
   const routeValidationBanner = useMemo(() => routingTruthBanner(routingTruthDiagnostics, activeStreetGraphRoute), [activeStreetGraphRoute, routingTruthDiagnostics]);
   const mapKernelDiagnostics = useMemo(() => buildMapKernelDiagnostics(decisionMapScopeVersion, decisionMapSpecs), [decisionMapScopeVersion, decisionMapSpecs]);
+  const stationingDiagnostics = useMemo(
+    () => summarizeScopeVersionStationingDiagnostics(selectedScopeVersion ?? decisionMapScopeVersion),
+    [decisionMapScopeVersion, selectedScopeVersion]
+  );
   const diagnostics = useMemo<DecisionDiagnostics>(
     () => ({
       serviceability: serviceabilityForSeed(activeSeed)?.status ?? (decisionContext ? "SERVICEABLE" : activeSite?.status === "NON_SERVICEABLE" ? "NON_SERVICEABLE" : "PENDING"),
@@ -2230,6 +2239,14 @@ export default function PrismSiteDecisionWorkspace() {
               unresolvedConstraints: decisionRouteConstraintAnalysis?.unresolvedConstraints,
               certificationReadiness: decisionRouteConstraintAnalysis?.certificationReadiness,
             },
+            stationing:
+              (selectedScopeVersion?.sourceOpportunityId === decisionContext.seed.id || selectedScopeVersion?.candidateSiteId === decisionContext.site.candidateId
+                ? (selectedScopeVersion?.canonicalTruth as any)?.stationing
+                : undefined) ?? "Stationing not generated",
+            objectPlacement:
+              (selectedScopeVersion?.sourceOpportunityId === decisionContext.seed.id || selectedScopeVersion?.candidateSiteId === decisionContext.site.candidateId
+                ? (selectedScopeVersion?.canonicalTruth as any)?.objectPlacement
+                : undefined) ?? "Objects not generated",
             financialBasis: {
               estimatedConstructionCost: activeSeed?.buildCost ?? decisionContext.buildPath?.estimatedCost,
               estimatedEngineeringCost: activeSeed?.estimatedEngineeringCost ?? constructability?.estimatedEngineeringCost,
@@ -2751,6 +2768,17 @@ export default function PrismSiteDecisionWorkspace() {
             title="ScopeVersion Preview Constraint Evidence"
           />
           {SHOW_ROUTE_ENGINEERING_DIAGNOSTICS ? <CertificationAuthorityStrip title="ScopeVersion Preview Certification Authority" decision={routeAuthority} /> : null}
+          <div className="dal-metrics">
+            <span>Stationing: {stationingDiagnostics ? "Generated" : "Stationing not generated"}</span>
+            <span>Station Interval: {fmt(stationingDiagnostics?.stationIntervalFeet ?? 0)} ft</span>
+            <span>Station Count: {fmt(stationingDiagnostics?.stationCount ?? 0)}</span>
+            <span>Final Station: {fmt(Math.round(stationingDiagnostics?.finalStationMeasureFeet ?? 0))} ft</span>
+            <span>Object Count: {fmt(stationingDiagnostics?.objectCount ?? 0)}</span>
+            <span>Object Types: {stationingDiagnostics?.objectTypes.join(", ") || "n/a"}</span>
+            <span>Objects Missing Station: {fmt(stationingDiagnostics?.objectsMissingStation.length ?? 0)}</span>
+            <span>Stations Without Coordinates: {fmt(stationingDiagnostics?.stationsWithoutCoordinate.length ?? 0)}</span>
+            <span>Objects Without Coordinates: {fmt(stationingDiagnostics?.objectsWithoutCoordinate.length ?? 0)}</span>
+          </div>
           <pre className="dal-pre">{JSON.stringify(scopePreview ?? {}, null, 2)}</pre>
         </div>
 

@@ -322,10 +322,10 @@ export function renderScopeVersion(scopeVersion: ScopeVersion): MapKernelRenderS
       layerId: "object",
       kind: "Object",
       coordinate,
-      label: String(object.name ?? object.type ?? "Object"),
+      label: String(object.label ?? object.name ?? object.objectType ?? object.type ?? "Object"),
       payload: objectValue,
       scopeVersionId,
-      metadata: { sourceLayer: "object", rootScopeVersionId, parentScopeVersionId, renderAuthority },
+      metadata: { sourceLayer: "object", rootScopeVersionId, parentScopeVersionId, renderAuthority, objectCategory: object.objectCategory, objectType: object.objectType },
     });
   });
 
