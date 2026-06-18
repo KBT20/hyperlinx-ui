@@ -1,6 +1,6 @@
 import type { CandidateSite } from "../types/candidateSite";
 import type { InventoryGraph } from "../types/dal";
-import type { AttachmentStrategy, AttachmentType, CapacityAnalysis, NearestNodeResult, NearestRouteResult, NearestStationResult } from "../types/networkAffinity";
+import type { AttachmentStrategy, AttachmentType, CapacityAnalysis, NearestNodeResult, NearestRouteResult, NearestStationResult, StreetRoutingMetadata } from "../types/networkAffinity";
 import type { RevenueEstimate } from "../types/portfolio";
 import type { StreetCenterline } from "../street/streetTypes";
 import { BURIED_CONSTRUCTION_ASSUMPTIONS, DEFAULT_CONSTRUCTION_TYPE } from "../engineering/constructionModel";
@@ -43,6 +43,7 @@ export function compareAttachmentStrategies(args: {
   nearestStation: NearestStationResult;
   revenue: RevenueEstimate;
   streetCenterlines?: StreetCenterline[];
+  streetRoutingMetadata?: StreetRoutingMetadata;
 }) {
   const strategyTypes: AttachmentType[] = [
     "LATERAL",
@@ -72,6 +73,7 @@ export function compareAttachmentStrategies(args: {
         stationId: args.nearestStation.stationId,
         attachmentType,
         streetCenterlines: args.streetCenterlines,
+        streetRoutingMetadata: args.streetRoutingMetadata,
       });
       const profile = strategyMultipliers[attachmentType];
       const routeValid = path.routeStatus === "VALID" && path.geometry.length >= 2;

@@ -13,6 +13,16 @@ export type AttachmentType =
   | "REGEN_EXTENSION"
   | "DATACENTER_EXTENSION";
 
+export type StreetRoutingMetadata = {
+  streetLayerLoaded: boolean;
+  streetFeatureCount: number;
+  streetLayerAuthority?: string;
+  streetLayerCertificationUse?: string;
+  streetLayerBboxCoverage?: boolean;
+  routingBBox?: [number, number, number, number];
+  routingBufferMiles?: number;
+};
+
 export type CapacityStatus = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 
 export type NearestRouteResult = {
@@ -80,6 +90,22 @@ export type BuildPath = {
   routeFailureReason?: string;
   routingAudit?: unknown;
   streetGraphRoute?: unknown;
+  streetRouting?: StreetRoutingMetadata;
+  streetLayerLoaded?: boolean;
+  streetFeatureCount?: number;
+  streetLayerAuthority?: string;
+  streetLayerCertificationUse?: string;
+  streetLayerBboxCoverage?: boolean;
+  routingBBox?: [number, number, number, number];
+  routingBufferMiles?: number;
+  routingScope?: "NEW_LATERAL_ONLY";
+  existingInventoryRoutePreserved?: boolean;
+  existingInventoryLengthFeet?: number;
+  newLateralLengthFeet?: number;
+  attachmentId?: string;
+  osmRouteFound?: boolean;
+  osmSnapDistanceFeet?: number;
+  candidateSnapDistanceFeet?: number;
   roadSegmentCount?: number;
   roadNamesTraversed?: string[];
   roadClassesTraversed?: string[];

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   getConstraintCompleteness,
   listConstraintLayers,
@@ -17,8 +17,8 @@ const IMPORTABLE_LAYER_TYPES: Array<Extract<ConstraintReferenceLayerType, "WATER
   "PARCELS",
 ];
 
-const AUTHORITIES: ConstraintAuthority[] = ["OSM", "USGS", "FRA", "COUNTY", "CITY", "STATE", "CUSTOMER", "MANUAL", "UNKNOWN"];
-const CERTIFICATION_USE: ConstraintCertificationUse[] = ["USABLE_FOR_CERTIFICATION", "REFERENCE_ONLY", "NOT_USABLE"];
+const AUTHORITIES: ConstraintAuthority[] = ["IMPORTED", "OSM", "USGS", "FRA", "COUNTY", "CITY", "STATE", "CUSTOMER", "MANUAL", "UNKNOWN"];
+const CERTIFICATION_USE: ConstraintCertificationUse[] = ["USABLE_FOR_CERTIFICATION", "ROUTING_REFERENCE", "REFERENCE_ONLY", "NOT_USABLE"];
 
 function fmt(value: number | undefined) {
   return Number(value || 0).toLocaleString();
@@ -28,6 +28,7 @@ function statusLabel(value: string) {
   if (value === "LOADED") return "Loaded";
   if (value === "FAILED") return "Failed";
   if (value === "USABLE_FOR_CERTIFICATION") return "Usable For Certification";
+  if (value === "ROUTING_REFERENCE") return "Routing Reference";
   if (value === "REFERENCE_ONLY") return "Reference Only";
   if (value === "NOT_LOADED") return "Missing";
   return value.replaceAll("_", " ");
@@ -40,9 +41,9 @@ function coverageLabel(bbox: [number, number, number, number] | undefined) {
 
 export default function ConstraintGeometryRegistryPanel() {
   const [layersVersion, setLayersVersion] = useState(0);
-  const [layerType, setLayerType] = useState<(typeof IMPORTABLE_LAYER_TYPES)[number]>("WATER");
-  const [authority, setAuthority] = useState<ConstraintAuthority>("CUSTOMER");
-  const [certificationUse, setCertificationUse] = useState<ConstraintCertificationUse>("REFERENCE_ONLY");
+  const [layerType, setLayerType] = useState<(typeof IMPORTABLE_LAYER_TYPES)[number]>("STREETS");
+  const [authority, setAuthority] = useState<ConstraintAuthority>("IMPORTED");
+  const [certificationUse, setCertificationUse] = useState<ConstraintCertificationUse>("ROUTING_REFERENCE");
   const [sourceName, setSourceName] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [status, setStatus] = useState("Constraint Geometry Registry ready.");
@@ -50,6 +51,12 @@ export default function ConstraintGeometryRegistryPanel() {
   const completeness = useMemo(() => getConstraintCompleteness(), [layersVersion]);
   const referenceOnly = layers.filter((layer) => layer.certificationUse === "REFERENCE_ONLY");
   const usable = layers.filter((layer) => layer.certificationUse === "USABLE_FOR_CERTIFICATION" && layer.status === "LOADED");
+
+  useEffect(() => {
+    if (layerType !== "STREETS") return;
+    setAuthority("IMPORTED");
+    setCertificationUse("ROUTING_REFERENCE");
+  }, [layerType]);
 
   async function importGeoJson() {
     if (!selectedFile) return;

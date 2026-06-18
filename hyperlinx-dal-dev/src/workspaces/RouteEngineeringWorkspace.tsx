@@ -443,6 +443,7 @@ export default function RouteEngineeringWorkspace() {
                   Route Mode
                   <select value={evaluatedRoute.routeMode} onChange={(event) => updateRouteMode(event.target.value as RouteMode)}>
                     <option value="DIRECT_FALLBACK">DIRECT_FALLBACK</option>
+                    <option value="OSRM_ROUTE">OSRM_ROUTE</option>
                     <option value="ROAD_ROW">ROAD_ROW</option>
                     <option value="UTILITY_EASEMENT">UTILITY_EASEMENT</option>
                     <option value="EXISTING_TELECOM">EXISTING_TELECOM</option>

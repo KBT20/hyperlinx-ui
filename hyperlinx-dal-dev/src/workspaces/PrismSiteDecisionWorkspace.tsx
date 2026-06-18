@@ -7,16 +7,19 @@ import {
   listOpportunitySeeds,
   loadInventoryGraph,
   now,
+  createCertifiedRoute,
   saveCandidateSite,
   saveMarketplaceQuote,
   saveOpportunitySeed,
   saveScopeVersion,
 } from "../api/dalClient";
+import { buildOsrmPathForAttachment } from "../affinity/buildPathEngine";
 import { haversineFeet } from "../affinity/geo";
 import { resolveConstructabilityAwareSnap, type ConstructabilityAwareSnapResult } from "../attachment/ConstructabilityAwareSnapEngine";
 import { resolveAttachmentAuthority, type AttachmentAuthorityResult } from "../attachment/AttachmentAuthorityEngine";
 import { applyQuoteToScopeVersion, generatePreliminaryQuote } from "../commercial/quoteEngine";
 import { deriveRouteCertificationState } from "../certification/CertificationAuthority";
+import { certifySiteDecision } from "../engineering/certificationEngine";
 import CertificationAuthorityStrip from "../components/CertificationAuthorityStrip";
 import ConstraintEvidenceStrip from "../components/ConstraintEvidenceStrip";
 import RouteEngineeringPanel from "../components/RouteEngineeringPanel";
@@ -26,11 +29,14 @@ import { geocodeCandidateSite, isValidGeocodeCoordinate, realGeocoderConfigured 
 import { MapKernel, buildMapKernelDiagnostics, renderScopeVersion, type MapKernelRenderSpec, type MapSelection } from "../mapkernel";
 import { generateOpportunitySeedForCandidate } from "../prism/opportunityGenerator";
 import { boundsForRouteGeometry, constraintFeaturesToReferenceLayers, getConstraintRegistryAnalysisContext, streetCenterlinesFromConstraintFeatures } from "../reference/ConstraintGeometryRegistry";
+import { registerGeoJsonConstraintLayer } from "../reference/constraintLayerImport";
 import { renderReferenceLayers } from "../reference/ReferenceLayerManager";
 import { generateAttachmentAwareRouteAlternatives, type AttachmentAwareRouteResult } from "../routing/AttachmentAwareRouteEngine";
 import { analyzeRouteConstraints, renderConstraintAnalysis } from "../routing/ConstraintAnalysisEngine";
 import { fallbackAuditReport } from "../routing/fallbackAuditReport";
 import { renderStreetGraphRoutingDiagnostics, type StreetGraphRouteResult } from "../routing/StreetGraphRouter";
+import { createDraftRoute, evaluateRouteAuthority } from "../routing/RouteAuthorityEngine";
+import type { CertifiedRoute } from "../routing/CertifiedRouteAuthority";
 import { canCreateScopeVersionFromRoute, type RouteCertificationSnapshot, type RouteCertificationState } from "../serviceability/routeCertification";
 import { renderStreetCenterlineLayer } from "../street/StreetCenterlineLayer";
 import { canUseSnapForRoute, resolveSnapAuthority } from "../street/SnapAuthorityEngine";
@@ -38,7 +44,7 @@ import type { SnapAuthorityResult, SnapCertificationSnapshot, SnapCertificationS
 import { createScopeVersionFromSiteDecision } from "../scopeversion/scopeVersionUtils";
 import { validateScopeVersion } from "../scopeversion/scopeVersionValidation";
 import type { CandidateSite } from "../types/candidateSite";
-import type { DALCoordinate, InventoryGraph, InventoryGraphMetadata, InventoryNode, InventoryRoute, InventoryStation, MarketplaceQuote, ScopeVersion } from "../types/dal";
+import type { CertificationSnapshot, DALCoordinate, InventoryGraph, InventoryGraphMetadata, InventoryNode, InventoryRoute, InventoryStation, MarketplaceQuote, ScopeVersion, ScopeVersionCertifiedRouteReference } from "../types/dal";
 import type { OpportunitySeed } from "../types/portfolio";
 
 const SHOW_ROUTE_ENGINEERING_DIAGNOSTICS = false;
@@ -80,6 +86,13 @@ type DecisionEvidence = {
   roadClassesTraversed: string;
   attachmentMethod: string;
   missingRoutingDependencies: string;
+  existingInventoryLength: string;
+  newLateralLength: string;
+  attachmentId: string;
+  osmRouteFound: string;
+  osmSnapDistance: string;
+  candidateSnapDistance: string;
+  inventoryRoutePreserved: string;
 };
 
 type RouteTraceStep = {
@@ -183,12 +196,24 @@ function coordinateLabel(coordinate?: DALCoordinate | null) {
   return coordinate ? `${coordinate[1].toFixed(6)}, ${coordinate[0].toFixed(6)}` : "n/a";
 }
 
-function paddedStreetLookupBounds(a: DALCoordinate, b: DALCoordinate, paddingDegrees = 0.03) {
+const DEFAULT_ROUTING_BUFFER_MILES = 2;
+
+function routingBufferDegrees(centerLat: number, bufferMiles: number) {
+  const clamped = Math.max(0.5, bufferMiles);
+  return {
+    latDegrees: clamped / 69,
+    lonDegrees: clamped / Math.max(20, 69 * Math.cos((centerLat * Math.PI) / 180)),
+  };
+}
+
+function paddedStreetLookupBounds(a: DALCoordinate, b: DALCoordinate, bufferMiles = DEFAULT_ROUTING_BUFFER_MILES) {
+  const centerLat = (a[1] + b[1]) / 2;
+  const { latDegrees, lonDegrees } = routingBufferDegrees(centerLat, bufferMiles);
   return [
-    Math.min(a[0], b[0]) - paddingDegrees,
-    Math.min(a[1], b[1]) - paddingDegrees,
-    Math.max(a[0], b[0]) + paddingDegrees,
-    Math.max(a[1], b[1]) + paddingDegrees,
+    Math.min(a[0], b[0]) - lonDegrees,
+    Math.min(a[1], b[1]) - latDegrees,
+    Math.max(a[0], b[0]) + lonDegrees,
+    Math.max(a[1], b[1]) + latDegrees,
   ] as [number, number, number, number];
 }
 
@@ -238,11 +263,62 @@ function streetGraphRouteForSeed(seed: OpportunitySeed | null | undefined): Stre
   const value = seed?.buildPath?.streetGraphRoute ?? seed?.networkAffinity?.buildPath?.streetGraphRoute ?? seed?.lateralCertification?.streetGraphRoute;
   if (!value || typeof value !== "object") return null;
   const record = value as Partial<StreetGraphRouteResult>;
-  return record.audit?.routingEngine === "StreetGraphRouter" ? (record as StreetGraphRouteResult) : null;
+  return record.audit?.routingEngine === "StreetGraphRouter" || record.audit?.routingEngine === "OSRMLateralRouter" ? (record as StreetGraphRouteResult) : null;
 }
 
-type RouteRenderSource = "STREET_GRAPH" | "ATTACHMENT_ROUTE" | "DIRECT_LINE" | "FALLBACK" | "UNKNOWN";
-type RouteValidationBanner = "STREET_GRAPH_ROUTE_VERIFIED" | "DIRECT_LINE_RENDERING_DETECTED" | "NO_STREET_PATH_FOUND" | "EMPTY_STREET_GRAPH" | "SNAP_FAILURE";
+function validStreetGraphLateral(route: StreetGraphRouteResult | null | undefined): route is StreetGraphRouteResult {
+  return Boolean(route?.routeStatus === "VALID" && route.audit.pathFound && route.audit.pathSegmentCount > 0 && route.geometry.length > 2 && !route.audit.fallbackUsed);
+}
+
+function streetGraphLateralGeometry(route: StreetGraphRouteResult | null | undefined) {
+  return validStreetGraphLateral(route) ? route.geometry : [];
+}
+
+function certificationSnapshotWithStreetGraphLateral(seed: OpportunitySeed, route: StreetGraphRouteResult | null | undefined): CertificationSnapshot | undefined {
+  const sourceCertificationSnapshot = (seed.certificationSnapshot ?? seed.networkAffinity?.certificationSnapshot) as Record<string, any> | undefined;
+  const lateralCertification = lateralCertificationForSeed(seed);
+  const attachmentCertification = attachmentCertificationForSeed(seed);
+  const serviceabilityAssessment = serviceabilityForSeed(seed);
+  const defaultConstructionAssumptions = { constructionType: "BURIED" as const, trenchCost: 0, boreCost: 0, crossingCost: 0, restorationCost: 0, costPerFoot: 0 };
+  const sourceLateralPath = (
+    sourceCertificationSnapshot?.lateralPath && typeof sourceCertificationSnapshot.lateralPath === "object" ? sourceCertificationSnapshot.lateralPath : lateralCertification ?? {}
+  ) as Record<string, any>;
+  if (!sourceCertificationSnapshot && !lateralCertification && !attachmentCertification && !serviceabilityAssessment) return undefined;
+  return {
+    ...(sourceCertificationSnapshot ?? {}),
+    serviceabilityAssessment: serviceabilityAssessment ?? sourceCertificationSnapshot?.serviceabilityAssessment,
+    attachmentPoint: attachmentCertification ?? sourceCertificationSnapshot?.attachmentPoint,
+    constructionAssumptions:
+      sourceCertificationSnapshot?.constructionAssumptions ??
+      lateralCertification?.constructionAssumptions ??
+      seed.constructionAssumptions ??
+      seed.networkAffinity?.constructionAssumptions ??
+      defaultConstructionAssumptions,
+    certifiedAt: String(sourceCertificationSnapshot?.certifiedAt ?? (seed as { updatedAt?: string }).updatedAt ?? seed.createdAt ?? now()),
+    lateralPath: {
+      ...sourceLateralPath,
+      geometry: streetGraphLateralGeometry(route),
+      buildFeet: validStreetGraphLateral(route) ? route.routeFeet : 0,
+      buildMiles: validStreetGraphLateral(route) ? route.routeMiles : 0,
+      routeStatus: route?.routeStatus ?? "ROUTE_NOT_FOUND",
+      routeFailureReason: route?.failureReason ?? route?.audit.failureReason,
+      streetGraphRoute: route,
+    },
+  } as CertificationSnapshot;
+}
+
+type RouteRenderSource = "OSRM_ROUTE" | "STREET_GRAPH" | "ATTACHMENT_ROUTE" | "DIRECT_LINE" | "FALLBACK" | "UNKNOWN";
+type RouteValidationBanner =
+  | "OSRM_ROUTE_VERIFIED"
+  | "OSRM_ROUTE_NOT_FOUND"
+  | "STREET_CENTERLINES_LOADED"
+  | "STREET_CENTERLINES_NOT_LOADED"
+  | "STREET_GRAPH_ROUTE_VERIFIED"
+  | "DIRECT_LINE_RENDERING_DETECTED"
+  | "NO_REACHABLE_PATH"
+  | "NO_STREET_PATH_FOUND"
+  | "EMPTY_STREET_GRAPH"
+  | "SNAP_FAILURE";
 type MapRoutePrimitive = MapKernelRenderSpec["primitives"][number];
 
 type RoutingTruthDiagnostic = {
@@ -312,10 +388,12 @@ function routeCoordinatesMatch(coordinates: DALCoordinate[], route: StreetGraphR
 
 function routeRenderSource(primitive: MapRoutePrimitive, spec: MapKernelRenderSpec, route: StreetGraphRouteResult | null): RouteRenderSource {
   const sourceLayer = routePrimitiveSourceLayer(primitive, spec).toUpperCase();
+  const routeEngine = route?.audit.routingEngine;
+  if (sourceLayer === "OSRM_ROUTE") return "OSRM_ROUTE";
   if (sourceLayer === "STREET_GRAPH_COMPUTED_PATH") return "STREET_GRAPH";
   if (primitive.layerId === "routeAuthorityDirectFallback" || sourceLayer.includes("DIRECT_FALLBACK") || sourceLayer.includes("FALLBACK")) return "FALLBACK";
   const coordinates = validLineCoordinates(primitive);
-  if (routeCoordinatesMatch(coordinates, route)) return "STREET_GRAPH";
+  if (routeCoordinatesMatch(coordinates, route)) return routeEngine === "OSRMLateralRouter" ? "OSRM_ROUTE" : "STREET_GRAPH";
   if (primitive.ref.kind === "Route" && primitive.layerId === "inventory") return "ATTACHMENT_ROUTE";
   if (coordinates.length === 2 && (primitive.ref.kind === "Lateral" || primitive.layerId === "lateral" || primitive.layerId.startsWith("routeAuthority"))) return "DIRECT_LINE";
   if (primitive.ref.kind === "Route") return "ATTACHMENT_ROUTE";
@@ -369,10 +447,16 @@ function buildRoutingTruthDiagnostics(specs: MapKernelRenderSpec[], route: Stree
 }
 
 function routingTruthBanner(diagnostics: RoutingTruthDiagnostic[], route: StreetGraphRouteResult | null): RouteValidationBanner {
-  const failureReason = route?.failureReason ?? route?.audit.failureReason;
+  const audit = route?.audit;
+  const failureReason = route?.failureReason ?? audit?.failureReason;
+  const routeIsRenderable = Boolean(route?.routeStatus === "VALID" && audit?.pathFound && audit.pathSegmentCount > 0 && route.geometry.length > 2 && !audit.fallbackUsed);
+  if (routeIsRenderable) return audit?.routingEngine === "OSRMLateralRouter" ? "OSRM_ROUTE_VERIFIED" : "STREET_GRAPH_ROUTE_VERIFIED";
+  if (failureReason === "OSRM_ROUTE_NOT_FOUND" || failureReason === "OSRM_SNAP_FAILED" || failureReason === "OSRM_ROUTE_FAILED") return "OSRM_ROUTE_NOT_FOUND";
+  if (failureReason === "STREET_CENTERLINES_NOT_LOADED" || !audit?.streetLayerLoaded) return "STREET_CENTERLINES_NOT_LOADED";
   if (failureReason === "EMPTY_STREET_GRAPH") return "EMPTY_STREET_GRAPH";
   if (failureReason === "SNAP_FAILURE") return "SNAP_FAILURE";
-  if (!route || route.routeStatus !== "VALID" || !route.audit.pathFound) return "NO_STREET_PATH_FOUND";
+  if (failureReason === "NO_REACHABLE_PATH" || failureReason === "NO_STREET_FEATURES_IN_BBOX") return "NO_REACHABLE_PATH";
+  if (!route || route.routeStatus !== "VALID" || !audit?.pathFound) return "NO_STREET_PATH_FOUND";
   const decisionRoutes = diagnostics.filter((diagnostic) => diagnostic.renderSource !== "ATTACHMENT_ROUTE");
   if (decisionRoutes.some((diagnostic) => diagnostic.renderSource === "DIRECT_LINE" || diagnostic.renderSource === "FALLBACK" || diagnostic.renderedVertexCount === 2)) return "DIRECT_LINE_RENDERING_DETECTED";
   if (
@@ -396,7 +480,15 @@ function RoutingAuditPanel({ route }: { route: StreetGraphRouteResult | null }) 
     <div className="dal-panel">
       <h3>Routing Audit</h3>
       <div className="dal-metrics">
-        <span>Routing Engine: {audit?.routingEngine ?? "StreetGraphRouter"}</span>
+        <span>Routing Engine: {audit?.routingEngine ?? "OSRMLateralRouter"}</span>
+        <span>Routing Provider: {audit?.routingProvider ?? "n/a"}</span>
+        <span>Street Layer Loaded: {audit?.streetLayerLoaded ? "TRUE" : "FALSE"}</span>
+        <span>Street Feature Count: {fmt(audit?.streetFeatureCount)}</span>
+        <span>Street / Route Authority: {audit?.streetLayerAuthority ?? "n/a"}</span>
+        <span>Street Layer Certification Use: {audit?.streetLayerCertificationUse ?? "n/a"}</span>
+        <span>Street BBox Coverage: {audit?.streetLayerBboxCoverage ? "TRUE" : "FALSE"}</span>
+        <span>Routing BBox: {audit?.routingBBox?.map((value) => value.toFixed(5)).join(", ") ?? "n/a"}</span>
+        <span>Routing Buffer Miles: {audit?.routingBufferMiles?.toLocaleString(undefined, { maximumFractionDigits: 2 }) ?? "n/a"}</span>
         <span>Graph Nodes: {fmt(audit?.graphNodes)}</span>
         <span>Graph Edges: {fmt(audit?.graphEdges)}</span>
         <span>Start Node: {audit?.startNode ?? "n/a"}</span>
@@ -405,12 +497,21 @@ function RoutingAuditPanel({ route }: { route: StreetGraphRouteResult | null }) 
         <span>Path Nodes: {fmt(audit?.pathNodeCount)}</span>
         <span>Path Edges: {fmt(audit?.pathEdgeCount)}</span>
         <span>Path Segments: {fmt(audit?.pathSegmentCount)}</span>
+        <span>Path Vertex Count: {fmt(route?.streetGraphPath.length)}</span>
         <span>Total Traversed Length: {feetLabel(audit?.totalTraversedLength)}</span>
         <span>Routing Method: {audit?.routingMethod ?? "ASTAR"}</span>
         <span>Execution Time: {fmt(audit?.routingExecutionTime)} ms</span>
         <span>Fallback Used: {audit?.fallbackUsed ? "TRUE" : "FALSE"}</span>
         <span>Route Status: {audit?.routeStatus ?? route?.routeStatus ?? "ROUTE_NOT_FOUND"}</span>
         <span>Failure Reason: {route?.failureReason ?? audit?.failureReason ?? "none"}</span>
+        <span>Routing Scope: {audit?.routingScope ?? "NEW_LATERAL_ONLY"}</span>
+        <span>Inventory Preserved: TRUE</span>
+        <span>Existing Inventory Length: {feetLabel(audit?.existingInventoryLengthFeet)}</span>
+        <span>New Lateral Length: {feetLabel(audit?.newLateralLengthFeet ?? route?.routeFeet)}</span>
+        <span>Attachment Id: {audit?.attachmentId ?? "n/a"}</span>
+        <span>OSRM Route Found: {audit?.osmRouteFound ? "TRUE" : "FALSE"}</span>
+        <span>Start Node Snap Distance: {feetLabel(audit?.osmSnapDistanceFeet ?? audit?.distanceToStartNode)}</span>
+        <span>Candidate Snap Distance: {feetLabel(audit?.candidateSnapDistanceFeet ?? audit?.distanceToEndNode)}</span>
         <span>Candidate Coordinate: {coordinateLabel(audit?.candidateCoordinate)}</span>
         <span>Attachment Coordinate: {coordinateLabel(audit?.attachmentCoordinate)}</span>
         <span>Snapped Start Coordinate: {coordinateLabel(audit?.snappedStartCoordinate)}</span>
@@ -423,17 +524,30 @@ function RoutingAuditPanel({ route }: { route: StreetGraphRouteResult | null }) 
   );
 }
 
-function RoutingTruthDiagnosticsPanel({ diagnostics, banner }: { diagnostics: RoutingTruthDiagnostic[]; banner: RouteValidationBanner }) {
+function RoutingTruthDiagnosticsPanel({ diagnostics, banner, route }: { diagnostics: RoutingTruthDiagnostic[]; banner: RouteValidationBanner; route: StreetGraphRouteResult | null }) {
+  const osrmRoutes = diagnostics.filter((diagnostic) => diagnostic.renderSource === "OSRM_ROUTE");
   const streetGraphRoutes = diagnostics.filter((diagnostic) => diagnostic.renderSource === "STREET_GRAPH");
   const directLineRoutes = diagnostics.filter((diagnostic) => diagnostic.renderSource === "DIRECT_LINE" || diagnostic.validationFlags.includes("SUSPECT_DIRECT_LINE_RENDERING"));
   const fallbackRoutes = diagnostics.filter((diagnostic) => diagnostic.renderSource === "FALLBACK" || diagnostic.fallbackUsed);
+  const lateralRendered = diagnostics.some((diagnostic) => (diagnostic.renderSource === "OSRM_ROUTE" || diagnostic.renderSource === "STREET_GRAPH") && diagnostic.renderedVertexCount > 2);
+  const audit = route?.audit;
   return (
     <div className="dal-panel">
       <h3>Routing Truth Diagnostics</h3>
       <div className="dal-status">{banner}</div>
       <div className="dal-metrics">
         <span>Rendered Routes: {fmt(diagnostics.length)}</span>
+        <span>OSRM Routes: {fmt(osrmRoutes.length)}</span>
         <span>Street Graph Routes: {fmt(streetGraphRoutes.length)}</span>
+        <span>Street Layer Loaded: {audit?.streetLayerLoaded ? "TRUE" : "FALSE"}</span>
+        <span>Street Feature Count: {fmt(audit?.streetFeatureCount)}</span>
+        <span>Street Graph Nodes: {fmt(audit?.graphNodes)}</span>
+        <span>Street Graph Edges: {fmt(audit?.graphEdges)}</span>
+        <span>Path Found: {audit?.pathFound ? "TRUE" : "FALSE"}</span>
+        <span>Path Segment Count: {fmt(audit?.pathSegmentCount)}</span>
+        <span>Lateral Rendered: {lateralRendered ? "TRUE" : "FALSE"}</span>
+        <span>Lateral Render Source: {osrmRoutes[0]?.renderSource ?? streetGraphRoutes[0]?.renderSource ?? "none"}</span>
+        <span>Failure Reason: {route?.failureReason ?? audit?.failureReason ?? "none"}</span>
         <span>Direct-Line Routes: {fmt(directLineRoutes.length)}</span>
         <span>Fallback Routes: {fmt(fallbackRoutes.length)}</span>
         <span>Fallback Locations: {fmt(fallbackAuditReport.fallbackLocations.length)}</span>
@@ -454,10 +568,12 @@ function hasScopeVersionCertification(seed: OpportunitySeed | null | undefined) 
   const serviceability = serviceabilityForSeed(seed);
   const attachment = attachmentCertificationForSeed(seed);
   const lateral = lateralCertificationForSeed(seed);
+  const streetGraphRoute = streetGraphRouteForSeed(seed);
   return Boolean(
     serviceability &&
       attachment &&
       lateral &&
+      validStreetGraphLateral(streetGraphRoute) &&
       serviceability.status !== "NOT_SERVICEABLE" &&
       serviceability.serviceable &&
       attachment.certificationStatus !== "FAILED" &&
@@ -524,6 +640,96 @@ function isServiceableSeed(seed: OpportunitySeed | null, route?: InventoryRoute,
       buildPath.geometry.length >= 2 &&
       (seed.networkAffinity?.preferredAttachmentPoint || buildPath.corridorPath?.attachmentCoordinate || buildPath.geometry[buildPath.geometry.length - 1])
   );
+}
+
+async function generateOsrmDecisionSeed(graph: InventoryGraph, site: CandidateSite, sourceSeed?: OpportunitySeed | null): Promise<OpportunitySeed | null> {
+  const seed = sourceSeed ?? generateOpportunitySeedForCandidate(graph, site);
+  if (!seed) return null;
+  const currentRoute = streetGraphRouteForSeed(seed);
+  if (currentRoute?.audit.routingEngine === "OSRMLateralRouter" && validStreetGraphLateral(currentRoute)) return seed;
+
+  const baseBuildPath = seed.buildPath ?? seed.networkAffinity?.buildPath;
+  const attachmentCertification = attachmentCertificationForSeed(seed);
+  const attachmentCoordinate =
+    attachmentCertification && Number.isFinite(attachmentCertification.longitude) && Number.isFinite(attachmentCertification.latitude)
+      ? ([attachmentCertification.longitude, attachmentCertification.latitude] as DALCoordinate)
+      : seed.networkAffinity?.preferredAttachmentPoint ?? seed.networkAffinity?.nearestRoute.coordinate ?? baseBuildPath?.geometry?.[0];
+  const routeId = baseBuildPath?.routeId ?? seed.nearestRouteId ?? seed.networkAffinity?.nearestRoute.routeId;
+  const nodeId = baseBuildPath?.nodeId ?? seed.nearestNodeId ?? seed.networkAffinity?.nearestNode.nodeId;
+  const stationId = baseBuildPath?.stationId ?? seed.nearestStationId ?? seed.networkAffinity?.nearestStation.stationId;
+  const osrmBuildPath = await buildOsrmPathForAttachment({
+    graph,
+    site,
+    attachmentCoordinate,
+    routeId,
+    nodeId,
+    stationId,
+    attachmentType: baseBuildPath?.attachmentType ?? seed.attachmentStrategy?.attachmentType ?? seed.networkAffinity?.preferredStrategy.attachmentType ?? "LATERAL",
+  });
+  const constructabilityAssessment = seed.constructabilityAssessment ?? seed.networkAffinity?.constructabilityAssessment;
+  const certification = certifySiteDecision({
+    site,
+    graph,
+    buildPath: osrmBuildPath,
+    routeId,
+    nodeId,
+    stationId,
+    permitRisk: constructabilityAssessment ? 100 - constructabilityAssessment.permitScore : undefined,
+    buildRisk: osrmBuildPath.riskScore,
+    permitCount: constructabilityAssessment?.permitting.authorities.length,
+  });
+  const updatedStrategy = seed.attachmentStrategy
+    ? {
+        ...seed.attachmentStrategy,
+        buildFeet: osrmBuildPath.buildFeet,
+        estimatedCost: osrmBuildPath.estimatedCost ?? seed.attachmentStrategy.estimatedCost,
+        riskScore: osrmBuildPath.riskScore ?? seed.attachmentStrategy.riskScore,
+        constructabilityScore: osrmBuildPath.constructabilityScore ?? seed.attachmentStrategy.constructabilityScore,
+        buildPath: osrmBuildPath,
+      }
+    : seed.attachmentStrategy;
+  const updatedNetworkAffinity = seed.networkAffinity
+    ? {
+        ...seed.networkAffinity,
+        preferredAttachmentPoint: [certification.attachmentPoint.longitude, certification.attachmentPoint.latitude] as DALCoordinate,
+        preferredStrategy: {
+          ...seed.networkAffinity.preferredStrategy,
+          buildFeet: osrmBuildPath.buildFeet,
+          estimatedCost: osrmBuildPath.estimatedCost ?? seed.networkAffinity.preferredStrategy.estimatedCost,
+          riskScore: osrmBuildPath.riskScore ?? seed.networkAffinity.preferredStrategy.riskScore,
+          constructabilityScore: osrmBuildPath.constructabilityScore ?? seed.networkAffinity.preferredStrategy.constructabilityScore,
+          buildPath: osrmBuildPath,
+        },
+        buildPath: osrmBuildPath,
+        estimatedBuildFootage: osrmBuildPath.buildFeet,
+        estimatedLateralFootage: osrmBuildPath.buildFeet,
+        attachmentCertification: certification.attachmentPoint,
+        lateralCertification: certification.lateralPath,
+        serviceabilityAssessment: certification.serviceabilityAssessment,
+        certificationSnapshot: certification.certificationSnapshot,
+      }
+    : undefined;
+
+  return {
+    ...seed,
+    nearestRouteId: routeId ?? seed.nearestRouteId,
+    nearestNodeId: nodeId ?? seed.nearestNodeId,
+    nearestStationId: stationId ?? seed.nearestStationId,
+    distanceFeet: osrmBuildPath.buildFeet,
+    buildCost: osrmBuildPath.routeStatus === "VALID" ? (osrmBuildPath.estimatedCost ?? seed.buildCost) : 0,
+    buildMiles: osrmBuildPath.buildMiles,
+    riskScore: osrmBuildPath.riskScore ?? seed.riskScore,
+    constructabilityScore: osrmBuildPath.constructabilityScore ?? seed.constructabilityScore,
+    networkAffinity: updatedNetworkAffinity,
+    networkAffinityScore: updatedNetworkAffinity?.affinityScore ?? seed.networkAffinityScore,
+    attachmentStrategy: updatedStrategy,
+    buildPath: osrmBuildPath,
+    capacityStatus: updatedNetworkAffinity?.capacity.projectedUtilization ?? seed.capacityStatus,
+    attachmentCertification: certification.attachmentPoint,
+    lateralCertification: certification.lateralPath,
+    serviceabilityAssessment: certification.serviceabilityAssessment,
+    certificationSnapshot: certification.certificationSnapshot,
+  };
 }
 
 function phaseFor(seed: OpportunitySeed | null) {
@@ -629,6 +835,11 @@ function evidenceFor(args: {
   const attachmentCertification = attachmentCertificationForSeed(seed);
   const lateralCertification = lateralCertificationForSeed(seed);
   const routeDiagnostics = lateralCertification ?? buildPath;
+  const routingAudit = (routeDiagnostics?.routingAudit && typeof routeDiagnostics.routingAudit === "object" ? (routeDiagnostics.routingAudit as Record<string, unknown>) : {}) as Record<string, unknown>;
+  const existingInventoryLengthFeet = Number(routeDiagnostics?.existingInventoryLengthFeet ?? routingAudit.existingInventoryLengthFeet ?? route?.lengthFeet ?? 0);
+  const newLateralLengthFeet = Number(routeDiagnostics?.newLateralLengthFeet ?? routingAudit.newLateralLengthFeet ?? routeDiagnostics?.buildFeet ?? buildFeet);
+  const osmSnapDistanceFeet = Number(routeDiagnostics?.osmSnapDistanceFeet ?? routingAudit.osmSnapDistanceFeet ?? 0);
+  const candidateSnapDistanceFeet = Number(routeDiagnostics?.candidateSnapDistanceFeet ?? routingAudit.candidateSnapDistanceFeet ?? 0);
   return {
     candidateAddress: [site.address, site.city, site.state, site.zipCode].filter(Boolean).join(", "),
     latLon: Number.isFinite(site.latitude) && Number.isFinite(site.longitude) ? `${Number(site.latitude).toFixed(6)}, ${Number(site.longitude).toFixed(6)}` : "n/a",
@@ -669,6 +880,13 @@ function evidenceFor(args: {
     roadClassesTraversed: routeDiagnostics?.roadClassesTraversed?.join(" -> ") || "n/a",
     attachmentMethod: routeDiagnostics?.attachmentMethod ?? "n/a",
     missingRoutingDependencies: routeDiagnostics?.missingRoutingDependencies?.join(", ") || "none",
+    existingInventoryLength: feetLabel(existingInventoryLengthFeet),
+    newLateralLength: feetLabel(newLateralLengthFeet),
+    attachmentId: attachmentCertification?.attachmentId ?? buildPath?.attachmentId ?? String(routingAudit.attachmentId ?? "n/a"),
+    osmRouteFound: routeDiagnostics?.osmRouteFound || routingAudit.osmRouteFound ? "TRUE" : "FALSE",
+    osmSnapDistance: feetLabel(osmSnapDistanceFeet),
+    candidateSnapDistance: feetLabel(candidateSnapDistanceFeet),
+    inventoryRoutePreserved: routeDiagnostics?.existingInventoryRoutePreserved === false || routingAudit.existingInventoryRoutePreserved === false ? "FALSE" : "TRUE",
   };
 }
 
@@ -679,12 +897,17 @@ function createDecisionMapScopeVersion(decision: DecisionContext): ScopeVersion 
   const routeId = decision.buildPath?.routeId ?? decision.seed.nearestRouteId ?? decision.route?.routeId ?? "";
   const nodeId = decision.buildPath?.nodeId ?? decision.seed.nearestNodeId ?? decision.node?.nodeId ?? "";
   const stationId = decision.buildPath?.stationId ?? decision.seed.nearestStationId ?? decision.station?.stationId ?? "";
-  const lateralGeometry = lateralCertification?.geometry ?? decision.buildPath?.geometry ?? [];
+  const streetGraphRoute = streetGraphRouteForSeed(decision.seed);
+  const validLateralRoute = validStreetGraphLateral(streetGraphRoute);
+  const lateralGeometry = streetGraphLateralGeometry(streetGraphRoute);
   const attachmentPoint = decision.attachmentPoint ?? ([Number.NaN, Number.NaN] as DALCoordinate);
+  const existingInventoryLengthFeet = Number(lateralCertification?.existingInventoryLengthFeet ?? decision.buildPath?.existingInventoryLengthFeet ?? decision.route?.lengthFeet ?? 0);
+  const newLateralLengthFeet = validLateralRoute ? Number(streetGraphRoute.routeFeet) : 0;
   const siteLatitude = Number(decision.site.latitude ?? decision.seed.latitude ?? 0);
   const siteLongitude = Number(decision.site.longitude ?? decision.seed.longitude ?? 0);
   const timestamp = (decision.seed as { updatedAt?: string }).updatedAt ?? decision.seed.createdAt ?? now();
   const scopeVersionId = `decision-map-${decision.seed.id}`;
+  const sanitizedCertificationSnapshot = certificationSnapshotWithStreetGraphLateral(decision.seed, streetGraphRoute);
   return {
     scopeVersionId,
     type: "CANDIDATE",
@@ -709,12 +932,12 @@ function createDecisionMapScopeVersion(decision: DecisionContext): ScopeVersion 
     nearestNode: decision.node,
     nearestStation: decision.station,
     buildPath: decision.buildPath,
-    buildFeet: Number(lateralCertification?.buildFeet ?? decision.buildPath?.buildFeet ?? decision.seed.distanceFeet ?? 0),
-    buildMiles: Number(lateralCertification?.buildMiles ?? decision.buildPath?.buildMiles ?? decision.seed.buildMiles ?? 0),
+    buildFeet: newLateralLengthFeet,
+    buildMiles: newLateralLengthFeet / 5280,
     crossings: decision.crossings,
     constructability: decision.seed.constructabilityAssessment ?? decision.seed.networkAffinity?.constructabilityAssessment,
     financialInputs: decision.quoteBasis,
-    certificationSnapshot: decision.seed.certificationSnapshot ?? decision.seed.networkAffinity?.certificationSnapshot,
+    certificationSnapshot: sanitizedCertificationSnapshot,
     serviceabilityAssessment,
     decisionTimestamp: timestamp,
     user: "DAL Operator",
@@ -734,6 +957,7 @@ function createDecisionMapScopeVersion(decision: DecisionContext): ScopeVersion 
         nodeName: decision.node?.nodeId ?? nodeId,
         stationId,
         stationName: decision.station?.label ?? stationId,
+        attachmentId: attachmentCertification?.attachmentId ?? decision.buildPath?.attachmentId,
         attachmentPoint,
         attachmentCoordinates: attachmentPoint,
         attachmentAuthority: decision.attachmentAuthority,
@@ -758,8 +982,8 @@ function createDecisionMapScopeVersion(decision: DecisionContext): ScopeVersion 
         buildPath: decision.buildPath,
       },
       engineeringBasis: {
-        buildFeet: Number(lateralCertification?.buildFeet ?? decision.buildPath?.buildFeet ?? decision.seed.distanceFeet ?? 0),
-        buildMiles: Number(lateralCertification?.buildMiles ?? decision.buildPath?.buildMiles ?? decision.seed.buildMiles ?? 0),
+        buildFeet: newLateralLengthFeet,
+        buildMiles: newLateralLengthFeet / 5280,
         routingMode: lateralCertification?.routingMode ?? decision.buildPath?.routingMode,
         routingClassification: lateralCertification?.routingClassification ?? decision.buildPath?.routingClassification,
         pathConfidence: lateralCertification?.pathConfidence ?? decision.buildPath?.pathConfidence,
@@ -767,19 +991,43 @@ function createDecisionMapScopeVersion(decision: DecisionContext): ScopeVersion 
         routeFailureReason: lateralCertification?.routeFailureReason ?? decision.buildPath?.routeFailureReason,
         routingAudit: lateralCertification?.routingAudit ?? decision.buildPath?.routingAudit,
         streetGraphRoute: lateralCertification?.streetGraphRoute ?? decision.buildPath?.streetGraphRoute,
+        routingScope: lateralCertification?.routingScope ?? decision.buildPath?.routingScope,
+        existingInventoryRoutePreserved: lateralCertification?.existingInventoryRoutePreserved ?? decision.buildPath?.existingInventoryRoutePreserved,
+        existingInventoryLengthFeet,
+        newLateralLengthFeet,
+        attachmentId: attachmentCertification?.attachmentId ?? decision.buildPath?.attachmentId,
+        osmRouteFound: lateralCertification?.osmRouteFound ?? decision.buildPath?.osmRouteFound,
+        osmSnapDistanceFeet: lateralCertification?.osmSnapDistanceFeet ?? decision.buildPath?.osmSnapDistanceFeet,
+        candidateSnapDistanceFeet: lateralCertification?.candidateSnapDistanceFeet ?? decision.buildPath?.candidateSnapDistanceFeet,
         roadSegmentCount: lateralCertification?.roadSegmentCount ?? decision.buildPath?.roadSegmentCount,
         roadNamesTraversed: lateralCertification?.roadNamesTraversed ?? decision.buildPath?.roadNamesTraversed,
         roadClassesTraversed: lateralCertification?.roadClassesTraversed ?? decision.buildPath?.roadClassesTraversed,
         attachmentMethod: lateralCertification?.attachmentMethod ?? decision.buildPath?.attachmentMethod,
         missingRoutingDependencies: lateralCertification?.missingRoutingDependencies ?? decision.buildPath?.missingRoutingDependencies,
         routeAccessPoints: lateralCertification?.routeAccessPoints ?? decision.buildPath?.routeAccessPoints,
+        streetLayerLoaded: lateralCertification?.streetLayerLoaded ?? decision.buildPath?.streetLayerLoaded,
+        streetFeatureCount: lateralCertification?.streetFeatureCount ?? decision.buildPath?.streetFeatureCount,
+        streetLayerAuthority: lateralCertification?.streetLayerAuthority ?? decision.buildPath?.streetLayerAuthority,
+        streetLayerCertificationUse: lateralCertification?.streetLayerCertificationUse ?? decision.buildPath?.streetLayerCertificationUse,
+        streetLayerBboxCoverage: lateralCertification?.streetLayerBboxCoverage ?? decision.buildPath?.streetLayerBboxCoverage,
+        routingBBox: lateralCertification?.routingBBox ?? decision.buildPath?.routingBBox,
+        routingBufferMiles: lateralCertification?.routingBufferMiles ?? decision.buildPath?.routingBufferMiles,
         attachmentAuthority: decision.attachmentAuthority,
         attachmentCertification,
         lateralCertification,
         serviceabilityAssessment,
+        proposedNetworkExtension: {
+          existingInventoryRouteId: routeId,
+          existingInventoryLengthFeet,
+          existingInventoryGeometryPreserved: true,
+          newLateralLengthFeet,
+          newLateralGeometry: lateralGeometry,
+          routingScope: "NEW_LATERAL_ONLY",
+          osmRouteFound: lateralCertification?.osmRouteFound ?? decision.buildPath?.osmRouteFound ?? false,
+        },
       },
       quoteBasis: decision.quoteBasis,
-      certificationSnapshot: decision.seed.certificationSnapshot ?? decision.seed.networkAffinity?.certificationSnapshot,
+      certificationSnapshot: sanitizedCertificationSnapshot,
       serviceabilityAssessment,
       sourceCandidate: {
         candidateSiteId: decision.site.candidateId,
@@ -953,6 +1201,137 @@ function applyCertifiedRouteToScopeVersion(
   };
 }
 
+function certifiedRouteReferenceFromRoute(route: CertifiedRoute): ScopeVersionCertifiedRouteReference {
+  return {
+    certifiedRouteId: route.certifiedRouteId,
+    geometryHash: route.geometryHash,
+    routeAuthorityState: route.routeAuthorityState,
+    routeMode: route.routeMode,
+    routeFeet: route.routeFeet,
+    routeMiles: route.routeMiles,
+    constraintEvidenceId: route.constraintEvidenceId,
+  };
+}
+
+function attachCertifiedRouteReferenceToScopeVersion(scope: ScopeVersion, reference: ScopeVersionCertifiedRouteReference): ScopeVersion {
+  const canonicalTruth = (scope.canonicalTruth ?? {}) as Record<string, any>;
+  const engineeringBasis = (canonicalTruth.engineeringBasis ?? {}) as Record<string, any>;
+  const timestamp = now();
+  return {
+    ...scope,
+    certifiedRouteReference: reference,
+    updatedAt: timestamp,
+    canonicalTruth: {
+      ...canonicalTruth,
+      certifiedRouteReference: reference,
+      engineeringBasis: {
+        ...engineeringBasis,
+        certifiedRouteReference: reference,
+        routeMode: reference.routeMode,
+        routeAuthorityState: reference.routeAuthorityState,
+        routeGeometryHash: reference.geometryHash,
+        buildFeet: reference.routeFeet,
+        buildMiles: reference.routeMiles,
+      } as any,
+    },
+    events: [
+      ...(scope.events ?? []),
+      {
+        eventId: createId("event"),
+        type: "certifiedroute.reference.attached",
+        entityId: reference.certifiedRouteId,
+        entityType: "CertifiedRoute",
+        payload: {
+          scopeVersionId: scope.scopeVersionId,
+          certifiedRouteReference: reference,
+        },
+        createdAt: timestamp,
+      },
+    ],
+  };
+}
+
+function coordinateFromSeed(seed: OpportunitySeed): DALCoordinate | null {
+  return Number.isFinite(seed.longitude) && Number.isFinite(seed.latitude) ? ([Number(seed.longitude), Number(seed.latitude)] as DALCoordinate) : null;
+}
+
+async function createOsrmCertifiedRouteForScopeVersion(args: {
+  graph: InventoryGraph;
+  site?: CandidateSite | null;
+  seed: OpportunitySeed;
+  scope: ScopeVersion;
+  route?: InventoryRoute;
+  node?: InventoryNode;
+  station?: InventoryStation;
+  constraintEvidence?: ReturnType<typeof analyzeRouteConstraints> | null;
+}) {
+  const osrmRoute = streetGraphRouteForSeed(args.seed);
+  if (!validStreetGraphLateral(osrmRoute) || osrmRoute.audit.routingEngine !== "OSRMLateralRouter") {
+    throw new Error("OSRM_ROUTE_VERIFIED lateral is required before CertifiedRoute creation.");
+  }
+
+  const candidate = candidateCoordinate(args.site) ?? coordinateFromSeed(args.seed);
+  const attachmentCertification = attachmentCertificationForSeed(args.seed);
+  const attachment =
+    osrmRoute.audit.attachmentCoordinate ??
+    (attachmentCertification && Number.isFinite(attachmentCertification.longitude) && Number.isFinite(attachmentCertification.latitude)
+      ? ([Number(attachmentCertification.longitude), Number(attachmentCertification.latitude)] as DALCoordinate)
+      : osrmRoute.geometry[0]);
+
+  if (!candidate || !attachment) {
+    throw new Error("Candidate and attachment coordinates are required before CertifiedRoute creation.");
+  }
+
+  const evidence = args.constraintEvidence;
+  const draft = createDraftRoute({
+    inventoryId: args.graph.inventoryId,
+    graphId: args.graph.graphId,
+    parentScopeVersionId: args.scope.parentScopeVersionId ?? args.graph.scopeVersionId ?? args.graph.metadata.scopeVersionId ?? `SV-INV-${args.graph.inventoryId}`,
+    scopeVersionId: args.scope.scopeVersionId,
+    opportunitySeedId: args.seed.id,
+    candidateSiteId: args.site?.candidateId ?? args.seed.candidateSiteId,
+    candidateCoordinate: candidate,
+    attachmentCoordinate: attachment,
+    attachmentAuthorityId: attachmentCertification?.attachmentId ?? args.seed.buildPath?.attachmentId ?? args.seed.networkAffinity?.buildPath?.attachmentId,
+    nearestRouteId: args.route?.routeId ?? args.seed.nearestRouteId ?? args.seed.buildPath?.routeId,
+    nearestNodeId: args.node?.nodeId ?? args.seed.nearestNodeId ?? args.seed.buildPath?.nodeId,
+    nearestStationId: args.station?.stationId ?? args.seed.nearestStationId ?? args.seed.buildPath?.stationId,
+    geometry: osrmRoute.geometry,
+    routeMode: "OSRM_ROUTE",
+    corridorBasis: "CANDIDATE_CORRIDOR",
+    permitAuthorities: args.seed.constructabilityAssessment?.permitting?.authorities ?? args.seed.networkAffinity?.constructabilityAssessment?.permitting?.authorities ?? [],
+  });
+
+  const provisional = evaluateRouteAuthority({
+    ...draft,
+    routeAuthorityState: "PROVISIONALLY_CERTIFIED",
+    routeMode: "OSRM_ROUTE",
+    routeFeet: osrmRoute.routeFeet,
+    routeMiles: osrmRoute.routeMiles,
+    constraintEvidenceId: evidence?.evidenceId,
+    constraintEvidenceStatus: evidence ? "INCOMPLETE" : "MISSING",
+    crossingSummary: evidence
+      ? {
+          roadCrossings: evidence.summary.roadCrossings,
+          railCrossings: evidence.summary.railroadCrossings,
+          waterCrossings: evidence.summary.waterCrossings,
+          parcelCrossings: evidence.summary.parcelCrossings,
+          buildingConflicts: evidence.summary.buildingConflicts,
+        }
+      : draft.crossingSummary,
+    constructabilityScore: evidence?.constructabilityScore ?? args.seed.constructabilityScore ?? draft.constructabilityScore,
+    riskScore: args.seed.riskScore ?? draft.riskScore,
+    certification: {
+      certifiedBy: "DAL OSRM Route Verification",
+      certifiedAt: now(),
+      certificationNotes: "OSRM_ROUTE_VERIFIED new lateral persisted as provisional CertifiedRoute. Existing inventory geometry remains unchanged.",
+      provisionalReason: "OSRM route is verified for new lateral geometry and remains pending engineering review before execution.",
+    },
+  });
+
+  return createCertifiedRoute(provisional);
+}
+
 function snapAuthorityFromConstructability(base: SnapAuthorityResult, constructabilitySnap: ConstructabilityAwareSnapResult | null): SnapAuthorityResult {
   if (!constructabilitySnap) return base;
   const selected = constructabilitySnap.selectedCandidate;
@@ -1117,6 +1496,7 @@ export default function PrismSiteDecisionWorkspace() {
   const [snapCertification, setSnapCertification] = useState<SnapCertificationSnapshot | null>(null);
   const [snapEngineerName, setSnapEngineerName] = useState("");
   const [snapCertificationNotes, setSnapCertificationNotes] = useState("");
+  const [streetImportFile, setStreetImportFile] = useState<File | null>(null);
   const [status, setStatus] = useState("Prism Site Decision ready.");
 
   useEffect(() => {
@@ -1217,7 +1597,7 @@ export default function PrismSiteDecisionWorkspace() {
       Math.abs(originalCoordinate[0] - nextCoordinate[0]) > 0.000001 ||
       Math.abs(originalCoordinate[1] - nextCoordinate[1]) > 0.000001;
     const existingSeed = coordinateChanged ? undefined : seeds.find((item) => item.candidateSiteId === geocodedSite.candidateId && item.inventoryId === graph.inventoryId && hasScopeVersionCertification(item));
-    const seed = existingSeed ?? generateOpportunitySeedForCandidate(graph, geocodedSite);
+    const seed = await generateOsrmDecisionSeed(graph, geocodedSite, existingSeed);
     if (!seed) {
       await markNonServiceable(geocodedSite, "No route, node, station, or lateral path could be generated.");
       setDraftSeed(null);
@@ -1375,9 +1755,9 @@ export default function PrismSiteDecisionWorkspace() {
       return;
     }
     let seed = draftSeed;
-    if (!seed && site) seed = generateOpportunitySeedForCandidate(graph, site);
+    if (!seed && site) seed = await generateOsrmDecisionSeed(graph, site);
     if (seed && site && !hasScopeVersionCertification(seed)) {
-      const regenerated = generateOpportunitySeedForCandidate(graph, site);
+      const regenerated = await generateOsrmDecisionSeed(graph, site, seed);
       if (regenerated) seed = regenerated;
     }
     if (!seed) {
@@ -1400,12 +1780,29 @@ export default function PrismSiteDecisionWorkspace() {
       setStatus(`ScopeVersion blocked: ${err?.message ?? String(err)}`);
       return;
     }
-    const validation = validateScopeVersion(draftScope);
+    let scopeWithCertifiedRoute: ScopeVersion;
+    try {
+      const certifiedRoute = await createOsrmCertifiedRouteForScopeVersion({
+        graph,
+        site,
+        seed: savedSeed,
+        scope: draftScope,
+        route: scopeRoute,
+        node: scopeNode,
+        station: scopeStation,
+        constraintEvidence: decisionRouteConstraintAnalysis,
+      });
+      scopeWithCertifiedRoute = attachCertifiedRouteReferenceToScopeVersion(draftScope, certifiedRouteReferenceFromRoute(certifiedRoute));
+    } catch (err: any) {
+      setStatus(`CERTIFIED_ROUTE_REQUIRED: ${err?.message ?? String(err)}`);
+      return;
+    }
+    const validation = validateScopeVersion(scopeWithCertifiedRoute);
     if (!validation.valid) {
       setStatus(`ScopeVersion validation failed: ${validation.errors.map((item) => item.message).join(" ")}`);
       return;
     }
-    const scope = await saveScopeVersion(draftScope);
+    const scope = await saveScopeVersion(scopeWithCertifiedRoute);
     setDraftSeed(savedSeed);
     setSelectedOpportunitySeed(savedSeed);
     setSelectedOpportunitySeedId(savedSeed.id);
@@ -1431,6 +1828,30 @@ export default function PrismSiteDecisionWorkspace() {
     setStatus(`Generated ${savedQuote.quoteStatus ?? "PRELIMINARY_QUOTE"} ${savedQuote.quoteId} for ${quotedScope.scopeVersionId}.`);
   }
 
+  async function importStreetCenterlineGeoJson() {
+    if (!streetImportFile) {
+      setStatus("Select a STREETS GeoJSON file before importing.");
+      return;
+    }
+    try {
+      const text = await streetImportFile.text();
+      const result = registerGeoJsonConstraintLayer({
+        layerType: "STREETS",
+        authority: "IMPORTED",
+        certificationUse: "ROUTING_REFERENCE",
+        sourceName: streetImportFile.name,
+        text,
+        notes: "Imported by Prism Site Decision for new lateral routing reference only.",
+      });
+      setStreetImportFile(null);
+      setStatus(
+        `Imported STREETS routing reference ${result.layer.sourceName} with ${result.features.length.toLocaleString()} features. Re-run Analyze Decision to route the new lateral.`
+      );
+    } catch (error) {
+      setStatus(`STREETS import failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   const activeSite = useMemo(
     () =>
       sites.find((site) => site.candidateId === candidateId) ??
@@ -1447,7 +1868,7 @@ export default function PrismSiteDecisionWorkspace() {
   const buildPath = activeSeed?.buildPath ?? activeSeed?.networkAffinity?.buildPath;
   const activeStreetGraphRoute = useMemo(() => streetGraphRouteForSeed(activeSeed), [activeSeed]);
   const certifiedLateral = lateralCertificationForSeed(activeSeed);
-  const certifiedLateralGeometry = useMemo(() => certifiedLateral?.geometry ?? buildPath?.geometry ?? [], [buildPath?.geometry, certifiedLateral?.geometry]);
+  const certifiedLateralGeometry = useMemo(() => streetGraphLateralGeometry(activeStreetGraphRoute), [activeStreetGraphRoute]);
   const route = decisionGraph?.routes.find((item) => item.routeId === (buildPath?.routeId ?? activeSeed?.nearestRouteId));
   const node = decisionGraph?.nodes.find((item) => item.nodeId === (buildPath?.nodeId ?? activeSeed?.nearestNodeId));
   const station = decisionGraph?.stations.find((item) => item.stationId === (buildPath?.stationId ?? activeSeed?.nearestStationId));
@@ -1509,9 +1930,9 @@ export default function PrismSiteDecisionWorkspace() {
       { label: "Existing Inventory Route", entityId: route?.routeId ?? buildPath?.routeId ?? activeSeed.nearestRouteId ?? "route" },
       { label: "Nearest Station", entityId: station?.stationId ?? buildPath?.stationId ?? activeSeed.nearestStationId ?? "station", coordinate: station ? [station.lon, station.lat] : undefined },
       { label: "Inventory Attachment", entityId: certifiedAttachment?.attachmentId ?? activeSeed.attachmentStrategy?.attachmentType ?? "attachment", coordinate: attachmentPoint },
-      { label: "Street Graph Start Node", entityId: streetGraphRoute?.audit.startNode ?? "start-node", coordinate: accessPoints?.streetGraphStartNode },
-      { label: "Street Graph Traversal", entityId: `${fmt(streetGraphRoute?.audit.pathEdgeCount)} edges`, coordinate: streetGraphRoute?.streetGraphPath[0] },
-      { label: "Street Graph End Node", entityId: streetGraphRoute?.audit.endNode ?? "end-node", coordinate: accessPoints?.streetGraphEndNode },
+      { label: "OSRM Attachment Road Snap", entityId: streetGraphRoute?.audit.startNode ?? "osrm-start", coordinate: accessPoints?.streetGraphStartNode },
+      { label: "OSRM Driving Route", entityId: `${fmt(streetGraphRoute?.audit.pathEdgeCount)} segments`, coordinate: streetGraphRoute?.streetGraphPath[0] },
+      { label: "OSRM Candidate Road Snap", entityId: streetGraphRoute?.audit.endNode ?? "osrm-end", coordinate: accessPoints?.streetGraphEndNode },
       { label: "Final Driveway Access", entityId: "candidate-driveway", coordinate: streetGraphRoute?.endNode?.coordinate },
       {
         label: "Candidate",
@@ -1647,13 +2068,13 @@ export default function PrismSiteDecisionWorkspace() {
   }, [decisionContext, snapStreetCenterlines]);
 
   const decisionMapScopeVersion = useMemo<ScopeVersion | null>(() => {
+    if (decisionContext) return createDecisionMapScopeVersion(decisionContext);
     const selectedMatchesDecision =
       selectedScopeVersion &&
       (!activeSeed || selectedScopeVersion.sourceOpportunityId === activeSeed.id || (selectedScopeVersion.canonicalTruth as any)?.opportunitySeedId === activeSeed.id) &&
       (!activeSite || selectedScopeVersion.candidateSiteId === activeSite.candidateId || (selectedScopeVersion.canonicalTruth as any)?.sourceCandidate?.candidateSiteId === activeSite.candidateId);
     if (selectedMatchesDecision) return selectedScopeVersion;
-    if (!decisionContext || !hasScopeVersionCertification(decisionContext.seed)) return null;
-    return createDecisionMapScopeVersion(decisionContext);
+    return null;
   }, [activeSeed, activeSite, decisionContext, selectedScopeVersion]);
   const decisionMapSpec = useMemo(() => (decisionMapScopeVersion ? renderScopeVersion(decisionMapScopeVersion) : null), [decisionMapScopeVersion]);
   const decisionStreetGraphSpec = useMemo(
@@ -1731,6 +2152,7 @@ export default function PrismSiteDecisionWorkspace() {
               nodeName: decisionContext.node?.nodeId,
               stationId: decisionContext.buildPath?.stationId ?? decisionContext.seed.nearestStationId,
               stationName: decisionContext.station?.label,
+              attachmentId: attachmentCertificationForSeed(decisionContext.seed)?.attachmentId ?? decisionContext.buildPath?.attachmentId,
               attachmentPoint: decisionContext.attachmentPoint,
               attachmentCoordinates: decisionContext.attachmentPoint,
               attachmentAuthority: decisionContext.attachmentAuthority,
@@ -1749,18 +2171,18 @@ export default function PrismSiteDecisionWorkspace() {
               candidateLongitude: decisionContext.site.longitude,
               geocodeProvider: decisionContext.site.geocodeProvider,
               geocodeConfidence: decisionContext.site.geocodeConfidence,
-              geometry: decisionContext.buildPath?.geometry,
+              geometry: certifiedLateralGeometry,
               buildPath: decisionContext.buildPath,
               routeGeometry: decisionContext.route?.coordinates,
               stationGeometry: decisionContext.station ? [decisionContext.station.lon, decisionContext.station.lat] : undefined,
               nodeGeometry: decisionContext.node ? [decisionContext.node.lon, decisionContext.node.lat] : undefined,
               attachmentGeometry: decisionContext.attachmentPoint,
-              lateralGeometry: lateralCertificationForSeed(decisionContext.seed)?.geometry,
+              lateralGeometry: certifiedLateralGeometry,
             },
             engineeringBasis: {
               constructionType: decisionContext.evidence.constructionType,
-              buildFeet: decisionContext.evidence.buildFeet,
-              buildMiles: decisionContext.evidence.buildMiles,
+              buildFeet: validStreetGraphLateral(activeStreetGraphRoute) ? activeStreetGraphRoute.routeFeet : 0,
+              buildMiles: validStreetGraphLateral(activeStreetGraphRoute) ? activeStreetGraphRoute.routeMiles : 0,
               crossings: decisionRouteConstraintAnalysis?.constraints ?? decisionContext.crossings.map((crossing) => ({ id: crossing.id, type: crossing.crossingType, coordinate: crossing.coordinate })),
               roadCrossings: decisionRouteConstraintAnalysis?.summary.roadCrossings ?? decisionContext.evidence.roadCrossings,
               railCrossings: decisionRouteConstraintAnalysis?.summary.railroadCrossings ?? decisionContext.evidence.railCrossings,
@@ -1774,6 +2196,33 @@ export default function PrismSiteDecisionWorkspace() {
               attachmentCertification: attachmentCertificationForSeed(decisionContext.seed),
               lateralCertification: lateralCertificationForSeed(decisionContext.seed),
               serviceabilityAssessment: serviceabilityForSeed(decisionContext.seed),
+              routingScope: lateralCertificationForSeed(decisionContext.seed)?.routingScope ?? decisionContext.buildPath?.routingScope,
+              existingInventoryRoutePreserved: lateralCertificationForSeed(decisionContext.seed)?.existingInventoryRoutePreserved ?? decisionContext.buildPath?.existingInventoryRoutePreserved,
+              existingInventoryLengthFeet: lateralCertificationForSeed(decisionContext.seed)?.existingInventoryLengthFeet ?? decisionContext.buildPath?.existingInventoryLengthFeet ?? decisionContext.route?.lengthFeet,
+              newLateralLengthFeet: validStreetGraphLateral(activeStreetGraphRoute) ? activeStreetGraphRoute.routeFeet : 0,
+              osmRouteFound: validStreetGraphLateral(activeStreetGraphRoute),
+              osmSnapDistanceFeet: lateralCertificationForSeed(decisionContext.seed)?.osmSnapDistanceFeet ?? decisionContext.buildPath?.osmSnapDistanceFeet,
+              candidateSnapDistanceFeet: lateralCertificationForSeed(decisionContext.seed)?.candidateSnapDistanceFeet ?? decisionContext.buildPath?.candidateSnapDistanceFeet,
+              proposedNetworkExtension: {
+                existingInventoryRouteId: decisionContext.buildPath?.routeId ?? decisionContext.seed.nearestRouteId,
+                existingInventoryGeometryPreserved: true,
+                newLateralGeometry: certifiedLateralGeometry,
+                routingScope: "NEW_LATERAL_ONLY",
+              },
+              certifiedRouteReference:
+                (selectedScopeVersion?.sourceOpportunityId === decisionContext.seed.id || selectedScopeVersion?.candidateSiteId === decisionContext.site.candidateId
+                  ? selectedScopeVersion?.certifiedRouteReference
+                  : undefined) ??
+                (validStreetGraphLateral(activeStreetGraphRoute)
+                  ? {
+                      certifiedRouteId: "PENDING_CERTIFIED_ROUTE_CREATION",
+                      geometryHash: "PENDING_SERVER_CERTIFIED_ROUTE",
+                      routeAuthorityState: "PROVISIONALLY_CERTIFIED",
+                      routeMode: "OSRM_ROUTE",
+                      routeFeet: activeStreetGraphRoute.routeFeet,
+                      routeMiles: activeStreetGraphRoute.routeMiles,
+                    }
+                  : "CERTIFIED_ROUTE_REQUIRED"),
               constraintEvidenceId: decisionRouteConstraintAnalysis?.evidenceId,
               constraintEvidencePackage: decisionRouteConstraintAnalysis,
               constraintSummary: decisionRouteConstraintAnalysis?.summary,
@@ -1817,7 +2266,7 @@ export default function PrismSiteDecisionWorkspace() {
               graphId: decisionContext.seed.graphId,
               graphVersion: decisionContext.seed.graphId,
             },
-            certificationSnapshot: decisionContext.seed.certificationSnapshot ?? decisionContext.seed.networkAffinity?.certificationSnapshot,
+            certificationSnapshot: certificationSnapshotWithStreetGraphLateral(decisionContext.seed, activeStreetGraphRoute),
             serviceabilityAssessment: serviceabilityForSeed(decisionContext.seed),
             commercial: quoteWorksheet ?? activeScopeQuote ?? decisionContext.quoteBasis,
             scopeVersionMetadata: {
@@ -1839,7 +2288,22 @@ export default function PrismSiteDecisionWorkspace() {
             validation: selectedScopeVersion?.canonicalTruth.validation ?? "Validation runs before commit.",
           }
         : null,
-    [activeScopeQuote, constructability, decisionContext, decisionRouteConstraintAnalysis, quoteWorksheet, routeAuthority, selectedScopeVersion?.scopeVersionId, selectedScopeVersion?.status]
+    [
+      activeScopeQuote,
+      activeSeed,
+      activeStreetGraphRoute,
+      certifiedLateralGeometry,
+      constructability,
+      decisionContext,
+      decisionRouteConstraintAnalysis,
+      quoteWorksheet,
+      routeAuthority,
+      selectedScopeVersion?.candidateSiteId,
+      selectedScopeVersion?.certifiedRouteReference,
+      selectedScopeVersion?.scopeVersionId,
+      selectedScopeVersion?.sourceOpportunityId,
+      selectedScopeVersion?.status,
+    ]
   );
 
   return (
@@ -1903,6 +2367,16 @@ export default function PrismSiteDecisionWorkspace() {
             <button type="button" onClick={() => setWorkspace("marketplace")}>
               Marketplace
             </button>
+          </div>
+          <div className="dal-actions">
+            <label className="dal-file-button">
+              Import STREETS GeoJSON
+              <input type="file" accept=".geojson,.json,application/geo+json,application/json" onChange={(event) => setStreetImportFile(event.currentTarget.files?.[0] ?? null)} />
+            </label>
+            <button type="button" onClick={() => void importStreetCenterlineGeoJson()} disabled={!streetImportFile}>
+              Register STREETS Layer
+            </button>
+            <span>{streetImportFile?.name ?? "No street-centerline GeoJSON selected."}</span>
           </div>
           <div className="dal-status">{status}</div>
         </div>
@@ -2017,7 +2491,7 @@ export default function PrismSiteDecisionWorkspace() {
         </div>
 
         <RoutingAuditPanel route={activeStreetGraphRoute} />
-        <RoutingTruthDiagnosticsPanel diagnostics={routingTruthDiagnostics} banner={routeValidationBanner} />
+        <RoutingTruthDiagnosticsPanel diagnostics={routingTruthDiagnostics} banner={routeValidationBanner} route={activeStreetGraphRoute} />
 
         <SnapAuthorityPanel
           snapAuthority={snapAuthority}
@@ -2286,7 +2760,7 @@ export default function PrismSiteDecisionWorkspace() {
             {JSON.stringify(
               decisionContext
                 ? {
-                    geometry: decisionContext.buildPath?.geometry,
+                    geometry: certifiedLateralGeometry,
                     attachmentPoint: decisionContext.attachmentPoint,
                     buildPath: decisionContext.buildPath,
                     station: decisionContext.station,

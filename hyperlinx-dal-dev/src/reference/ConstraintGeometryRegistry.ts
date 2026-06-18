@@ -14,8 +14,8 @@ export type ConstraintReferenceLayerType =
   | "EASEMENTS";
 
 export type ConstraintReferenceLayerStatus = "NOT_LOADED" | "LOADING" | "LOADED" | "FAILED" | "STALE";
-export type ConstraintCertificationUse = "USABLE_FOR_CERTIFICATION" | "REFERENCE_ONLY" | "NOT_USABLE";
-export type ConstraintAuthority = "OSM" | "USGS" | "FRA" | "COUNTY" | "CITY" | "STATE" | "CUSTOMER" | "MANUAL" | "UNKNOWN";
+export type ConstraintCertificationUse = "USABLE_FOR_CERTIFICATION" | "ROUTING_REFERENCE" | "REFERENCE_ONLY" | "NOT_USABLE";
+export type ConstraintAuthority = "IMPORTED" | "OSM" | "USGS" | "FRA" | "COUNTY" | "CITY" | "STATE" | "CUSTOMER" | "MANUAL" | "UNKNOWN";
 export type ConstraintGeometryType = "POINT" | "LINESTRING" | "POLYGON" | "MULTILINESTRING" | "MULTIPOLYGON";
 export type ConstraintBounds = [number, number, number, number];
 
@@ -336,8 +336,42 @@ function referenceKindForType(layerType: ConstraintReferenceLayerType): Geograph
 }
 
 function labelForFeature(feature: ConstraintGeometryFeature) {
-  const name = feature.properties.name ?? feature.properties.Name ?? feature.properties.NAME ?? feature.properties.streetName ?? feature.properties.STREET;
+  const name =
+    feature.properties.name ??
+    feature.properties.Name ??
+    feature.properties.NAME ??
+    feature.properties.roadName ??
+    feature.properties.ROAD_NAME ??
+    feature.properties.streetName ??
+    feature.properties.STREET ??
+    feature.properties.highway ??
+    feature.properties.classification;
   return typeof name === "string" && name.trim() ? name : feature.featureId;
+}
+
+function streetClassForFeature(feature: ConstraintGeometryFeature): StreetCenterline["streetClass"] {
+  const raw = String(
+    feature.properties.streetClass ??
+      feature.properties.classification ??
+      feature.properties.highway ??
+      feature.properties.roadClass ??
+      feature.properties.ROAD_CLASS ??
+      feature.properties.service ??
+      ""
+  ).toLowerCase();
+  if (/motorway|interstate/.test(raw)) return "Interstate";
+  if (/trunk|primary|highway|state|us /.test(raw)) return "Highway";
+  if (/secondary|arterial/.test(raw)) return "Arterial";
+  if (/tertiary|collector/.test(raw)) return "Collector";
+  if (/private|driveway|service/.test(raw)) return "Private";
+  return "Local";
+}
+
+function booleanProperty(value: unknown) {
+  const normalized = String(value ?? "").toLowerCase();
+  if (["yes", "true", "1"].includes(normalized)) return true;
+  if (["no", "false", "0"].includes(normalized)) return false;
+  return undefined;
 }
 
 export function constraintFeatureToGeographicFeatures(feature: ConstraintGeometryFeature): GeographicReferenceFeature[] {
@@ -416,13 +450,19 @@ export function streetCenterlinesFromConstraintFeatures(features: ConstraintGeom
     .filter((feature) => feature.layerType === "STREETS")
     .flatMap((feature) => constraintFeatureToGeographicFeatures(feature))
     .filter((feature) => feature.coordinates && feature.coordinates.length >= 2)
-    .map((feature) => ({
-      streetId: feature.referenceId,
-      streetName: feature.label ?? feature.referenceId,
-      streetClass: "Local" as const,
-      geometry: feature.coordinates ?? [],
-      lengthFeet: 0,
-      jurisdiction: String((feature.payload as Record<string, unknown> | undefined)?.jurisdiction ?? "Unknown"),
-      source: "IMPORTED" as const,
-    }));
+    .map((feature) => {
+      const registryFeature = (feature.payload as { registryFeature?: ConstraintGeometryFeature } | undefined)?.registryFeature;
+      const properties = registryFeature?.properties ?? {};
+      return {
+        streetId: feature.referenceId,
+        streetName: feature.label ?? feature.referenceId,
+        streetClass: registryFeature ? streetClassForFeature(registryFeature) : "Local",
+        geometry: feature.coordinates ?? [],
+        lengthFeet: 0,
+        jurisdiction: String(properties.jurisdiction ?? properties.city ?? properties.county ?? "Unknown"),
+        speedLimit: Number.isFinite(Number(properties.speedLimit ?? properties.maxspeed)) ? Number(properties.speedLimit ?? properties.maxspeed) : undefined,
+        oneWay: booleanProperty(properties.oneway),
+        source: "IMPORTED" as const,
+      };
+    });
 }

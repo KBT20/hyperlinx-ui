@@ -195,6 +195,20 @@ export function certifyLateralPath(args: {
   const crossings = Number(args.buildPath?.estimatedCrossings ?? 0);
   const turns = Number(args.buildPath?.turnCount ?? countTurns(geometry));
   const routeAccessPoints = args.buildPath?.routeAccessPoints;
+  const routingAudit =
+    args.buildPath?.routingAudit && typeof args.buildPath.routingAudit === "object"
+      ? { ...(args.buildPath.routingAudit as Record<string, unknown>), attachmentId: args.attachmentPoint.attachmentId, newLateralLengthFeet: buildFeet }
+      : args.buildPath?.routingAudit;
+  const streetGraphRoute =
+    args.buildPath?.streetGraphRoute && typeof args.buildPath.streetGraphRoute === "object"
+      ? {
+          ...(args.buildPath.streetGraphRoute as Record<string, unknown>),
+          audit:
+            (args.buildPath.streetGraphRoute as Record<string, unknown>).audit && typeof (args.buildPath.streetGraphRoute as Record<string, unknown>).audit === "object"
+              ? { ...((args.buildPath.streetGraphRoute as Record<string, unknown>).audit as Record<string, unknown>), attachmentId: args.attachmentPoint.attachmentId, newLateralLengthFeet: buildFeet }
+              : (args.buildPath.streetGraphRoute as Record<string, unknown>).audit,
+        }
+      : args.buildPath?.streetGraphRoute;
   const certificationStatus: CertificationStatus =
     args.attachmentPoint.certificationStatus === "FAILED" || geometry.length < 2 || buildFeet <= 0
       ? "FAILED"
@@ -218,8 +232,23 @@ export function certifyLateralPath(args: {
     pathConfidence: args.buildPath?.pathConfidence,
     routeStatus: args.buildPath?.routeStatus,
     routeFailureReason: args.buildPath?.routeFailureReason,
-    routingAudit: args.buildPath?.routingAudit,
-    streetGraphRoute: args.buildPath?.streetGraphRoute,
+    routingAudit,
+    streetGraphRoute,
+    streetRouting: args.buildPath?.streetRouting,
+    streetLayerLoaded: args.buildPath?.streetLayerLoaded,
+    streetFeatureCount: args.buildPath?.streetFeatureCount,
+    streetLayerAuthority: args.buildPath?.streetLayerAuthority,
+    streetLayerCertificationUse: args.buildPath?.streetLayerCertificationUse,
+    streetLayerBboxCoverage: args.buildPath?.streetLayerBboxCoverage,
+    routingBBox: args.buildPath?.routingBBox,
+    routingBufferMiles: args.buildPath?.routingBufferMiles,
+    routingScope: args.buildPath?.routingScope,
+    existingInventoryRoutePreserved: args.buildPath?.existingInventoryRoutePreserved,
+    existingInventoryLengthFeet: args.buildPath?.existingInventoryLengthFeet,
+    newLateralLengthFeet: buildFeet,
+    osmRouteFound: args.buildPath?.osmRouteFound,
+    osmSnapDistanceFeet: args.buildPath?.osmSnapDistanceFeet,
+    candidateSnapDistanceFeet: args.buildPath?.candidateSnapDistanceFeet,
     roadSegmentCount: args.buildPath?.roadSegmentCount,
     roadNamesTraversed: args.buildPath?.roadNamesTraversed,
     roadClassesTraversed: args.buildPath?.roadClassesTraversed,

@@ -5,6 +5,11 @@ import type { DALCoordinate } from "../types/dal";
 
 export type StreetGraphRouteStatus = "VALID" | "ROUTE_NOT_FOUND" | "INVALID";
 export type StreetGraphRouteFailureReason =
+  | "STREET_CENTERLINES_NOT_LOADED"
+  | "NO_STREET_FEATURES_IN_BBOX"
+  | "OSRM_ROUTE_NOT_FOUND"
+  | "OSRM_SNAP_FAILED"
+  | "OSRM_ROUTE_FAILED"
   | "NO_STREET_GRAPH"
   | "NO_ATTACHMENT_FOUND"
   | "NO_REACHABLE_PATH"
@@ -15,9 +20,16 @@ export type StreetGraphRouteFailureReason =
   | "SNAP_FAILURE";
 
 export type RoutingAudit = {
-  routingEngine: "StreetGraphRouter";
+  routingEngine: "StreetGraphRouter" | "OSRMLateralRouter";
   graphNodes: number;
   graphEdges: number;
+  streetFeatureCount: number;
+  streetLayerLoaded: boolean;
+  streetLayerAuthority?: string;
+  streetLayerCertificationUse?: string;
+  streetLayerBboxCoverage?: boolean;
+  routingBBox?: [number, number, number, number];
+  routingBufferMiles?: number;
   startNode?: string;
   endNode?: string;
   pathFound: boolean;
@@ -25,18 +37,28 @@ export type RoutingAudit = {
   pathEdgeCount: number;
   pathSegmentCount: number;
   totalTraversedLength: number;
-  routingMethod: "ASTAR";
+  routingMethod: "ASTAR" | "OSRM_ROUTE";
   routingExecutionTime: number;
   fallbackUsed: false;
   routeStatus: StreetGraphRouteStatus;
   failureReason?: StreetGraphRouteFailureReason;
-  graphSource: "IMPORTED_STREET_CENTERLINES";
+  graphSource: "IMPORTED_STREET_CENTERLINES" | "OSRM_PUBLIC_API";
+  routingProvider: "OSM" | "IMPORTED_STREET_CENTERLINES" | "OSRM_PUBLIC_API";
+  osmRoutingAllowedScope: "NEW_LATERAL_SEGMENT";
   candidateCoordinate?: DALCoordinate;
   attachmentCoordinate?: DALCoordinate;
   snappedStartCoordinate?: DALCoordinate;
   snappedEndCoordinate?: DALCoordinate;
   distanceToStartNode?: number;
   distanceToEndNode?: number;
+  routingScope: "NEW_LATERAL_ONLY";
+  existingInventoryRoutePreserved: true;
+  existingInventoryLengthFeet?: number;
+  newLateralLengthFeet: number;
+  attachmentId?: string;
+  osmRouteFound: boolean;
+  osmSnapDistanceFeet?: number;
+  candidateSnapDistanceFeet?: number;
 };
 
 export type StreetGraphRouteResult = {
@@ -252,6 +274,13 @@ function graphGeometryFromEdges(edges: StreetGraphEdge[]) {
 function logRoutingAudit(audit: RoutingAudit) {
   console.log({
     routingEngine: audit.routingEngine,
+    streetFeatureCount: audit.streetFeatureCount,
+    streetLayerLoaded: audit.streetLayerLoaded,
+    streetLayerAuthority: audit.streetLayerAuthority,
+    streetLayerCertificationUse: audit.streetLayerCertificationUse,
+    streetLayerBboxCoverage: audit.streetLayerBboxCoverage,
+    routingBBox: audit.routingBBox,
+    routingBufferMiles: audit.routingBufferMiles,
     streetNodes: audit.graphNodes,
     streetEdges: audit.graphEdges,
     startNode: audit.startNode,
@@ -263,6 +292,16 @@ function logRoutingAudit(audit: RoutingAudit) {
     fallbackUsed: audit.fallbackUsed,
     routeStatus: audit.routeStatus,
     failureReason: audit.failureReason,
+    routingProvider: audit.routingProvider,
+    osmRoutingAllowedScope: audit.osmRoutingAllowedScope,
+    routingScope: audit.routingScope,
+    existingInventoryRoutePreserved: audit.existingInventoryRoutePreserved,
+    existingInventoryLengthFeet: audit.existingInventoryLengthFeet,
+    newLateralLengthFeet: audit.newLateralLengthFeet,
+    attachmentId: audit.attachmentId,
+    osmRouteFound: audit.osmRouteFound,
+    osmSnapDistanceFeet: audit.osmSnapDistanceFeet,
+    candidateSnapDistanceFeet: audit.candidateSnapDistanceFeet,
   });
 }
 
@@ -270,8 +309,17 @@ function failureResult(args: {
   startedAt: number;
   graph?: StreetGraph;
   failureReason: StreetGraphRouteFailureReason;
+  streetFeatureCount?: number;
+  streetLayerLoaded?: boolean;
+  streetLayerAuthority?: string;
+  streetLayerCertificationUse?: string;
+  streetLayerBboxCoverage?: boolean;
+  routingBBox?: [number, number, number, number];
+  routingBufferMiles?: number;
   candidateCoordinate?: DALCoordinate;
   attachmentCoordinate?: DALCoordinate;
+  existingInventoryLengthFeet?: number;
+  attachmentId?: string;
   snappedStartCoordinate?: DALCoordinate;
   snappedEndCoordinate?: DALCoordinate;
   distanceToStartNode?: number;
@@ -282,6 +330,13 @@ function failureResult(args: {
     routingEngine: "StreetGraphRouter",
     graphNodes: graph?.nodes.length ?? 0,
     graphEdges: graph?.edges.length ?? 0,
+    streetFeatureCount: args.streetFeatureCount ?? 0,
+    streetLayerLoaded: Boolean(args.streetLayerLoaded),
+    streetLayerAuthority: args.streetLayerAuthority,
+    streetLayerCertificationUse: args.streetLayerCertificationUse,
+    streetLayerBboxCoverage: args.streetLayerBboxCoverage,
+    routingBBox: args.routingBBox,
+    routingBufferMiles: args.routingBufferMiles,
     pathFound: false,
     pathNodeCount: 0,
     pathEdgeCount: 0,
@@ -293,8 +348,18 @@ function failureResult(args: {
     routeStatus: "ROUTE_NOT_FOUND",
     failureReason: args.failureReason,
     graphSource: "IMPORTED_STREET_CENTERLINES",
+    routingProvider: "IMPORTED_STREET_CENTERLINES",
+    osmRoutingAllowedScope: "NEW_LATERAL_SEGMENT",
     candidateCoordinate: args.candidateCoordinate,
     attachmentCoordinate: args.attachmentCoordinate,
+    routingScope: "NEW_LATERAL_ONLY",
+    existingInventoryRoutePreserved: true,
+    existingInventoryLengthFeet: args.existingInventoryLengthFeet,
+    newLateralLengthFeet: 0,
+    attachmentId: args.attachmentId,
+    osmRouteFound: false,
+    osmSnapDistanceFeet: args.distanceToStartNode,
+    candidateSnapDistanceFeet: args.distanceToEndNode,
     snappedStartCoordinate: args.snappedStartCoordinate,
     snappedEndCoordinate: args.snappedEndCoordinate,
     distanceToStartNode: args.distanceToStartNode,
@@ -325,14 +390,89 @@ export function routeInventoryExtensionViaStreetGraph(args: {
   attachmentCoordinate?: DALCoordinate;
   candidateCoordinate?: DALCoordinate;
   streetCenterlines?: StreetCenterline[];
+  streetFeatureCount?: number;
+  streetLayerLoaded?: boolean;
+  streetLayerAuthority?: string;
+  streetLayerCertificationUse?: string;
+  streetLayerBboxCoverage?: boolean;
+  routingBBox?: [number, number, number, number];
+  routingBufferMiles?: number;
+  existingInventoryLengthFeet?: number;
+  attachmentId?: string;
 }): StreetGraphRouteResult {
   const startedAt = performance.now();
-  if (!validCoordinate(args.candidateCoordinate)) return failureResult({ startedAt, failureReason: "INVALID_CANDIDATE", attachmentCoordinate: args.attachmentCoordinate });
-  if (!validCoordinate(args.attachmentCoordinate)) return failureResult({ startedAt, failureReason: "NO_ATTACHMENT_FOUND", candidateCoordinate: args.candidateCoordinate });
+  const streetFeatureCount = args.streetFeatureCount ?? args.streetCenterlines?.length ?? 0;
+  const streetLayerLoaded = args.streetLayerLoaded ?? streetFeatureCount > 0;
+  const failureMetadata = {
+    streetFeatureCount,
+    streetLayerLoaded,
+    streetLayerAuthority: args.streetLayerAuthority,
+    streetLayerCertificationUse: args.streetLayerCertificationUse,
+    streetLayerBboxCoverage: args.streetLayerBboxCoverage,
+    routingBBox: args.routingBBox,
+    routingBufferMiles: args.routingBufferMiles,
+  };
+  if (!validCoordinate(args.candidateCoordinate))
+    return failureResult({
+      startedAt,
+      failureReason: "INVALID_CANDIDATE",
+      ...failureMetadata,
+      attachmentCoordinate: args.attachmentCoordinate,
+      existingInventoryLengthFeet: args.existingInventoryLengthFeet,
+      attachmentId: args.attachmentId,
+    });
+  if (!validCoordinate(args.attachmentCoordinate))
+    return failureResult({
+      startedAt,
+      failureReason: "NO_ATTACHMENT_FOUND",
+      ...failureMetadata,
+      candidateCoordinate: args.candidateCoordinate,
+      existingInventoryLengthFeet: args.existingInventoryLengthFeet,
+      attachmentId: args.attachmentId,
+    });
+  if (!streetLayerLoaded)
+    return failureResult({
+      startedAt,
+      failureReason: "STREET_CENTERLINES_NOT_LOADED",
+      ...failureMetadata,
+      candidateCoordinate: args.candidateCoordinate,
+      attachmentCoordinate: args.attachmentCoordinate,
+      existingInventoryLengthFeet: args.existingInventoryLengthFeet,
+      attachmentId: args.attachmentId,
+    });
+  if (streetFeatureCount <= 0)
+    return failureResult({
+      startedAt,
+      failureReason: "NO_STREET_FEATURES_IN_BBOX",
+      ...failureMetadata,
+      candidateCoordinate: args.candidateCoordinate,
+      attachmentCoordinate: args.attachmentCoordinate,
+      existingInventoryLengthFeet: args.existingInventoryLengthFeet,
+      attachmentId: args.attachmentId,
+    });
   const streets = (args.streetCenterlines ?? []).filter((street) => street.source === "IMPORTED");
-  if (!streets.length) return failureResult({ startedAt, failureReason: "NO_STREET_GRAPH", candidateCoordinate: args.candidateCoordinate, attachmentCoordinate: args.attachmentCoordinate });
+  if (!streets.length)
+    return failureResult({
+      startedAt,
+      failureReason: "NO_STREET_FEATURES_IN_BBOX",
+      ...failureMetadata,
+      candidateCoordinate: args.candidateCoordinate,
+      attachmentCoordinate: args.attachmentCoordinate,
+      existingInventoryLengthFeet: args.existingInventoryLengthFeet,
+      attachmentId: args.attachmentId,
+    });
   const graph = buildStreetGraph(streets);
-  if (!graph.nodes.length || !graph.edges.length) return failureResult({ startedAt, graph, failureReason: "EMPTY_STREET_GRAPH", candidateCoordinate: args.candidateCoordinate, attachmentCoordinate: args.attachmentCoordinate });
+  if (!graph.nodes.length || !graph.edges.length)
+    return failureResult({
+      startedAt,
+      graph,
+      failureReason: "EMPTY_STREET_GRAPH",
+      ...failureMetadata,
+      candidateCoordinate: args.candidateCoordinate,
+      attachmentCoordinate: args.attachmentCoordinate,
+      existingInventoryLengthFeet: args.existingInventoryLengthFeet,
+      attachmentId: args.attachmentId,
+    });
 
   const startCandidates = nearestNodes(graph, args.attachmentCoordinate);
   const endCandidates = nearestNodes(graph, args.candidateCoordinate);
@@ -341,8 +481,11 @@ export function routeInventoryExtensionViaStreetGraph(args: {
       startedAt,
       graph,
       failureReason: "SNAP_FAILURE",
+      ...failureMetadata,
       candidateCoordinate: args.candidateCoordinate,
       attachmentCoordinate: args.attachmentCoordinate,
+      existingInventoryLengthFeet: args.existingInventoryLengthFeet,
+      attachmentId: args.attachmentId,
     });
   }
   let best:
@@ -370,12 +513,15 @@ export function routeInventoryExtensionViaStreetGraph(args: {
       startedAt,
       graph,
       failureReason: "NO_REACHABLE_PATH",
+      ...failureMetadata,
       candidateCoordinate: args.candidateCoordinate,
       attachmentCoordinate: args.attachmentCoordinate,
       snappedStartCoordinate: startCandidates[0]?.node.coordinate,
       snappedEndCoordinate: endCandidates[0]?.node.coordinate,
       distanceToStartNode: startCandidates[0] ? Math.round(startCandidates[0].distanceFeet) : undefined,
       distanceToEndNode: endCandidates[0] ? Math.round(endCandidates[0].distanceFeet) : undefined,
+      existingInventoryLengthFeet: args.existingInventoryLengthFeet,
+      attachmentId: args.attachmentId,
     });
   }
 
@@ -390,6 +536,13 @@ export function routeInventoryExtensionViaStreetGraph(args: {
     routingEngine: "StreetGraphRouter",
     graphNodes: graph.nodes.length,
     graphEdges: graph.edges.length,
+    streetFeatureCount,
+    streetLayerLoaded,
+    streetLayerAuthority: args.streetLayerAuthority,
+    streetLayerCertificationUse: args.streetLayerCertificationUse,
+    streetLayerBboxCoverage: args.streetLayerBboxCoverage,
+    routingBBox: args.routingBBox,
+    routingBufferMiles: args.routingBufferMiles,
     startNode: best.start.node.nodeId,
     endNode: best.end.node.nodeId,
     pathFound: true,
@@ -402,8 +555,18 @@ export function routeInventoryExtensionViaStreetGraph(args: {
     fallbackUsed: false,
     routeStatus: "VALID",
     graphSource: "IMPORTED_STREET_CENTERLINES",
+    routingProvider: "IMPORTED_STREET_CENTERLINES",
+    osmRoutingAllowedScope: "NEW_LATERAL_SEGMENT",
     candidateCoordinate: args.candidateCoordinate,
     attachmentCoordinate: args.attachmentCoordinate,
+    routingScope: "NEW_LATERAL_ONLY",
+    existingInventoryRoutePreserved: true,
+    existingInventoryLengthFeet: args.existingInventoryLengthFeet,
+    newLateralLengthFeet: routeFeet,
+    attachmentId: args.attachmentId,
+    osmRouteFound: true,
+    osmSnapDistanceFeet: Math.round(best.start.distanceFeet),
+    candidateSnapDistanceFeet: Math.round(best.end.distanceFeet),
     snappedStartCoordinate: best.start.node.coordinate,
     snappedEndCoordinate: best.end.node.coordinate,
     distanceToStartNode: Math.round(best.start.distanceFeet),
@@ -434,6 +597,8 @@ export function routeInventoryExtensionViaStreetGraph(args: {
 
 export function renderStreetGraphRoutingDiagnostics(result: StreetGraphRouteResult | null | undefined, sourceId = "street-graph-routing"): MapKernelRenderSpec | null {
   if (!result) return null;
+  const computedPathSource = result.audit.routingEngine === "OSRMLateralRouter" ? "OSRM_ROUTE" : "STREET_GRAPH_COMPUTED_PATH";
+  const computedPathLabel = result.audit.routingEngine === "OSRMLateralRouter" ? "OSRM Routed Lateral" : "Computed Street Graph Path";
   const primitives: MapKernelRenderSpec["primitives"] = [
     ...result.graphPreview.edges.map((edge) => ({
       id: `${sourceId}:${edge.edgeId}`,
@@ -489,10 +654,10 @@ export function renderStreetGraphRoutingDiagnostics(result: StreetGraphRouteResu
       layerId: "lateral",
       kind: "line",
       coordinates: result.streetGraphPath,
-      label: "Computed Street Graph Path",
+      label: computedPathLabel,
       style: { stroke: "#22c55e", strokeWidth: 5, opacity: 1 },
-      metadata: { sourceLayer: "STREET_GRAPH_COMPUTED_PATH", renderAuthority: "Street Graph Diagnostic" },
-      ref: { kind: "Lateral", id: `${sourceId}:computed-path`, sourceLayer: "STREET_GRAPH_COMPUTED_PATH" },
+      metadata: { sourceLayer: computedPathSource, renderAuthority: "Street Graph Diagnostic" },
+      ref: { kind: "Lateral", id: `${sourceId}:computed-path`, sourceLayer: computedPathSource },
     });
     result.streetGraphPath.forEach((coordinate, index) => {
       primitives.push({

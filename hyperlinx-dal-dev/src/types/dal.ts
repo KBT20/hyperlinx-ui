@@ -278,6 +278,21 @@ export type LateralPath = {
   routeFailureReason?: string;
   routingAudit?: unknown;
   streetGraphRoute?: unknown;
+  streetRouting?: unknown;
+  streetLayerLoaded?: boolean;
+  streetFeatureCount?: number;
+  streetLayerAuthority?: string;
+  streetLayerCertificationUse?: string;
+  streetLayerBboxCoverage?: boolean;
+  routingBBox?: [number, number, number, number];
+  routingBufferMiles?: number;
+  routingScope?: "NEW_LATERAL_ONLY";
+  existingInventoryRoutePreserved?: boolean;
+  existingInventoryLengthFeet?: number;
+  newLateralLengthFeet?: number;
+  osmRouteFound?: boolean;
+  osmSnapDistanceFeet?: number;
+  candidateSnapDistanceFeet?: number;
   roadSegmentCount?: number;
   roadNamesTraversed?: string[];
   roadClassesTraversed?: string[];
@@ -326,6 +341,7 @@ export type ScopeVersionCertifiedRouteReference = {
     | "BLOCKED";
   routeMode:
     | "DIRECT_FALLBACK"
+    | "OSRM_ROUTE"
     | "ROAD_ROW"
     | "UTILITY_EASEMENT"
     | "EXISTING_TELECOM"
@@ -398,6 +414,7 @@ export type ScopeVersionNetworkBasis = {
   nodeName?: string;
   stationId: string;
   stationName?: string;
+  attachmentId?: string;
   attachmentPoint: DALCoordinate;
   attachmentCoordinates: DALCoordinate;
   attachmentAuthority?: unknown;
@@ -448,6 +465,22 @@ export type ScopeVersionEngineeringBasis = {
   routeFailureReason?: string;
   routingAudit?: unknown;
   streetGraphRoute?: unknown;
+  streetRouting?: unknown;
+  streetLayerLoaded?: boolean;
+  streetFeatureCount?: number;
+  streetLayerAuthority?: string;
+  streetLayerCertificationUse?: string;
+  streetLayerBboxCoverage?: boolean;
+  routingBBox?: [number, number, number, number];
+  routingBufferMiles?: number;
+  routingScope?: "NEW_LATERAL_ONLY";
+  existingInventoryRoutePreserved?: boolean;
+  existingInventoryLengthFeet?: number;
+  newLateralLengthFeet?: number;
+  attachmentId?: string;
+  osmRouteFound?: boolean;
+  osmSnapDistanceFeet?: number;
+  candidateSnapDistanceFeet?: number;
   roadSegmentCount?: number;
   roadNamesTraversed?: string[];
   roadClassesTraversed?: string[];
@@ -463,6 +496,7 @@ export type ScopeVersionEngineeringBasis = {
   constraints?: unknown;
   unresolvedConstraints?: unknown;
   certificationReadiness?: string;
+  proposedNetworkExtension?: unknown;
 };
 
 export type ScopeVersionFinancialBasis = {

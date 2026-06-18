@@ -11,6 +11,7 @@ export type RouteAuthorityState =
 
 export type RouteMode =
   | "DIRECT_FALLBACK"
+  | "OSRM_ROUTE"
   | "ROAD_ROW"
   | "UTILITY_EASEMENT"
   | "EXISTING_TELECOM"

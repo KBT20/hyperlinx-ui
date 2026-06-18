@@ -5,12 +5,21 @@ import type { CorridorAnalysis } from "../types/corridor";
 import { BURIED_CONSTRUCTION_ASSUMPTIONS, DEFAULT_CONSTRUCTION_TYPE } from "../engineering/constructionModel";
 import { certifySiteDecision } from "../engineering/certificationEngine";
 import { estimateRevenue } from "../prism/revenueEstimator";
-import { getConstraintRegistryAnalysisContext, streetCenterlinesFromConstraintFeatures } from "../reference/ConstraintGeometryRegistry";
+import {
+  getConstraintRegistryAnalysisContext,
+  streetCenterlinesFromConstraintFeatures,
+  type ConstraintBounds,
+  type ConstraintRegistryAnalysisContext,
+} from "../reference/ConstraintGeometryRegistry";
 import { compareAttachmentStrategies } from "./attachmentStrategyEngine";
 import { clamp } from "./geo";
 import { findNearestNode } from "./nearestNodeEngine";
 import { findNearestRoute } from "./nearestRouteEngine";
 import { findNearestStation } from "./nearestStationEngine";
+
+const DEFAULT_ROUTING_BUFFER_MILES = 2;
+const EXPANDED_ROUTING_BUFFER_MILES = 4;
+const MIN_ROUTING_BUFFER_MILES = 0.5;
 
 function candidateType(site: CandidateSite) {
   const text = `${site.facilityType ?? ""} ${site.marketSegment ?? ""} ${site.companyName}`.toLowerCase();
@@ -20,13 +29,51 @@ function candidateType(site: CandidateSite) {
   return "enterprise";
 }
 
-function paddedStreetLookupBounds(a: DALCoordinate, b: DALCoordinate, paddingDegrees = 0.03) {
+function routingBufferDegrees(centerLat: number, bufferMiles: number) {
+  const clamped = Math.max(MIN_ROUTING_BUFFER_MILES, bufferMiles);
+  const latDegrees = clamped / 69;
+  const lonDegrees = clamped / Math.max(20, 69 * Math.cos((centerLat * Math.PI) / 180));
+  return { latDegrees, lonDegrees };
+}
+
+function paddedStreetLookupBounds(a: DALCoordinate, b: DALCoordinate, bufferMiles = DEFAULT_ROUTING_BUFFER_MILES): ConstraintBounds {
+  const centerLat = (a[1] + b[1]) / 2;
+  const { latDegrees, lonDegrees } = routingBufferDegrees(centerLat, bufferMiles);
   return [
-    Math.min(a[0], b[0]) - paddingDegrees,
-    Math.min(a[1], b[1]) - paddingDegrees,
-    Math.max(a[0], b[0]) + paddingDegrees,
-    Math.max(a[1], b[1]) + paddingDegrees,
-  ] as [number, number, number, number];
+    Math.min(a[0], b[0]) - lonDegrees,
+    Math.min(a[1], b[1]) - latDegrees,
+    Math.max(a[0], b[0]) + lonDegrees,
+    Math.max(a[1], b[1]) + latDegrees,
+  ];
+}
+
+function boundsContainsPoint(bounds: ConstraintBounds | undefined, coordinate: DALCoordinate) {
+  return Boolean(bounds && coordinate[0] >= bounds[0] && coordinate[0] <= bounds[2] && coordinate[1] >= bounds[1] && coordinate[1] <= bounds[3]);
+}
+
+function streetRoutingLookup(target: DALCoordinate, attachmentCoordinate: DALCoordinate | undefined, bufferMiles: number) {
+  const routingBBox = attachmentCoordinate ? paddedStreetLookupBounds(target, attachmentCoordinate, bufferMiles) : undefined;
+  const context: ConstraintRegistryAnalysisContext = getConstraintRegistryAnalysisContext({
+    bbox: routingBBox,
+    requiredLayers: ["STREETS"],
+  });
+  const streetLayers = context.constraintRegistrySnapshot.layers.filter((layer) => layer.layerType === "STREETS" && layer.status === "LOADED");
+  const streetFeatures = context.constraintRegistryFeatures.filter((feature) => feature.layerType === "STREETS");
+  const primaryStreetLayer = streetLayers[0];
+  return {
+    streetCenterlines: streetCenterlinesFromConstraintFeatures(streetFeatures),
+    metadata: {
+      streetLayerLoaded: streetLayers.length > 0,
+      streetFeatureCount: streetFeatures.length,
+      streetLayerAuthority: primaryStreetLayer?.authority,
+      streetLayerCertificationUse: primaryStreetLayer?.certificationUse,
+      streetLayerBboxCoverage: attachmentCoordinate
+        ? streetLayers.some((layer) => boundsContainsPoint(layer.coverage?.bbox, target) && boundsContainsPoint(layer.coverage?.bbox, attachmentCoordinate))
+        : false,
+      routingBBox,
+      routingBufferMiles: bufferMiles,
+    },
+  };
 }
 
 export function analyzeNetworkAffinity(graph: InventoryGraph, site: CandidateSite): NetworkAffinity | null {
@@ -36,12 +83,7 @@ export function analyzeNetworkAffinity(graph: InventoryGraph, site: CandidateSit
   const nearestNode = findNearestNode(graph, target);
   const nearestStation = findNearestStation(graph, target);
   const attachmentCoordinate = nearestRoute.coordinate ?? nearestStation.coordinate ?? nearestNode.coordinate;
-  const streetCenterlines = streetCenterlinesFromConstraintFeatures(
-    getConstraintRegistryAnalysisContext({
-      bbox: attachmentCoordinate ? paddedStreetLookupBounds(target, attachmentCoordinate) : undefined,
-      requiredLayers: ["STREETS"],
-    }).constraintRegistryFeatures
-  );
+  const streetLookup = streetRoutingLookup(target, attachmentCoordinate, DEFAULT_ROUTING_BUFFER_MILES);
   const revenue = estimateRevenue({
     id: site.candidateId,
     name: site.companyName,
@@ -50,7 +92,32 @@ export function analyzeNetworkAffinity(graph: InventoryGraph, site: CandidateSit
     longitude: Number(site.longitude),
     tags: [site.facilityType ?? "", site.marketSegment ?? ""].filter(Boolean),
   });
-  const strategies = compareAttachmentStrategies({ graph, site, nearestRoute, nearestNode, nearestStation, revenue, streetCenterlines });
+  let strategies = compareAttachmentStrategies({
+    graph,
+    site,
+    nearestRoute,
+    nearestNode,
+    nearestStation,
+    revenue,
+    streetCenterlines: streetLookup.streetCenterlines,
+    streetRoutingMetadata: streetLookup.metadata,
+  });
+  if (!strategies.some((strategy) => strategy.buildPath.routeStatus === "VALID" && strategy.buildPath.geometry.length >= 2)) {
+    const expandedLookup = streetRoutingLookup(target, attachmentCoordinate, EXPANDED_ROUTING_BUFFER_MILES);
+    const expandedStrategies = compareAttachmentStrategies({
+      graph,
+      site,
+      nearestRoute,
+      nearestNode,
+      nearestStation,
+      revenue,
+      streetCenterlines: expandedLookup.streetCenterlines,
+      streetRoutingMetadata: expandedLookup.metadata,
+    });
+    if (expandedStrategies.some((strategy) => strategy.buildPath.routeStatus === "VALID" && strategy.buildPath.geometry.length >= 2)) {
+      strategies = expandedStrategies;
+    }
+  }
   const preferredStrategy = strategies[0];
   if (!preferredStrategy) return null;
   const capacityScore = preferredStrategy.capacity.projectedUtilization === "LOW" ? 100 : preferredStrategy.capacity.projectedUtilization === "MEDIUM" ? 76 : preferredStrategy.capacity.projectedUtilization === "HIGH" ? 48 : 20;
@@ -85,6 +152,16 @@ export function analyzeNetworkAffinity(graph: InventoryGraph, site: CandidateSit
     attachmentCertification: certification.attachmentPoint,
     lateralCertification: certification.lateralPath,
     serviceabilityAssessment: certification.serviceabilityAssessment,
+    routingAudit: certification.lateralPath.routingAudit,
+    streetGraphRoute: certification.lateralPath.streetGraphRoute,
+    routingScope: certification.lateralPath.routingScope,
+    existingInventoryRoutePreserved: certification.lateralPath.existingInventoryRoutePreserved,
+    existingInventoryLengthFeet: certification.lateralPath.existingInventoryLengthFeet,
+    newLateralLengthFeet: certification.lateralPath.newLateralLengthFeet,
+    attachmentId: certification.attachmentPoint.attachmentId,
+    osmRouteFound: certification.lateralPath.osmRouteFound,
+    osmSnapDistanceFeet: certification.lateralPath.osmSnapDistanceFeet,
+    candidateSnapDistanceFeet: certification.lateralPath.candidateSnapDistanceFeet,
     geometry: certification.lateralPath.geometry,
   };
   const certifiedPreferredStrategy = {
