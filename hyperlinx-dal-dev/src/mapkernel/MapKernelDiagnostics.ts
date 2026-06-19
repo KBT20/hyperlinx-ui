@@ -35,7 +35,7 @@ export function buildMapKernelDiagnostics(scopeVersion: ScopeVersion | null | un
       lateral: true,
     },
     showStationLabels: true,
-    stationDensityFeet: 300,
+    stationDensityFeet: 100,
   };
   const primitives = renderMapKernelPrimitives(specs, renderOptions);
   const renderAuthorityAudit = auditMapKernelRenderAuthority(specs, renderOptions);

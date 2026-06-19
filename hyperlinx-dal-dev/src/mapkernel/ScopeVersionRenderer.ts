@@ -52,6 +52,43 @@ function labelForStation(station: Record<string, unknown>) {
   return `${hundreds}+${remainder}`;
 }
 
+function stationStyleForState(state: unknown) {
+  switch (state) {
+    case "RELEASED":
+      return { stroke: "#2563eb", fill: "#60a5fa", radius: 4 };
+    case "IN_PROGRESS":
+      return { stroke: "#ca8a04", fill: "#facc15", radius: 4 };
+    case "COMPLETE":
+      return { stroke: "#15803d", fill: "#22c55e", radius: 4 };
+    case "BLOCKED":
+      return { stroke: "#c2410c", fill: "#fb923c", radius: 5 };
+    case "REJECTED":
+      return { stroke: "#991b1b", fill: "#ef4444", radius: 5 };
+    case "PLANNED":
+    default:
+      return { stroke: "#f59e0b", fill: "#fbbf24", radius: 3 };
+  }
+}
+
+function objectStyleForType(type: unknown, category: unknown) {
+  if (category === "CONSTRAINT") return { stroke: "#b91c1c", fill: "#fca5a5", radius: 4 };
+  switch (type) {
+    case "NETWORK_ATTACHMENT":
+      return { stroke: "#c2410c", fill: "#f97316", radius: 6 };
+    case "HANDHOLE":
+    case "VAULT":
+      return { stroke: "#4338ca", fill: "#818cf8", radius: 5 };
+    case "DUCT":
+    case "FIBER":
+      return { stroke: "#6d28d9", fill: "#a78bfa", radius: 4 };
+    case "BUILDING_ENTRANCE":
+    case "SERVICE_LOCATION":
+      return { stroke: "#0369a1", fill: "#38bdf8", radius: 5 };
+    default:
+      return undefined;
+  }
+}
+
 function addPoint(args: {
   primitives: MapKernelPrimitive[];
   id: string;
@@ -246,6 +283,9 @@ export function renderScopeVersion(scopeVersion: ScopeVersion): MapKernelRenderS
     scopeVersion.nearestStation,
     scopeVersion.station,
   ].filter(Boolean);
+  console.log("[RENDER_AUTHORITY_STATIONS]", {
+    stationCount: stationRecords.length,
+  });
   const renderedStationAuthority = new Set<string>();
   stationRecords.forEach((stationValue, index) => {
     const station = asRecord(stationValue);
@@ -264,7 +304,8 @@ export function renderScopeVersion(scopeVersion: ScopeVersion): MapKernelRenderS
       coordinate,
       label,
       payload: stationValue,
-      metadata: { stationFeet, sourceLayer: "station", rootScopeVersionId, parentScopeVersionId, renderAuthority },
+      style: stationStyleForState(station.stationState),
+      metadata: { stationFeet, sourceLayer: "station", rootScopeVersionId, parentScopeVersionId, renderAuthority, stationState: station.stationState },
       ref: { kind: "Station", id: stationId, scopeVersionId, routeId, stationId },
     });
     primitives.push({
@@ -274,7 +315,7 @@ export function renderScopeVersion(scopeVersion: ScopeVersion): MapKernelRenderS
       coordinate,
       label,
       payload: stationValue,
-      metadata: { stationFeet, sourceLayer: "station", rootScopeVersionId, parentScopeVersionId, renderAuthority },
+      metadata: { stationFeet, sourceLayer: "station", rootScopeVersionId, parentScopeVersionId, renderAuthority, stationState: station.stationState },
       ref: { kind: "Station", id: stationId, scopeVersionId, routeId, stationId },
     });
   });
@@ -316,16 +357,18 @@ export function renderScopeVersion(scopeVersion: ScopeVersion): MapKernelRenderS
   asArray(truth.objects).forEach((objectValue, index) => {
     const object = asRecord(objectValue);
     const coordinate = firstCoordinate(object, object.coordinate, object.geometry);
-    addPoint({
-      primitives,
-      id: String(object.objectId ?? object.id ?? `${scopeVersionId}:object:${index}`),
+    if (!coordinate) return;
+    const objectId = String(object.objectId ?? object.id ?? `${scopeVersionId}:object:${index}`);
+    primitives.push({
+      id: objectId,
       layerId: "object",
-      kind: "Object",
+      kind: "point",
       coordinate,
       label: String(object.label ?? object.name ?? object.objectType ?? object.type ?? "Object"),
       payload: objectValue,
-      scopeVersionId,
+      style: objectStyleForType(object.objectType, object.objectCategory),
       metadata: { sourceLayer: "object", rootScopeVersionId, parentScopeVersionId, renderAuthority, objectCategory: object.objectCategory, objectType: object.objectType },
+      ref: { kind: "Object", id: objectId, scopeVersionId, stationId: String(object.stationId ?? ""), objectId },
     });
   });
 

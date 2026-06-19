@@ -360,7 +360,15 @@ export type ScopeObjectState = "PLANNED" | "RELEASED" | "INSTALLED" | "TESTED" |
 
 export type ScopeObjectCategory = "INFRASTRUCTURE" | "CONSTRAINT";
 
+export type NetworkAttachmentMode =
+  | "EXISTING_HANDHOLE"
+  | "EXISTING_VAULT"
+  | "EXISTING_SPLICE"
+  | "EXISTING_NODE"
+  | "PLANNED_HANDHOLE";
+
 export type ScopeInfrastructureObjectType =
+  | "NETWORK_ATTACHMENT"
   | "SERVICE_LOCATION"
   | "BUILDING_ENTRANCE"
   | "DUCT"
@@ -405,6 +413,25 @@ export type ScopeInfrastructureObject = {
   unit: string;
   specification: string;
   parentObjectId?: string;
+  inventoryId?: string;
+  graphId?: string;
+  sourceRouteId?: string;
+  sourceNodeId?: string;
+  sourceEdgeId?: string;
+  sourceStationId?: string;
+  sourceObjectId?: string;
+  sourceObjectType?: string;
+  attachmentMode?: NetworkAttachmentMode;
+  attachmentCoordinate?: DALCoordinate;
+  attachmentReferenceResolved?: boolean;
+  attachmentReferenceType?: "STATION" | "NODE" | "EDGE" | "ROUTE_POINT" | "UNKNOWN";
+  attachmentReferenceFallbackReason?: string;
+  existingInventoryReferencePreserved?: boolean;
+  lateralStationId?: string;
+  lateralStationLabel?: string;
+  plannedHandholeRequired?: boolean;
+  latitude?: number;
+  longitude?: number;
   createdAt: string;
   updatedAt: string;
 };

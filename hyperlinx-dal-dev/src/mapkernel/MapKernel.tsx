@@ -678,7 +678,9 @@ export default function MapKernel({
           strokeDasharray={style.dasharray}
           opacity={style.opacity}
           onClick={() => selectPrimitive(primitive)}
-        />
+        >
+          <title>{primitive.label ?? primitive.ref.id}</title>
+        </polyline>
       );
     }
     if (primitive.kind === "polygon" && primitive.rings?.[0]?.length) {
@@ -691,7 +693,9 @@ export default function MapKernel({
           strokeWidth={strokeWidth}
           opacity={style.opacity}
           onClick={() => selectPrimitive(primitive)}
-        />
+        >
+          <title>{primitive.label ?? primitive.ref.id}</title>
+        </polygon>
       );
     }
     if (primitive.coordinate && primitive.kind === "label") {
@@ -706,6 +710,7 @@ export default function MapKernel({
           fontWeight={style.fontWeight}
           onClick={() => selectPrimitive(primitive)}
         >
+          <title>{primitive.label ?? primitive.ref.id}</title>
           {primitive.label}
         </text>
       );
@@ -723,7 +728,9 @@ export default function MapKernel({
           strokeWidth={strokeWidth}
           opacity={style.opacity}
           onClick={() => selectPrimitive(primitive)}
-        />
+        >
+          <title>{primitive.label ?? primitive.ref.id}</title>
+        </circle>
       );
     }
     return null;

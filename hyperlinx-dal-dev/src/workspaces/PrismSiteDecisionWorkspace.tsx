@@ -44,6 +44,8 @@ import type { SnapAuthorityResult, SnapCertificationSnapshot, SnapCertificationS
 import { createScopeVersionFromSiteDecision } from "../scopeversion/scopeVersionUtils";
 import { applyLateralStationingAndObjects } from "../scopeversion/ScopeVersionObjectFactory";
 import { summarizeScopeVersionStationingDiagnostics } from "../scopeversion/ScopeVersionStationingValidator";
+import { buildScopeVersionFieldViewModel } from "../scopeversion/ScopeVersionFieldViewModel";
+import { getAllowedTransitions } from "../scopeversion/StationStateEngine";
 import { validateScopeVersion } from "../scopeversion/scopeVersionValidation";
 import type { CandidateSite } from "../types/candidateSite";
 import type { CertificationSnapshot, DALCoordinate, InventoryGraph, InventoryGraphMetadata, InventoryNode, InventoryRoute, InventoryStation, MarketplaceQuote, ScopeVersion, ScopeVersionCertifiedRouteReference } from "../types/dal";
@@ -562,6 +564,150 @@ function RoutingTruthDiagnosticsPanel({ diagnostics, banner, route }: { diagnost
         </div>
       ))}
       <pre className="dal-pre">{JSON.stringify({ routes: diagnostics, fallbackLocations: fallbackAuditReport.fallbackLocations }, null, 2)}</pre>
+    </div>
+  );
+}
+
+function StationInspectorPanel({ selection, scopeVersion }: { selection: MapSelection | null; scopeVersion?: ScopeVersion | null }) {
+  const fieldView = useMemo(() => (scopeVersion ? buildScopeVersionFieldViewModel(scopeVersion) : null), [scopeVersion]);
+  const stations = fieldView?.stations ?? [];
+  const objects = fieldView?.objects ?? [];
+  const selectedObject =
+    selection?.kind === "Object"
+      ? objects.find((object) => object.objectId === selection.featureRef.objectId || object.objectId === selection.featureRef.id)
+      : undefined;
+  const selectedStation =
+    selection?.kind === "Station"
+      ? stations.find((station) => station.stationId === selection.featureRef.stationId || station.stationId === selection.featureRef.id)
+      : selectedObject
+        ? stations.find((station) => station.stationId === selectedObject.stationId)
+        : undefined;
+  const stationObjects = selectedStation ? objects.filter((object) => object.stationId === selectedStation.stationId) : [];
+  const infrastructureObjects = stationObjects.filter((object) => object.objectCategory === "INFRASTRUCTURE");
+  const constraintObjects = stationObjects.filter((object) => object.objectCategory === "CONSTRAINT");
+  const networkAttachment = stationObjects.find((object) => object.objectType === "NETWORK_ATTACHMENT");
+
+  return (
+    <div className="dal-panel">
+      <h3>Station Inspector</h3>
+      {selectedStation ? (
+        <>
+          <div className="dal-metrics">
+            <span>Station ID: {selectedStation.stationId}</span>
+            <span>Label: {selectedStation.stationLabel}</span>
+            <span>Measure: {fmt(Math.round(selectedStation.measureFeet))} ft</span>
+            <span>State: {selectedStation.stationState}</span>
+            <span>Coordinate: {coordinateLabel(selectedStation.coordinate)}</span>
+            <span>Allowed Transitions: {getAllowedTransitions(selectedStation.stationState).join(", ") || "none"}</span>
+          </div>
+          <div className="dal-status">Infrastructure Objects</div>
+          <div className="dal-metrics">
+            {infrastructureObjects.length ? (
+              infrastructureObjects.map((object) => (
+                <span key={object.objectId}>
+                  {object.objectType}: {object.objectState}
+                </span>
+              ))
+            ) : (
+              <span>none</span>
+            )}
+          </div>
+          {networkAttachment ? (
+            <>
+              <div className="dal-status">Existing Inventory Attachment Reference</div>
+              <div className="dal-metrics">
+                <span>NETWORK_ATTACHMENT: {networkAttachment.objectId}</span>
+                <span>Existing Route: {networkAttachment.sourceRouteId ?? "n/a"}</span>
+                <span>Existing Station: {networkAttachment.sourceStationId ?? "n/a"}</span>
+                <span>Existing Node: {networkAttachment.sourceNodeId ?? "n/a"}</span>
+                <span>Existing Edge: {networkAttachment.sourceEdgeId ?? "n/a"}</span>
+                <span>Reference Type: {networkAttachment.attachmentReferenceType ?? "UNKNOWN"}</span>
+                <span>Reference Resolved: {networkAttachment.attachmentReferenceResolved ? "TRUE" : "FALSE"}</span>
+                <span>Preserved: {networkAttachment.existingInventoryReferencePreserved ? "TRUE" : "FALSE"}</span>
+                <span>Attachment Mode: {networkAttachment.attachmentMode ?? "n/a"}</span>
+                <span>Planned Handhole Required: {networkAttachment.plannedHandholeRequired ? "YES" : "NO"}</span>
+                <span>Lateral Station: {networkAttachment.lateralStationLabel ?? networkAttachment.lateralStationId ?? "n/a"}</span>
+              </div>
+              {networkAttachment.attachmentReferenceFallbackReason ? (
+                <div className="dal-status">Fallback: {networkAttachment.attachmentReferenceFallbackReason}</div>
+              ) : null}
+            </>
+          ) : null}
+          <div className="dal-status">Constraint Objects</div>
+          <div className="dal-metrics">
+            {constraintObjects.length ? (
+              constraintObjects.map((object) => (
+                <span key={object.objectId}>
+                  {object.objectType}: {object.objectState}
+                </span>
+              ))
+            ) : (
+              <span>none</span>
+            )}
+          </div>
+          {selectedObject ? (
+            <pre className="dal-pre">
+              {JSON.stringify(
+                {
+                  stationId: selectedObject.stationId,
+                  objectType: selectedObject.objectType,
+                  objectCategory: selectedObject.objectCategory,
+                  objectState: selectedObject.objectState,
+                  attachmentMode: selectedObject.attachmentMode,
+                  sourceNodeId: selectedObject.sourceNodeId,
+                  sourceStationId: selectedObject.sourceStationId,
+                },
+                null,
+                2
+              )}
+            </pre>
+          ) : null}
+        </>
+      ) : (
+        <div className="dal-status">Select a station or station object on the map.</div>
+      )}
+      <div className="dal-status">
+        Field view model: {fieldView ? `${fmt(fieldView.stations.length)} stations, ${fmt(fieldView.objects.length)} objects` : "No ScopeVersion selected"}
+      </div>
+    </div>
+  );
+}
+
+function ScopeVersionLifecycleReadinessPanel({ scopeVersion }: { scopeVersion?: ScopeVersion | null }) {
+  const diagnostics = useMemo(() => summarizeScopeVersionStationingDiagnostics(scopeVersion), [scopeVersion]);
+  const certifiedRoute = Boolean(scopeVersion?.certifiedRouteReference ?? scopeVersion?.canonicalTruth.certifiedRouteReference);
+  const readiness = [
+    ["CertifiedRoute", certifiedRoute],
+    ["Stationing", Boolean(diagnostics && diagnostics.stationCount >= 2 && diagnostics.hasOriginStation)],
+    ["Objects", Boolean(diagnostics && diagnostics.objectCount > 0 && diagnostics.objectsMissingStation.length === 0)],
+    ["Network Attachment", Boolean(diagnostics?.hasNetworkAttachment && diagnostics.attachmentReferenceResolved)],
+    ["Production Stations", Boolean(diagnostics?.productionStationsValid)],
+    ["Closure Ready", Boolean(diagnostics?.closureReady)],
+  ] as const;
+
+  return (
+    <div className="dal-panel">
+      <h3>ScopeVersion Lifecycle Readiness</h3>
+      <div className="dal-metrics">
+        {readiness.map(([label, passed]) => (
+          <span key={label}>
+            {label}: {passed ? "PASS" : "FAIL"}
+          </span>
+        ))}
+      </div>
+      <div className="dal-metrics">
+        <span>existingReferenceRouteId: {diagnostics?.existingReferenceRouteId ?? "n/a"}</span>
+        <span>existingReferenceStationId: {diagnostics?.existingReferenceStationId ?? "n/a"}</span>
+        <span>existingReferenceNodeId: {diagnostics?.existingReferenceNodeId ?? "n/a"}</span>
+        <span>existingReferenceEdgeId: {diagnostics?.existingReferenceEdgeId ?? "n/a"}</span>
+        <span>lateralOriginStationId: {diagnostics?.lateralOriginStationId ?? "n/a"}</span>
+        <span>lateralOriginCoordinate: {coordinateLabel(diagnostics?.lateralOriginCoordinate)}</span>
+        <span>attachmentReferenceResolved: {diagnostics?.attachmentReferenceResolved ? "true" : "false"}</span>
+        <span>attachmentReferenceType: {diagnostics?.attachmentReferenceType ?? "UNKNOWN"}</span>
+        <span>existingInventoryReferencePreserved: {diagnostics?.existingInventoryReferencePreserved ? "true" : "false"}</span>
+        <span>plannedHandholeRequired: {diagnostics?.plannedHandholeRequired ? "true" : "false"}</span>
+      </div>
+      {diagnostics?.attachmentReferenceFallbackReason ? <div className="dal-status">Fallback: {diagnostics.attachmentReferenceFallbackReason}</div> : null}
     </div>
   );
 }
@@ -2073,12 +2219,12 @@ export default function PrismSiteDecisionWorkspace() {
   }, [decisionContext, snapStreetCenterlines]);
 
   const decisionMapScopeVersion = useMemo<ScopeVersion | null>(() => {
-    if (decisionContext) return createDecisionMapScopeVersion(decisionContext);
     const selectedMatchesDecision =
       selectedScopeVersion &&
       (!activeSeed || selectedScopeVersion.sourceOpportunityId === activeSeed.id || (selectedScopeVersion.canonicalTruth as any)?.opportunitySeedId === activeSeed.id) &&
       (!activeSite || selectedScopeVersion.candidateSiteId === activeSite.candidateId || (selectedScopeVersion.canonicalTruth as any)?.sourceCandidate?.candidateSiteId === activeSite.candidateId);
     if (selectedMatchesDecision) return selectedScopeVersion;
+    if (decisionContext) return createDecisionMapScopeVersion(decisionContext);
     return null;
   }, [activeSeed, activeSite, decisionContext, selectedScopeVersion]);
   const decisionMapSpec = useMemo(() => (decisionMapScopeVersion ? renderScopeVersion(decisionMapScopeVersion) : null), [decisionMapScopeVersion]);
@@ -2453,7 +2599,7 @@ export default function PrismSiteDecisionWorkspace() {
                 object: true,
               }}
               showStationLabels
-              stationDensityFeet={300}
+              stationDensityFeet={100}
               height={520}
               initialMode="geographic"
               initialBaseLayer="hybrid"
@@ -2478,6 +2624,9 @@ export default function PrismSiteDecisionWorkspace() {
             Rendering path: {"ScopeVersion -> ScopeVersionRenderer -> MapKernel"}. Selection: {mapSelection ? `${mapSelection.kind} ${mapSelection.featureRef.id}` : "none"}.
           </div>
         </div>
+
+        <StationInspectorPanel selection={mapSelection} scopeVersion={decisionMapScopeVersion} />
+        <ScopeVersionLifecycleReadinessPanel scopeVersion={decisionMapScopeVersion} />
 
         <div className="dal-panel">
           <h3>Decision Evidence</h3>
@@ -2778,6 +2927,10 @@ export default function PrismSiteDecisionWorkspace() {
             <span>Objects Missing Station: {fmt(stationingDiagnostics?.objectsMissingStation.length ?? 0)}</span>
             <span>Stations Without Coordinates: {fmt(stationingDiagnostics?.stationsWithoutCoordinate.length ?? 0)}</span>
             <span>Objects Without Coordinates: {fmt(stationingDiagnostics?.objectsWithoutCoordinate.length ?? 0)}</span>
+            <span>STA-0000: {stationingDiagnostics?.hasOriginStation ? "PASS" : "MISSING"}</span>
+            <span>NETWORK_ATTACHMENT: {stationingDiagnostics?.hasNetworkAttachment ? "PASS" : "MISSING"}</span>
+            <span>Final Building Entrance: {stationingDiagnostics?.hasFinalBuildingEntrance ? "PASS" : "MISSING"}</span>
+            <span>Final Service Location: {stationingDiagnostics?.hasFinalServiceLocation ? "PASS" : "MISSING"}</span>
           </div>
           <pre className="dal-pre">{JSON.stringify(scopePreview ?? {}, null, 2)}</pre>
         </div>

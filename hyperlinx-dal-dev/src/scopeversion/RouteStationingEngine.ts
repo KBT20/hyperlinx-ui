@@ -47,10 +47,10 @@ export function routeLengthFeet(geometry: DALCoordinate[]) {
 }
 
 export function stationLabelForMeasure(measureFeet: number) {
-  const rounded = Math.max(0, Math.round(measureFeet));
-  const hundreds = Math.floor(rounded / 100);
-  const remainder = (rounded % 100).toString().padStart(2, "0");
-  return `${hundreds}+${remainder}`;
+  const feet = Math.max(0, Math.round(measureFeet));
+  const station = Math.floor(feet / 100);
+  const remainder = feet % 100;
+  return `${station}+${remainder.toString().padStart(2, "0")}`;
 }
 
 export function stationIdForMeasure(measureFeet: number) {
@@ -98,6 +98,11 @@ export function generateRouteStationsFromCertifiedRoute(args: {
   const routeId = args.certifiedRoute.nearestRouteId ?? String(args.scopeVersion.canonicalTruth.networkBasis?.routeId ?? asRecord(args.scopeVersion.route).routeId ?? args.certifiedRoute.certifiedRouteId);
   const createdAt = args.createdAt ?? new Date().toISOString();
   const measures: number[] = [];
+  console.log("[STATION_GENERATOR]", {
+    routeId,
+    routeLengthFeet: routeFeet,
+    stationSpacingFeet: interval,
+  });
 
   for (let measure = 0; measure < routeFeet; measure += interval) {
     measures.push(Math.round(measure));
@@ -112,11 +117,18 @@ export function generateRouteStationsFromCertifiedRoute(args: {
     routeId,
     measureFeet,
     stationLabel: stationLabelForMeasure(measureFeet),
-    coordinate: interpolateRouteCoordinate(args.certifiedRoute.geometry, measureFeet, routeFeet),
+    coordinate: Math.round(measureFeet) === 0 ? args.certifiedRoute.attachmentCoordinate : interpolateRouteCoordinate(args.certifiedRoute.geometry, measureFeet, routeFeet),
     stationState: "PLANNED",
     createdAt,
     updatedAt: createdAt,
   }));
+
+  console.log("[STATION_GENERATOR_RESULT]", {
+    routeId,
+    stationCount: stations.length,
+    firstStation: stations[0],
+    lastStation: stations[stations.length - 1],
+  });
 
   return stations;
 }
