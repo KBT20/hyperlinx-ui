@@ -24,6 +24,7 @@ import CertificationAuthorityStrip from "../components/CertificationAuthorityStr
 import ConstraintEvidenceStrip from "../components/ConstraintEvidenceStrip";
 import RouteEngineeringPanel from "../components/RouteEngineeringPanel";
 import SnapAuthorityPanel from "../components/SnapAuthorityPanel";
+import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
 import { useDALState } from "../dal/DALState";
 import { geocodeCandidateSite, isValidGeocodeCoordinate, realGeocoderConfigured } from "../geocoding/geocodeEngine";
 import { MapKernel, buildMapKernelDiagnostics, renderScopeVersion, type MapKernelRenderSpec, type MapSelection } from "../mapkernel";
@@ -45,6 +46,7 @@ import { createScopeVersionFromSiteDecision } from "../scopeversion/scopeVersion
 import { applyLateralStationingAndObjects } from "../scopeversion/ScopeVersionObjectFactory";
 import { summarizeScopeVersionStationingDiagnostics } from "../scopeversion/ScopeVersionStationingValidator";
 import { buildScopeVersionFieldViewModel } from "../scopeversion/ScopeVersionFieldViewModel";
+import { calculateScopeVersionProgress, deriveScopeVersionLifecycleState } from "../scopeversion/ClosureAuthorityEngine";
 import { getAllowedTransitions } from "../scopeversion/StationStateEngine";
 import { validateScopeVersion } from "../scopeversion/scopeVersionValidation";
 import type { CandidateSite } from "../types/candidateSite";
@@ -586,6 +588,23 @@ function StationInspectorPanel({ selection, scopeVersion }: { selection: MapSele
   const infrastructureObjects = stationObjects.filter((object) => object.objectCategory === "INFRASTRUCTURE");
   const constraintObjects = stationObjects.filter((object) => object.objectCategory === "CONSTRAINT");
   const networkAttachment = stationObjects.find((object) => object.objectType === "NETWORK_ATTACHMENT");
+  const closureHistory =
+    selectedStation && scopeVersion
+      ? [...(scopeVersion.canonicalTruth?.closures ?? []), ...(scopeVersion.closures ?? [])]
+          .filter((closure, index, list) => list.findIndex((item) => item.closureId === closure.closureId) === index)
+          .filter((closure) => {
+            if (closure.stationId === selectedStation.stationId) return true;
+            if (!closure.stationStartId || !closure.stationEndId) return false;
+            const start = stations.find((station) => station.stationId === closure.stationStartId);
+            const end = stations.find((station) => station.stationId === closure.stationEndId);
+            if (!start || !end) return false;
+            const min = Math.min(Number(start.measureFeet), Number(end.measureFeet));
+            const max = Math.max(Number(start.measureFeet), Number(end.measureFeet));
+            return Number(selectedStation.measureFeet) >= min && Number(selectedStation.measureFeet) <= max;
+          })
+          .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      : [];
+  const lifecycleState = scopeVersion ? deriveScopeVersionLifecycleState(scopeVersion) : "ANALYZED";
 
   return (
     <div className="dal-panel">
@@ -662,6 +681,26 @@ function StationInspectorPanel({ selection, scopeVersion }: { selection: MapSele
               )}
             </pre>
           ) : null}
+          <details>
+            <summary>State History</summary>
+            <div className="dal-metrics">
+              <span>Affected Lifecycle State: {lifecycleState}</span>
+              <span>Station Closures: {fmt(closureHistory.length)}</span>
+            </div>
+            {closureHistory.length ? (
+              <div className="dal-list">
+                {closureHistory.map((closure) => (
+                  <div key={closure.closureId} className="dal-list-row">
+                    <span>{closure.closureType}</span>
+                    <b>{closure.newStationState ?? closure.newObjectState ?? "STATE"}</b>
+                    <small>{closure.actorName} / {closure.createdAt}</small>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="dal-status">No ClosureAuthority records for this station yet.</div>
+            )}
+          </details>
         </>
       ) : (
         <div className="dal-status">Select a station or station object on the map.</div>
@@ -675,6 +714,7 @@ function StationInspectorPanel({ selection, scopeVersion }: { selection: MapSele
 
 function ScopeVersionLifecycleReadinessPanel({ scopeVersion }: { scopeVersion?: ScopeVersion | null }) {
   const diagnostics = useMemo(() => summarizeScopeVersionStationingDiagnostics(scopeVersion), [scopeVersion]);
+  const progress = useMemo(() => (scopeVersion ? calculateScopeVersionProgress(scopeVersion) : null), [scopeVersion]);
   const certifiedRoute = Boolean(scopeVersion?.certifiedRouteReference ?? scopeVersion?.canonicalTruth.certifiedRouteReference);
   const readiness = [
     ["CertifiedRoute", certifiedRoute],
@@ -706,6 +746,10 @@ function ScopeVersionLifecycleReadinessPanel({ scopeVersion }: { scopeVersion?: 
         <span>attachmentReferenceType: {diagnostics?.attachmentReferenceType ?? "UNKNOWN"}</span>
         <span>existingInventoryReferencePreserved: {diagnostics?.existingInventoryReferencePreserved ? "true" : "false"}</span>
         <span>plannedHandholeRequired: {diagnostics?.plannedHandholeRequired ? "true" : "false"}</span>
+        <span>closureCount: {fmt(progress?.closureCount)}</span>
+        <span>completedFeet: {fmt(Math.round(progress?.completedFeet ?? 0))}</span>
+        <span>percentComplete: {fmt(Math.round(progress?.percentComplete ?? 0))}%</span>
+        <span>lifecycleState: {scopeVersion ? deriveScopeVersionLifecycleState(scopeVersion) : "n/a"}</span>
       </div>
       {diagnostics?.attachmentReferenceFallbackReason ? <div className="dal-status">Fallback: {diagnostics.attachmentReferenceFallbackReason}</div> : null}
     </div>
@@ -2626,6 +2670,7 @@ export default function PrismSiteDecisionWorkspace() {
         </div>
 
         <StationInspectorPanel selection={mapSelection} scopeVersion={decisionMapScopeVersion} />
+        <ScopeVersionLifecycleRibbon scopeVersion={decisionMapScopeVersion} />
         <ScopeVersionLifecycleReadinessPanel scopeVersion={decisionMapScopeVersion} />
 
         <div className="dal-panel">

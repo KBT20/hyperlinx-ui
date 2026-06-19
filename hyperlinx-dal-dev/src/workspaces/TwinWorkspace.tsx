@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { listCandidateSites, listControlWorkItems, listFieldClosures, listOpportunitySeeds, loadTwinState } from "../api/dalClient";
+import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
 import { useDALState } from "../dal/DALState";
 import { LeafletMap, type GISBuildPath, type GISPoint, type GISRoute } from "../gis";
+import { buildScopeVersionTwinProjection } from "../scopeversion/ScopeVersionTwinProjection";
 import type { ControlWorkItem, DALCoordinate, FieldClosure, InventoryRoute, TwinState } from "../types/dal";
 import type { CandidateSite } from "../types/candidateSite";
 import type { OpportunitySeed } from "../types/portfolio";
@@ -98,6 +100,9 @@ export default function TwinWorkspace() {
   const scopeSite = scopeTruth?.sourceCandidate ?? scopeTruth?.site ?? scopeTruth?.candidateSite;
   const routeAuthorityState = selectedScopeVersion?.certifiedRouteReference?.routeAuthorityState ?? "NO_CERTIFIED_ROUTE";
   const plannedStateAuthority = routeAuthorityState === "CERTIFIED_ROUTE" ? "PLANNED NETWORK TRUTH" : "ADVISORY ONLY";
+  const twinProjection = buildScopeVersionTwinProjection(selectedScopeVersion);
+  const twinStationStateCounts = twinProjection.stationStateCounts as Record<string, number>;
+  const twinObjectStateCounts = twinProjection.objectStateCounts as Record<string, number>;
   const attachmentPoint = networkBasis?.attachmentCoordinates as DALCoordinate | undefined;
   const plannedRoute = selectedGraph?.routes.find((route) => route.routeId === networkBasis?.routeId);
   const plannedRouteSegment = routeSegmentForAttachment(plannedRoute, attachmentPoint);
@@ -179,8 +184,13 @@ export default function TwinWorkspace() {
           <span>Completed work: {fmt(twinState?.completedWorkItems)}</span>
           <span>Closures: {fmt(twinState?.closureCount)}</span>
           <span>Completed feet: {fmt(twinState?.completedFeet)}</span>
+          <span>Lifecycle State: {twinProjection.lifecycleState}</span>
+          <span>Verified Stations: {fmt(twinProjection.verifiedStationCount)}</span>
+          <span>Closure Timeline: {fmt(twinProjection.closureTimeline.length)}</span>
         </div>
       </div>
+
+      <ScopeVersionLifecycleRibbon scopeVersion={selectedScopeVersion} />
 
       <div className="dal-grid">
         <div className="dal-panel">
@@ -197,6 +207,13 @@ export default function TwinWorkspace() {
           <h3>Proposed State</h3>
           <div className="dal-metrics">
             <span>Scope: {selectedScopeVersion?.scopeVersionId ?? "none"}</span>
+            <span>Proposed ScopeVersion State: {twinProjection.proposedScopeVersionState ?? "none"}</span>
+            <span>Completed Stations: {fmt(twinProjection.completedStationCount)}</span>
+            <span>Verified Stations: {fmt(twinProjection.verifiedStationCount)}</span>
+            <span>Completed Feet: {fmt(Math.round(twinProjection.completedFeet))}</span>
+            <span>Percent Complete: {fmt(Math.round(twinProjection.percentComplete))}%</span>
+            <span>Blocked Stations: {fmt(twinProjection.blockedStations.length)}</span>
+            <span>Rejected Stations: {fmt(twinProjection.rejectedStations.length)}</span>
             <span>Opportunity Seeds: {fmt(seeds.length)}</span>
             <span>Imported Sites: {fmt(candidateSites.length)}</span>
             <span>Qualified Sites: {fmt(candidateSites.filter((site) => site.status === "QUALIFIED").length)}</span>
@@ -224,6 +241,31 @@ export default function TwinWorkspace() {
             <span>Closures: {fmt(twinState?.closureCount)}</span>
             <span>Completed feet: {fmt(twinState?.completedFeet)}</span>
           </div>
+        </div>
+      </div>
+
+      <div className="dal-panel">
+        <h3>Twin Execution Overlay</h3>
+        <div className="dal-metrics">
+          <span>Planned Assets: {fmt(twinStationStateCounts.PLANNED)}</span>
+          <span>Released Assets: {fmt(twinStationStateCounts.RELEASED)}</span>
+          <span>In Progress Assets: {fmt(twinStationStateCounts.IN_PROGRESS)}</span>
+          <span>Completed Assets: {fmt(twinStationStateCounts.COMPLETE)}</span>
+          <span>Verified Assets: {fmt(twinStationStateCounts.VERIFIED)}</span>
+          <span>Blocked Assets: {fmt(twinStationStateCounts.BLOCKED)}</span>
+          <span>Rejected Assets: {fmt(twinStationStateCounts.REJECTED)}</span>
+          <span>Percent Complete: {fmt(Math.round(twinProjection.percentComplete))}%</span>
+          <span>Planned Objects: {fmt(twinObjectStateCounts.PLANNED)}</span>
+          <span>Released Objects: {fmt(twinObjectStateCounts.RELEASED)}</span>
+          <span>Installed Objects: {fmt(twinProjection.installedObjects)}</span>
+          <span>Tested Objects: {fmt(twinProjection.testedObjects)}</span>
+          <span>Accepted Objects: {fmt(twinProjection.acceptedObjects)}</span>
+          <span>Completed Objects: {fmt(twinProjection.completeObjects)}</span>
+          <span>Verified Objects: {fmt(twinProjection.verifiedObjects)}</span>
+          <span>Blocked Objects: {fmt(twinProjection.blockedObjects)}</span>
+          <span>Rejected Objects: {fmt(twinProjection.rejectedObjects)}</span>
+          <span>Object Completion: {fmt(Math.round(twinProjection.objectCompletionPercent))}%</span>
+          <span>Station Derived Completion: {fmt(Math.round(twinProjection.stationDerivedCompletionPercent))}%</span>
         </div>
       </div>
 

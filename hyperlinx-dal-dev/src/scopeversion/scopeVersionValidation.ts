@@ -5,6 +5,7 @@ import type {
   ScopeVersionStatus,
   ValidationStatus,
 } from "../types/dal";
+import { calculateScopeVersionProgress } from "./ClosureAuthorityEngine";
 import { validateScopeVersionStationing } from "./ScopeVersionStationingValidator";
 
 export type ScopeVersionValidationIssue = {
@@ -21,13 +22,20 @@ export type ScopeVersionValidationResult = {
 };
 
 export const SCOPEVERSION_STATUS_TRANSITIONS: Record<ScopeVersionStatus, ScopeVersionStatus[]> = {
-  DRAFT: ["ANALYZED", "REJECTED"],
-  ANALYZED: ["QUOTED", "APPROVED", "REJECTED"],
-  QUOTED: ["APPROVED", "REJECTED"],
-  APPROVED: ["ACTIVATED", "REJECTED"],
-  ACTIVATED: ["IN_CONSTRUCTION", "COMPLETE", "REJECTED"],
-  IN_CONSTRUCTION: ["COMPLETE"],
-  COMPLETE: [],
+  DRAFT: ["ANALYZED", "PROVISIONALLY_CERTIFIED", "QUOTED", "APPROVED", "RELEASED_TO_CONTROL", "IN_FIELD", "PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
+  ANALYZED: ["PROVISIONALLY_CERTIFIED", "QUOTED", "APPROVED", "RELEASED_TO_CONTROL", "BLOCKED", "REJECTED"],
+  PROVISIONALLY_CERTIFIED: ["QUOTED", "APPROVED", "RELEASED_TO_CONTROL", "BLOCKED", "REJECTED"],
+  QUOTED: ["APPROVED", "RELEASED_TO_CONTROL", "BLOCKED", "REJECTED"],
+  APPROVED: ["RELEASED_TO_CONTROL", "ACTIVATED", "BLOCKED", "REJECTED"],
+  RELEASED_TO_CONTROL: ["IN_FIELD", "PARTIALLY_COMPLETE", "COMPLETE", "BLOCKED", "REJECTED"],
+  IN_FIELD: ["PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
+  PARTIALLY_COMPLETE: ["IN_FIELD", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
+  ACTIVATED: ["IN_CONSTRUCTION", "IN_FIELD", "PARTIALLY_COMPLETE", "COMPLETE", "BLOCKED", "REJECTED"],
+  IN_CONSTRUCTION: ["PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
+  COMPLETE: ["VERIFIED", "OPERATIONAL", "BLOCKED", "REJECTED"],
+  VERIFIED: ["OPERATIONAL", "BLOCKED", "REJECTED"],
+  OPERATIONAL: ["BLOCKED", "REJECTED"],
+  BLOCKED: ["IN_FIELD", "PARTIALLY_COMPLETE", "REJECTED"],
   REJECTED: [],
 };
 
@@ -209,6 +217,43 @@ export function validateScopeVersion(scopeVersion: ScopeVersion): ScopeVersionVa
     const stationingValidation = validateScopeVersionStationing(scopeVersion);
     stationingValidation.errors.forEach((item) => errors.push(error(item.field, item.message)));
     stationingValidation.warnings.forEach((item) => warnings.push(warning(item.field, item.message)));
+    const progress = calculateScopeVersionProgress(scopeVersion);
+    if (progress.closureAuthorityStatus !== "PASS") {
+      errors.push(error("closureAuthority.progress", "ClosureAuthorityEngine requires stations and objects before field closure readiness."));
+    }
+    const routeStationStates = new Set(["PLANNED", "RELEASED", "IN_PROGRESS", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"]);
+    const objectStates = new Set(["PLANNED", "RELEASED", "INSTALLED", "TESTED", "ACCEPTED", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"]);
+    const stations = Array.isArray(truth.stations) ? truth.stations : [];
+    const objects = Array.isArray(truth.objects) ? truth.objects : [];
+    const stationIds = new Set(stations.map((station: any) => station?.stationId).filter(Boolean));
+    const objectIds = new Set(objects.map((object: any) => object?.objectId).filter(Boolean));
+    stations.forEach((station: any) => {
+      if (station?.stationState && !routeStationStates.has(String(station.stationState))) {
+        errors.push(error(`stations.${station.stationId}.stationState`, `Invalid station state ${station.stationState}.`));
+      }
+    });
+    objects.forEach((object: any) => {
+      if (object?.objectState && !objectStates.has(String(object.objectState))) {
+        errors.push(error(`objects.${object.objectId}.objectState`, `Invalid object state ${object.objectState}.`));
+      }
+    });
+    const closures = [...(Array.isArray(scopeVersion.closures) ? scopeVersion.closures : []), ...(Array.isArray(truth.closures) ? truth.closures : [])];
+    closures.forEach((closure: any) => {
+      if (closure.stationId && !stationIds.has(closure.stationId)) {
+        errors.push(error(`closures.${closure.closureId}.stationId`, "Closure stationId must reference a ScopeVersion station."));
+      }
+      if (closure.stationStartId && !stationIds.has(closure.stationStartId)) {
+        errors.push(error(`closures.${closure.closureId}.stationStartId`, "Closure stationStartId must reference a ScopeVersion station."));
+      }
+      if (closure.stationEndId && !stationIds.has(closure.stationEndId)) {
+        errors.push(error(`closures.${closure.closureId}.stationEndId`, "Closure stationEndId must reference a ScopeVersion station."));
+      }
+      (Array.isArray(closure.objectIds) ? closure.objectIds : []).forEach((objectId: string) => {
+        if (!objectIds.has(objectId)) {
+          errors.push(error(`closures.${closure.closureId}.objectIds`, `Closure objectId ${objectId} must reference a ScopeVersion object.`));
+        }
+      });
+    });
   }
 
   const status: ValidationStatus = errors.length ? "FAIL" : warnings.length ? "WARNING" : "PASS";
@@ -232,11 +277,18 @@ export function mergeImmutableScopeVersion(existing: ScopeVersion | undefined, n
   if (!existing) return next;
   assertScopeVersionTransition(existing.status, next.status);
 
+  const existingClosureCount = Math.max(existing.closures?.length ?? 0, Array.isArray(existing.canonicalTruth?.closures) ? existing.canonicalTruth.closures.length : 0);
+  const nextClosureCount = Math.max(next.closures?.length ?? 0, Array.isArray(next.canonicalTruth?.closures) ? next.canonicalTruth.closures.length : 0);
+  const hasClosureAuthorityChange = nextClosureCount > existingClosureCount;
   const canonicalTruth: ScopeVersionCanonicalTruth = {
     ...next.canonicalTruth,
   };
   for (const key of IMMUTABLE_CANONICAL_KEYS) {
-    canonicalTruth[key] = existing.canonicalTruth?.[key] ?? next.canonicalTruth?.[key];
+    if (hasClosureAuthorityChange && (key === "stations" || key === "objects")) {
+      (canonicalTruth as any)[key] = next.canonicalTruth?.[key] ?? existing.canonicalTruth?.[key];
+      continue;
+    }
+    (canonicalTruth as any)[key] = existing.canonicalTruth?.[key] ?? next.canonicalTruth?.[key];
   }
 
   const merged: ScopeVersion = {
@@ -246,6 +298,9 @@ export function mergeImmutableScopeVersion(existing: ScopeVersion | undefined, n
       quoteBasis: next.canonicalTruth?.quoteBasis ?? existing.canonicalTruth?.quoteBasis,
       commercial: next.canonicalTruth?.commercial ?? existing.canonicalTruth?.commercial,
       validation: next.canonicalTruth?.validation ?? existing.canonicalTruth?.validation,
+      closures: next.canonicalTruth?.closures ?? existing.canonicalTruth?.closures,
+      progress: next.canonicalTruth?.progress ?? existing.canonicalTruth?.progress,
+      lifecycleState: next.canonicalTruth?.lifecycleState ?? existing.canonicalTruth?.lifecycleState,
     },
   };
 

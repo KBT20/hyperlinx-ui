@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { listMarketplaceQuotes, listScopeVersions, saveMarketplaceQuote, saveScopeVersion } from "../api/dalClient";
 import { applyQuoteToScopeVersion, generatePreliminaryQuote } from "../commercial/quoteEngine";
+import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
 import { useDALState } from "../dal/DALState";
 import type { MarketplaceQuote, ScopeVersion } from "../types/dal";
 
@@ -84,6 +85,8 @@ export default function MarketplaceWorkspace() {
           Refresh
         </button>
       </div>
+
+      <ScopeVersionLifecycleRibbon scopeVersion={quoteScope ?? selectedScopeVersion ?? scopeVersions[0]} />
 
       <div className="dal-grid">
         <div className="dal-panel">

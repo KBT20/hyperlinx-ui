@@ -197,11 +197,32 @@ export type InventoryHealthMetrics = {
 export type ScopeVersionStatus =
   | "DRAFT"
   | "ANALYZED"
+  | "PROVISIONALLY_CERTIFIED"
   | "QUOTED"
   | "APPROVED"
+  | "RELEASED_TO_CONTROL"
+  | "IN_FIELD"
+  | "PARTIALLY_COMPLETE"
   | "ACTIVATED"
   | "IN_CONSTRUCTION"
   | "COMPLETE"
+  | "VERIFIED"
+  | "OPERATIONAL"
+  | "BLOCKED"
+  | "REJECTED";
+
+export type ScopeVersionLifecycleState =
+  | "ANALYZED"
+  | "PROVISIONALLY_CERTIFIED"
+  | "QUOTED"
+  | "APPROVED"
+  | "RELEASED_TO_CONTROL"
+  | "IN_FIELD"
+  | "PARTIALLY_COMPLETE"
+  | "COMPLETE"
+  | "VERIFIED"
+  | "OPERATIONAL"
+  | "BLOCKED"
   | "REJECTED";
 
 export type ScopeVersionTruthType = "INVENTORY" | "CANDIDATE" | "APPROVED" | "FIELD_CLOSED" | "AS_BUILT";
@@ -354,9 +375,50 @@ export type ScopeVersionCertifiedRouteReference = {
   constraintEvidenceId?: string;
 };
 
-export type RouteStationState = "PLANNED" | "RELEASED" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED" | "REJECTED";
+export type RouteStationState = "PLANNED" | "RELEASED" | "IN_PROGRESS" | "COMPLETE" | "VERIFIED" | "BLOCKED" | "REJECTED";
 
-export type ScopeObjectState = "PLANNED" | "RELEASED" | "INSTALLED" | "TESTED" | "COMPLETE" | "BLOCKED" | "REJECTED";
+export type ScopeObjectState =
+  | "PLANNED"
+  | "RELEASED"
+  | "INSTALLED"
+  | "TESTED"
+  | "ACCEPTED"
+  | "COMPLETE"
+  | "VERIFIED"
+  | "BLOCKED"
+  | "REJECTED";
+
+export type ClosureType =
+  | "STATION_STATE_TRANSITION"
+  | "STATION_RANGE_TRANSITION"
+  | "OBJECT_STATE_TRANSITION"
+  | "OBJECT_RANGE_TRANSITION";
+
+export type ClosureAuthority = "FIELD" | "CONTROL" | "ENGINEERING_REVIEW" | "SYSTEM";
+
+export type ClosureRecord = {
+  closureId: string;
+  scopeVersionId: string;
+  certifiedRouteId: string;
+  stationId?: string;
+  stationStartId?: string;
+  stationEndId?: string;
+  objectIds: string[];
+  closureType: ClosureType;
+  previousStationState?: RouteStationState;
+  newStationState?: RouteStationState;
+  previousObjectStates?: Record<string, ScopeObjectState>;
+  newObjectState?: ScopeObjectState;
+  actorId: string;
+  actorName: string;
+  authority: ClosureAuthority;
+  evidenceIds: string[];
+  notes?: string;
+  feetAffected?: number;
+  persistenceStatus?: "PERSISTED" | "PERSISTENCE_PENDING";
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type ScopeObjectCategory = "INFRASTRUCTURE" | "CONSTRAINT";
 
@@ -434,6 +496,48 @@ export type ScopeInfrastructureObject = {
   longitude?: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type FieldObjectWorkContext = {
+  objectId: string;
+  stationId: string;
+  objectType: ScopeInfrastructureObjectType;
+  objectCategory: ScopeObjectCategory;
+  objectLabel: string;
+  humanName: string;
+  objectState: ScopeObjectState;
+  measureFeet: number;
+  coordinate: DALCoordinate;
+  requiredWork: string;
+  dependencies: string[];
+  allowedTransitions: ScopeObjectState[];
+  isClosable: boolean;
+  isBlocked: boolean;
+  closureHistory: ClosureRecord[];
+  sourceObject: ScopeInfrastructureObject;
+};
+
+export type FieldStationWorkContext = {
+  scopeVersionId: string;
+  certifiedRouteId: string;
+  routeId: string;
+  stationId: string;
+  stationLabel: string;
+  measureFeet: number;
+  coordinate: DALCoordinate;
+  nearestRoad: string;
+  nearestAddress: string;
+  nearestParcel: string;
+  stationState: RouteStationState;
+  stationDerivedState: RouteStationState;
+  objectsAtStation: FieldObjectWorkContext[];
+  openObjectsAtStation: FieldObjectWorkContext[];
+  completeObjectsAtStation: FieldObjectWorkContext[];
+  verifiedObjectsAtStation: FieldObjectWorkContext[];
+  blockedObjectsAtStation: FieldObjectWorkContext[];
+  allowedStationTransitions: RouteStationState[];
+  nextRecommendedObjectId?: string;
+  sourceStation: RouteStation;
 };
 
 export type ScopeVersionStationingSummary = {
@@ -654,6 +758,7 @@ export type ScopeVersionCanonicalTruth = {
   };
   stations?: Array<RouteStation | InventoryStation>;
   objects?: ScopeInfrastructureObject[];
+  closures?: ClosureRecord[];
   stationing?: ScopeVersionStationingSummary;
   objectPlacement?: ScopeVersionObjectPlacementSummary;
   certificationSnapshot?: CertificationSnapshot;
@@ -679,6 +784,7 @@ export type ScopeVersion = {
   certificationState: ScopeVersionCertificationState;
   isImmutable?: boolean;
   closureEventId?: string;
+  closures?: ClosureRecord[];
   graphSummary?: ScopeVersionGraphSummary;
   iofPackageIds?: string[];
   geometry?: DALCoordinate[];

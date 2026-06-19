@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createId, listControlWorkItems, listMarketplaceQuotes, listScopeVersions, now, saveControlWorkItem, saveScopeVersion } from "../api/dalClient";
+import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
 import { useDALState } from "../dal/DALState";
+import { buildFieldExecutionViewModel } from "../field/FieldExecutionViewModel";
+import { calculateScopeVersionProgress, deriveScopeVersionLifecycleState } from "../scopeversion/ClosureAuthorityEngine";
 import type { ControlWorkItem, ControlWorkStatus, MarketplaceQuote, OperationalEvent, ScopeVersion } from "../types/dal";
 
 const statuses: ControlWorkStatus[] = ["PENDING", "ACTIVE", "ON_HOLD", "COMPLETE", "CANCELLED"];
@@ -123,6 +126,15 @@ export default function ControlWorkspace() {
     setWorkItems((prev) => prev.map((record) => (record.workItemId === saved.workItemId ? saved : record)));
   }
 
+  const activeScope = selectedScopeVersion ?? scopeVersions[0] ?? null;
+  const scopeProgress = useMemo(() => (activeScope ? calculateScopeVersionProgress(activeScope) : null), [activeScope]);
+  const fieldExecution = useMemo(() => buildFieldExecutionViewModel(activeScope), [activeScope]);
+  const controlObjectCounts = fieldExecution.objectStateCounts as Record<string, number>;
+  const blockedObjects = fieldExecution.stations.flatMap((station) => station.blockedObjectsAtStation);
+  const nextOpenObject = fieldExecution.stations.flatMap((station) => station.openObjectsAtStation)[0];
+  const completedObjects = Number(controlObjectCounts.COMPLETE ?? 0);
+  const verifiedObjects = Number(controlObjectCounts.VERIFIED ?? 0);
+
   return (
     <section className="dal-workspace">
       <div className="dal-workspace-header">
@@ -134,6 +146,8 @@ export default function ControlWorkspace() {
           Refresh
         </button>
       </div>
+
+      <ScopeVersionLifecycleRibbon scopeVersion={activeScope} />
 
       <div className="dal-grid">
         <div className="dal-panel">
@@ -161,6 +175,26 @@ export default function ControlWorkspace() {
             <span>Constructability: {Math.round(Number(((selectedScopeVersion?.constructability as any) ?? (selectedScopeVersion?.canonicalTruth as any)?.constructabilityAssessment)?.constructabilityScore ?? 0)).toLocaleString()}</span>
             <span>Permit Authorities: {(((selectedScopeVersion?.permits as any) ?? (selectedScopeVersion?.canonicalTruth as any)?.permitRequirements)?.authorities ?? []).join(", ") || "n/a"}</span>
             <span>Quotes: {quotes.length.toLocaleString()}</span>
+            <span>Lifecycle State: {activeScope ? deriveScopeVersionLifecycleState(activeScope) : "none"}</span>
+            <span>Total Stations: {scopeProgress?.totalStations.toLocaleString() ?? "0"}</span>
+            <span>Released Stations: {scopeProgress?.releasedStations.toLocaleString() ?? "0"}</span>
+            <span>In Progress Stations: {scopeProgress?.inProgressStations.toLocaleString() ?? "0"}</span>
+            <span>Complete Stations: {scopeProgress?.completeStations.toLocaleString() ?? "0"}</span>
+            <span>Verified Stations: {scopeProgress?.verifiedStations.toLocaleString() ?? "0"}</span>
+            <span>Completed Feet: {Math.round(scopeProgress?.completedFeet ?? 0).toLocaleString()}</span>
+            <span>Remaining Feet: {Math.round(scopeProgress?.remainingFeet ?? 0).toLocaleString()}</span>
+            <span>Percent Complete: {Math.round(scopeProgress?.percentComplete ?? 0).toLocaleString()}%</span>
+            <span>Open Closures: {scopeProgress?.openClosures.toLocaleString() ?? "0"}</span>
+            <span>Latest Closure: {scopeProgress?.latestClosureTimestamp ?? "none"}</span>
+            <span>Total Objects: {scopeProgress?.totalObjects.toLocaleString() ?? "0"}</span>
+            <span>Released Objects: {(controlObjectCounts.RELEASED ?? 0).toLocaleString()}</span>
+            <span>Installed Objects: {(controlObjectCounts.INSTALLED ?? 0).toLocaleString()}</span>
+            <span>Tested Objects: {(controlObjectCounts.TESTED ?? 0).toLocaleString()}</span>
+            <span>Accepted Objects: {(controlObjectCounts.ACCEPTED ?? 0).toLocaleString()}</span>
+            <span>Completed Objects: {completedObjects.toLocaleString()}</span>
+            <span>Verified Objects: {verifiedObjects.toLocaleString()}</span>
+            <span>Blocked Objects: {blockedObjects.length.toLocaleString()}</span>
+            <span>Next Open Object: {nextOpenObject ? `${nextOpenObject.humanName} @ ${nextOpenObject.stationId}` : "none"}</span>
           </div>
         </div>
       </div>

@@ -604,6 +604,64 @@ textarea {
   fill: #ef4444;
 }
 
+.dal-map-marker.state-planned {
+  fill: #2f80ff;
+}
+
+.dal-map-marker.state-released {
+  fill: #facc15;
+}
+
+.dal-map-marker.state-in-progress {
+  fill: #fb923c;
+}
+
+.dal-map-marker.state-complete {
+  fill: #22c55e;
+}
+
+.dal-map-marker.state-verified {
+  fill: #15803d;
+}
+
+.dal-map-marker.state-blocked {
+  fill: #ef4444;
+}
+
+.dal-map-marker.state-rejected {
+  fill: #6b7280;
+}
+
+.dal-map-marker.selected {
+  stroke: #ffffff;
+  stroke-width: 4;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
+}
+
+.dal-map-marker.current-work {
+  animation: dal-current-work-pulse 1.2s ease-in-out infinite;
+}
+
+.dal-map-marker.muted {
+  opacity: 0.45;
+}
+
+.dal-map-selectable {
+  cursor: pointer;
+}
+
+@keyframes dal-current-work-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 .dal-map-marker-halo {
   fill: none;
   stroke-width: 2;
@@ -630,6 +688,117 @@ textarea {
   font-size: 12px;
   font-weight: 800;
   pointer-events: none;
+}
+
+.dal-field-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  color: #d7e7f5;
+  font-size: 13px;
+}
+
+.dal-object-card-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.dal-object-card {
+  border: 1px solid #18344e;
+  border-radius: 8px;
+  background: #071827;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.dal-object-card.selected {
+  border-color: #5eead4;
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.28);
+}
+
+.dal-object-state {
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #06111f;
+  background: #b7c9dc;
+}
+
+.dal-object-state.state-planned {
+  background: #93c5fd;
+}
+
+.dal-object-state.state-released {
+  background: #facc15;
+}
+
+.dal-object-state.state-installed,
+.dal-object-state.state-tested,
+.dal-object-state.state-accepted {
+  background: #fb923c;
+}
+
+.dal-object-state.state-complete {
+  background: #22c55e;
+}
+
+.dal-object-state.state-verified {
+  background: #15803d;
+  color: #effff4;
+}
+
+.dal-object-state.state-blocked {
+  background: #ef4444;
+  color: #fff7f7;
+}
+
+.dal-object-state.state-rejected {
+  background: #6b7280;
+  color: #f8fafc;
+}
+
+.dal-field-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  border: 1px solid #ffffff;
+}
+
+.legend-dot.state-planned {
+  background: #2f80ff;
+}
+
+.legend-dot.state-released {
+  background: #facc15;
+}
+
+.legend-dot.state-in-progress {
+  background: #fb923c;
+}
+
+.legend-dot.state-complete {
+  background: #22c55e;
+}
+
+.legend-dot.state-verified {
+  background: #15803d;
+}
+
+.legend-dot.state-blocked {
+  background: #ef4444;
+}
+
+.legend-dot.state-rejected {
+  background: #6b7280;
 }
 
 .dal-map-zoom {

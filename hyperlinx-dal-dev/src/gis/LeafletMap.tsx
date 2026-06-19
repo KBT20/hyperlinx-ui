@@ -24,6 +24,8 @@ type LeafletMapProps = {
   stations?: GISPoint[];
   nodes?: GISPoint[];
   parcels?: GISParcel[];
+  enableLevelOfDetail?: boolean;
+  onPointSelect?: (point: GISPoint) => void;
 };
 
 const DEFAULT_CENTER: DALCoordinate = [-97.7431, 30.2672];
@@ -61,6 +63,8 @@ export default function LeafletMap(props: LeafletMapProps) {
     stations = [],
     nodes = [],
     parcels = [],
+    enableLevelOfDetail = false,
+    onPointSelect,
   } = props;
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 960, height });
@@ -128,7 +132,15 @@ export default function LeafletMap(props: LeafletMapProps) {
         <RouteLayer routes={routes} project={project} />
         <BuildPathLayer buildPaths={buildPaths} project={project} />
         <CrossingLayer crossings={crossings} project={project} />
-        <AttachmentLayer attachments={attachments} stations={stations} nodes={nodes} project={project} />
+        <AttachmentLayer
+          attachments={attachments}
+          stations={stations}
+          nodes={nodes}
+          project={project}
+          zoom={view.zoom}
+          enableLevelOfDetail={enableLevelOfDetail}
+          onPointSelect={onPointSelect}
+        />
         <CandidateLayer candidates={candidates} project={project} />
       </svg>
       <div className="dal-map-zoom">

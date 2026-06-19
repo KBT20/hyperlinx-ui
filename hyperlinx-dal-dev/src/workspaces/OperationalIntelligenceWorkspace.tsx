@@ -5,10 +5,12 @@ import { testDalConnectivity, type DalConnectivityResult } from "../api/dalConne
 import { listInventoryImportJobs } from "../api/inventoryImportJobs";
 import { discoverInventoryRecovery, summarizeInventoryRecovery, type InventoryRecoveryRecord } from "../api/inventoryRecovery";
 import { endpointBaseUrl, type ReasoningFabricHealth } from "../api/reasoningRegistry";
-import type { CloseEvent, ControlWorkItem, FieldClosure, InventoryGraphMetadata, InventoryHealthMetrics, InventoryImportJob, IOFPackage, MarketplaceQuote, PrismOpportunity, ScopeVersion, TwinState } from "../types/dal";
+import type { CloseEvent, ClosureRecord, ControlWorkItem, FieldClosure, InventoryGraphMetadata, InventoryHealthMetrics, InventoryImportJob, IOFPackage, MarketplaceQuote, PrismOpportunity, ScopeVersion, TwinState } from "../types/dal";
 import type { CandidateSite } from "../types/candidateSite";
 import type { OpportunitySeed } from "../types/portfolio";
 import { renderIOFPackage, renderScopeVersion, summarizeMapKernelMetrics } from "../mapkernel";
+import { buildFieldExecutionViewModel } from "../field/FieldExecutionViewModel";
+import { calculateScopeVersionProgress } from "../scopeversion/ClosureAuthorityEngine";
 import type { CertifiedRoute } from "../routing/CertifiedRouteAuthority";
 
 function fmt(n: number | undefined) {
@@ -144,6 +146,9 @@ export default function OperationalIntelligenceWorkspace() {
   };
   const draftScopes = scopeVersions.filter((scope) => scope.status === "DRAFT");
   const analyzedScopes = scopeVersions.filter((scope) => scope.status === "ANALYZED");
+  const releasedToControlScopes = scopeVersions.filter((scope) => scope.status === "RELEASED_TO_CONTROL");
+  const inFieldScopes = scopeVersions.filter((scope) => scope.status === "IN_FIELD");
+  const partialScopes = scopeVersions.filter((scope) => scope.status === "PARTIALLY_COMPLETE");
   const quotedScopes = scopeVersions.filter((scope) => scope.status === "QUOTED");
   const approvedScopes = scopeVersions.filter((scope) => scope.status === "APPROVED");
   const activatedScopes = scopeVersions.filter((scope) => scope.status === "ACTIVATED");
@@ -159,6 +164,78 @@ export default function OperationalIntelligenceWorkspace() {
   const candidateScopeVersions = scopeVersions.filter((scope) => scope.type === "CANDIDATE" || scope.source === "OpportunitySeed" || scope.source === "PrismOpportunity");
   const approvedScopeVersions = scopeVersions.filter((scope) => scope.type === "APPROVED" || scope.status === "APPROVED");
   const fieldClosedScopeVersions = scopeVersions.filter((scope) => scope.type === "FIELD_CLOSED" || scope.source === "FieldClosure");
+  const scopeProgress = scopeVersions.map((scope) => calculateScopeVersionProgress(scope));
+  const totalPlannedFeet = scopeProgress.reduce((sum, progress) => sum + Number(progress.totalFeet || 0), 0);
+  const totalClosureCompletedFeet = scopeProgress.reduce((sum, progress) => sum + Number(progress.completedFeet || 0), 0);
+  const totalVerifiedFeet = scopeVersions.reduce((sum, scope) => {
+    const stations = Array.isArray(scope.canonicalTruth?.stations) ? (scope.canonicalTruth.stations as any[]) : [];
+    const verified = stations.filter((station) => station.stationState === "VERIFIED");
+    if (!verified.length) return sum;
+    const sorted = stations.slice().sort((a, b) => Number(a.measureFeet) - Number(b.measureFeet));
+    return (
+      sum +
+      verified.reduce((stationSum, station) => {
+        const index = sorted.findIndex((item) => item.stationId === station.stationId);
+        if (index <= 0) return stationSum;
+        return stationSum + Math.max(0, Number(sorted[index].measureFeet) - Number(sorted[index - 1].measureFeet));
+      }, 0)
+    );
+  }, 0);
+  const averageCompletionPercent = scopeProgress.reduce((sum, progress) => sum + Number(progress.percentComplete || 0), 0) / Math.max(scopeProgress.length, 1);
+  const constitutionalClosureCount = scopeProgress.reduce((sum, progress) => sum + Number(progress.closureCount || 0), 0);
+  const latestConstitutionalClosureTimestamp = scopeProgress
+    .map((progress) => progress.latestClosureTimestamp)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+  const executionStateCounts = scopeProgress.reduce<Record<string, number>>((counts, progress) => {
+    Object.entries(progress.stationStateCounts).forEach(([state, count]) => {
+      counts[state] = (counts[state] ?? 0) + Number(count || 0);
+    });
+    return counts;
+  }, {});
+  const scopeClosureRecords = scopeVersions.flatMap((scope) => {
+    const byId = new Map<string, ClosureRecord>();
+    [...(scope.canonicalTruth?.closures ?? []), ...(scope.closures ?? [])].forEach((closure) => byId.set(closure.closureId, closure));
+    return Array.from(byId.values());
+  });
+  const today = new Date().toISOString().slice(0, 10);
+  const closuresToday = scopeClosureRecords.filter((closure) => String(closure.createdAt).startsWith(today));
+  const assetsClosedToday = closuresToday.filter((closure) => closure.newStationState === "COMPLETE" || closure.newStationState === "VERIFIED" || closure.newObjectState === "COMPLETE" || closure.newObjectState === "VERIFIED").length;
+  const feetCompletedToday = closuresToday
+    .filter((closure) => closure.newStationState === "COMPLETE" || closure.newStationState === "VERIFIED")
+    .reduce((sum, closure) => sum + Number(closure.feetAffected || 0), 0);
+  const closureDates = Array.from(new Set(scopeClosureRecords.map((closure) => String(closure.createdAt).slice(0, 10)).filter(Boolean)));
+  const averageClosureVelocity = scopeClosureRecords.length / Math.max(closureDates.length, 1);
+  const fieldExecutionModels = scopeVersions.map((scope) => buildFieldExecutionViewModel(scope));
+  const executionObjectStateCounts = fieldExecutionModels.reduce<Record<string, number>>((counts, model) => {
+    Object.entries(model.objectStateCounts).forEach(([state, count]) => {
+      counts[state] = (counts[state] ?? 0) + Number(count || 0);
+    });
+    return counts;
+  }, {});
+  const stationDerivedStateCounts = fieldExecutionModels.reduce<Record<string, number>>((counts, model) => {
+    Object.entries(model.stationDerivedStateCounts).forEach(([state, count]) => {
+      counts[state] = (counts[state] ?? 0) + Number(count || 0);
+    });
+    return counts;
+  }, {});
+  const totalExecutionObjects = Object.values(executionObjectStateCounts).reduce((sum, count) => sum + Number(count || 0), 0);
+  const completedExecutionObjects = Number(executionObjectStateCounts.COMPLETE ?? 0) + Number(executionObjectStateCounts.VERIFIED ?? 0);
+  const totalStationDerivedStates = Object.values(stationDerivedStateCounts).reduce((sum, count) => sum + Number(count || 0), 0);
+  const completedStationDerivedStates = Number(stationDerivedStateCounts.COMPLETE ?? 0) + Number(stationDerivedStateCounts.VERIFIED ?? 0);
+  const percentCompleteByObjectCount = totalExecutionObjects ? (completedExecutionObjects / totalExecutionObjects) * 100 : 0;
+  const percentCompleteByStationDerivedState = totalStationDerivedStates ? (completedStationDerivedStates / totalStationDerivedStates) * 100 : 0;
+  const blockedObjectCount = Number(executionObjectStateCounts.BLOCKED ?? 0);
+  const objectClosureRecords = scopeClosureRecords.filter((closure) => Boolean(closure.newObjectState));
+  const objectClosuresToday = closuresToday.filter((closure) => closure.newObjectState === "COMPLETE" || closure.newObjectState === "VERIFIED").length;
+  const objectClosureDates = Array.from(new Set(objectClosureRecords.map((closure) => String(closure.createdAt).slice(0, 10)).filter(Boolean)));
+  const objectClosureVelocity = objectClosureRecords.length / Math.max(objectClosureDates.length, 1);
+  const latestObjectClosureTimestamp = objectClosureRecords
+    .map((closure) => closure.updatedAt ?? closure.createdAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
   const activePackages = iofPackages.filter((iofPackage) => iofPackage.status === "ACTIVE");
   const completedPackages = iofPackages.filter((iofPackage) => iofPackage.status === "COMPLETE");
   const closedPackages = iofPackages.filter((iofPackage) => iofPackage.status === "CLOSED");
@@ -228,7 +305,7 @@ export default function OperationalIntelligenceWorkspace() {
     <section className="dal-workspace">
       <div className="dal-workspace-header">
         <div>
-          <h2>DAL Operational Intelligence</h2>
+          <h2>Revenue Velocity / Operational Intelligence</h2>
           <p>Lightweight platform readiness summary across DAL inventory and operational state.</p>
         </div>
         <button type="button" onClick={() => void refresh()}>
@@ -270,6 +347,9 @@ export default function OperationalIntelligenceWorkspace() {
           <span>Draft Scopes: {fmt(draftScopes.length)}</span>
           <span>Analyzed Scopes: {fmt(analyzedScopes.length)}</span>
           <span>Quoted Scopes: {fmt(quotedScopes.length)}</span>
+          <span>Released To Control Scopes: {fmt(releasedToControlScopes.length)}</span>
+          <span>In Field Scopes: {fmt(inFieldScopes.length)}</span>
+          <span>Partially Complete Scopes: {fmt(partialScopes.length)}</span>
           <span>Approved Scopes: {fmt(approvedScopes.length)}</span>
           <span>Activated Scopes: {fmt(activatedScopes.length)}</span>
           <span>Construction Scopes: {fmt(constructionScopes.length)}</span>
@@ -335,6 +415,40 @@ export default function OperationalIntelligenceWorkspace() {
           <span>Active work: {fmt(activeWork)}</span>
           <span>Closures: {fmt(closures.length)}</span>
           <span>Completed feet: {fmt(twinState?.completedFeet)}</span>
+          <span>Total Planned Feet: {fmt(Math.round(totalPlannedFeet))}</span>
+          <span>Total Closure Completed Feet: {fmt(Math.round(totalClosureCompletedFeet))}</span>
+          <span>Total Verified Feet: {fmt(Math.round(totalVerifiedFeet))}</span>
+          <span>Average Completion: {fmt(Math.round(averageCompletionPercent))}%</span>
+          <span>Constitutional Closure Count: {fmt(constitutionalClosureCount)}</span>
+          <span>Latest Constitutional Closure: {latestConstitutionalClosureTimestamp ?? "none"}</span>
+        </div>
+      </div>
+
+      <div className="dal-panel">
+        <h3>Execution Dashboard</h3>
+        <div className="dal-metrics">
+          <span>Open Assets: {fmt((executionStateCounts.PLANNED ?? 0) + (executionStateCounts.RELEASED ?? 0) + (executionStateCounts.IN_PROGRESS ?? 0) + (executionStateCounts.BLOCKED ?? 0))}</span>
+          <span>Released Assets: {fmt(executionStateCounts.RELEASED)}</span>
+          <span>In Progress Assets: {fmt(executionStateCounts.IN_PROGRESS)}</span>
+          <span>Completed Assets: {fmt(executionStateCounts.COMPLETE)}</span>
+          <span>Verified Assets: {fmt(executionStateCounts.VERIFIED)}</span>
+          <span>Blocked Assets: {fmt(executionStateCounts.BLOCKED)}</span>
+          <span>Rejected Assets: {fmt(executionStateCounts.REJECTED)}</span>
+          <span>Average Closure Velocity: {averageClosureVelocity.toLocaleString(undefined, { maximumFractionDigits: 1 })} / day</span>
+          <span>Assets Closed Today: {fmt(assetsClosedToday)}</span>
+          <span>Feet Completed Today: {fmt(Math.round(feetCompletedToday))}</span>
+          <span>Object Closures Today: {fmt(objectClosuresToday)}</span>
+          <span>Object Closure Velocity: {objectClosureVelocity.toLocaleString(undefined, { maximumFractionDigits: 1 })} / day</span>
+          <span>Object Completion: {fmt(Math.round(percentCompleteByObjectCount))}%</span>
+          <span>Station-Derived Completion: {fmt(Math.round(percentCompleteByStationDerivedState))}%</span>
+          <span>Blocked Objects: {fmt(blockedObjectCount)}</span>
+          <span>Latest Object Closure: {latestObjectClosureTimestamp ?? "none"}</span>
+          <span>Released Objects: {fmt(executionObjectStateCounts.RELEASED)}</span>
+          <span>Installed Objects: {fmt(executionObjectStateCounts.INSTALLED)}</span>
+          <span>Tested Objects: {fmt(executionObjectStateCounts.TESTED)}</span>
+          <span>Accepted Objects: {fmt(executionObjectStateCounts.ACCEPTED)}</span>
+          <span>Completed Objects: {fmt(executionObjectStateCounts.COMPLETE)}</span>
+          <span>Verified Objects: {fmt(executionObjectStateCounts.VERIFIED)}</span>
         </div>
       </div>
 
@@ -431,8 +545,16 @@ export default function OperationalIntelligenceWorkspace() {
           </div>
         </div>
         <div className="dal-panel">
-          <h3>Graph Summary</h3>
-          <pre className="dal-pre">{JSON.stringify(graphs.slice(0, 5), null, 2)}</pre>
+          <h3>Inventory Summary</h3>
+          <div className="dal-metrics">
+            <span>Graphs: {fmt(graphs.length)}</span>
+            <span>Server Inventories: {fmt(inventoryRecoverySummary.serverInventoryCount)}</span>
+            <span>Synchronized: {fmt(inventoryRecoverySummary.synchronizedInventoryCount)}</span>
+          </div>
+          <details>
+            <summary>Advanced Diagnostics</summary>
+            <pre className="dal-pre">{JSON.stringify(graphs.slice(0, 5), null, 2)}</pre>
+          </details>
         </div>
         <div className="dal-panel">
           <h3>Inventory Synchronization</h3>
@@ -446,58 +568,70 @@ export default function OperationalIntelligenceWorkspace() {
             ))}
           </div>
           {inventoryRecoverySummary.syncFailures.length ? (
-            <pre className="dal-pre">{JSON.stringify(inventoryRecoverySummary.syncFailures, null, 2)}</pre>
+            <details>
+              <summary>Advanced Diagnostics</summary>
+              <pre className="dal-pre">{JSON.stringify(inventoryRecoverySummary.syncFailures, null, 2)}</pre>
+            </details>
           ) : (
             <div className="dal-status">No inventory sync failures detected.</div>
           )}
         </div>
         <div className="dal-panel">
           <h3>Portfolio Summary</h3>
-          <pre className="dal-pre">
-            {JSON.stringify(
-              {
-                sitesImported: candidateSites.length,
-                geocodedSites: geocodedSites.length,
-                verifiedSites: verifiedSites.length,
-                sitesEvaluated: candidateSites.filter((site) => site.status === "ANALYZED" || site.status === "QUALIFIED").length,
-                recommended: recommended.slice(0, 10),
-                lifecycle: {
-                  draftScopes: draftScopes.length,
-                  analyzedScopes: analyzedScopes.length,
-                  quotedScopes: quotedScopes.length,
-                  approvedScopes: approvedScopes.length,
-                  activatedScopes: activatedScopes.length,
-                  constructionScopes: constructionScopes.length,
-                  completedScopes: completedScopes.length,
+          <div className="dal-metrics">
+            <span>Sites Imported: {fmt(candidateSites.length)}</span>
+            <span>Recommended: {fmt(recommended.length)}</span>
+            <span>Projected TCV: {money(projectedTcv)}</span>
+            <span>Quotes: {fmt(quotes.length)}</span>
+          </div>
+          <details>
+            <summary>Advanced Diagnostics</summary>
+            <pre className="dal-pre">
+              {JSON.stringify(
+                {
+                  sitesImported: candidateSites.length,
+                  geocodedSites: geocodedSites.length,
+                  verifiedSites: verifiedSites.length,
+                  sitesEvaluated: candidateSites.filter((site) => site.status === "ANALYZED" || site.status === "QUALIFIED").length,
+                  recommended: recommended.slice(0, 10),
+                  lifecycle: {
+                    draftScopes: draftScopes.length,
+                    analyzedScopes: analyzedScopes.length,
+                    quotedScopes: quotedScopes.length,
+                    approvedScopes: approvedScopes.length,
+                    activatedScopes: activatedScopes.length,
+                    constructionScopes: constructionScopes.length,
+                    completedScopes: completedScopes.length,
+                  },
+                  inventoryRecovery: inventoryRecoverySummary,
+                  commercial: {
+                    projectedNrc,
+                    projectedMrc,
+                    projectedTcv,
+                    quotes: quotes.length,
+                  },
+                  averageDistanceToBackbone,
+                  averageBuildCost,
+                  expectedRevenue,
+                  expectedTcv,
+                  expectedEbitda,
+                  averagePayback,
+                  workItems,
+                  scopeVersionLifecycle: scopeVersions.map((scope) => ({
+                    scopeVersionId: scope.scopeVersionId,
+                    source: scope.source,
+                    status: scope.status,
+                    decisionType: (scope.canonicalTruth as any)?.decisionType,
+                    opportunitySeedId: (scope.canonicalTruth as any)?.opportunitySeedId,
+                  })),
+                  closures: closures.slice(0, 5),
+                  twinState,
                 },
-                inventoryRecovery: inventoryRecoverySummary,
-                commercial: {
-                  projectedNrc,
-                  projectedMrc,
-                  projectedTcv,
-                  quotes: quotes.length,
-                },
-                averageDistanceToBackbone,
-                averageBuildCost,
-                expectedRevenue,
-                expectedTcv,
-                expectedEbitda,
-                averagePayback,
-                workItems,
-                scopeVersionLifecycle: scopeVersions.map((scope) => ({
-                  scopeVersionId: scope.scopeVersionId,
-                  source: scope.source,
-                  status: scope.status,
-                  decisionType: (scope.canonicalTruth as any)?.decisionType,
-                  opportunitySeedId: (scope.canonicalTruth as any)?.opportunitySeedId,
-                })),
-                closures: closures.slice(0, 5),
-                twinState,
-              },
-              null,
-              2
-            )}
-          </pre>
+                null,
+                2
+              )}
+            </pre>
+          </details>
         </div>
       </div>
 
@@ -636,38 +770,46 @@ export default function OperationalIntelligenceWorkspace() {
 
         <div className="dal-panel">
           <h3>Projected Revenue</h3>
-          <pre className="dal-pre">
-            {JSON.stringify(
-              {
-                topAffinity: topAffinity.map((seed) => ({ id: seed.id, site: seed.siteName, affinity: seed.networkAffinity?.affinityScore })),
-                topRevenue: topRevenue.map((seed) => ({ id: seed.id, site: seed.siteName, annualRevenue: seed.estimatedRevenueAnnual })),
-                topServiceable: topServiceable.map((seed) => ({ id: seed.id, site: seed.siteName, constructabilityScore: seed.constructabilityScore, distanceFeet: seed.networkAffinity?.nearestRoute.distanceFeet ?? seed.distanceFeet })),
-                topNonServiceable: topNonServiceable.map((seed) => ({ id: seed.id, site: seed.siteName, constructabilityScore: seed.constructabilityScore, riskScore: seed.riskScore })),
-                topLowestCost: topLowestCost.map((seed) => ({ id: seed.id, site: seed.siteName, buildCost: seed.buildCost })),
-                topPayback: topPayback.map((seed) => ({ id: seed.id, site: seed.siteName, paybackMonths: seed.paybackMonths })),
-                topLowestRisk: topLowestRisk.map((seed) => ({ id: seed.id, site: seed.siteName, riskScore: seed.riskScore })),
-                constructability: {
-                  buildable: buildableOpportunities.length,
-                  permitConstrained: permitConstrainedOpportunities.length,
-                  crossingConstrained: crossingConstrainedOpportunities.length,
-                  highRisk: highRiskOpportunities.length,
-                  lowRisk: lowRiskOpportunities.length,
-                  estimatedPermitBacklog,
-                  estimatedConstructionBacklog,
+          <div className="dal-metrics">
+            <span>Top Revenue Sites: {fmt(topRevenue.length)}</span>
+            <span>Expansion Candidates: {fmt(expansionSeeds.length)}</span>
+            <span>Projected Expansion Revenue: {money(projectedExpansionRevenue)}</span>
+          </div>
+          <details>
+            <summary>Advanced Diagnostics</summary>
+            <pre className="dal-pre">
+              {JSON.stringify(
+                {
+                  topAffinity: topAffinity.map((seed) => ({ id: seed.id, site: seed.siteName, affinity: seed.networkAffinity?.affinityScore })),
+                  topRevenue: topRevenue.map((seed) => ({ id: seed.id, site: seed.siteName, annualRevenue: seed.estimatedRevenueAnnual })),
+                  topServiceable: topServiceable.map((seed) => ({ id: seed.id, site: seed.siteName, constructabilityScore: seed.constructabilityScore, distanceFeet: seed.networkAffinity?.nearestRoute.distanceFeet ?? seed.distanceFeet })),
+                  topNonServiceable: topNonServiceable.map((seed) => ({ id: seed.id, site: seed.siteName, constructabilityScore: seed.constructabilityScore, riskScore: seed.riskScore })),
+                  topLowestCost: topLowestCost.map((seed) => ({ id: seed.id, site: seed.siteName, buildCost: seed.buildCost })),
+                  topPayback: topPayback.map((seed) => ({ id: seed.id, site: seed.siteName, paybackMonths: seed.paybackMonths })),
+                  topLowestRisk: topLowestRisk.map((seed) => ({ id: seed.id, site: seed.siteName, riskScore: seed.riskScore })),
+                  constructability: {
+                    buildable: buildableOpportunities.length,
+                    permitConstrained: permitConstrainedOpportunities.length,
+                    crossingConstrained: crossingConstrainedOpportunities.length,
+                    highRisk: highRiskOpportunities.length,
+                    lowRisk: lowRiskOpportunities.length,
+                    estimatedPermitBacklog,
+                    estimatedConstructionBacklog,
+                  },
+                  topRoi: topRoi.map((seed) => ({ id: seed.id, site: seed.siteName, roi: seed.roi })),
+                  topStrategic: topStrategic.map((seed) => ({ id: seed.id, site: seed.siteName, strategicScore: seed.strategicScore })),
+                  expansionForecast: {
+                    candidateCount: expansionSeeds.length,
+                    projectedExpansionRevenue,
+                    projectedRouteMiles,
+                    projectedBuildCost,
+                  },
                 },
-                topRoi: topRoi.map((seed) => ({ id: seed.id, site: seed.siteName, roi: seed.roi })),
-                topStrategic: topStrategic.map((seed) => ({ id: seed.id, site: seed.siteName, strategicScore: seed.strategicScore })),
-                expansionForecast: {
-                  candidateCount: expansionSeeds.length,
-                  projectedExpansionRevenue,
-                  projectedRouteMiles,
-                  projectedBuildCost,
-                },
-              },
-              null,
-              2
-            )}
-          </pre>
+                null,
+                2
+              )}
+            </pre>
+          </details>
         </div>
       </div>
     </section>

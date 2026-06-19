@@ -8,6 +8,10 @@ export type GISPoint = {
   label?: string;
   coordinate: DALCoordinate;
   kind?: "candidate" | "attachment" | "station" | "crossing" | "parcel" | "node";
+  state?: string;
+  selected?: boolean;
+  current?: boolean;
+  muted?: boolean;
   payload?: unknown;
 };
 
