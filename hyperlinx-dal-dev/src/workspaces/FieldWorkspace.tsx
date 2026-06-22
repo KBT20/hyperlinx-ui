@@ -9,11 +9,13 @@ import {
   calculateScopeVersionProgress,
   createClosureRecord,
 } from "../scopeversion/ClosureAuthorityEngine";
+import { canFieldExecute } from "../scopeversion/LifecycleAuthorityEngine";
+import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
 import { buildScopeVersionFieldViewModel } from "../scopeversion/ScopeVersionFieldViewModel";
 import type { ClosureAuthority, ClosureRecord, ControlWorkItem, FieldObjectWorkContext, FieldStationWorkContext, RouteStationState, ScopeObjectState, ScopeVersion } from "../types/dal";
 
 function activeWork(item: ControlWorkItem) {
-  return item.status === "ACTIVE" || item.status === "PENDING";
+  return item.status === "ACTIVE";
 }
 
 function canClose(scope: ScopeVersion | null | undefined) {
@@ -144,16 +146,25 @@ export default function FieldWorkspace() {
     void refresh();
   }, []);
 
-  const activeItems = useMemo(() => workItems.filter(activeWork), [workItems]);
   const activeScope = useMemo(() => {
+    const selectedScopeId = selectedScopeVersionId || selectedScopeVersion?.scopeVersionId;
     return (
+      scopeVersions.find((scope) => scope.scopeVersionId === selectedScopeId) ??
       selectedScopeVersion ??
-      scopeVersions.find((scope) => scope.scopeVersionId === selectedScopeVersionId) ??
       scopeVersions.find((scope) => scope.scopeVersionId === workItems.find((item) => item.workItemId === selectedWorkId)?.scopeVersionId) ??
       scopeVersions[0] ??
       null
     );
   }, [scopeVersions, selectedScopeVersion, selectedScopeVersionId, selectedWorkId, workItems]);
+  const selectedScopeWorkItems = useMemo(() => workItems.filter((item) => item.scopeVersionId === activeScope?.scopeVersionId), [activeScope?.scopeVersionId, workItems]);
+  const activeItems = useMemo(() => selectedScopeWorkItems.filter(activeWork), [selectedScopeWorkItems]);
+  const selectedWorkItem = useMemo(() => {
+    const selected = activeItems.find((item) => item.workItemId === selectedWorkId);
+    if (selected) return selected;
+    return activeItems[0] ?? null;
+  }, [activeItems, selectedWorkId]);
+  const activeLifecycleState = getAuthoritativeLifecycleState(activeScope);
+  const fieldGate = useMemo(() => canFieldExecute(activeScope, selectedWorkItem ?? undefined), [activeScope, selectedWorkItem]);
   const fieldModel = useMemo(() => (activeScope ? buildScopeVersionFieldViewModel(activeScope) : null), [activeScope]);
   const fieldExecution = useMemo(() => buildFieldExecutionViewModel(activeScope), [activeScope]);
   const progress = useMemo(() => (activeScope ? calculateScopeVersionProgress(activeScope) : null), [activeScope]);
@@ -189,8 +200,10 @@ export default function FieldWorkspace() {
       const [nextWork, nextScopes] = await Promise.all([listControlWorkItems(), listScopeVersions()]);
       setWorkItems(nextWork);
       setScopeVersions(nextScopes);
-      if (!selectedWorkId && nextWork.find(activeWork)) setSelectedWorkId(nextWork.find(activeWork)?.workItemId ?? "");
       const nextSelected = selectedScopeVersionId ? nextScopes.find((scope) => scope.scopeVersionId === selectedScopeVersionId) : nextScopes[0];
+      const nextSelectedScopeId = nextSelected?.scopeVersionId ?? selectedScopeVersionId;
+      const nextActiveWork = nextWork.find((workItem) => workItem.scopeVersionId === nextSelectedScopeId && activeWork(workItem));
+      if (!selectedWorkId && nextActiveWork) setSelectedWorkId(nextActiveWork.workItemId);
       if (nextSelected && !selectedScopeVersion) {
         setSelectedScopeVersion(nextSelected);
         setSelectedScopeVersionId(nextSelected.scopeVersionId);
@@ -241,6 +254,11 @@ export default function FieldWorkspace() {
       });
       return saved;
     } catch (err: any) {
+      if (String(err?.message ?? err).includes("ACTIVE_CONTROL_WORK_REQUIRED")) {
+        setPersistenceStatus("PERSISTENCE_REJECTED: ACTIVE_CONTROL_WORK_REQUIRED");
+        setStatus("Closure rejected by DAL server: active Control work is required.");
+        throw err;
+      }
       console.log("[CLOSURE_PERSIST_FAILURE]", {
         scopeVersionId: scopeVersion.scopeVersionId,
         closureId: closure.closureId,
@@ -258,6 +276,18 @@ export default function FieldWorkspace() {
         throw fallbackErr;
       }
     }
+  }
+
+  function blockClosureIfUnauthorized() {
+    const gate = canFieldExecute(activeScope, selectedWorkItem ?? undefined);
+    if (gate.allowed) return false;
+    console.log("[FIELD_CLOSURE_BLOCKED]", {
+      scopeVersionId: activeScope?.scopeVersionId ?? "none",
+      workItemId: selectedWorkItem?.workItemId ?? "none",
+      reasons: gate.reasons,
+    });
+    setStatus(`Closure blocked: ${gate.reasons.join(" ")}`);
+    return true;
   }
 
   function selectStation(station: FieldStationWorkContext | undefined, objectId?: string) {
@@ -290,6 +320,7 @@ export default function FieldWorkspace() {
       setStatus("Select a ScopeVersion before submitting object closure authority.");
       return;
     }
+    if (blockClosureIfUnauthorized()) return;
     if (!canClose(activeScope)) {
       setStatus("Closure blocked: ScopeVersion must have certifiedRouteReference, stations, and objects.");
       return;
@@ -297,6 +328,7 @@ export default function FieldWorkspace() {
     try {
       const closure = createClosureRecord({
         scopeVersion: activeScope,
+        workItemId: selectedWorkItem?.workItemId,
         closureType: "OBJECT_STATE_TRANSITION",
         stationId: object.stationId,
         objectId: object.objectId,
@@ -337,6 +369,7 @@ export default function FieldWorkspace() {
       setStatus("Select a ScopeVersion station before submitting closure authority.");
       return;
     }
+    if (blockClosureIfUnauthorized()) return;
     if (!canClose(activeScope)) {
       setStatus("Closure blocked: ScopeVersion must have certifiedRouteReference, stations, and objects.");
       return;
@@ -344,6 +377,7 @@ export default function FieldWorkspace() {
     try {
       const closure = createClosureRecord({
         scopeVersion: activeScope,
+        workItemId: selectedWorkItem?.workItemId,
         closureType: "STATION_STATE_TRANSITION",
         stationId: selectedStationContext.stationId,
         newStationState: toState,
@@ -369,9 +403,15 @@ export default function FieldWorkspace() {
       setStatus("Select a ScopeVersion before submitting a station range closure.");
       return;
     }
+    if (blockClosureIfUnauthorized()) return;
+    if (!canClose(activeScope)) {
+      setStatus("Closure blocked: ScopeVersion must have certifiedRouteReference, stations, and objects.");
+      return;
+    }
     try {
       const closure = createClosureRecord({
         scopeVersion: activeScope,
+        workItemId: selectedWorkItem?.workItemId,
         closureType: "STATION_RANGE_TRANSITION",
         stationStartId: rangeStartId,
         stationEndId: rangeEndId,
@@ -446,12 +486,14 @@ export default function FieldWorkspace() {
               </option>
             ))}
           </select>
+          {!activeItems.length ? <div className="dal-status">No active Control work package available.</div> : null}
           <select
             value={activeScope?.scopeVersionId ?? ""}
             onChange={(event) => {
               const scope = scopeVersions.find((item) => item.scopeVersionId === event.target.value) ?? null;
               setSelectedScopeVersion(scope);
               setSelectedScopeVersionId(scope?.scopeVersionId ?? "");
+              setSelectedWorkId("");
               setSelectedStationId("");
               setSelectedObjectId("");
             }}
@@ -459,7 +501,7 @@ export default function FieldWorkspace() {
             <option value="">ScopeVersion context</option>
             {scopeVersions.map((scope) => (
               <option key={scope.scopeVersionId} value={scope.scopeVersionId}>
-                {((scope.canonicalTruth as any)?.sourceCandidate?.name ?? (scope.canonicalTruth as any)?.sourceCandidate?.companyName ?? scope.scopeVersionId)} [{scope.status}]
+                {((scope.canonicalTruth as any)?.sourceCandidate?.name ?? (scope.canonicalTruth as any)?.sourceCandidate?.companyName ?? scope.scopeVersionId)} [{getAuthoritativeLifecycleState(scope)}]
               </option>
             ))}
           </select>
@@ -473,6 +515,11 @@ export default function FieldWorkspace() {
             <span>Verified: {(fieldExecution.objectStateCounts.VERIFIED ?? 0).toLocaleString()}</span>
             <span>Blocked: {(fieldExecution.objectStateCounts.BLOCKED ?? 0).toLocaleString()}</span>
           </div>
+          <div className="dal-status">
+            Field execution gate: {fieldGate.allowed ? "PASS" : "BLOCKED"}
+            {selectedWorkItem ? ` / ${selectedWorkItem.workItemId}` : " / no active work"}
+          </div>
+          {!fieldGate.allowed ? <div className="dal-status">{fieldGate.reasons.join(" ")}</div> : null}
           <input value={actorName} onChange={(event) => setActorName(event.target.value)} placeholder="Actor name" />
           <select value={authority} onChange={(event) => setAuthority(event.target.value as ClosureAuthority)}>
             <option value="FIELD">FIELD</option>
@@ -611,7 +658,7 @@ export default function FieldWorkspace() {
                       <button
                         key={action.state}
                         type="button"
-                        disabled={!object.allowedTransitions.includes(action.state) || objectClosedState(object.objectState)}
+                        disabled={!fieldGate.allowed || !object.allowedTransitions.includes(action.state) || objectClosedState(object.objectState)}
                         onClick={() => {
                           setSelectedObjectId(object.objectId);
                           void submitObjectTransition(object, action.state);
@@ -656,7 +703,7 @@ export default function FieldWorkspace() {
                 <button
                   key={action.state}
                   type="button"
-                  disabled={!selectedStationContext || !selectedStationContext.allowedStationTransitions.includes(action.state)}
+                  disabled={!fieldGate.allowed || !selectedStationContext || !selectedStationContext.allowedStationTransitions.includes(action.state)}
                   onClick={() => void submitStationTransition(action.state)}
                 >
                   {action.label}
@@ -687,7 +734,7 @@ export default function FieldWorkspace() {
                 </option>
               ))}
             </select>
-            <button type="button" onClick={() => void submitRangeTransition()} disabled={!canClose(activeScope)}>
+            <button type="button" onClick={() => void submitRangeTransition()} disabled={!fieldGate.allowed || !canClose(activeScope)}>
               Apply Range Closure
             </button>
           </div>
@@ -755,7 +802,7 @@ export default function FieldWorkspace() {
               stationStateCounts: progress?.stationStateCounts ?? {},
               completedFeet: progress?.completedFeet ?? 0,
               percentComplete: progress?.percentComplete ?? 0,
-              lifecycleState: activeScope ? activeScope.status : "NONE",
+              lifecycleState: activeScope ? activeLifecycleState : "NONE",
               lastClosureId: progress?.lastClosureId,
               closureAuthorityStatus: progress?.closureAuthorityStatus ?? "FAIL",
             },

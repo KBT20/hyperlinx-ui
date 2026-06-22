@@ -46,7 +46,8 @@ import { createScopeVersionFromSiteDecision } from "../scopeversion/scopeVersion
 import { applyLateralStationingAndObjects } from "../scopeversion/ScopeVersionObjectFactory";
 import { summarizeScopeVersionStationingDiagnostics } from "../scopeversion/ScopeVersionStationingValidator";
 import { buildScopeVersionFieldViewModel } from "../scopeversion/ScopeVersionFieldViewModel";
-import { calculateScopeVersionProgress, deriveScopeVersionLifecycleState } from "../scopeversion/ClosureAuthorityEngine";
+import { calculateScopeVersionProgress } from "../scopeversion/ClosureAuthorityEngine";
+import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
 import { getAllowedTransitions } from "../scopeversion/StationStateEngine";
 import { validateScopeVersion } from "../scopeversion/scopeVersionValidation";
 import type { CandidateSite } from "../types/candidateSite";
@@ -604,7 +605,7 @@ function StationInspectorPanel({ selection, scopeVersion }: { selection: MapSele
           })
           .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
       : [];
-  const lifecycleState = scopeVersion ? deriveScopeVersionLifecycleState(scopeVersion) : "ANALYZED";
+  const lifecycleState = scopeVersion ? getAuthoritativeLifecycleState(scopeVersion) : "ANALYZED";
 
   return (
     <div className="dal-panel">
@@ -749,7 +750,7 @@ function ScopeVersionLifecycleReadinessPanel({ scopeVersion }: { scopeVersion?: 
         <span>closureCount: {fmt(progress?.closureCount)}</span>
         <span>completedFeet: {fmt(Math.round(progress?.completedFeet ?? 0))}</span>
         <span>percentComplete: {fmt(Math.round(progress?.percentComplete ?? 0))}%</span>
-        <span>lifecycleState: {scopeVersion ? deriveScopeVersionLifecycleState(scopeVersion) : "n/a"}</span>
+        <span>lifecycleState: {scopeVersion ? getAuthoritativeLifecycleState(scopeVersion) : "n/a"}</span>
       </div>
       {diagnostics?.attachmentReferenceFallbackReason ? <div className="dal-status">Fallback: {diagnostics.attachmentReferenceFallbackReason}</div> : null}
     </div>
@@ -2478,7 +2479,7 @@ export default function PrismSiteDecisionWorkspace() {
             commercial: quoteWorksheet ?? activeScopeQuote ?? decisionContext.quoteBasis,
             scopeVersionMetadata: {
               scopeVersionId: selectedScopeVersion?.scopeVersionId ?? "pending",
-              status: selectedScopeVersion?.status ?? "ANALYZED",
+              lifecycleState: selectedScopeVersion ? getAuthoritativeLifecycleState(selectedScopeVersion) : "ANALYZED",
               decisionTimestamp: new Date().toISOString(),
               user: "DAL Operator",
               site: {
@@ -2509,7 +2510,7 @@ export default function PrismSiteDecisionWorkspace() {
       selectedScopeVersion?.certifiedRouteReference,
       selectedScopeVersion?.scopeVersionId,
       selectedScopeVersion?.sourceOpportunityId,
-      selectedScopeVersion?.status,
+      selectedScopeVersion?.updatedAt,
     ]
   );
 

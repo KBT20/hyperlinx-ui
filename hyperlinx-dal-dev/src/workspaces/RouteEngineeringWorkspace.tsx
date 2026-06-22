@@ -18,13 +18,16 @@ import {
   listCertifiedRoutes,
   listInventoryGraphs,
   listOpportunitySeeds,
+  listScopeVersions,
   rejectCertifiedRoute,
+  saveScopeVersion,
   updateCertifiedRoute,
 } from "../api/dalClient";
-import type { DALCoordinate, InventoryGraphMetadata } from "../types/dal";
+import type { DALCoordinate, InventoryGraphMetadata, ScopeVersion } from "../types/dal";
 import type { CandidateSite } from "../types/candidateSite";
 import type { OpportunitySeed } from "../types/portfolio";
 import { useDALState } from "../dal/DALState";
+import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
 
 type TargetType = "candidate" | "opportunity";
 
@@ -113,12 +116,16 @@ export default function RouteEngineeringWorkspace() {
     setSelectedCandidateSiteId,
     selectedOpportunitySeedId,
     setSelectedOpportunitySeedId,
+    setSelectedScopeVersion,
+    setSelectedScopeVersionId,
   } = useDALState();
   const [inventories, setInventories] = useState<InventoryGraphMetadata[]>([]);
   const [candidateSites, setCandidateSites] = useState<CandidateSite[]>([]);
   const [opportunitySeeds, setOpportunitySeeds] = useState<OpportunitySeed[]>([]);
   const [certifiedRoutes, setCertifiedRoutes] = useState<CertifiedRoute[]>([]);
+  const [scopeVersions, setScopeVersions] = useState<ScopeVersion[]>([]);
   const [selectedCertifiedRouteId, setSelectedCertifiedRouteId] = useState("");
+  const [selectedApprovalScopeId, setSelectedApprovalScopeId] = useState("");
   const [targetType, setTargetType] = useState<TargetType>("opportunity");
   const [draftRoute, setDraftRoute] = useState<CertifiedRoute | null>(null);
   const [selectedVertexIndex, setSelectedVertexIndex] = useState<number | null>(null);
@@ -130,17 +137,20 @@ export default function RouteEngineeringWorkspace() {
 
   async function refresh() {
     try {
-      const [nextInventories, nextCandidates, nextSeeds, nextRoutes] = await Promise.all([
+      const [nextInventories, nextCandidates, nextSeeds, nextRoutes, nextScopes] = await Promise.all([
         listInventoryGraphs(),
         listCandidateSites(),
         listOpportunitySeeds(),
         listCertifiedRoutes(),
+        listScopeVersions(),
       ]);
       setInventories(nextInventories);
       setCandidateSites(nextCandidates);
       setOpportunitySeeds(nextSeeds);
       setCertifiedRoutes(nextRoutes);
+      setScopeVersions(nextScopes);
       if (!selectedInventoryId && nextInventories[0]) setSelectedInventoryId(nextInventories[0].inventoryId);
+      if (!selectedApprovalScopeId && nextScopes[0]) setSelectedApprovalScopeId(nextScopes[0].scopeVersionId);
       setStatus("Route authority data loaded from DAL API.");
     } catch (error: any) {
       setStatus(`Route authority load failed: ${error?.message ?? String(error)}`);
@@ -177,6 +187,10 @@ export default function RouteEngineeringWorkspace() {
       renderAuthorityId: String(routePrimitive?.metadata?.routeAuthorityId ?? evaluatedRoute?.certifiedRouteId ?? "none"),
     };
   }, [evaluatedRoute, routeSpec]);
+  const approvalScope =
+    scopeVersions.find((scope) => scope.scopeVersionId === selectedApprovalScopeId) ??
+    scopeVersions.find((scope) => scope.certifiedRouteReference?.certifiedRouteId === evaluatedRoute?.certifiedRouteId) ??
+    null;
 
   function createDraft() {
     if (!selectedInventory || !selectedTargetCoordinate) {
@@ -296,6 +310,76 @@ export default function RouteEngineeringWorkspace() {
     } catch (error: any) {
       setStatus(`Route rejection failed: ${error?.message ?? String(error)}`);
     }
+  }
+
+  async function approveScopeVersionForControl() {
+    if (!approvalScope) {
+      setStatus("Select a ScopeVersion to approve for Control.");
+      return;
+    }
+    const routeReference =
+      evaluatedRoute && approvalScope.certifiedRouteReference?.certifiedRouteId === evaluatedRoute.certifiedRouteId
+        ? referenceFromRoute(evaluatedRoute)
+        : approvalScope.certifiedRouteReference;
+    const stationCount = Array.isArray(approvalScope.canonicalTruth?.stations) ? approvalScope.canonicalTruth.stations.length : 0;
+    const objectCount = Array.isArray(approvalScope.canonicalTruth?.objects) ? approvalScope.canonicalTruth.objects.length : 0;
+    const routeAuthorityState = routeReference?.routeAuthorityState ?? "NO_CERTIFIED_ROUTE";
+    console.log("[LIFECYCLE_AUTHORITY_CHECK]", {
+      check: "routeEngineeringApproveScopeVersion",
+      scopeVersionId: approvalScope.scopeVersionId,
+      certifiedRouteId: routeReference?.certifiedRouteId ?? "none",
+      routeAuthorityState,
+      stationCount,
+      objectCount,
+    });
+    if (!routeReference?.certifiedRouteId) {
+      setStatus("ScopeVersion approval blocked: CertifiedRoute reference is required.");
+      return;
+    }
+    if (!["CERTIFIED_ROUTE", "PROVISIONALLY_CERTIFIED"].includes(routeAuthorityState)) {
+      setStatus(`ScopeVersion approval blocked: route authority must be CERTIFIED_ROUTE or PROVISIONALLY_CERTIFIED, not ${routeAuthorityState}.`);
+      return;
+    }
+    if (!stationCount) {
+      setStatus("ScopeVersion approval blocked: stationing is required.");
+      return;
+    }
+    if (!objectCount) {
+      setStatus("ScopeVersion approval blocked: objects are required.");
+      return;
+    }
+    const timestamp = new Date().toISOString();
+    const saved = await saveScopeVersion({
+      ...approvalScope,
+      status: "APPROVED",
+      certifiedRouteReference: routeReference,
+      updatedAt: timestamp,
+      canonicalTruth: {
+        ...approvalScope.canonicalTruth,
+        lifecycleState: "APPROVED",
+      },
+      events: [
+        ...approvalScope.events,
+        {
+          eventId: `event-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          type: "scopeversion.approved",
+          entityId: approvalScope.scopeVersionId,
+          entityType: "ScopeVersion",
+          payload: {
+            certifiedRouteId: routeReference.certifiedRouteId,
+            routeAuthorityState,
+            stationCount,
+            objectCount,
+          },
+          createdAt: timestamp,
+        },
+      ],
+    });
+    setScopeVersions((prev) => [saved, ...prev.filter((scope) => scope.scopeVersionId !== saved.scopeVersionId)]);
+    setSelectedScopeVersion(saved);
+    setSelectedScopeVersionId(saved.scopeVersionId);
+    setSelectedApprovalScopeId(saved.scopeVersionId);
+    setStatus(`ScopeVersion approved for Control: ${saved.scopeVersionId}.`);
   }
 
   return (
@@ -502,6 +586,17 @@ export default function RouteEngineeringWorkspace() {
         <div className="dal-panel">
           <h3>Certification</h3>
           <label>
+            ScopeVersion Approval
+            <select value={approvalScope?.scopeVersionId ?? ""} onChange={(event) => setSelectedApprovalScopeId(event.target.value)}>
+              <option value="">Select ScopeVersion</option>
+              {scopeVersions.map((scope) => (
+                <option key={scope.scopeVersionId} value={scope.scopeVersionId}>
+                  {((scope.canonicalTruth as any)?.sourceCandidate?.name ?? (scope.canonicalTruth as any)?.sourceCandidate?.companyName ?? scope.scopeVersionId)} / {getAuthoritativeLifecycleState(scope)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Engineer
             <input value={engineerName} onChange={(event) => setEngineerName(event.target.value)} />
           </label>
@@ -519,6 +614,9 @@ export default function RouteEngineeringWorkspace() {
             </button>
             <button type="button" onClick={rejectActiveRoute} disabled={!evaluatedRoute}>
               Reject Route
+            </button>
+            <button type="button" onClick={() => void approveScopeVersionForControl()} disabled={!approvalScope}>
+              Approve ScopeVersion
             </button>
           </div>
           {evaluatedRoute ? (

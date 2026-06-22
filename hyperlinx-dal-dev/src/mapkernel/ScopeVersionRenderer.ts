@@ -1,4 +1,5 @@
 import type { DALCoordinate, ScopeVersion } from "../types/dal";
+import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
 import { isValidCoordinate } from "./MapViewportManager";
 import type { MapKernelPrimitive, MapKernelRenderSpec } from "./MapLayerManager";
 
@@ -379,7 +380,7 @@ export function renderScopeVersion(scopeVersion: ScopeVersion): MapKernelRenderS
     name: scopeVersionId,
     primitives,
     metadata: {
-      status: scopeVersion.status,
+      lifecycleState: getAuthoritativeLifecycleState(scopeVersion),
       inventoryId: scopeVersion.inventoryId,
       graphId: scopeVersion.graphId,
     },

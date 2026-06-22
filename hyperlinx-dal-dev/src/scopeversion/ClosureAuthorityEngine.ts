@@ -44,6 +44,7 @@ export type ClosureValidationResult = {
 
 export type CreateClosureRecordArgs = {
   scopeVersion: ScopeVersion;
+  workItemId?: string;
   closureType: ClosureType;
   stationId?: string;
   stationStartId?: string;
@@ -263,6 +264,7 @@ export function createClosureRecord(args: CreateClosureRecordArgs): ClosureRecor
   return {
     closureId: createId("closure"),
     scopeVersionId: args.scopeVersion.scopeVersionId,
+    workItemId: args.workItemId,
     certifiedRouteId: certifiedRouteIdFor(args.scopeVersion),
     stationId: args.stationId,
     stationStartId: args.stationStartId,
@@ -400,8 +402,10 @@ export function deriveScopeVersionLifecycleState(scopeVersion: ScopeVersion): Sc
   if (stations.length && stationStates.every((state) => state === "VERIFIED")) return "VERIFIED";
   if (stations.length && stationStates.every((state) => state === "COMPLETE" || state === "VERIFIED")) return "COMPLETE";
   if (stationStates.some((state) => state === "COMPLETE" || state === "VERIFIED")) return "PARTIALLY_COMPLETE";
-  if (stationStates.includes("IN_PROGRESS")) return "IN_FIELD";
-  if (stationStates.includes("RELEASED")) return "RELEASED_TO_CONTROL";
+  if (stationStates.includes("IN_PROGRESS") || objectStates.some((state) => ["INSTALLED", "TESTED", "ACCEPTED"].includes(state))) return "FIELD_ACTIVE";
+  if (scopeVersion.status === "CONTROL_ACTIVE" || stationStates.includes("RELEASED")) return "CONTROL_ACTIVE";
+  if (scopeVersion.status === "CONTROL") return "CONTROL";
+  if (scopeVersion.status === "FIELD" || scopeVersion.status === "FIELD_ACTIVE") return "FIELD_ACTIVE";
   if (scopeVersion.status === "QUOTED") return "QUOTED";
   if (scopeVersion.status === "APPROVED" || scopeVersion.status === "ACTIVATED") return "APPROVED";
   if (scopeVersion.certifiedRouteReference?.routeAuthorityState === "PROVISIONALLY_CERTIFIED") return "PROVISIONALLY_CERTIFIED";

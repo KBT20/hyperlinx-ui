@@ -3,6 +3,7 @@ import { findRecord, readCollection, writeRecord } from "./dalStorage";
 import { createScopeVersion, loadScopeVersion } from "./scopeVersionRepository";
 import { createCloseEvent } from "./closeEventRepository";
 import { createChildScopeVersionFromCloseEvent, createCloseEventFromPackage } from "../closeevents";
+import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
 import type { CloseEvent, IOFPackage, IOFPackageProgress, IOFPackageStatus, IOFPackageType, ScopeVersion } from "../types/dal";
 
 type IOFPackageListResponse = {
@@ -152,7 +153,7 @@ export function generateIofPackagesForScopeVersion(scopeVersion: ScopeVersion, p
       objects,
       metadata: {
         sourceScopeVersionType: scopeVersion.type,
-        sourceScopeVersionStatus: scopeVersion.status,
+        sourceScopeVersionLifecycleState: getAuthoritativeLifecycleState(scopeVersion),
         executionDoctrine: "IOF Package = Work",
       },
     };

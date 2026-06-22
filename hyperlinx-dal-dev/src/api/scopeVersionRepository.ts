@@ -2,6 +2,7 @@ import { DAL_API } from "../config/dalApi";
 import { findRecord, readCollection, writeRecord, deleteRecord } from "./dalStorage";
 import { createScopeVersionFromInventoryGraph } from "../scopeversion/scopeVersionUtils";
 import { applyScopeVersionCertification } from "../scopeversion/scopeVersionCertification";
+import { getAuthoritativeLifecycleState, mergeScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
 import type {
   ClosureRecord,
   InventoryGraph,
@@ -51,7 +52,7 @@ function inferType(scopeVersion: ScopeVersion): ScopeVersionTruthType {
   if (scopeVersion.type) return scopeVersion.type;
   if (scopeVersion.source === "InventoryGraph") return "INVENTORY";
   if (scopeVersion.source === "FieldClosure") return "FIELD_CLOSED";
-  if (scopeVersion.status === "APPROVED") return "APPROVED";
+  if (getAuthoritativeLifecycleState(scopeVersion) === "APPROVED") return "APPROVED";
   return "CANDIDATE";
 }
 
@@ -187,6 +188,7 @@ function normalizeScopeVersion(raw: unknown): ScopeVersion {
     stationCount: Number((scope.canonicalTruth as any)?.stationCount ?? 0),
     routeCount: Number((scope.canonicalTruth as any)?.routeCount ?? 0),
   };
+  const lifecycleState = getAuthoritativeLifecycleState(scope);
   return {
     ...scope,
     type,
@@ -200,6 +202,7 @@ function normalizeScopeVersion(raw: unknown): ScopeVersion {
     canonicalTruth: {
       ...(scope.canonicalTruth ?? {}),
       graphSummary,
+      lifecycleState,
       constitutionalAuthority: certificationState === "CERTIFIED" ? "CERTIFIED_SCOPEVERSION" : "NON_AUTHORITATIVE",
     },
   };
@@ -220,7 +223,9 @@ export async function loadScopeVersion(scopeVersionId: string) {
 }
 
 export async function createScopeVersion(scopeVersion: ScopeVersion) {
-  const payload = normalizeScopeVersion(scopeVersion);
+  const proposed = normalizeScopeVersion(scopeVersion);
+  const existing = await loadScopeVersion(proposed.scopeVersionId).catch(() => null);
+  const payload = normalizeScopeVersion(mergeScopeVersionLifecycle(existing, proposed));
   assertConstitutionalGuardrails(payload);
   const remote = await tryRemote<ScopeVersion>(apiUrl("/api/scopeversions"), {
     method: "POST",
@@ -242,7 +247,7 @@ export async function updateScopeVersion(scopeVersion: ScopeVersion) {
   if (existing?.certificationState === "REJECTED" && proposed.certificationState === "CERTIFIED") {
     return createScopeVersion(createChildScopeVersion(existing, proposed, "AMENDMENT"));
   }
-  const payload = proposed;
+  const payload = normalizeScopeVersion(mergeScopeVersionLifecycle(existing, proposed));
   const remote = await tryRemote<ScopeVersion>(apiUrl(`/api/scopeversions/${encodeURIComponent(payload.scopeVersionId)}`), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },

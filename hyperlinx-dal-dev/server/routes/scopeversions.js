@@ -17,15 +17,105 @@ import {
 function normalizeScopeVersion(input = {}) {
   const raw = input.scopeVersion ?? input;
   const timestamp = nowIso();
+  const status = raw.status ?? "DRAFT";
   return {
     ...raw,
     scopeVersionId: String(raw.scopeVersionId),
-    status: raw.status ?? "DRAFT",
+    status,
     certificationState: raw.certificationState ?? "DRAFT",
-    canonicalTruth: raw.canonicalTruth ?? {},
+    canonicalTruth: {
+      ...(raw.canonicalTruth ?? {}),
+      lifecycleState: normalizeLifecycleState(raw.canonicalTruth?.lifecycleState ?? status) ?? status,
+    },
     createdAt: raw.createdAt ?? timestamp,
     updatedAt: raw.updatedAt ?? timestamp,
     events: Array.isArray(raw.events) ? raw.events : [],
+  };
+}
+
+const LIFECYCLE_ORDER = [
+  "DRAFT",
+  "ANALYZED",
+  "CERTIFIED",
+  "PROVISIONALLY_CERTIFIED",
+  "QUOTED",
+  "APPROVED",
+  "CONTROL",
+  "CONTROL_ACTIVE",
+  "FIELD_ACTIVE",
+  "FIELD",
+  "PARTIALLY_COMPLETE",
+  "COMPLETE",
+  "VERIFIED",
+  "OPERATIONAL",
+];
+
+const LIFECYCLE_RANKS = new Map(LIFECYCLE_ORDER.map((state, index) => [state, index]));
+
+const LIFECYCLE_ALIASES = {
+  RELEASED_TO_CONTROL: "CONTROL",
+  ACTIVATED: "CONTROL_ACTIVE",
+  IN_FIELD: "FIELD_ACTIVE",
+  IN_CONSTRUCTION: "FIELD_ACTIVE",
+  FIELD: "FIELD_ACTIVE",
+};
+
+const EXCEPTION_STATES = new Set(["BLOCKED", "REJECTED"]);
+
+function normalizeLifecycleState(state) {
+  if (typeof state !== "string") return undefined;
+  const upper = state.toUpperCase();
+  return LIFECYCLE_ALIASES[upper] ?? upper;
+}
+
+function isExceptionState(state) {
+  const normalized = normalizeLifecycleState(state);
+  return Boolean(normalized && EXCEPTION_STATES.has(normalized));
+}
+
+function lifecycleRank(state) {
+  const normalized = normalizeLifecycleState(state);
+  return normalized ? LIFECYCLE_RANKS.get(normalized) ?? -1 : -1;
+}
+
+function highestLifecycleState(existing, incoming) {
+  if (isExceptionState(existing) || isExceptionState(incoming)) return incoming ?? existing;
+
+  const existingRank = lifecycleRank(existing);
+  const incomingRank = lifecycleRank(incoming);
+  if (existingRank < 0 && incomingRank < 0) return incoming ?? existing;
+  if (existingRank >= incomingRank && existingRank >= 0) return normalizeLifecycleState(existing) ?? existing;
+  return normalizeLifecycleState(incoming) ?? incoming;
+}
+
+function logBlockedRegression(scopeVersionId, field, existing, incoming, preserved) {
+  if (existing === incoming || incoming === undefined || preserved !== existing) return;
+  console.log("[LIFECYCLE_REGRESSION_BLOCKED]", {
+    scopeVersionId,
+    field,
+    existing,
+    incoming,
+    preserved,
+  });
+}
+
+function mergeScopeVersionLifecycle(existing, incoming) {
+  if (!existing) return incoming;
+  const preservedStatus = highestLifecycleState(existing.status, incoming.status);
+  const existingLifecycle = existing.canonicalTruth?.lifecycleState;
+  const incomingLifecycle = incoming.canonicalTruth?.lifecycleState;
+  const preservedLifecycle = highestLifecycleState(existingLifecycle, incomingLifecycle);
+
+  logBlockedRegression(incoming.scopeVersionId, "status", existing.status, incoming.status, preservedStatus);
+  logBlockedRegression(incoming.scopeVersionId, "canonicalTruth.lifecycleState", existingLifecycle, incomingLifecycle, preservedLifecycle);
+
+  return {
+    ...incoming,
+    status: preservedStatus,
+    canonicalTruth: {
+      ...(incoming.canonicalTruth ?? {}),
+      lifecycleState: preservedLifecycle ?? incoming.canonicalTruth?.lifecycleState,
+    },
   };
 }
 
@@ -201,12 +291,19 @@ function deriveLifecycleState(scopeVersion) {
   if (stationStates.length && stationStates.every((state) => state === "VERIFIED")) return "VERIFIED";
   if (stationStates.length && stationStates.every((state) => state === "COMPLETE" || state === "VERIFIED")) return "COMPLETE";
   if (stationStates.some((state) => state === "COMPLETE" || state === "VERIFIED")) return "PARTIALLY_COMPLETE";
-  if (stationStates.includes("IN_PROGRESS")) return "IN_FIELD";
-  if (stationStates.includes("RELEASED")) return "RELEASED_TO_CONTROL";
+  if (stationStates.includes("IN_PROGRESS") || objectStates.some((state) => ["INSTALLED", "TESTED", "ACCEPTED"].includes(state))) return "FIELD_ACTIVE";
+  if (scopeVersion.status === "CONTROL_ACTIVE" || stationStates.includes("RELEASED")) return "CONTROL_ACTIVE";
+  if (scopeVersion.status === "CONTROL") return "CONTROL";
+  if (scopeVersion.status === "FIELD" || scopeVersion.status === "FIELD_ACTIVE") return "FIELD_ACTIVE";
   if (scopeVersion.status === "QUOTED") return "QUOTED";
   if (scopeVersion.status === "APPROVED" || scopeVersion.status === "ACTIVATED") return "APPROVED";
   if (scopeVersion.certifiedRouteReference?.routeAuthorityState === "PROVISIONALLY_CERTIFIED") return "PROVISIONALLY_CERTIFIED";
   return "ANALYZED";
+}
+
+async function activeControlWorkForScope(scopeVersionId) {
+  const workItems = await listRecords(DIRS.controlWorkItems);
+  return workItems.find((workItem) => workItem?.scopeVersionId === scopeVersionId && workItem?.status === "ACTIVE");
 }
 
 function applyClosureRecord(scopeVersion, closureRecord) {
@@ -315,7 +412,9 @@ export async function loadScopeVersion(scopeVersionId) {
 
 export async function persistScopeVersion(scopeVersion) {
   const normalized = normalizeScopeVersion(scopeVersion);
-  return persistRecord(DIRS.scopeVersions, normalized.scopeVersionId, normalized);
+  const existing = await loadRecord(DIRS.scopeVersions, normalized.scopeVersionId).catch(() => null);
+  const guarded = normalizeScopeVersion(mergeScopeVersionLifecycle(existing ? normalizeScopeVersion(existing) : null, normalized));
+  return persistRecord(DIRS.scopeVersions, guarded.scopeVersionId, guarded);
 }
 
 export function createChildScopeVersionFromClose(parent, iofPackage, closeEvent) {
@@ -380,6 +479,23 @@ export async function handleScopeVersions(req, res, pathname) {
       const body = await readRequestJson(req);
       const closureRecord = unwrapBody(body, "closureRecord");
       const existing = await loadScopeVersion(match.id);
+      const lifecycleState = normalizeLifecycleState(existing.canonicalTruth?.lifecycleState ?? existing.status);
+      if (!["CONTROL_ACTIVE", "FIELD_ACTIVE"].includes(lifecycleState)) {
+        jsonResponse(res, 409, {
+          error: "LIFECYCLE_AUTHORITY_VIOLATION",
+          message: "Cannot append Field closure unless ScopeVersion lifecycle is CONTROL_ACTIVE or FIELD_ACTIVE.",
+          lifecycleState,
+        });
+        return true;
+      }
+      const activeWork = await activeControlWorkForScope(existing.scopeVersionId);
+      if (!activeWork) {
+        jsonResponse(res, 409, {
+          error: "ACTIVE_CONTROL_WORK_REQUIRED",
+          message: "Cannot append closure without an ACTIVE ControlWorkItem for this ScopeVersion.",
+        });
+        return true;
+      }
       const scopeVersion = await persistScopeVersion(applyClosureRecord(existing, closureRecord));
       jsonResponse(res, 200, { scopeVersion, closureRecord: closureRecords(scopeVersion).find((closure) => closure.closureId === closureRecord?.closureId) });
     } catch (err) {

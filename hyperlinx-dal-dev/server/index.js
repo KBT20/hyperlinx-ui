@@ -11,6 +11,7 @@ import { handleIofPackages } from "./routes/iof-packages.js";
 import { handleMarketplaceQuotes } from "./routes/marketplace-quotes.js";
 import { handleOpportunitySeeds } from "./routes/opportunity-seeds.js";
 import { handleScopeVersions } from "./routes/scopeversions.js";
+import { handleTwinState } from "./routes/twin-state.js";
 
 const routes = [
   handleGeocode,
@@ -24,6 +25,7 @@ const routes = [
   handleCloseEvents,
   handleControlWorkItems,
   handleFieldClosures,
+  handleTwinState,
 ];
 
 const server = http.createServer(async (req, res) => {
@@ -48,6 +50,7 @@ const server = http.createServer(async (req, res) => {
           certifiedRoutes: true,
           controlWorkItems: true,
           fieldClosures: true,
+          twinState: true,
           geocode: true,
         },
       });

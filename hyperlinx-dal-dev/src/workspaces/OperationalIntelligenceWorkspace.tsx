@@ -11,6 +11,8 @@ import type { OpportunitySeed } from "../types/portfolio";
 import { renderIOFPackage, renderScopeVersion, summarizeMapKernelMetrics } from "../mapkernel";
 import { buildFieldExecutionViewModel } from "../field/FieldExecutionViewModel";
 import { calculateScopeVersionProgress } from "../scopeversion/ClosureAuthorityEngine";
+import { deriveLifecycleViolations } from "../scopeversion/LifecycleAuthorityEngine";
+import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
 import type { CertifiedRoute } from "../routing/CertifiedRouteAuthority";
 
 function fmt(n: number | undefined) {
@@ -144,16 +146,17 @@ export default function OperationalIntelligenceWorkspace() {
     if (key === "MRC") return Number(truth?.financialBasis?.MRC ?? quote?.mrc ?? quote?.monthlyService ?? 0);
     return Number(truth?.financialBasis?.TCV ?? quote?.totalContractValue ?? 0);
   };
-  const draftScopes = scopeVersions.filter((scope) => scope.status === "DRAFT");
-  const analyzedScopes = scopeVersions.filter((scope) => scope.status === "ANALYZED");
-  const releasedToControlScopes = scopeVersions.filter((scope) => scope.status === "RELEASED_TO_CONTROL");
-  const inFieldScopes = scopeVersions.filter((scope) => scope.status === "IN_FIELD");
-  const partialScopes = scopeVersions.filter((scope) => scope.status === "PARTIALLY_COMPLETE");
-  const quotedScopes = scopeVersions.filter((scope) => scope.status === "QUOTED");
-  const approvedScopes = scopeVersions.filter((scope) => scope.status === "APPROVED");
-  const activatedScopes = scopeVersions.filter((scope) => scope.status === "ACTIVATED");
-  const constructionScopes = scopeVersions.filter((scope) => scope.status === "IN_CONSTRUCTION");
-  const completedScopes = scopeVersions.filter((scope) => scope.status === "COMPLETE");
+  const lifecycleFor = (scope: ScopeVersion) => getAuthoritativeLifecycleState(scope);
+  const draftScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "DRAFT");
+  const analyzedScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "ANALYZED");
+  const releasedToControlScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "CONTROL");
+  const inFieldScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "FIELD_ACTIVE");
+  const partialScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "PARTIALLY_COMPLETE");
+  const quotedScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "QUOTED");
+  const approvedScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "APPROVED");
+  const activatedScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "CONTROL_ACTIVE");
+  const constructionScopes = inFieldScopes;
+  const completedScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "COMPLETE");
   const certifiedScopeVersions = scopeVersions.filter((scope) => scope.certificationState === "CERTIFIED");
   const draftCertificationScopeVersions = scopeVersions.filter((scope) => !scope.certificationState || scope.certificationState === "DRAFT");
   const rejectedScopeVersions = scopeVersions.filter((scope) => scope.certificationState === "REJECTED");
@@ -162,7 +165,7 @@ export default function OperationalIntelligenceWorkspace() {
   const closureAuthorityScopeVersions = scopeVersions.filter((scope) => Boolean(scope.closureEventId));
   const inventoryScopeVersions = scopeVersions.filter((scope) => scope.type === "INVENTORY" || scope.source === "InventoryGraph");
   const candidateScopeVersions = scopeVersions.filter((scope) => scope.type === "CANDIDATE" || scope.source === "OpportunitySeed" || scope.source === "PrismOpportunity");
-  const approvedScopeVersions = scopeVersions.filter((scope) => scope.type === "APPROVED" || scope.status === "APPROVED");
+  const approvedScopeVersions = scopeVersions.filter((scope) => scope.type === "APPROVED" || lifecycleFor(scope) === "APPROVED");
   const fieldClosedScopeVersions = scopeVersions.filter((scope) => scope.type === "FIELD_CLOSED" || scope.source === "FieldClosure");
   const scopeProgress = scopeVersions.map((scope) => calculateScopeVersionProgress(scope));
   const totalPlannedFeet = scopeProgress.reduce((sum, progress) => sum + Number(progress.totalFeet || 0), 0);
@@ -199,6 +202,23 @@ export default function OperationalIntelligenceWorkspace() {
     [...(scope.canonicalTruth?.closures ?? []), ...(scope.closures ?? [])].forEach((closure) => byId.set(closure.closureId, closure));
     return Array.from(byId.values());
   });
+  const lifecycleViolations = deriveLifecycleViolations(scopeVersions, workItems, [...closures, ...scopeClosureRecords]);
+  const blockingLifecycleViolations = lifecycleViolations.filter((violation) => violation.severity === "BLOCKING");
+  const fieldClosuresWithoutActiveWork = lifecycleViolations.filter((violation) => violation.code === "FIELD_CLOSURE_WITHOUT_ACTIVE_WORK");
+  const controlWorkWithoutApprovedScope = lifecycleViolations.filter((violation) => violation.code === "CONTROL_WORK_WITHOUT_APPROVED_SCOPE");
+  const approvedScopesAwaitingControl = approvedScopes.filter((scope) => !workItems.some((workItem) => workItem.scopeVersionId === scope.scopeVersionId));
+  const activeControlWorkAwaitingFieldClosure = workItems.filter((workItem) => workItem.status === "ACTIVE" && !scopeClosureRecords.some((closure) => closure.workItemId === workItem.workItemId));
+  const completedObjectsAwaitingStationVerification = scopeVersions.reduce((sum, scope) => {
+    const objects = Array.isArray(scope.canonicalTruth?.objects) ? scope.canonicalTruth.objects : [];
+    const stations = Array.isArray(scope.canonicalTruth?.stations) ? scope.canonicalTruth.stations : [];
+    const completedStationIds = new Set(
+      objects
+        .filter((object: any) => object.objectState === "COMPLETE" || object.objectState === "VERIFIED")
+        .map((object: any) => object.stationId)
+        .filter(Boolean)
+    );
+    return sum + stations.filter((station: any) => completedStationIds.has(station.stationId) && station.stationState !== "VERIFIED").length;
+  }, 0);
   const today = new Date().toISOString().slice(0, 10);
   const closuresToday = scopeClosureRecords.filter((closure) => String(closure.createdAt).startsWith(today));
   const assetsClosedToday = closuresToday.filter((closure) => closure.newStationState === "COMPLETE" || closure.newStationState === "VERIFIED" || closure.newObjectState === "COMPLETE" || closure.newObjectState === "VERIFIED").length;
@@ -258,6 +278,11 @@ export default function OperationalIntelligenceWorkspace() {
   const projectedTcv = scopeVersions.reduce((sum, scope) => sum + scopeFinancialValue(scope, "TCV"), 0);
   const revenueForecast = projectedTcv;
   const recommended = seeds.filter((seed) => seed.overallScore >= 70);
+  const portfolioPhases = [
+    { label: "Phase 1", seeds: seeds.slice(0, 10) },
+    { label: "Phase 2", seeds: seeds.slice(10, 25) },
+    { label: "Phase 3", seeds: seeds.slice(25, 50) },
+  ];
   const averagePayback = seeds.reduce((sum, seed) => sum + seed.paybackMonths, 0) / Math.max(seeds.length, 1);
   const geocodedSites = candidateSites.filter((site) => Number.isFinite(site.latitude) && Number.isFinite(site.longitude));
   const verifiedSites = candidateSites.filter((site) => site.status === "VERIFIED");
@@ -452,6 +477,32 @@ export default function OperationalIntelligenceWorkspace() {
         </div>
       </div>
 
+      <div className="dal-panel">
+        <h3>Lifecycle Authority Audit</h3>
+        <div className="dal-metrics">
+          <span>Total lifecycle violations: {fmt(lifecycleViolations.length)}</span>
+          <span>Blocking violations: {fmt(blockingLifecycleViolations.length)}</span>
+          <span>Field closures without active work: {fmt(fieldClosuresWithoutActiveWork.length)}</span>
+          <span>Control work without approved ScopeVersion: {fmt(controlWorkWithoutApprovedScope.length)}</span>
+          <span>Approved ScopeVersions awaiting Control: {fmt(approvedScopesAwaitingControl.length)}</span>
+          <span>Active Control work awaiting Field closure: {fmt(activeControlWorkAwaitingFieldClosure.length)}</span>
+          <span>Completed objects awaiting station verification: {fmt(completedObjectsAwaitingStationVerification)}</span>
+        </div>
+        {lifecycleViolations.length ? (
+          <div className="dal-list">
+            {lifecycleViolations.slice(0, 12).map((violation) => (
+              <div key={violation.violationId} className="dal-list-row">
+                <span>{violation.code}</span>
+                <b>{violation.severity}</b>
+                <small>{violation.message}</small>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="dal-status">No lifecycle authority violations detected.</div>
+        )}
+      </div>
+
       <div className="dal-grid">
         <ReasoningHealthDashboard onHealthChange={setReasoningFabricHealth} />
         <div className="dal-panel">
@@ -620,7 +671,7 @@ export default function OperationalIntelligenceWorkspace() {
                   scopeVersionLifecycle: scopeVersions.map((scope) => ({
                     scopeVersionId: scope.scopeVersionId,
                     source: scope.source,
-                    status: scope.status,
+                    lifecycleState: lifecycleFor(scope),
                     decisionType: (scope.canonicalTruth as any)?.decisionType,
                     opportunitySeedId: (scope.canonicalTruth as any)?.opportunitySeedId,
                   })),
@@ -633,6 +684,22 @@ export default function OperationalIntelligenceWorkspace() {
             </pre>
           </details>
         </div>
+      </div>
+
+      <div className="dal-grid">
+        {portfolioPhases.map((phase) => (
+          <div key={phase.label} className="dal-panel">
+            <h3>{phase.label} Portfolio</h3>
+            <div className="dal-metrics">
+              <span>Sites: {fmt(phase.seeds.length)}</span>
+              <span>TCV: {money(phase.seeds.reduce((sum, seed) => sum + Number(seed.estimatedTCV ?? 0), 0))}</span>
+              <span>Capex: {money(phase.seeds.reduce((sum, seed) => sum + Number(seed.buildCost ?? 0), 0))}</span>
+              <span>Route Miles: {phase.seeds.reduce((sum, seed) => sum + Number(seed.buildMiles ?? seed.buildPath?.buildMiles ?? 0), 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+              <span>Crossings: {fmt(phase.seeds.reduce((sum, seed) => sum + Number(seed.buildPath?.estimatedCrossings ?? 0), 0))}</span>
+              <span>Avg Score: {fmt(Math.round(phase.seeds.reduce((sum, seed) => sum + Number(seed.overallScore ?? 0), 0) / Math.max(phase.seeds.length, 1)))}</span>
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="dal-grid">

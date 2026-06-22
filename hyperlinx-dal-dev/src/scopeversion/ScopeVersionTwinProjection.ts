@@ -1,6 +1,7 @@
 import type { ClosureRecord, ScopeInfrastructureObject, ScopeVersion } from "../types/dal";
 import { buildFieldExecutionViewModel } from "../field/FieldExecutionViewModel";
-import { calculateScopeVersionProgress, deriveScopeVersionLifecycleState } from "./ClosureAuthorityEngine";
+import { calculateScopeVersionProgress } from "./ClosureAuthorityEngine";
+import { getAuthoritativeLifecycleState } from "./ScopeVersionLifecycleGuard";
 
 function objects(scopeVersion: ScopeVersion): ScopeInfrastructureObject[] {
   return Array.isArray(scopeVersion.canonicalTruth?.objects) ? (scopeVersion.canonicalTruth.objects as ScopeInfrastructureObject[]) : [];
@@ -44,7 +45,7 @@ export function buildScopeVersionTwinProjection(scopeVersion: ScopeVersion | nul
     };
   }
   const progress = calculateScopeVersionProgress(scopeVersion);
-  const lifecycleState = deriveScopeVersionLifecycleState(scopeVersion);
+  const lifecycleState = getAuthoritativeLifecycleState(scopeVersion);
   const fieldExecution = buildFieldExecutionViewModel(scopeVersion);
   const stationList = Array.isArray(scopeVersion.canonicalTruth?.stations) ? (scopeVersion.canonicalTruth.stations as any[]) : [];
   const objectStateCounts = progress.objectStateCounts as Record<string, number>;
@@ -65,7 +66,7 @@ export function buildScopeVersionTwinProjection(scopeVersion: ScopeVersion | nul
     graphId: scopeVersion.graphId,
     lifecycleState,
     currentInventory: scopeVersion.inventoryId ?? scopeVersion.sourceInventoryId ?? "none",
-    proposedScopeVersionState: scopeVersion.status,
+    proposedScopeVersionState: lifecycleState,
     completedStationCount: progress.completeStations,
     verifiedStationCount: progress.verifiedStations,
     completedFeet: progress.completedFeet,

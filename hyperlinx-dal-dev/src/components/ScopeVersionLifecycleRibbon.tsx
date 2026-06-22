@@ -1,24 +1,24 @@
 import type { ScopeVersion } from "../types/dal";
-import { deriveScopeVersionLifecycleState } from "../scopeversion/ClosureAuthorityEngine";
+import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
 
 const RIBBON_STATES = [
   { key: "ANALYZED", label: "ANALYZED" },
   { key: "PROVISIONALLY_CERTIFIED", label: "CERTIFIED" },
   { key: "QUOTED", label: "QUOTED" },
   { key: "APPROVED", label: "APPROVED" },
-  { key: "RELEASED_TO_CONTROL", label: "CONTROL" },
-  { key: "IN_FIELD", label: "FIELD" },
+  { key: "CONTROL", label: "CONTROL" },
+  { key: "CONTROL_ACTIVE", label: "CONTROL ACTIVE" },
+  { key: "FIELD_ACTIVE", label: "FIELD" },
   { key: "COMPLETE", label: "COMPLETE" },
   { key: "OPERATIONAL", label: "OPERATIONAL" },
 ] as const;
 
 function normalizedState(scopeVersion?: ScopeVersion | null) {
   if (!scopeVersion) return "";
-  const state = deriveScopeVersionLifecycleState(scopeVersion);
-  if (state === "PARTIALLY_COMPLETE") return "IN_FIELD";
+  const state = getAuthoritativeLifecycleState(scopeVersion);
+  if (state === "PARTIALLY_COMPLETE") return "FIELD_ACTIVE";
   if (state === "VERIFIED") return "COMPLETE";
   if (state === "BLOCKED" || state === "REJECTED") return state;
-  if (scopeVersion.status === "ACTIVATED" || scopeVersion.status === "IN_CONSTRUCTION") return "IN_FIELD";
   return state;
 }
 
@@ -51,4 +51,3 @@ export default function ScopeVersionLifecycleRibbon({ scopeVersion }: { scopeVer
     </div>
   );
 }
-

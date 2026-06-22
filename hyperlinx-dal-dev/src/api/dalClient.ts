@@ -582,12 +582,78 @@ export async function saveFieldClosure(closure: FieldClosure) {
   return saved;
 }
 
-export async function loadTwinState() {
-  const remote = await tryRemote<any>(apiUrl("/api/twin/state"));
-  if (remote) return (remote?.state ?? remote?.data ?? remote) as TwinState;
-  const closures = await readCollection<FieldClosure>("closures");
-  const workItems = await readCollection<ControlWorkItem>("workItems");
+function objectStateCounts(scopeVersion?: ScopeVersion | null) {
+  const objects = Array.isArray(scopeVersion?.canonicalTruth?.objects) ? scopeVersion.canonicalTruth.objects as any[] : [];
+  return objects.reduce<Record<string, number>>((counts, object) => {
+    if (object?.objectState) counts[object.objectState] = (counts[object.objectState] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function stationStateCounts(scopeVersion?: ScopeVersion | null) {
+  const stations = Array.isArray(scopeVersion?.canonicalTruth?.stations) ? scopeVersion.canonicalTruth.stations as any[] : [];
+  return stations.reduce<Record<string, number>>((counts, station) => {
+    if (station?.stationState) counts[station.stationState] = (counts[station.stationState] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function scopeClosureRecords(scopeVersion?: ScopeVersion | null) {
+  if (!scopeVersion) return [] as ClosureRecord[];
+  return [...(scopeVersion.canonicalTruth?.closures ?? []), ...(scopeVersion.closures ?? [])].filter((closure) => closure.scopeVersionId === scopeVersion.scopeVersionId);
+}
+
+function dedupeClosures(records: Array<FieldClosure | ClosureRecord>) {
+  return Array.from(new Map(records.map((record) => [(record as any).closureId, record])).values());
+}
+
+function closureFeet(closure: FieldClosure | ClosureRecord) {
+  return Number((closure as FieldClosure).footage ?? (closure as ClosureRecord).feetAffected ?? 0);
+}
+
+function buildTwinMetrics(scopeVersion: ScopeVersion | null, workItems: ControlWorkItem[], closures: Array<FieldClosure | ClosureRecord>) {
+  const objects = Array.isArray(scopeVersion?.canonicalTruth?.objects) ? scopeVersion.canonicalTruth.objects as any[] : [];
+  const stations = Array.isArray(scopeVersion?.canonicalTruth?.stations) ? scopeVersion.canonicalTruth.stations as any[] : [];
+  const objectCounts = objectStateCounts(scopeVersion);
+  const stationCounts = stationStateCounts(scopeVersion);
+  const completedFeet = closures.reduce((sum, closure) => sum + closureFeet(closure), 0);
+  const totalFeet = Number(scopeVersion?.canonicalTruth?.stationing?.routeFeet ?? scopeVersion?.certifiedRouteReference?.routeFeet ?? scopeVersion?.buildFeet ?? stations.at(-1)?.measureFeet ?? 0);
+  const completedObjects = Number(objectCounts.COMPLETE ?? 0) + Number(objectCounts.VERIFIED ?? 0);
+  const completedStations = Number(stationCounts.COMPLETE ?? 0) + Number(stationCounts.VERIFIED ?? 0);
+
+  return {
+    openWorkItems: workItems.filter((item) => !["COMPLETE", "CANCELLED"].includes(item.status)).length,
+    completedWorkItems: workItems.filter((item) => item.status === "COMPLETE").length,
+    activeWorkItems: workItems.filter((item) => item.status === "ACTIVE").length,
+    pendingWorkItems: workItems.filter((item) => item.status === "PENDING").length,
+    cancelledWorkItems: workItems.filter((item) => item.status === "CANCELLED").length,
+    closureCount: closures.length,
+    completedFeet,
+    releasedObjects: objectCounts.RELEASED ?? 0,
+    installedObjects: objectCounts.INSTALLED ?? 0,
+    testedObjects: objectCounts.TESTED ?? 0,
+    acceptedObjects: objectCounts.ACCEPTED ?? 0,
+    completedObjects: objectCounts.COMPLETE ?? 0,
+    verifiedObjects: objectCounts.VERIFIED ?? 0,
+    blockedObjects: objectCounts.BLOCKED ?? 0,
+    rejectedObjects: objectCounts.REJECTED ?? 0,
+    plannedAssets: stationCounts.PLANNED ?? 0,
+    releasedAssets: stationCounts.RELEASED ?? 0,
+    inProgressAssets: stationCounts.IN_PROGRESS ?? 0,
+    completedAssets: stationCounts.COMPLETE ?? 0,
+    verifiedAssets: stationCounts.VERIFIED ?? 0,
+    blockedAssets: stationCounts.BLOCKED ?? 0,
+    rejectedAssets: stationCounts.REJECTED ?? 0,
+    percentComplete: totalFeet > 0 ? Math.min(100, (completedFeet / totalFeet) * 100) : stations.length ? (completedStations / stations.length) * 100 : 0,
+    objectCompletionPercent: objects.length ? (completedObjects / objects.length) * 100 : 0,
+    stationDerivedCompletionPercent: stations.length ? (completedStations / stations.length) * 100 : 0,
+  };
+}
+
+function timelineFor(workItems: ControlWorkItem[], closures: Array<FieldClosure | ClosureRecord>, scopeVersion?: ScopeVersion | null): OperationalEvent[] {
+  const scopeEvents = Array.isArray(scopeVersion?.events) ? scopeVersion.events : [];
   const events: OperationalEvent[] = [
+    ...scopeEvents,
     ...workItems.map((item) => ({
       eventId: item.workItemId,
       type: `control.${item.status.toLowerCase()}`,
@@ -597,25 +663,117 @@ export async function loadTwinState() {
       createdAt: item.updatedAt,
     })),
     ...closures.map((item) => ({
-      eventId: item.closureId,
-      type: `field.${item.closureType.toLowerCase()}.closed`,
-      entityId: item.closureId,
+      eventId: (item as any).closureId,
+      type: `field.${String((item as any).closureType ?? "closure").toLowerCase()}.closed`,
+      entityId: (item as any).closureId,
       entityType: "FieldClosure",
       payload: item as unknown as Record<string, unknown>,
-      createdAt: item.closedAt,
+      createdAt: String((item as FieldClosure).closedAt ?? (item as ClosureRecord).createdAt ?? (item as ClosureRecord).updatedAt ?? now()),
     })),
-  ].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  ];
+  return Array.from(new Map(events.map((event) => [event.eventId, event])).values()).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
 
+function normalizeTwinState(raw: any, requestedScopeVersionId = ""): TwinState {
+  const projection = raw?.state ?? raw?.data ?? raw ?? {};
+  const metrics = projection.metrics ?? {
+    openWorkItems: Number(projection.openWorkItems ?? 0),
+    completedWorkItems: Number(projection.completedWorkItems ?? 0),
+    activeWorkItems: 0,
+    pendingWorkItems: 0,
+    cancelledWorkItems: 0,
+    closureCount: Number(projection.closureCount ?? 0),
+    completedFeet: Number(projection.completedFeet ?? 0),
+  };
   return {
+    twinStateId: String(projection.twinStateId ?? `twin-${projection.scopeVersionId ?? requestedScopeVersionId ?? "summary"}`),
+    projectionSource: projection.projectionSource ?? "SERVER",
+    inventoryId: projection.inventoryId,
+    scopeVersionId: projection.scopeVersionId ?? requestedScopeVersionId,
+    scopeVersion: projection.scopeVersion,
+    workItems: Array.isArray(projection.workItems) ? projection.workItems : [],
+    closures: Array.isArray(projection.closures) ? projection.closures : [],
+    openWorkItems: Number(metrics.openWorkItems ?? 0),
+    completedWorkItems: Number(metrics.completedWorkItems ?? 0),
+    closureCount: Number(metrics.closureCount ?? 0),
+    completedFeet: Number(metrics.completedFeet ?? 0),
+    routeProgress: Array.isArray(projection.routeProgress) ? projection.routeProgress : [],
+    timeline: Array.isArray(projection.timeline) ? projection.timeline : [],
+    metrics,
+    lifecycleViolations: Array.isArray(projection.lifecycleViolations) ? projection.lifecycleViolations : [],
+    graphContext: projection.graphContext,
+    totals: projection.totals,
+    updatedAt: String(projection.updatedAt ?? now()),
+  };
+}
+
+export async function loadTwinState(scopeVersionId = "") {
+  const path = scopeVersionId ? `/api/twin/state?scopeVersionId=${encodeURIComponent(scopeVersionId)}` : "/api/twin/state";
+  console.log("[TWIN_PROJECTION_REQUEST]", { scopeVersionId: scopeVersionId || "none", url: apiUrl(path) });
+  const remote = await tryRemote<any>(apiUrl(path));
+  if (remote) {
+    const state = normalizeTwinState(remote, scopeVersionId);
+    console.log("[TWIN_PROJECTION_SERVER]", {
+      scopeVersionId: state.scopeVersionId || "none",
+      selectedWorkItems: state.workItems?.length ?? 0,
+      selectedClosures: state.closures?.length ?? 0,
+      completedFeet: state.metrics?.completedFeet ?? 0,
+      projectionSource: state.projectionSource,
+    });
+    return state;
+  }
+  const closures = await readCollection<FieldClosure>("closures");
+  const workItems = await readCollection<ControlWorkItem>("workItems");
+  const scopeVersion = scopeVersionId ? await loadScopeVersionRecord(scopeVersionId).catch(() => null) : null;
+  const selectedWorkItems = scopeVersionId ? workItems.filter((item) => item.scopeVersionId === scopeVersionId) : workItems;
+  const selectedFieldClosures = scopeVersionId ? closures.filter((closure) => closure.scopeVersionId === scopeVersionId) : closures;
+  const selectedClosures = dedupeClosures([...selectedFieldClosures, ...scopeClosureRecords(scopeVersion)]);
+  const metrics = buildTwinMetrics(scopeVersion, selectedWorkItems, selectedClosures);
+  const timeline = timelineFor(selectedWorkItems, selectedClosures, scopeVersion);
+  console.log("[TWIN_LOCAL_FALLBACK_FILTERED]", {
+    scopeVersionId: scopeVersionId || "none",
+    totalWorkItemsLoaded: workItems.length,
+    selectedWorkItems: selectedWorkItems.length,
+    totalClosuresLoaded: closures.length,
+    selectedClosures: selectedClosures.length,
+    completedFeet: metrics.completedFeet,
+    projectionSource: "LOCAL_FALLBACK",
+  });
+
+  return normalizeTwinState({
     twinStateId: "local-fallback-twin-state",
-    openWorkItems: workItems.filter((item) => !["COMPLETE", "CANCELLED"].includes(item.status)).length,
-    completedWorkItems: workItems.filter((item) => item.status === "COMPLETE").length,
-    closureCount: closures.length,
-    completedFeet: closures.reduce((sum, item) => sum + Number(item.footage || 0), 0),
+    projectionSource: "LOCAL_FALLBACK",
+    scopeVersionId,
+    scopeVersion,
+    workItems: selectedWorkItems,
+    closures: selectedClosures,
+    openWorkItems: metrics.openWorkItems,
+    completedWorkItems: metrics.completedWorkItems,
+    closureCount: metrics.closureCount,
+    completedFeet: metrics.completedFeet,
     routeProgress: [],
-    timeline: events,
+    timeline,
+    metrics,
+    lifecycleViolations: [],
+    graphContext: scopeVersion
+      ? {
+          inventoryId: scopeVersion.inventoryId ?? scopeVersion.sourceInventoryId,
+          graphId: scopeVersion.graphId,
+          graphVersion: scopeVersion.graphVersion,
+          routeId: scopeVersion.canonicalTruth?.networkBasis?.routeId,
+          matched: null,
+        }
+      : { matched: null },
+    totals: {
+      workItemsLoaded: workItems.length,
+      closuresLoaded: closures.length,
+    },
     updatedAt: now(),
-  } as TwinState;
+  }, scopeVersionId);
+}
+
+export async function getTwinState(scopeVersionId?: string) {
+  return loadTwinState(scopeVersionId);
 }
 
 export { createId, now };

@@ -6,6 +6,7 @@ import type {
   ValidationStatus,
 } from "../types/dal";
 import { calculateScopeVersionProgress } from "./ClosureAuthorityEngine";
+import { getAuthoritativeLifecycleState, mergeScopeVersionLifecycle } from "./ScopeVersionLifecycleGuard";
 import { validateScopeVersionStationing } from "./ScopeVersionStationingValidator";
 
 export type ScopeVersionValidationIssue = {
@@ -22,20 +23,25 @@ export type ScopeVersionValidationResult = {
 };
 
 export const SCOPEVERSION_STATUS_TRANSITIONS: Record<ScopeVersionStatus, ScopeVersionStatus[]> = {
-  DRAFT: ["ANALYZED", "PROVISIONALLY_CERTIFIED", "QUOTED", "APPROVED", "RELEASED_TO_CONTROL", "IN_FIELD", "PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
-  ANALYZED: ["PROVISIONALLY_CERTIFIED", "QUOTED", "APPROVED", "RELEASED_TO_CONTROL", "BLOCKED", "REJECTED"],
-  PROVISIONALLY_CERTIFIED: ["QUOTED", "APPROVED", "RELEASED_TO_CONTROL", "BLOCKED", "REJECTED"],
-  QUOTED: ["APPROVED", "RELEASED_TO_CONTROL", "BLOCKED", "REJECTED"],
-  APPROVED: ["RELEASED_TO_CONTROL", "ACTIVATED", "BLOCKED", "REJECTED"],
-  RELEASED_TO_CONTROL: ["IN_FIELD", "PARTIALLY_COMPLETE", "COMPLETE", "BLOCKED", "REJECTED"],
-  IN_FIELD: ["PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
-  PARTIALLY_COMPLETE: ["IN_FIELD", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
-  ACTIVATED: ["IN_CONSTRUCTION", "IN_FIELD", "PARTIALLY_COMPLETE", "COMPLETE", "BLOCKED", "REJECTED"],
-  IN_CONSTRUCTION: ["PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
+  DRAFT: ["ANALYZED", "CERTIFIED", "PROVISIONALLY_CERTIFIED", "QUOTED", "APPROVED", "CONTROL", "CONTROL_ACTIVE", "FIELD_ACTIVE", "FIELD", "RELEASED_TO_CONTROL", "IN_FIELD", "PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
+  ANALYZED: ["CERTIFIED", "PROVISIONALLY_CERTIFIED", "QUOTED", "APPROVED", "CONTROL", "RELEASED_TO_CONTROL", "BLOCKED", "REJECTED"],
+  CERTIFIED: ["PROVISIONALLY_CERTIFIED", "QUOTED", "APPROVED", "CONTROL", "RELEASED_TO_CONTROL", "BLOCKED", "REJECTED"],
+  PROVISIONALLY_CERTIFIED: ["QUOTED", "APPROVED", "CONTROL", "RELEASED_TO_CONTROL", "BLOCKED", "REJECTED"],
+  QUOTED: ["APPROVED", "BLOCKED", "REJECTED"],
+  APPROVED: ["CONTROL", "CONTROL_ACTIVE", "RELEASED_TO_CONTROL", "ACTIVATED", "BLOCKED", "REJECTED"],
+  CONTROL: ["CONTROL_ACTIVE", "FIELD_ACTIVE", "FIELD", "IN_FIELD", "BLOCKED", "REJECTED"],
+  CONTROL_ACTIVE: ["FIELD_ACTIVE", "FIELD", "IN_FIELD", "IN_CONSTRUCTION", "PARTIALLY_COMPLETE", "COMPLETE", "BLOCKED", "REJECTED"],
+  FIELD_ACTIVE: ["PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
+  FIELD: ["FIELD_ACTIVE", "PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
+  RELEASED_TO_CONTROL: ["CONTROL_ACTIVE", "FIELD_ACTIVE", "FIELD", "IN_FIELD", "PARTIALLY_COMPLETE", "COMPLETE", "BLOCKED", "REJECTED"],
+  IN_FIELD: ["FIELD_ACTIVE", "FIELD", "PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
+  PARTIALLY_COMPLETE: ["FIELD_ACTIVE", "FIELD", "IN_FIELD", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
+  ACTIVATED: ["CONTROL_ACTIVE", "FIELD_ACTIVE", "FIELD", "IN_CONSTRUCTION", "IN_FIELD", "PARTIALLY_COMPLETE", "COMPLETE", "BLOCKED", "REJECTED"],
+  IN_CONSTRUCTION: ["FIELD_ACTIVE", "FIELD", "PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "BLOCKED", "REJECTED"],
   COMPLETE: ["VERIFIED", "OPERATIONAL", "BLOCKED", "REJECTED"],
   VERIFIED: ["OPERATIONAL", "BLOCKED", "REJECTED"],
   OPERATIONAL: ["BLOCKED", "REJECTED"],
-  BLOCKED: ["IN_FIELD", "PARTIALLY_COMPLETE", "REJECTED"],
+  BLOCKED: ["CONTROL", "CONTROL_ACTIVE", "FIELD_ACTIVE", "FIELD", "IN_FIELD", "PARTIALLY_COMPLETE", "REJECTED"],
   REJECTED: [],
 };
 
@@ -137,7 +143,8 @@ export function validateScopeVersion(scopeVersion: ScopeVersion): ScopeVersionVa
   const engineering = truth.engineeringBasis;
   const financial = truth.financialBasis;
   const decision = truth.decisionBasis;
-  const requiresEngineeringCertification = truth.decisionType === "PrismSiteDecision" || scopeVersion.status !== "DRAFT";
+  const authoritativeLifecycleState = getAuthoritativeLifecycleState(scopeVersion);
+  const requiresEngineeringCertification = truth.decisionType === "PrismSiteDecision" || authoritativeLifecycleState !== "DRAFT";
   const certificationSnapshot = truth.certificationSnapshot ?? scopeVersion.certificationSnapshot;
   const certifiedRouteReference = scopeVersion.certifiedRouteReference ?? (truth as any).certifiedRouteReference;
   const serviceability = truth.serviceabilityAssessment ?? scopeVersion.serviceabilityAssessment ?? (certificationSnapshot as any)?.serviceabilityAssessment;
@@ -275,32 +282,33 @@ export function assertValidScopeVersion(scopeVersion: ScopeVersion) {
 
 export function mergeImmutableScopeVersion(existing: ScopeVersion | undefined, next: ScopeVersion) {
   if (!existing) return next;
-  assertScopeVersionTransition(existing.status, next.status);
+  const lifecycleGuardedNext = mergeScopeVersionLifecycle(existing, next);
+  assertScopeVersionTransition(existing.status, lifecycleGuardedNext.status);
 
   const existingClosureCount = Math.max(existing.closures?.length ?? 0, Array.isArray(existing.canonicalTruth?.closures) ? existing.canonicalTruth.closures.length : 0);
-  const nextClosureCount = Math.max(next.closures?.length ?? 0, Array.isArray(next.canonicalTruth?.closures) ? next.canonicalTruth.closures.length : 0);
+  const nextClosureCount = Math.max(lifecycleGuardedNext.closures?.length ?? 0, Array.isArray(lifecycleGuardedNext.canonicalTruth?.closures) ? lifecycleGuardedNext.canonicalTruth.closures.length : 0);
   const hasClosureAuthorityChange = nextClosureCount > existingClosureCount;
   const canonicalTruth: ScopeVersionCanonicalTruth = {
-    ...next.canonicalTruth,
+    ...lifecycleGuardedNext.canonicalTruth,
   };
   for (const key of IMMUTABLE_CANONICAL_KEYS) {
     if (hasClosureAuthorityChange && (key === "stations" || key === "objects")) {
-      (canonicalTruth as any)[key] = next.canonicalTruth?.[key] ?? existing.canonicalTruth?.[key];
+      (canonicalTruth as any)[key] = lifecycleGuardedNext.canonicalTruth?.[key] ?? existing.canonicalTruth?.[key];
       continue;
     }
-    (canonicalTruth as any)[key] = existing.canonicalTruth?.[key] ?? next.canonicalTruth?.[key];
+    (canonicalTruth as any)[key] = existing.canonicalTruth?.[key] ?? lifecycleGuardedNext.canonicalTruth?.[key];
   }
 
   const merged: ScopeVersion = {
-    ...next,
+    ...lifecycleGuardedNext,
     canonicalTruth: {
       ...canonicalTruth,
-      quoteBasis: next.canonicalTruth?.quoteBasis ?? existing.canonicalTruth?.quoteBasis,
-      commercial: next.canonicalTruth?.commercial ?? existing.canonicalTruth?.commercial,
-      validation: next.canonicalTruth?.validation ?? existing.canonicalTruth?.validation,
-      closures: next.canonicalTruth?.closures ?? existing.canonicalTruth?.closures,
-      progress: next.canonicalTruth?.progress ?? existing.canonicalTruth?.progress,
-      lifecycleState: next.canonicalTruth?.lifecycleState ?? existing.canonicalTruth?.lifecycleState,
+      quoteBasis: lifecycleGuardedNext.canonicalTruth?.quoteBasis ?? existing.canonicalTruth?.quoteBasis,
+      commercial: lifecycleGuardedNext.canonicalTruth?.commercial ?? existing.canonicalTruth?.commercial,
+      validation: lifecycleGuardedNext.canonicalTruth?.validation ?? existing.canonicalTruth?.validation,
+      closures: lifecycleGuardedNext.canonicalTruth?.closures ?? existing.canonicalTruth?.closures,
+      progress: lifecycleGuardedNext.canonicalTruth?.progress ?? existing.canonicalTruth?.progress,
+      lifecycleState: lifecycleGuardedNext.canonicalTruth?.lifecycleState ?? existing.canonicalTruth?.lifecycleState,
     },
   };
 
@@ -308,5 +316,5 @@ export function mergeImmutableScopeVersion(existing: ScopeVersion | undefined, n
     (merged as any)[key] = (existing as any)[key] ?? (next as any)[key];
   }
 
-  return merged;
+  return mergeScopeVersionLifecycle(existing, merged);
 }

@@ -3,6 +3,7 @@ import { listMarketplaceQuotes, listScopeVersions, saveMarketplaceQuote, saveSco
 import { applyQuoteToScopeVersion, generatePreliminaryQuote } from "../commercial/quoteEngine";
 import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
 import { useDALState } from "../dal/DALState";
+import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
 import type { MarketplaceQuote, ScopeVersion } from "../types/dal";
 
 function fmtMoney(n: number) {
@@ -155,7 +156,7 @@ export default function MarketplaceWorkspace() {
                   setSelectedScopeVersionId(scope.scopeVersionId);
                 }}
               >
-                {scope.scopeVersionId} | {scope.status} | {(scope.canonicalTruth as any)?.site?.companyName ?? (scope.canonicalTruth as any)?.candidateSite?.companyName ?? scope.source}
+                {scope.scopeVersionId} | {getAuthoritativeLifecycleState(scope)} | {(scope.canonicalTruth as any)?.site?.companyName ?? (scope.canonicalTruth as any)?.candidateSite?.companyName ?? scope.source}
               </button>
             ))}
           </div>

@@ -197,9 +197,14 @@ export type InventoryHealthMetrics = {
 export type ScopeVersionStatus =
   | "DRAFT"
   | "ANALYZED"
+  | "CERTIFIED"
   | "PROVISIONALLY_CERTIFIED"
   | "QUOTED"
   | "APPROVED"
+  | "CONTROL"
+  | "CONTROL_ACTIVE"
+  | "FIELD"
+  | "FIELD_ACTIVE"
   | "RELEASED_TO_CONTROL"
   | "IN_FIELD"
   | "PARTIALLY_COMPLETE"
@@ -213,9 +218,14 @@ export type ScopeVersionStatus =
 
 export type ScopeVersionLifecycleState =
   | "ANALYZED"
+  | "CERTIFIED"
   | "PROVISIONALLY_CERTIFIED"
   | "QUOTED"
   | "APPROVED"
+  | "CONTROL"
+  | "CONTROL_ACTIVE"
+  | "FIELD"
+  | "FIELD_ACTIVE"
   | "RELEASED_TO_CONTROL"
   | "IN_FIELD"
   | "PARTIALLY_COMPLETE"
@@ -399,6 +409,7 @@ export type ClosureAuthority = "FIELD" | "CONTROL" | "ENGINEERING_REVIEW" | "SYS
 export type ClosureRecord = {
   closureId: string;
   scopeVersionId: string;
+  workItemId?: string;
   certifiedRouteId: string;
   stationId?: string;
   stationStartId?: string;
@@ -892,6 +903,17 @@ export type MarketplaceQuote = {
 
 export type ControlWorkStatus = "PENDING" | "ACTIVE" | "ON_HOLD" | "COMPLETE" | "CANCELLED";
 
+export type ScopeVersionExecutionState = {
+  scopeVersionId: string;
+  engineeringStatus: ControlWorkStatus | "NOT_CREATED";
+  permittingStatus: ControlWorkStatus | "NOT_CREATED";
+  constructionStatus: ControlWorkStatus | "NOT_CREATED";
+  validationStatus: ControlWorkStatus | "NOT_CREATED";
+  activationStatus: ControlWorkStatus | "NOT_CREATED";
+  overallExecutionState: ControlWorkStatus | "NOT_CREATED" | "PARTIALLY_COMPLETE";
+  updatedAt: string;
+};
+
 export type ControlWorkItem = {
   workItemId: string;
   workType?: "ENGINEERING" | "PERMITTING" | "CONSTRUCTION" | "ACTIVATION" | "VALIDATION" | "GENERAL";
@@ -940,16 +962,75 @@ export type OperationalEvent = {
   createdAt: string;
 };
 
+export type TwinProjectionMetrics = {
+  openWorkItems: number;
+  completedWorkItems: number;
+  activeWorkItems: number;
+  pendingWorkItems: number;
+  cancelledWorkItems: number;
+  closureCount: number;
+  completedFeet: number;
+  releasedObjects?: number;
+  installedObjects?: number;
+  testedObjects?: number;
+  acceptedObjects?: number;
+  completedObjects?: number;
+  verifiedObjects?: number;
+  blockedObjects?: number;
+  rejectedObjects?: number;
+  plannedAssets?: number;
+  releasedAssets?: number;
+  inProgressAssets?: number;
+  completedAssets?: number;
+  verifiedAssets?: number;
+  blockedAssets?: number;
+  rejectedAssets?: number;
+  percentComplete?: number;
+  objectCompletionPercent?: number;
+  stationDerivedCompletionPercent?: number;
+};
+
+export type TwinLifecycleViolation = {
+  violationId: string;
+  severity: "BLOCKING" | "WARNING" | "INFO";
+  code: string;
+  scopeVersionId: string;
+  workItemId?: string;
+  closureId?: string;
+  message: string;
+  recommendedAction?: string;
+  createdAt?: string;
+};
+
+export type TwinGraphContext = {
+  inventoryId?: string;
+  graphId?: string;
+  graphVersion?: string;
+  routeId?: string;
+  matched?: boolean | null;
+};
+
 export type TwinState = {
   twinStateId: string;
+  projectionSource?: "SERVER" | "LOCAL_FALLBACK";
   inventoryId?: string;
   scopeVersionId?: string;
+  scopeVersion?: ScopeVersion;
+  workItems?: ControlWorkItem[];
+  closures?: Array<FieldClosure | ClosureRecord>;
   openWorkItems: number;
   completedWorkItems: number;
   closureCount: number;
   completedFeet: number;
   routeProgress: Array<{ routeId: string; completedFeet: number; totalFeet: number; percent: number }>;
   timeline: OperationalEvent[];
+  metrics?: TwinProjectionMetrics;
+  lifecycleViolations?: TwinLifecycleViolation[];
+  graphContext?: TwinGraphContext;
+  totals?: {
+    workItemsLoaded?: number;
+    closuresLoaded?: number;
+  };
   updatedAt: string;
 };
 

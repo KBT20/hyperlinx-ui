@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { listCandidateSites, listControlWorkItems, listFieldClosures, listOpportunitySeeds, loadTwinState } from "../api/dalClient";
+import { listControlWorkItems, listFieldClosures, loadTwinState } from "../api/dalClient";
 import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
 import { useDALState } from "../dal/DALState";
 import { LeafletMap, type GISBuildPath, type GISPoint, type GISRoute } from "../gis";
+import { deriveLifecycleViolations } from "../scopeversion/LifecycleAuthorityEngine";
+import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
 import { buildScopeVersionTwinProjection } from "../scopeversion/ScopeVersionTwinProjection";
-import type { ControlWorkItem, DALCoordinate, FieldClosure, InventoryRoute, TwinState } from "../types/dal";
-import type { CandidateSite } from "../types/candidateSite";
-import type { OpportunitySeed } from "../types/portfolio";
+import type { ClosureRecord, ControlWorkItem, DALCoordinate, FieldClosure, InventoryRoute, TwinState } from "../types/dal";
 
 function fmt(n: number | undefined) {
   return Number(n || 0).toLocaleString();
@@ -14,10 +14,6 @@ function fmt(n: number | undefined) {
 
 function money(n: number | undefined) {
   return Number(n || 0).toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-}
-
-function averageRisk(seeds: OpportunitySeed[]) {
-  return seeds.reduce((sum, seed) => sum + Number(seed.riskScore ?? seed.buildPath?.riskScore ?? 0), 0) / Math.max(seeds.length, 1);
 }
 
 const spatialLayerNames = ["Parcel", "Road", "Rail", "Water", "Permit", "Constructability"] as const;
@@ -43,11 +39,10 @@ function routeSegmentForAttachment(route: InventoryRoute | undefined, attachment
 
 export default function TwinWorkspace() {
   const { selectedGraph, selectedScopeVersion } = useDALState();
+  const selectedScopeVersionId = selectedScopeVersion?.scopeVersionId ?? "";
   const [twinState, setTwinState] = useState<TwinState | null>(null);
   const [workItems, setWorkItems] = useState<ControlWorkItem[]>([]);
   const [closures, setClosures] = useState<FieldClosure[]>([]);
-  const [candidateSites, setCandidateSites] = useState<CandidateSite[]>([]);
-  const [seeds, setSeeds] = useState<OpportunitySeed[]>([]);
   const [visibleSpatialLayers, setVisibleSpatialLayers] = useState<Record<SpatialLayerName, boolean>>({
     Parcel: true,
     Road: true,
@@ -60,29 +55,26 @@ export default function TwinWorkspace() {
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [selectedScopeVersionId]);
 
   async function refresh() {
     try {
-      const [state, work, field, nextSites, nextSeeds] = await Promise.all([
-        loadTwinState(),
+      const [state, work, field] = await Promise.all([
+        loadTwinState(selectedScopeVersionId),
         listControlWorkItems(),
         listFieldClosures(),
-        listCandidateSites(),
-        listOpportunitySeeds(),
       ]);
       setTwinState(state);
       setWorkItems(work);
       setClosures(field);
-      setCandidateSites(nextSites);
-      setSeeds(nextSeeds);
       setStatus("Twin state loaded.");
     } catch (err: any) {
       setStatus(`Twin load failed: ${err?.message ?? String(err)}`);
     }
   }
 
-  const scopeTruth = selectedScopeVersion?.canonicalTruth as any;
+  const projectionScopeVersion = twinState?.scopeVersion ?? selectedScopeVersion;
+  const scopeTruth = projectionScopeVersion?.canonicalTruth as any;
   const extensionSummary = scopeTruth?.extensionSummary as any;
   const networkBasis = scopeTruth?.networkBasis ?? {};
   const geographicBasis = scopeTruth?.geographicBasis ?? {};
@@ -98,21 +90,110 @@ export default function TwinWorkspace() {
   const proposedRisk = Number(riskBasis?.compositeRisk ?? 0);
   const constructability = scopeTruth?.constructabilityAssessment;
   const scopeSite = scopeTruth?.sourceCandidate ?? scopeTruth?.site ?? scopeTruth?.candidateSite;
-  const routeAuthorityState = selectedScopeVersion?.certifiedRouteReference?.routeAuthorityState ?? "NO_CERTIFIED_ROUTE";
+  const routeAuthorityState = projectionScopeVersion?.certifiedRouteReference?.routeAuthorityState ?? "NO_CERTIFIED_ROUTE";
   const plannedStateAuthority = routeAuthorityState === "CERTIFIED_ROUTE" ? "PLANNED NETWORK TRUTH" : "ADVISORY ONLY";
-  const twinProjection = buildScopeVersionTwinProjection(selectedScopeVersion);
+  const twinProjection = buildScopeVersionTwinProjection(projectionScopeVersion);
+  const authoritativeLifecycleState = getAuthoritativeLifecycleState(projectionScopeVersion);
+  const selectedScopeWorkItems = twinState?.workItems ?? workItems.filter((item) => item.scopeVersionId === selectedScopeVersionId);
+  const activeSelectedScopeWorkItems = selectedScopeWorkItems.filter((item) => item.status === "ACTIVE");
+  const selectedScopeFieldClosures = closures.filter((closure) => closure.scopeVersionId === selectedScopeVersionId);
+  const selectedScopeClosureRecords: ClosureRecord[] = projectionScopeVersion
+    ? [...(projectionScopeVersion.canonicalTruth?.closures ?? []), ...(projectionScopeVersion.closures ?? [])]
+      .filter((closure) => closure.scopeVersionId === projectionScopeVersion.scopeVersionId)
+      .filter(
+        (closure, index, list) => list.findIndex((item) => item.closureId === closure.closureId) === index
+      )
+    : [];
+  const completedClosureSource = twinState?.projectionSource ?? (selectedScopeFieldClosures.length ? "SERVER_FIELD_CLOSURE_LEDGER" : "SCOPEVERSION_CLOSURE_LEDGER");
+  const completedClosures = twinState?.closures ?? (selectedScopeFieldClosures.length ? selectedScopeFieldClosures : selectedScopeClosureRecords);
+  const projectionSource = twinState?.projectionSource ?? (selectedScopeFieldClosures.length && selectedScopeClosureRecords.length ? "MIXED" : selectedScopeFieldClosures.length ? "SERVER" : selectedScopeClosureRecords.length ? "LOCAL_FALLBACK" : "SERVER");
+  const lifecycleViolations =
+    twinState?.lifecycleViolations ??
+    deriveLifecycleViolations(projectionScopeVersion ? [projectionScopeVersion] : [], selectedScopeWorkItems, completedClosures);
+  const projectionMetrics = twinState?.metrics ?? {
+    openWorkItems: selectedScopeWorkItems.filter((item) => !["COMPLETE", "CANCELLED"].includes(item.status)).length,
+    completedWorkItems: selectedScopeWorkItems.filter((item) => item.status === "COMPLETE").length,
+    activeWorkItems: activeSelectedScopeWorkItems.length,
+    pendingWorkItems: selectedScopeWorkItems.filter((item) => item.status === "PENDING").length,
+    cancelledWorkItems: selectedScopeWorkItems.filter((item) => item.status === "CANCELLED").length,
+    closureCount: completedClosures.length,
+    completedFeet: completedClosures.reduce((sum, closure) => sum + Number((closure as FieldClosure).footage ?? (closure as ClosureRecord).feetAffected ?? 0), 0),
+    releasedObjects: twinProjection.releasedObjects,
+    installedObjects: twinProjection.installedObjects,
+    testedObjects: twinProjection.testedObjects,
+    acceptedObjects: twinProjection.acceptedObjects,
+    completedObjects: twinProjection.completeObjects,
+    verifiedObjects: twinProjection.verifiedObjects,
+    blockedObjects: twinProjection.blockedObjects,
+    rejectedObjects: twinProjection.rejectedObjects,
+    plannedAssets: (twinProjection.stationStateCounts as Record<string, number>).PLANNED ?? 0,
+    releasedAssets: (twinProjection.stationStateCounts as Record<string, number>).RELEASED ?? 0,
+    inProgressAssets: (twinProjection.stationStateCounts as Record<string, number>).IN_PROGRESS ?? 0,
+    completedAssets: (twinProjection.stationStateCounts as Record<string, number>).COMPLETE ?? 0,
+    verifiedAssets: (twinProjection.stationStateCounts as Record<string, number>).VERIFIED ?? 0,
+    blockedAssets: (twinProjection.stationStateCounts as Record<string, number>).BLOCKED ?? 0,
+    rejectedAssets: (twinProjection.stationStateCounts as Record<string, number>).REJECTED ?? 0,
+    percentComplete: twinProjection.percentComplete,
+    objectCompletionPercent: twinProjection.objectCompletionPercent,
+    stationDerivedCompletionPercent: twinProjection.stationDerivedCompletionPercent,
+  };
+  const projectionTimeline = twinState?.timeline ?? [];
+  const graphContext = twinState?.graphContext;
+  const expectedInventoryId = graphContext?.inventoryId ?? projectionScopeVersion?.inventoryId ?? projectionScopeVersion?.sourceInventoryId ?? (projectionScopeVersion?.canonicalTruth as any)?.graphReference?.inventoryId;
+  const expectedGraphId = graphContext?.graphId ?? projectionScopeVersion?.graphId ?? (projectionScopeVersion?.canonicalTruth as any)?.graphReference?.graphId;
+  const graphContextMatched =
+    !selectedGraph ||
+    ((!expectedInventoryId || selectedGraph.inventoryId === expectedInventoryId) && (!expectedGraphId || selectedGraph.graphId === expectedGraphId));
+  useEffect(() => {
+    console.log("[TWIN_RECONCILIATION]", {
+      scopeVersionId: projectionScopeVersion?.scopeVersionId ?? "none",
+      workItemsLoaded: workItems.length,
+      workItemsForScope: selectedScopeWorkItems.length,
+      activeWorkItemsForScope: activeSelectedScopeWorkItems.length,
+      fieldClosuresLoaded: closures.length,
+      selectedClosures: completedClosures.length,
+      timelineCount: projectionTimeline.length,
+      completedFeet: projectionMetrics.completedFeet,
+      projectionSource,
+      lifecycleViolationCount: lifecycleViolations.length,
+    });
+  }, [
+    projectionScopeVersion?.scopeVersionId,
+    workItems.length,
+    selectedScopeWorkItems.length,
+    activeSelectedScopeWorkItems.length,
+    closures.length,
+    selectedScopeClosureRecords.length,
+    completedClosures.length,
+    projectionTimeline.length,
+    projectionMetrics.completedFeet,
+    projectionSource,
+    lifecycleViolations.length,
+  ]);
+  useEffect(() => {
+    if (!graphContextMatched) {
+      console.warn("[TWIN_GRAPH_CONTEXT_MISMATCH]", {
+        scopeVersionId: projectionScopeVersion?.scopeVersionId ?? "none",
+        expectedInventoryId,
+        selectedInventoryId: selectedGraph?.inventoryId,
+        expectedGraphId,
+        selectedGraphId: selectedGraph?.graphId,
+        projectionSource,
+      });
+    }
+  }, [expectedGraphId, expectedInventoryId, graphContextMatched, projectionScopeVersion?.scopeVersionId, projectionSource, selectedGraph?.graphId, selectedGraph?.inventoryId]);
   const twinStationStateCounts = twinProjection.stationStateCounts as Record<string, number>;
   const twinObjectStateCounts = twinProjection.objectStateCounts as Record<string, number>;
   const attachmentPoint = networkBasis?.attachmentCoordinates as DALCoordinate | undefined;
-  const plannedRoute = selectedGraph?.routes.find((route) => route.routeId === networkBasis?.routeId);
+  const plannedRoute = graphContextMatched ? selectedGraph?.routes.find((route) => route.routeId === networkBasis?.routeId) : undefined;
   const plannedRouteSegment = routeSegmentForAttachment(plannedRoute, attachmentPoint);
   const plannedCandidatePoints: GISPoint[] =
-    Number.isFinite(Number(geographicBasis?.candidateLongitude ?? selectedScopeVersion?.longitude)) && Number.isFinite(Number(geographicBasis?.candidateLatitude ?? selectedScopeVersion?.latitude))
+    Number.isFinite(Number(geographicBasis?.candidateLongitude ?? projectionScopeVersion?.longitude)) && Number.isFinite(Number(geographicBasis?.candidateLatitude ?? projectionScopeVersion?.latitude))
       ? [
           {
-            id: String(scopeSite?.candidateId ?? selectedScopeVersion?.scopeVersionId ?? "candidate"),
+            id: String(scopeSite?.candidateId ?? projectionScopeVersion?.scopeVersionId ?? "candidate"),
             label: String(scopeSite?.name ?? scopeSite?.companyName ?? "Candidate"),
-            coordinate: [Number(geographicBasis?.candidateLongitude ?? selectedScopeVersion?.longitude), Number(geographicBasis?.candidateLatitude ?? selectedScopeVersion?.latitude)],
+            coordinate: [Number(geographicBasis?.candidateLongitude ?? projectionScopeVersion?.longitude), Number(geographicBasis?.candidateLatitude ?? projectionScopeVersion?.latitude)],
             kind: "candidate",
           },
         ]
@@ -120,7 +201,7 @@ export default function TwinWorkspace() {
   const plannedAttachments: GISPoint[] = attachmentPoint
     ? [
         {
-          id: `${selectedScopeVersion?.scopeVersionId ?? "scope"}-attachment`,
+          id: `${projectionScopeVersion?.scopeVersionId ?? "scope"}-attachment`,
           label: "Attachment",
           coordinate: attachmentPoint,
           kind: "attachment",
@@ -151,18 +232,12 @@ export default function TwinWorkspace() {
   const plannedBuildPaths: GISBuildPath[] = proposedBuildPath?.geometry?.length
     ? [
         {
-          id: `${selectedScopeVersion?.scopeVersionId ?? "scope"}-lateral`,
+          id: `${projectionScopeVersion?.scopeVersionId ?? "scope"}-lateral`,
           label: "Service Path",
           coordinates: proposedBuildPath.geometry,
         },
       ]
     : [];
-  const phases = [
-    { label: "Phase 1", seeds: seeds.slice(0, 10) },
-    { label: "Phase 2", seeds: seeds.slice(10, 25) },
-    { label: "Phase 3", seeds: seeds.slice(25, 50) },
-  ];
-
   return (
     <section className="dal-workspace">
       <div className="dal-workspace-header">
@@ -178,35 +253,78 @@ export default function TwinWorkspace() {
       <div className="dal-panel">
         <div className="dal-status">{status}</div>
         <div className="dal-metrics">
-          <span>Inventory: {selectedGraph?.inventoryId ?? twinState?.inventoryId ?? "none"}</span>
-          <span>Scope: {selectedScopeVersion?.scopeVersionId ?? twinState?.scopeVersionId ?? "none"}</span>
-          <span>Open work: {fmt(twinState?.openWorkItems)}</span>
-          <span>Completed work: {fmt(twinState?.completedWorkItems)}</span>
-          <span>Closures: {fmt(twinState?.closureCount)}</span>
-          <span>Completed feet: {fmt(twinState?.completedFeet)}</span>
-          <span>Lifecycle State: {twinProjection.lifecycleState}</span>
+          <span>Inventory: {expectedInventoryId ?? selectedGraph?.inventoryId ?? "none"}</span>
+          <span>Scope: {projectionScopeVersion?.scopeVersionId ?? twinState?.scopeVersionId ?? "none"}</span>
+          <span>Open work: {fmt(projectionMetrics.openWorkItems)}</span>
+          <span>Completed work: {fmt(projectionMetrics.completedWorkItems)}</span>
+          <span>Closures: {fmt(projectionMetrics.closureCount)}</span>
+          <span>Completed feet: {fmt(projectionMetrics.completedFeet)}</span>
+          <span>Lifecycle State: {authoritativeLifecycleState}</span>
           <span>Verified Stations: {fmt(twinProjection.verifiedStationCount)}</span>
-          <span>Closure Timeline: {fmt(twinProjection.closureTimeline.length)}</span>
+          <span>Closure Timeline: {fmt(projectionTimeline.length)}</span>
         </div>
       </div>
 
-      <ScopeVersionLifecycleRibbon scopeVersion={selectedScopeVersion} />
+      <ScopeVersionLifecycleRibbon scopeVersion={projectionScopeVersion} />
+
+      <div className="dal-grid">
+        <div className="dal-panel">
+          <h3>Twin Source Diagnostics</h3>
+          <div className="dal-metrics">
+            <span>Selected ScopeVersion: {projectionScopeVersion?.scopeVersionId ?? "none"}</span>
+            <span>Projection source: {projectionSource}</span>
+            <span>Server work items loaded: {fmt(twinState?.totals?.workItemsLoaded ?? workItems.length)}</span>
+            <span>Work items for scope: {fmt(selectedScopeWorkItems.length)}</span>
+            <span>Active work items for scope: {fmt(activeSelectedScopeWorkItems.length)}</span>
+            <span>Server closures loaded: {fmt(twinState?.totals?.closuresLoaded ?? closures.length)}</span>
+            <span>Closures for scope: {fmt(completedClosures.length)}</span>
+            <span>Timeline events for scope: {fmt(projectionTimeline.length)}</span>
+            <span>Graph context matched: {graphContextMatched ? "true" : "false"}</span>
+          </div>
+        </div>
+        <div className="dal-panel">
+          <h3>Lifecycle Audit</h3>
+          <div className="dal-metrics">
+            <span>Total Violations: {fmt(lifecycleViolations.length)}</span>
+            <span>Blocking: {fmt(lifecycleViolations.filter((violation) => violation.severity === "BLOCKING").length)}</span>
+            <span>Warnings: {fmt(lifecycleViolations.filter((violation) => violation.severity === "WARNING").length)}</span>
+            <span>Info: {fmt(lifecycleViolations.filter((violation) => violation.severity === "INFO").length)}</span>
+          </div>
+          {lifecycleViolations.length ? (
+            <div className="dal-list">
+              {lifecycleViolations.slice(0, 8).map((violation) => (
+                <div key={violation.violationId} className="dal-list-row">
+                  <span>{violation.code}</span>
+                  <b>{violation.severity}</b>
+                  <small>{violation.message}</small>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="dal-status">No selected-scope lifecycle violations detected.</div>
+          )}
+        </div>
+      </div>
 
       <div className="dal-grid">
         <div className="dal-panel">
           <h3>Current State</h3>
-          <div className="dal-metrics">
-            <span>Inventory nodes: {fmt(selectedGraph?.nodes.length)}</span>
-            <span>Inventory edges: {fmt(selectedGraph?.edges.length)}</span>
-            <span>Inventory routes: {fmt(selectedGraph?.routes.length)}</span>
-            <span>Inventory stations: {fmt(selectedGraph?.stations.length)}</span>
-          </div>
+          {!graphContextMatched ? (
+            <div className="dal-status">Graph context does not match selected ScopeVersion.</div>
+          ) : (
+            <div className="dal-metrics">
+              <span>Inventory nodes: {fmt(selectedGraph?.nodes.length)}</span>
+              <span>Inventory edges: {fmt(selectedGraph?.edges.length)}</span>
+              <span>Inventory routes: {fmt(selectedGraph?.routes.length)}</span>
+              <span>Inventory stations: {fmt(selectedGraph?.stations.length)}</span>
+            </div>
+          )}
         </div>
 
         <div className="dal-panel">
           <h3>Proposed State</h3>
           <div className="dal-metrics">
-            <span>Scope: {selectedScopeVersion?.scopeVersionId ?? "none"}</span>
+            <span>Scope: {projectionScopeVersion?.scopeVersionId ?? "none"}</span>
             <span>Proposed ScopeVersion State: {twinProjection.proposedScopeVersionState ?? "none"}</span>
             <span>Completed Stations: {fmt(twinProjection.completedStationCount)}</span>
             <span>Verified Stations: {fmt(twinProjection.verifiedStationCount)}</span>
@@ -214,9 +332,6 @@ export default function TwinWorkspace() {
             <span>Percent Complete: {fmt(Math.round(twinProjection.percentComplete))}%</span>
             <span>Blocked Stations: {fmt(twinProjection.blockedStations.length)}</span>
             <span>Rejected Stations: {fmt(twinProjection.rejectedStations.length)}</span>
-            <span>Opportunity Seeds: {fmt(seeds.length)}</span>
-            <span>Imported Sites: {fmt(candidateSites.length)}</span>
-            <span>Qualified Sites: {fmt(candidateSites.filter((site) => site.status === "QUALIFIED").length)}</span>
             <span>Added nodes: {fmt(extensionSummary?.addedNodeCount)}</span>
             <span>Added routes: {fmt(extensionSummary?.addedRouteCount)}</span>
             <span>Added feet: {fmt(Math.round(extensionSummary?.addedFeet ?? 0))}</span>
@@ -237,9 +352,9 @@ export default function TwinWorkspace() {
         <div className="dal-panel">
           <h3>Completed State</h3>
           <div className="dal-metrics">
-            <span>Completed work: {fmt(twinState?.completedWorkItems)}</span>
-            <span>Closures: {fmt(twinState?.closureCount)}</span>
-            <span>Completed feet: {fmt(twinState?.completedFeet)}</span>
+            <span>Completed work: {fmt(projectionMetrics.completedWorkItems)}</span>
+            <span>Closures: {fmt(projectionMetrics.closureCount)}</span>
+            <span>Completed feet: {fmt(projectionMetrics.completedFeet)}</span>
           </div>
         </div>
       </div>
@@ -247,34 +362,34 @@ export default function TwinWorkspace() {
       <div className="dal-panel">
         <h3>Twin Execution Overlay</h3>
         <div className="dal-metrics">
-          <span>Planned Assets: {fmt(twinStationStateCounts.PLANNED)}</span>
-          <span>Released Assets: {fmt(twinStationStateCounts.RELEASED)}</span>
-          <span>In Progress Assets: {fmt(twinStationStateCounts.IN_PROGRESS)}</span>
-          <span>Completed Assets: {fmt(twinStationStateCounts.COMPLETE)}</span>
-          <span>Verified Assets: {fmt(twinStationStateCounts.VERIFIED)}</span>
-          <span>Blocked Assets: {fmt(twinStationStateCounts.BLOCKED)}</span>
-          <span>Rejected Assets: {fmt(twinStationStateCounts.REJECTED)}</span>
-          <span>Percent Complete: {fmt(Math.round(twinProjection.percentComplete))}%</span>
+          <span>Planned Assets: {fmt(projectionMetrics.plannedAssets)}</span>
+          <span>Released Assets: {fmt(projectionMetrics.releasedAssets)}</span>
+          <span>In Progress Assets: {fmt(projectionMetrics.inProgressAssets)}</span>
+          <span>Completed Assets: {fmt(projectionMetrics.completedAssets)}</span>
+          <span>Verified Assets: {fmt(projectionMetrics.verifiedAssets)}</span>
+          <span>Blocked Assets: {fmt(projectionMetrics.blockedAssets)}</span>
+          <span>Rejected Assets: {fmt(projectionMetrics.rejectedAssets)}</span>
+          <span>Percent Complete: {fmt(Math.round(projectionMetrics.percentComplete ?? 0))}%</span>
           <span>Planned Objects: {fmt(twinObjectStateCounts.PLANNED)}</span>
-          <span>Released Objects: {fmt(twinObjectStateCounts.RELEASED)}</span>
-          <span>Installed Objects: {fmt(twinProjection.installedObjects)}</span>
-          <span>Tested Objects: {fmt(twinProjection.testedObjects)}</span>
-          <span>Accepted Objects: {fmt(twinProjection.acceptedObjects)}</span>
-          <span>Completed Objects: {fmt(twinProjection.completeObjects)}</span>
-          <span>Verified Objects: {fmt(twinProjection.verifiedObjects)}</span>
-          <span>Blocked Objects: {fmt(twinProjection.blockedObjects)}</span>
-          <span>Rejected Objects: {fmt(twinProjection.rejectedObjects)}</span>
-          <span>Object Completion: {fmt(Math.round(twinProjection.objectCompletionPercent))}%</span>
-          <span>Station Derived Completion: {fmt(Math.round(twinProjection.stationDerivedCompletionPercent))}%</span>
+          <span>Released Objects: {fmt(projectionMetrics.releasedObjects)}</span>
+          <span>Installed Objects: {fmt(projectionMetrics.installedObjects)}</span>
+          <span>Tested Objects: {fmt(projectionMetrics.testedObjects)}</span>
+          <span>Accepted Objects: {fmt(projectionMetrics.acceptedObjects)}</span>
+          <span>Completed Objects: {fmt(projectionMetrics.completedObjects)}</span>
+          <span>Verified Objects: {fmt(projectionMetrics.verifiedObjects)}</span>
+          <span>Blocked Objects: {fmt(projectionMetrics.blockedObjects)}</span>
+          <span>Rejected Objects: {fmt(projectionMetrics.rejectedObjects)}</span>
+          <span>Object Completion: {fmt(Math.round(projectionMetrics.objectCompletionPercent ?? 0))}%</span>
+          <span>Station Derived Completion: {fmt(Math.round(projectionMetrics.stationDerivedCompletionPercent ?? 0))}%</span>
         </div>
       </div>
 
       <div className="dal-panel">
         <h3>Planned Network State</h3>
-        {selectedScopeVersion ? (
+        {projectionScopeVersion ? (
           <>
             <LeafletMap
-              autoFocusKey={`${selectedScopeVersion.scopeVersionId}-planned`}
+              autoFocusKey={`${projectionScopeVersion.scopeVersionId}-planned`}
               candidates={plannedCandidatePoints}
               attachments={plannedAttachments}
               routes={plannedRoutes}
@@ -287,6 +402,7 @@ export default function TwinWorkspace() {
                 ...plannedRoutes.flatMap((route) => route.coordinates),
               ]}
             />
+            {!graphContextMatched ? <div className="dal-status">Graph context does not match selected ScopeVersion.</div> : null}
             <div className="dal-metrics">
               <span>Candidate: {scopeSite?.name ?? scopeSite?.companyName ?? "n/a"}</span>
               <span>Route Authority: {routeAuthorityState}</span>
@@ -327,47 +443,34 @@ export default function TwinWorkspace() {
       </div>
 
       <div className="dal-grid">
-        {phases.map((phase) => (
-          <div key={phase.label} className="dal-panel">
-            <h3>{phase.label}</h3>
-            <div className="dal-metrics">
-              <span>Sites: {fmt(phase.seeds.length)}</span>
-              <span>TCV: {fmt(Math.round(phase.seeds.reduce((sum, seed) => sum + seed.estimatedTCV, 0)))}</span>
-              <span>Capex: {fmt(Math.round(phase.seeds.reduce((sum, seed) => sum + seed.buildCost, 0)))}</span>
-              <span>Route Miles: {phase.seeds.reduce((sum, seed) => sum + Number(seed.buildMiles ?? seed.buildPath?.buildMiles ?? 0), 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-              <span>Build Cost: {money(phase.seeds.reduce((sum, seed) => sum + seed.buildCost, 0))}</span>
-              <span>Crossings: {fmt(phase.seeds.reduce((sum, seed) => sum + Number(seed.buildPath?.estimatedCrossings ?? 0), 0))}</span>
-              <span>Avg Risk: {fmt(Math.round(averageRisk(phase.seeds)))}</span>
-              <span>Avg Score: {fmt(Math.round(phase.seeds.reduce((sum, seed) => sum + seed.overallScore, 0) / Math.max(phase.seeds.length, 1)))}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="dal-grid">
         <div className="dal-panel">
           <h3>Open Work</h3>
-          <div className="dal-list">
-            {workItems
-              .filter((item) => !["COMPLETE", "CANCELLED"].includes(item.status))
-              .map((item) => (
+          {selectedScopeWorkItems.filter((item) => !["COMPLETE", "CANCELLED"].includes(item.status)).length ? (
+            <div className="dal-list">
+              {selectedScopeWorkItems
+                .filter((item) => !["COMPLETE", "CANCELLED"].includes(item.status))
+                .map((item) => (
                 <div key={item.workItemId} className="dal-list-row">
                   <span>{item.title}</span>
                   <b>{item.status}</b>
                   <small>{item.workItemId}</small>
                 </div>
-              ))}
-          </div>
+                ))}
+            </div>
+          ) : (
+            <div className="dal-status">No Control work packages have been created for this ScopeVersion.</div>
+          )}
         </div>
 
         <div className="dal-panel">
           <h3>Completed Closures</h3>
+          <div className="dal-status">Source: {completedClosureSource}</div>
           <div className="dal-list">
-            {closures.map((closure) => (
-              <div key={closure.closureId} className="dal-list-row">
-                <span>{closure.closureType}</span>
-                <b>{fmt(closure.footage)} ft</b>
-                <small>{closure.closedAt}</small>
+            {completedClosures.map((closure) => (
+              <div key={(closure as any).closureId} className="dal-list-row">
+                <span>{(closure as any).closureType}</span>
+                <b>{fmt((closure as FieldClosure).footage ?? (closure as ClosureRecord).feetAffected)} ft</b>
+                <small>{(closure as FieldClosure).closedAt ?? (closure as ClosureRecord).createdAt}</small>
               </div>
             ))}
           </div>
@@ -376,9 +479,9 @@ export default function TwinWorkspace() {
 
       <div className="dal-panel">
         <h3>State Timeline</h3>
-        {twinState?.timeline.length ? (
+        {projectionTimeline.length ? (
           <div className="dal-list">
-            {twinState.timeline.map((event) => (
+            {projectionTimeline.map((event) => (
               <div key={event.eventId} className="dal-list-row">
                 <span>{event.type}</span>
                 <b>{event.entityType}</b>
