@@ -3,6 +3,7 @@ import { findRecord, readCollection, writeRecord, deleteRecord } from "./dalStor
 import { createScopeVersionFromInventoryGraph } from "../scopeversion/scopeVersionUtils";
 import { applyScopeVersionCertification } from "../scopeversion/scopeVersionCertification";
 import type {
+  ClosureRecord,
   InventoryGraph,
   ScopeVersion,
   ScopeVersionCertificationState,
@@ -250,6 +251,15 @@ export async function updateScopeVersion(scopeVersion: ScopeVersion) {
   const saved = normalizeScopeVersion(remote ?? payload);
   if (!remote) await writeRecord("scopeVersions", saved);
   return saved;
+}
+
+export async function appendScopeVersionClosure(scopeVersionId: string, closureRecord: ClosureRecord, expectedVersion?: string) {
+  const remote = await requestJson<ScopeVersion | { scopeVersion?: ScopeVersion }>(apiUrl(`/api/scopeversions/${encodeURIComponent(scopeVersionId)}/closures`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ closureRecord, expectedVersion }),
+  });
+  return normalizeScopeVersion(remote);
 }
 
 export async function deleteScopeVersion(scopeVersionId: string) {

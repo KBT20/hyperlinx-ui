@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { listControlWorkItems, listScopeVersions, saveScopeVersion } from "../api/dalClient";
+import { listControlWorkItems, listScopeVersions, saveScopeVersion, saveScopeVersionClosure } from "../api/dalClient";
 import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
 import { useDALState } from "../dal/DALState";
 import { buildFieldExecutionViewModel } from "../field/FieldExecutionViewModel";
@@ -10,7 +10,7 @@ import {
   createClosureRecord,
 } from "../scopeversion/ClosureAuthorityEngine";
 import { buildScopeVersionFieldViewModel } from "../scopeversion/ScopeVersionFieldViewModel";
-import type { ClosureAuthority, ControlWorkItem, FieldObjectWorkContext, FieldStationWorkContext, RouteStationState, ScopeObjectState, ScopeVersion } from "../types/dal";
+import type { ClosureAuthority, ClosureRecord, ControlWorkItem, FieldObjectWorkContext, FieldStationWorkContext, RouteStationState, ScopeObjectState, ScopeVersion } from "../types/dal";
 
 function activeWork(item: ControlWorkItem) {
   return item.status === "ACTIVE" || item.status === "PENDING";
@@ -110,6 +110,13 @@ function latestClosureTimestamp(object: FieldObjectWorkContext) {
   return object.closureHistory.at(-1)?.updatedAt ?? object.closureHistory.at(-1)?.createdAt ?? "none";
 }
 
+function persistenceBadgeClass(status: string) {
+  if (status.startsWith("SERVER_PERSISTED")) return "dal-badge pass";
+  if (status.startsWith("PERSISTENCE_FAILED")) return "dal-badge fail";
+  if (status.startsWith("PERSISTENCE_PENDING")) return "dal-badge warning";
+  return "dal-badge warning";
+}
+
 function stateCounts(stations: FieldStationWorkContext[]) {
   return stations.reduce<Record<string, number>>((counts, station) => {
     counts[station.stationDerivedState] = (counts[station.stationDerivedState] ?? 0) + 1;
@@ -188,6 +195,14 @@ export default function FieldWorkspace() {
         setSelectedScopeVersion(nextSelected);
         setSelectedScopeVersionId(nextSelected.scopeVersionId);
       }
+      if (nextSelected) {
+        const closureIds = [...(nextSelected.canonicalTruth?.closures ?? []), ...(nextSelected.closures ?? [])].map((closure) => closure.closureId);
+        console.log("[SCOPEVERSION_RELOAD_CLOSURES]", {
+          scopeVersionId: nextSelected.scopeVersionId,
+          closureCount: new Set(closureIds).size,
+          closureIds,
+        });
+      }
       setStatus("Field data loaded.");
     } catch (err: any) {
       setStatus(`Field load failed: ${err?.message ?? String(err)}`);
@@ -201,6 +216,48 @@ export default function FieldWorkspace() {
     setScopeVersions((prev) => [saved, ...prev.filter((scope) => scope.scopeVersionId !== saved.scopeVersionId)]);
     setPersistenceStatus("PERSISTENCE_PENDING: ScopeVersion updated through ClosureAuthorityEngine; DAL server persistence depends on configured endpoint availability.");
     return saved;
+  }
+
+  async function persistClosure(scopeVersion: ScopeVersion, closure: ClosureRecord) {
+    console.log("[CLOSURE_PERSIST_REQUEST]", {
+      scopeVersionId: scopeVersion.scopeVersionId,
+      closureId: closure.closureId,
+      closureType: closure.closureType,
+      stationId: closure.stationId,
+      objectIds: closure.objectIds,
+      newStationState: closure.newStationState,
+      newObjectState: closure.newObjectState,
+    });
+    try {
+      const saved = await saveScopeVersionClosure(scopeVersion.scopeVersionId, closure, scopeVersion.updatedAt);
+      setSelectedScopeVersion(saved);
+      setSelectedScopeVersionId(saved.scopeVersionId);
+      setScopeVersions((prev) => [saved, ...prev.filter((item) => item.scopeVersionId !== saved.scopeVersionId)]);
+      setPersistenceStatus("SERVER_PERSISTED");
+      console.log("[CLOSURE_PERSIST_SUCCESS]", {
+        scopeVersionId: saved.scopeVersionId,
+        closureId: closure.closureId,
+        closureCount: new Set([...(saved.canonicalTruth?.closures ?? []), ...(saved.closures ?? [])].map((item) => item.closureId)).size,
+      });
+      return saved;
+    } catch (err: any) {
+      console.log("[CLOSURE_PERSIST_FAILURE]", {
+        scopeVersionId: scopeVersion.scopeVersionId,
+        closureId: closure.closureId,
+        message: err?.message ?? String(err),
+      });
+      const optimistic = applyClosureToScopeVersion(scopeVersion, closure);
+      try {
+        const saved = await persistUpdatedScope(optimistic);
+        setPersistenceStatus(`PERSISTENCE_PENDING: server closure append failed; local fallback retained. ${err?.message ?? String(err)}`);
+        return saved;
+      } catch (fallbackErr: any) {
+        setSelectedScopeVersion(optimistic);
+        setSelectedScopeVersionId(optimistic.scopeVersionId);
+        setPersistenceStatus(`PERSISTENCE_FAILED: server and local fallback failed. ${fallbackErr?.message ?? String(fallbackErr)}`);
+        throw fallbackErr;
+      }
+    }
   }
 
   function selectStation(station: FieldStationWorkContext | undefined, objectId?: string) {
@@ -259,8 +316,7 @@ export default function FieldWorkspace() {
         authority: closure.authority,
         createdAt: closure.createdAt,
       });
-      const updated = applyClosureToScopeVersion(activeScope, closure);
-      const saved = await persistUpdatedScope(updated);
+      const saved = await persistClosure(activeScope, closure);
       const nextModel = buildFieldExecutionViewModel(saved);
       const nextStation = nextModel.stations.find((station) => station.stationId === object.stationId);
       if (toState === "COMPLETE" || toState === "VERIFIED") {
@@ -296,8 +352,7 @@ export default function FieldWorkspace() {
         authority,
         notes,
       });
-      const updated = applyClosureToScopeVersion(activeScope, closure);
-      const saved = await persistUpdatedScope(updated);
+      const saved = await persistClosure(activeScope, closure);
       const nextModel = buildFieldExecutionViewModel(saved);
       if (toState === "COMPLETE" || toState === "VERIFIED") {
         const nextOpen = nextModel.stations.find((station) => station.openObjectsAtStation.length);
@@ -326,8 +381,7 @@ export default function FieldWorkspace() {
         authority,
         notes,
       });
-      const updated = applyClosureToScopeVersion(activeScope, closure);
-      await persistUpdatedScope(updated);
+      await persistClosure(activeScope, closure);
       setStatus(`Range closure ${closure.closureId} applied: ${rangeStartId} -> ${rangeEndId} as ${rangeTargetState}.`);
     } catch (err: any) {
       setStatus(`Range closure rejected: ${err?.message ?? String(err)}`);
@@ -427,6 +481,9 @@ export default function FieldWorkspace() {
             <option value="SYSTEM">SYSTEM</option>
           </select>
           <div className="dal-status">{status}</div>
+          <div className="dal-status">
+            <span className={persistenceBadgeClass(persistenceStatus)}>{persistenceStatus.split(":")[0]}</span>
+          </div>
           <div className="dal-status">{persistenceStatus}</div>
         </div>
 

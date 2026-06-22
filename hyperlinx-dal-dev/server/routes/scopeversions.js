@@ -33,6 +33,234 @@ function isCertifiedImmutable(scopeVersion) {
   return Boolean(scopeVersion?.isImmutable || scopeVersion?.certificationState === "CERTIFIED");
 }
 
+const STATION_TRANSITIONS = {
+  PLANNED: ["RELEASED", "BLOCKED", "REJECTED"],
+  RELEASED: ["IN_PROGRESS", "BLOCKED", "REJECTED"],
+  IN_PROGRESS: ["COMPLETE", "BLOCKED", "REJECTED"],
+  COMPLETE: ["VERIFIED", "BLOCKED", "REJECTED"],
+  VERIFIED: ["BLOCKED", "REJECTED"],
+  BLOCKED: ["IN_PROGRESS", "REJECTED"],
+  REJECTED: [],
+};
+
+const OBJECT_TRANSITIONS = {
+  PLANNED: ["RELEASED", "BLOCKED", "REJECTED"],
+  RELEASED: ["INSTALLED", "BLOCKED", "REJECTED"],
+  INSTALLED: ["TESTED", "BLOCKED", "REJECTED"],
+  TESTED: ["ACCEPTED", "BLOCKED", "REJECTED"],
+  ACCEPTED: ["COMPLETE", "BLOCKED", "REJECTED"],
+  COMPLETE: ["VERIFIED", "BLOCKED", "REJECTED"],
+  VERIFIED: ["BLOCKED", "REJECTED"],
+  BLOCKED: ["RELEASED", "INSTALLED", "REJECTED"],
+  REJECTED: [],
+};
+
+function isRouteStation(value) {
+  return Boolean(value) && typeof value === "object" && typeof value.stationId === "string" && typeof value.stationState === "string";
+}
+
+function isScopeObject(value) {
+  return Boolean(value) && typeof value === "object" && typeof value.objectId === "string" && typeof value.objectState === "string";
+}
+
+function routeStations(scopeVersion) {
+  return Array.isArray(scopeVersion?.canonicalTruth?.stations) ? scopeVersion.canonicalTruth.stations.filter(isRouteStation).sort((a, b) => Number(a.measureFeet) - Number(b.measureFeet)) : [];
+}
+
+function scopeObjects(scopeVersion) {
+  return Array.isArray(scopeVersion?.canonicalTruth?.objects) ? scopeVersion.canonicalTruth.objects.filter(isScopeObject) : [];
+}
+
+function closureRecords(scopeVersion) {
+  const byId = new Map();
+  [...(scopeVersion?.canonicalTruth?.closures ?? []), ...(scopeVersion?.closures ?? [])].forEach((closure) => {
+    if (closure?.closureId) byId.set(closure.closureId, closure);
+  });
+  return Array.from(byId.values()).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+}
+
+function stationById(stations, stationId) {
+  return stations.find((station) => station.stationId === stationId);
+}
+
+function stationsInRange(scopeVersion, stationStartId, stationEndId) {
+  const stations = routeStations(scopeVersion);
+  const start = stationById(stations, stationStartId);
+  const end = stationById(stations, stationEndId);
+  if (!start || !end) return [];
+  const min = Math.min(Number(start.measureFeet), Number(end.measureFeet));
+  const max = Math.max(Number(start.measureFeet), Number(end.measureFeet));
+  return stations.filter((station) => Number(station.measureFeet) >= min && Number(station.measureFeet) <= max);
+}
+
+function isValidTransition(from, to, table) {
+  return Boolean(from && to && from !== to && table[from]?.includes(to));
+}
+
+function validateClosureRecord(scopeVersion, closureRecord) {
+  if (!closureRecord || typeof closureRecord !== "object") throw new Error("ClosureRecord is required.");
+  if (!closureRecord.closureId) throw new Error("ClosureRecord closureId is required.");
+  if (!closureRecord.scopeVersionId) throw new Error("ClosureRecord scopeVersionId is required.");
+  if (closureRecord.scopeVersionId !== scopeVersion.scopeVersionId) throw new Error("ClosureRecord scopeVersionId does not match target ScopeVersion.");
+  if (!closureRecord.authority) throw new Error("Closure authority is required.");
+  if (closureRecords(scopeVersion).some((closure) => closure.closureId === closureRecord.closureId)) {
+    throw new Error(`Duplicate closureId rejected: ${closureRecord.closureId}.`);
+  }
+
+  const stations = routeStations(scopeVersion);
+  const objects = scopeObjects(scopeVersion);
+  const objectIds = Array.isArray(closureRecord.objectIds) ? closureRecord.objectIds : [];
+
+  if (closureRecord.closureType === "STATION_STATE_TRANSITION") {
+    const station = stationById(stations, closureRecord.stationId);
+    if (!station) throw new Error(`Closure references missing station ${closureRecord.stationId}.`);
+    if (!isValidTransition(station.stationState, closureRecord.newStationState, STATION_TRANSITIONS)) {
+      throw new Error(`Invalid station transition: ${station.stationState} -> ${closureRecord.newStationState}.`);
+    }
+    return { stationIds: [station.stationId], objectIds, previousStationState: station.stationState };
+  }
+
+  if (closureRecord.closureType === "STATION_RANGE_TRANSITION") {
+    const range = stationsInRange(scopeVersion, closureRecord.stationStartId, closureRecord.stationEndId);
+    if (!range.length) throw new Error(`Closure references missing station range ${closureRecord.stationStartId} -> ${closureRecord.stationEndId}.`);
+    const invalid = range.find((station) => !isValidTransition(station.stationState, closureRecord.newStationState, STATION_TRANSITIONS));
+    if (invalid) throw new Error(`Invalid station transition in range: ${invalid.stationId} ${invalid.stationState} -> ${closureRecord.newStationState}.`);
+    return { stationIds: range.map((station) => station.stationId), objectIds, previousStationState: range[0]?.stationState };
+  }
+
+  if (closureRecord.closureType === "OBJECT_STATE_TRANSITION" || closureRecord.closureType === "OBJECT_RANGE_TRANSITION") {
+    if (!objectIds.length) throw new Error("Object closure requires objectIds.");
+    const previousObjectStates = {};
+    const stationIds = new Set();
+    objectIds.forEach((objectId) => {
+      const object = objects.find((item) => item.objectId === objectId);
+      if (!object) throw new Error(`Closure references missing object ${objectId}.`);
+      if (!isValidTransition(object.objectState, closureRecord.newObjectState, OBJECT_TRANSITIONS)) {
+        throw new Error(`Invalid object transition: ${object.objectState} -> ${closureRecord.newObjectState}.`);
+      }
+      previousObjectStates[object.objectId] = object.objectState;
+      if (object.stationId) stationIds.add(object.stationId);
+    });
+    return { stationIds: Array.from(stationIds), objectIds, previousObjectStates };
+  }
+
+  throw new Error(`Unsupported closureType ${closureRecord.closureType}.`);
+}
+
+function calculateProgress(scopeVersion) {
+  const stations = routeStations(scopeVersion);
+  const objects = scopeObjects(scopeVersion);
+  const closures = closureRecords(scopeVersion);
+  const stationStateCounts = stations.reduce((counts, station) => {
+    counts[station.stationState] = (counts[station.stationState] ?? 0) + 1;
+    return counts;
+  }, {});
+  const objectStateCounts = objects.reduce((counts, object) => {
+    counts[object.objectState] = (counts[object.objectState] ?? 0) + 1;
+    return counts;
+  }, {});
+  const totalFeet = Number(scopeVersion.canonicalTruth?.stationing?.routeFeet ?? scopeVersion.certifiedRouteReference?.routeFeet ?? scopeVersion.buildFeet ?? stations.at(-1)?.measureFeet ?? 0);
+  const completeStations = stations.filter((station) => station.stationState === "COMPLETE" || station.stationState === "VERIFIED");
+  const verifiedStations = stations.filter((station) => station.stationState === "VERIFIED");
+  let completedFeet = completeStations.reduce((sum, station) => {
+    const index = stations.findIndex((item) => item.stationId === station.stationId);
+    if (index <= 0) return sum;
+    return sum + Math.max(0, Number(stations[index].measureFeet) - Number(stations[index - 1].measureFeet));
+  }, 0);
+  if (completeStations.length === 1 && stations[0]?.stationId === completeStations[0].stationId && stations[1]) {
+    completedFeet = Math.max(0, Number(stations[1].measureFeet) - Number(stations[0].measureFeet));
+  }
+  const lastClosure = closures.at(-1);
+  return {
+    scopeVersionId: scopeVersion.scopeVersionId,
+    totalStations: stations.length,
+    totalObjects: objects.length,
+    totalFeet,
+    releasedStations: stationStateCounts.RELEASED ?? 0,
+    inProgressStations: stationStateCounts.IN_PROGRESS ?? 0,
+    completeStations: completeStations.length,
+    verifiedStations: verifiedStations.length,
+    completedFeet,
+    remainingFeet: Math.max(0, totalFeet - completedFeet),
+    percentComplete: totalFeet > 0 ? Math.min(100, (completedFeet / totalFeet) * 100) : stations.length ? (completeStations.length / stations.length) * 100 : 0,
+    closureCount: closures.length,
+    latestClosureTimestamp: lastClosure?.updatedAt ?? lastClosure?.createdAt,
+    lastClosureId: lastClosure?.closureId,
+    openClosures: closures.filter((closure) => closure.newStationState !== "COMPLETE" && closure.newStationState !== "VERIFIED" && closure.newObjectState !== "COMPLETE" && closure.newObjectState !== "VERIFIED").length,
+    stationStateCounts,
+    objectStateCounts,
+    closureAuthorityStatus: stations.length && objects.length ? "PASS" : "FAIL",
+  };
+}
+
+function deriveLifecycleState(scopeVersion) {
+  const stationStates = routeStations(scopeVersion).map((station) => station.stationState);
+  const objectStates = scopeObjects(scopeVersion).map((object) => object.objectState);
+  if (scopeVersion.status === "REJECTED" || stationStates.includes("REJECTED") || objectStates.includes("REJECTED")) return "REJECTED";
+  if (scopeVersion.status === "BLOCKED" || stationStates.includes("BLOCKED") || objectStates.includes("BLOCKED")) return "BLOCKED";
+  if (stationStates.length && stationStates.every((state) => state === "VERIFIED")) return "VERIFIED";
+  if (stationStates.length && stationStates.every((state) => state === "COMPLETE" || state === "VERIFIED")) return "COMPLETE";
+  if (stationStates.some((state) => state === "COMPLETE" || state === "VERIFIED")) return "PARTIALLY_COMPLETE";
+  if (stationStates.includes("IN_PROGRESS")) return "IN_FIELD";
+  if (stationStates.includes("RELEASED")) return "RELEASED_TO_CONTROL";
+  if (scopeVersion.status === "QUOTED") return "QUOTED";
+  if (scopeVersion.status === "APPROVED" || scopeVersion.status === "ACTIVATED") return "APPROVED";
+  if (scopeVersion.certifiedRouteReference?.routeAuthorityState === "PROVISIONALLY_CERTIFIED") return "PROVISIONALLY_CERTIFIED";
+  return "ANALYZED";
+}
+
+function applyClosureRecord(scopeVersion, closureRecord) {
+  const validation = validateClosureRecord(scopeVersion, closureRecord);
+  const timestamp = nowIso();
+  const affectedStationIds =
+    closureRecord.closureType === "STATION_RANGE_TRANSITION"
+      ? stationsInRange(scopeVersion, closureRecord.stationStartId, closureRecord.stationEndId).map((station) => station.stationId)
+      : closureRecord.stationId
+        ? [closureRecord.stationId]
+        : validation.stationIds;
+  const affectedObjectIds = new Set(validation.objectIds);
+  const persistedClosure = {
+    ...closureRecord,
+    previousStationState: validation.previousStationState ?? closureRecord.previousStationState,
+    previousObjectStates: validation.previousObjectStates ?? closureRecord.previousObjectStates,
+    persistenceStatus: "PERSISTED",
+    updatedAt: timestamp,
+  };
+  const nextStations = routeStations(scopeVersion).map((station) =>
+    closureRecord.newStationState && affectedStationIds.includes(station.stationId)
+      ? { ...station, stationState: closureRecord.newStationState, updatedAt: timestamp }
+      : station
+  );
+  const nextObjects = scopeObjects(scopeVersion).map((object) =>
+    closureRecord.newObjectState && affectedObjectIds.has(object.objectId)
+      ? { ...object, objectState: closureRecord.newObjectState, updatedAt: timestamp }
+      : object
+  );
+  const closures = [...closureRecords(scopeVersion), persistedClosure];
+  const nextScope = normalizeScopeVersion({
+    ...scopeVersion,
+    closures,
+    updatedAt: timestamp,
+    canonicalTruth: {
+      ...(scopeVersion.canonicalTruth ?? {}),
+      stations: nextStations,
+      objects: nextObjects,
+      closures,
+    },
+  });
+  const progress = calculateProgress(nextScope);
+  const lifecycleState = deriveLifecycleState(nextScope);
+  return normalizeScopeVersion({
+    ...nextScope,
+    status: lifecycleState,
+    canonicalTruth: {
+      ...(nextScope.canonicalTruth ?? {}),
+      progress,
+      lifecycleState,
+    },
+  });
+}
+
 function relationshipForChild(proposed = {}) {
   return proposed.relationshipType ?? "AMENDMENT";
 }
@@ -144,6 +372,19 @@ export async function handleScopeVersions(req, res, pathname) {
     const body = await readRequestJson(req);
     const scopeVersion = await persistScopeVersion(normalizeScopeVersion(body));
     jsonResponse(res, 201, { scopeVersion });
+    return true;
+  }
+
+  if (!match.base && match.action === "closures" && req.method === "POST") {
+    try {
+      const body = await readRequestJson(req);
+      const closureRecord = unwrapBody(body, "closureRecord");
+      const existing = await loadScopeVersion(match.id);
+      const scopeVersion = await persistScopeVersion(applyClosureRecord(existing, closureRecord));
+      jsonResponse(res, 200, { scopeVersion, closureRecord: closureRecords(scopeVersion).find((closure) => closure.closureId === closureRecord?.closureId) });
+    } catch (err) {
+      errorResponse(res, /not found/i.test(String(err?.message ?? err)) ? 404 : 409, err instanceof Error ? err.message : String(err));
+    }
     return true;
   }
 

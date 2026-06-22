@@ -3,6 +3,8 @@ import { DATA_ROOT, DIRS, PORT, errorResponse, jsonResponse } from "./routes/_sh
 import { handleCandidateSites } from "./routes/candidate-sites.js";
 import { handleCertifiedRoutes } from "./routes/certified-routes.js";
 import { handleCloseEvents } from "./routes/close-events.js";
+import { handleControlWorkItems } from "./routes/control-work-items.js";
+import { handleFieldClosures } from "./routes/field-closures.js";
 import { handleGeocode } from "./routes/geocode.js";
 import { handleInventoryGraphs } from "./routes/inventory-graphs.js";
 import { handleIofPackages } from "./routes/iof-packages.js";
@@ -20,6 +22,8 @@ const routes = [
   handleMarketplaceQuotes,
   handleIofPackages,
   handleCloseEvents,
+  handleControlWorkItems,
+  handleFieldClosures,
 ];
 
 const server = http.createServer(async (req, res) => {
@@ -42,6 +46,8 @@ const server = http.createServer(async (req, res) => {
           iofPackages: true,
           closeEvents: true,
           certifiedRoutes: true,
+          controlWorkItems: true,
+          fieldClosures: true,
           geocode: true,
         },
       });

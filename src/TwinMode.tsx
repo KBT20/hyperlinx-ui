@@ -193,6 +193,17 @@ const inputStyle: React.CSSProperties = {
   outline: "none",
 };
 
+// PHASE 5.1E:
+// Executive Program Execution panel.
+// Presentation layer only.
+// Future versions may bind to actual program budget and deployment metrics.
+const programExecutionMetrics = [
+  { label: "Approved Budget", value: "$12.4M" },
+  { label: "Capital Deployed", value: "$3.1M" },
+  { label: "Stations Planned", value: "686" },
+  { label: "Schedule Health", value: "ON TRACK" },
+] as const;
+
 function closeTypeValue(close?: CloseRecord | any) {
   return getCloseType(close as any) || "";
 }
@@ -819,7 +830,7 @@ export default function TwinMode() {
       <aside style={sideStyle}>
         <div style={panelStyle}>
           <div style={{ marginBottom: 16 }}>
-            <div style={sectionLabelStyle}>StellaOS Twin</div>
+            <div style={sectionLabelStyle}>Teralinx Twin</div>
             <div
               style={{
                 fontSize: 34,
@@ -832,6 +843,8 @@ export default function TwinMode() {
             </div>
             <div style={{ color: "#93a7c5", fontSize: 14, lineHeight: 1.5 }}>
               Operational Replay + Derived State
+              <br />
+              Powered by IOF
             </div>
           </div>
 
@@ -915,7 +928,7 @@ export default function TwinMode() {
 
           {financialState?.overall && (
             <div style={{ marginBottom: 16 }}>
-              <div style={sectionLabelStyle}>Financial Summary</div>
+              <div style={sectionLabelStyle}>Program Execution</div>
               <div
                 style={{
                   display: "grid",
@@ -923,22 +936,13 @@ export default function TwinMode() {
                   gap: 8,
                 }}
               >
-                <StatCard
-                  label="Install Cost"
-                  value={`$${Math.round(financialState.overall.totalInstallCost / 1000)}k`}
-                />
-                <StatCard
-                  label="Proj. Revenue"
-                  value={`$${Math.round(financialState.overall.totalProjectedRevenue / 1000)}k`}
-                />
-                <StatCard
-                  label="Margin"
-                  value={`${Math.round(financialState.overall.averageMarginPercentage)}%`}
-                />
-                <StatCard
-                  label="Payback"
-                  value={`${Math.round(financialState.overall.portfolioPaybackMonths)} mo`}
-                />
+                {programExecutionMetrics.map((metric) => (
+                  <StatCard
+                    key={metric.label}
+                    label={metric.label}
+                    value={metric.value}
+                  />
+                ))}
               </div>
             </div>
           )}
@@ -1273,7 +1277,10 @@ export default function TwinMode() {
             <div>
               <div style={sectionLabelStyle}>Twin Console</div>
               <div style={{ fontSize: 24, fontWeight: 800 }}>
-                Operator + Human Interface
+                Teralinx Operations Console
+              </div>
+              <div style={{ color: "#93a7c5", fontSize: 13, marginTop: 4 }}>
+                Powered by IOF Reasoning Fabric
               </div>
             </div>
 

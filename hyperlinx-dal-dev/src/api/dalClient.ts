@@ -12,6 +12,7 @@ import { listServerBaselineGraphMetadata, loadServerBaselineGraph } from "./inve
 import {
   createScopeVersion as createScopeVersionRecord,
   ensureInventoryScopeVersion,
+  appendScopeVersionClosure as appendScopeVersionClosureRecord,
   listScopeVersions as listScopeVersionRecords,
   loadScopeVersion as loadScopeVersionRecord,
   updateScopeVersion as updateScopeVersionRecord,
@@ -43,6 +44,7 @@ import type {
   ScopeVersion,
   TwinState,
   CloseEvent,
+  ClosureRecord,
 } from "../types/dal";
 import type { CandidateSite } from "../types/candidateSite";
 import type { GraphExtension } from "../types/graphExtension";
@@ -390,6 +392,10 @@ export async function saveScopeVersion(scopeVersion: ScopeVersion) {
     },
   });
   return existingLocal ? updateScopeVersionRecord(payload) : createScopeVersionRecord(payload);
+}
+
+export async function saveScopeVersionClosure(scopeVersionId: string, closureRecord: ClosureRecord, expectedVersion?: string) {
+  return appendScopeVersionClosureRecord(scopeVersionId, closureRecord, expectedVersion);
 }
 
 export async function listIofPackages() {

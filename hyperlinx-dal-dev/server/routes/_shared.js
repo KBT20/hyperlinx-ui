@@ -15,6 +15,8 @@ export const DIRS = {
   iofPackages: path.join(DATA_ROOT, "iof-packages"),
   closeEvents: path.join(DATA_ROOT, "close-events"),
   certifiedRoutes: path.join(DATA_ROOT, "certified-routes"),
+  controlWorkItems: path.join(DATA_ROOT, "control-work-items"),
+  fieldClosures: path.join(DATA_ROOT, "field-closures"),
 };
 
 export function jsonResponse(res, statusCode, payload) {
