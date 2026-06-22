@@ -1,40 +1,45 @@
 import type { MapKernelPrimitive, MapKernelRenderSpec } from "../mapkernel";
 import type { CertifiedRoute, RouteAuthorityState } from "./CertifiedRouteAuthority";
+import { normalizeRouteAuthorityState } from "../kernel/KernelStateRegistry";
 
 function routeAuthorityLayer(state: RouteAuthorityState): MapKernelPrimitive["layerId"] {
-  if (state === "CERTIFIED_ROUTE" || state === "PROVISIONALLY_CERTIFIED") return "routeAuthorityCertified";
-  if (state === "DIRECT_FALLBACK") return "routeAuthorityDirectFallback";
-  if (state === "REJECTED_ROUTE" || state === "BLOCKED") return "routeAuthorityRejected";
+  const normalized = normalizeRouteAuthorityState<RouteAuthorityState>(state);
+  if (normalized === "CERTIFIED_ROUTE" || normalized === "PROVISIONALLY_CERTIFIED") return "routeAuthorityCertified";
+  if (normalized === "DIRECT_FALLBACK") return "routeAuthorityDirectFallback";
+  if (normalized === "REJECTED" || normalized === "BLOCKED") return "routeAuthorityRejected";
   return "routeAuthorityDraft";
 }
 
 function routeAuthoritySourceLayer(state: RouteAuthorityState) {
-  if (state === "CERTIFIED_ROUTE" || state === "PROVISIONALLY_CERTIFIED") return "ROUTE_AUTHORITY_CERTIFIED";
-  if (state === "DIRECT_FALLBACK") return "ROUTE_AUTHORITY_DIRECT_FALLBACK";
-  if (state === "REJECTED_ROUTE" || state === "BLOCKED") return "ROUTE_AUTHORITY_REJECTED";
+  const normalized = normalizeRouteAuthorityState<RouteAuthorityState>(state);
+  if (normalized === "CERTIFIED_ROUTE" || normalized === "PROVISIONALLY_CERTIFIED") return "ROUTE_AUTHORITY_CERTIFIED";
+  if (normalized === "DIRECT_FALLBACK") return "ROUTE_AUTHORITY_DIRECT_FALLBACK";
+  if (normalized === "REJECTED" || normalized === "BLOCKED") return "ROUTE_AUTHORITY_REJECTED";
   return "ROUTE_AUTHORITY_DRAFT";
 }
 
 function routeStyle(state: RouteAuthorityState): MapKernelPrimitive["style"] {
-  if (state === "CERTIFIED_ROUTE" || state === "PROVISIONALLY_CERTIFIED") {
+  const normalized = normalizeRouteAuthorityState<RouteAuthorityState>(state);
+  if (normalized === "CERTIFIED_ROUTE" || normalized === "PROVISIONALLY_CERTIFIED") {
     return { stroke: "#16a34a", strokeWidth: 5, opacity: 0.96, dasharray: "" };
   }
-  if (state === "DIRECT_FALLBACK") {
+  if (normalized === "DIRECT_FALLBACK") {
     return { stroke: "#f97316", strokeWidth: 4, opacity: 0.9, dasharray: "12 8" };
   }
-  if (state === "REJECTED_ROUTE" || state === "BLOCKED") {
+  if (normalized === "REJECTED" || normalized === "BLOCKED") {
     return { stroke: "#991b1b", strokeWidth: 4, opacity: 0.78, dasharray: "5 5" };
   }
   return { stroke: "#dc2626", strokeWidth: 4, opacity: 0.9, dasharray: "8 6" };
 }
 
 function stateLabel(state: RouteAuthorityState) {
-  if (state === "CERTIFIED_ROUTE") return "CERTIFIED";
-  if (state === "PROVISIONALLY_CERTIFIED") return "PROVISIONAL";
-  if (state === "DIRECT_FALLBACK") return "DIRECT FALLBACK";
-  if (state === "ENGINEER_REVIEW_REQUIRED") return "ENGINEER REVIEW REQUIRED";
-  if (state === "REJECTED_ROUTE") return "REJECTED";
-  if (state === "BLOCKED") return "BLOCKED";
+  const normalized = normalizeRouteAuthorityState<RouteAuthorityState>(state);
+  if (normalized === "CERTIFIED_ROUTE") return "CERTIFIED";
+  if (normalized === "PROVISIONALLY_CERTIFIED") return "PROVISIONAL";
+  if (normalized === "DIRECT_FALLBACK") return "DIRECT FALLBACK";
+  if (normalized === "ENGINEER_REVIEW_REQUIRED") return "ENGINEER REVIEW REQUIRED";
+  if (normalized === "REJECTED") return "REJECTED";
+  if (normalized === "BLOCKED") return "BLOCKED";
   return "DRAFT";
 }
 

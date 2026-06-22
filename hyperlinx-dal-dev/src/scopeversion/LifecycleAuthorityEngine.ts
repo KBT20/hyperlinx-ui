@@ -8,6 +8,7 @@ import type {
   ScopeVersionExecutionState,
 } from "../types/dal";
 import { getAuthoritativeLifecycleState } from "./ScopeVersionLifecycleGuard";
+import { normalizeControlWorkStatus } from "../kernel/KernelStateRegistry";
 
 export type LifecycleViolationCode =
   | "FIELD_CLOSURE_WITHOUT_ACTIVE_WORK"
@@ -168,10 +169,11 @@ export function canControlActivateWork(scope: ScopeVersion | null | undefined, w
 export function canFieldExecute(scope: ScopeVersion | null | undefined, workItem?: ControlWorkItem): { allowed: boolean; reasons: string[] } {
   const reasons: string[] = [];
   const lifecycleState = getAuthoritativeLifecycleState(scope);
+  const workStatus = workItem?.status ? normalizeControlWorkStatus<ControlWorkStatus>(workItem.status) : undefined;
   if (!scope) reasons.push("Select a ScopeVersion before Field execution.");
   if (scope && !FIELD_EXECUTABLE_STATUSES.has(String(lifecycleState))) reasons.push("LIFECYCLE_AUTHORITY_VIOLATION: ScopeVersion must be CONTROL_ACTIVE or FIELD before Field execution.");
   if (!workItem) reasons.push("No active Control work package is selected.");
-  if (workItem && workItem.status !== "ACTIVE") reasons.push("Selected Control work package must be ACTIVE.");
+  if (workItem && workStatus !== "ACTIVE") reasons.push("Selected Control work package must be ACTIVE.");
   if (scope && workItem && workItem.scopeVersionId !== scope.scopeVersionId) reasons.push("Selected Control work package does not belong to this ScopeVersion.");
   if (scope && !hasRouteAuthority(scope)) reasons.push("CertifiedRoute authority is required before Field execution.");
   if (scope && stationCount(scope) <= 0) reasons.push("ScopeVersion stationing is required before Field execution.");
@@ -181,7 +183,7 @@ export function canFieldExecute(scope: ScopeVersion | null | undefined, workItem
     scopeVersionId: scope?.scopeVersionId ?? "none",
     lifecycleState,
     workItemId: workItem?.workItemId ?? "none",
-    workStatus: workItem?.status ?? "none",
+    workStatus: workStatus ?? "none",
     routeAuthority: routeAuthority(scope) ?? "none",
     stationCount: stationCount(scope),
     objectCount: objectCount(scope),
@@ -192,12 +194,12 @@ export function canFieldExecute(scope: ScopeVersion | null | undefined, workItem
 
 function statusForType(workItems: ControlWorkItem[], workType: NonNullable<ControlWorkItem["workType"]>): ControlWorkStatus | "NOT_CREATED" {
   const item = workItems.find((workItem) => workItem.workType === workType);
-  return item?.status ?? "NOT_CREATED";
+  return item?.status ? normalizeControlWorkStatus<ControlWorkStatus>(item.status) : "NOT_CREATED";
 }
 
 export function buildScopeVersionExecutionState(scopeVersionId: string, workItems: ControlWorkItem[]): ScopeVersionExecutionState {
   const scopedItems = workItems.filter((workItem) => workItem.scopeVersionId === scopeVersionId);
-  const statuses = scopedItems.map((workItem) => workItem.status);
+  const statuses = scopedItems.map((workItem) => normalizeControlWorkStatus<ControlWorkStatus>(workItem.status));
   const overallExecutionState: ScopeVersionExecutionState["overallExecutionState"] =
     !scopedItems.length
       ? "NOT_CREATED"
@@ -205,8 +207,8 @@ export function buildScopeVersionExecutionState(scopeVersionId: string, workItem
         ? "COMPLETE"
         : statuses.some((status) => status === "ACTIVE")
           ? "ACTIVE"
-          : statuses.some((status) => status === "ON_HOLD")
-            ? "ON_HOLD"
+          : statuses.some((status) => status === "HOLD" || status === "BLOCKED")
+            ? "HOLD"
             : statuses.some((status) => status === "COMPLETE")
               ? "PARTIALLY_COMPLETE"
               : statuses.every((status) => status === "CANCELLED")
@@ -302,7 +304,10 @@ export function deriveLifecycleViolations(
     const scopeVersionId = closureScopeId(closure);
     const scope = scopesById.get(scopeVersionId);
     const workForScope = workByScope.get(scopeVersionId) ?? [];
-    const activeOrCompleteWork = workForScope.filter((workItem) => workItem.status === "ACTIVE" || workItem.status === "COMPLETE");
+    const activeOrCompleteWork = workForScope.filter((workItem) => {
+      const status = normalizeControlWorkStatus<ControlWorkStatus>(workItem.status);
+      return status === "ACTIVE" || status === "COMPLETE";
+    });
     const closureId = (closure as ClosureRecord).closureId ?? (closure as FieldClosure).closureId;
     const workItemId = (closure as ClosureRecord).workItemId ?? (closure as FieldClosure).workItemId;
     if (!workForScope.length) {

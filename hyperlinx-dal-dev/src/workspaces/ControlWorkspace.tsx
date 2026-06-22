@@ -9,7 +9,7 @@ import { canControlActivateWork, canControlCreateWork, isScopeVersionApprovedFor
 import { getAuthoritativeLifecycleState, transitionScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
 import type { ControlWorkItem, ControlWorkStatus, DALCoordinate, MarketplaceQuote, OperationalEvent, RouteStation, ScopeVersion } from "../types/dal";
 
-const statuses: ControlWorkStatus[] = ["PENDING", "ACTIVE", "ON_HOLD", "COMPLETE", "CANCELLED"];
+const statuses: ControlWorkStatus[] = ["PENDING", "ACTIVE", "HOLD", "COMPLETE", "CANCELLED", "BLOCKED"];
 const workTypes: NonNullable<ControlWorkItem["workType"]>[] = ["ENGINEERING", "PERMITTING", "CONSTRUCTION", "ACTIVATION", "VALIDATION"];
 
 function controlEvent(scopeVersionId: string, type: string, payload: Record<string, unknown>): OperationalEvent {
@@ -409,7 +409,7 @@ export default function ControlWorkspace() {
                   <button type="button" onClick={() => void updateWorkStatus(item, "ACTIVE")} disabled={item.status === "ACTIVE"}>
                     Activate Work
                   </button>
-                  <button type="button" onClick={() => void updateWorkStatus(item, "ON_HOLD")} disabled={item.status === "ON_HOLD"}>
+                  <button type="button" onClick={() => void updateWorkStatus(item, "HOLD")} disabled={item.status === "HOLD"}>
                     Hold Work
                   </button>
                   <button type="button" onClick={() => void updateWorkStatus(item, "COMPLETE")} disabled={item.status === "COMPLETE"}>

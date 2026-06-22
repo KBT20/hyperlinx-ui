@@ -1,6 +1,7 @@
 import { DAL_API } from "../config/dalApi";
 import { findRecord, readCollection, writeRecord } from "./dalStorage";
 import type { CloseEvent } from "../types/dal";
+import { logKernelFallbackActive } from "../kernel/KernelStateRegistry";
 
 type CloseEventListResponse = {
   closeEvents?: CloseEvent[];
@@ -23,6 +24,11 @@ async function tryRemote<T>(url: string, init?: RequestInit): Promise<T | null> 
   try {
     return await requestJson<T>(url, init);
   } catch (err) {
+    logKernelFallbackActive({
+      source: "closeEventRepository",
+      url,
+      reason: err instanceof Error ? err.message : String(err),
+    });
     console.warn("DAL CLOSE EVENT LOCAL FALLBACK ACTIVE", url, err instanceof Error ? err.message : String(err));
     return null;
   }

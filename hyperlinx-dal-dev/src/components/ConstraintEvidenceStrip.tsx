@@ -57,7 +57,7 @@ export default function ConstraintEvidenceStrip({ title = "Constraint Evidence",
         <span>Reference-Only Layers: {referenceOnlyLayers.map((layer) => layer.layerType).join(", ") || "none"}</span>
         <span>Usable Layers: {usableLayers.map((layer) => layer.layerType).join(", ") || "none"}</span>
         <span>Evidence Grade: {authority?.evidenceGrade ?? "UNKNOWN_CONSTRAINT_EVIDENCE"}</span>
-        <span>Route Certification State: {authority?.state ?? "DRAFT_ROUTE"}</span>
+        <span>Route Certification State: {authority?.state ?? "DRAFT"}</span>
         <span>Fallback Mode: {evidence?.provenance.fallbackMode ? "TRUE" : "FALSE"}</span>
         <span>Evidence Status: {stale ? "STALE CONSTRAINT EVIDENCE" : drift ? "CONSTRAINT DRIFT DETECTED" : evidence ? "CURRENT" : "MISSING"}</span>
       </div>

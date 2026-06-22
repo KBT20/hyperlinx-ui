@@ -20,6 +20,11 @@ const LIFECYCLE_RANKS = new Map<string, number>(
   LIFECYCLE_ORDER.map((state, index) => [state, index])
 );
 
+console.log("[KERNEL_LIFECYCLE_AUTHORITY]", {
+  authoritySource: "src/scopeversion/ScopeVersionLifecycleGuard.ts",
+  lifecycleOrder: LIFECYCLE_ORDER,
+});
+
 const LIFECYCLE_ALIASES: Record<string, string> = {
   RELEASED_TO_CONTROL: "CONTROL",
   ACTIVATED: "CONTROL_ACTIVE",

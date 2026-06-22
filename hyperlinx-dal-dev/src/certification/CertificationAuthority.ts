@@ -1,11 +1,14 @@
 import type { ConstraintEvidencePackage } from "../routing/ConstraintAnalysisEngine";
 
 export type RouteCertificationState =
+  | "DRAFT"
   | "DRAFT_ROUTE"
   | "ENGINEER_REVIEW_REQUIRED"
   | "PROVISIONALLY_CERTIFIED"
   | "CERTIFIED_ROUTE"
+  | "REJECTED"
   | "REJECTED_ROUTE"
+  | "SUPERSEDED"
   | "BLOCKED";
 
 export type EvidenceGrade =
@@ -77,7 +80,7 @@ export function deriveRouteCertificationState(input: CertificationAuthorityInput
     reasons.push("Engineer rejected the route.");
     requiredActions.push("Revise route geometry and request a new certification review.");
     return {
-      state: "REJECTED_ROUTE",
+      state: "REJECTED",
       reasons,
       requiredActions,
       canCreateChildScopeVersion: false,
@@ -158,7 +161,7 @@ export function deriveRouteCertificationState(input: CertificationAuthorityInput
 
   if (evidenceGrade === "UNKNOWN_CONSTRAINT_EVIDENCE") {
     return {
-      state: "DRAFT_ROUTE",
+      state: "DRAFT",
       reasons,
       requiredActions,
       canCreateChildScopeVersion: false,

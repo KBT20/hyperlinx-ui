@@ -8,6 +8,7 @@ import type {
   RouteAuthorityState,
   RouteMode,
 } from "./CertifiedRouteAuthority";
+import { normalizeRouteAuthorityState } from "../kernel/KernelStateRegistry";
 
 const FEET_PER_MILE = 5280;
 const EARTH_RADIUS_FEET = 20902231;
@@ -135,7 +136,8 @@ function classifyRouteMode(geometry: DALCoordinate[], requestedMode?: RouteMode)
 }
 
 function stateForRoute(route: Pick<CertifiedRoute, "routeMode" | "routeAuthorityState" | "constraintEvidenceStatus" | "certification">) {
-  if (route.routeAuthorityState === "REJECTED_ROUTE") return "REJECTED_ROUTE";
+  const routeAuthorityState = normalizeRouteAuthorityState<RouteAuthorityState>(route.routeAuthorityState);
+  if (routeAuthorityState === "REJECTED") return "REJECTED";
   if (route.routeMode === "DIRECT_FALLBACK") return "DIRECT_FALLBACK";
   if (route.certification.certifiedBy && route.certification.certifiedAt) {
     return route.certification.provisionalReason ? "PROVISIONALLY_CERTIFIED" : "CERTIFIED_ROUTE";
@@ -147,8 +149,9 @@ function stateForRoute(route: Pick<CertifiedRoute, "routeMode" | "routeAuthority
 function authorityForState(route: Pick<CertifiedRoute, "routeAuthorityState" | "routeMode" | "constraintEvidenceStatus" | "geometry">): CertifiedRouteAuthorityFlags {
   const requiredActions: string[] = [];
   const warnings: string[] = [];
-  const certified = route.routeAuthorityState === "CERTIFIED_ROUTE";
-  const provisional = route.routeAuthorityState === "PROVISIONALLY_CERTIFIED";
+  const routeAuthorityState = normalizeRouteAuthorityState<RouteAuthorityState>(route.routeAuthorityState);
+  const certified = routeAuthorityState === "CERTIFIED_ROUTE";
+  const provisional = routeAuthorityState === "PROVISIONALLY_CERTIFIED";
 
   if (route.geometry.length < 2) requiredActions.push("Create constructable route geometry.");
   if (route.routeMode === "DIRECT_FALLBACK") {
@@ -157,8 +160,8 @@ function authorityForState(route: Pick<CertifiedRoute, "routeAuthorityState" | "
   }
   if (route.constraintEvidenceStatus !== "CURRENT") requiredActions.push("Attach current deterministic constraint evidence.");
   if (!certified && !provisional) requiredActions.push("Human engineering certification required.");
-  if (route.routeAuthorityState === "REJECTED_ROUTE") requiredActions.push("Route rejected; create a new draft or revise geometry.");
-  if (route.routeAuthorityState === "BLOCKED") requiredActions.push("Route blocked; resolve authority blockers.");
+  if (routeAuthorityState === "REJECTED") requiredActions.push("Route rejected; create a new draft or revise geometry.");
+  if (routeAuthorityState === "BLOCKED") requiredActions.push("Route blocked; resolve authority blockers.");
 
   const authoritative = certified;
   return {
@@ -205,7 +208,7 @@ export function createDraftRoute(input: CreateDraftRouteInput): CertifiedRoute {
   const timestamp = now();
   return recompute({
     certifiedRouteId: createId("CR"),
-    routeAuthorityState: "DRAFT_ROUTE",
+    routeAuthorityState: "DRAFT",
     routeMode: classifyRouteMode(geometry, input.routeMode),
     corridorBasis: input.corridorBasis ?? "UNKNOWN",
     inventoryId: input.inventoryId,
@@ -301,7 +304,7 @@ export function certifyRoute(route: CertifiedRoute, engineer: RouteCertification
 export function rejectRoute(route: CertifiedRoute, reason: string): CertifiedRoute {
   return recompute({
     ...route,
-    routeAuthorityState: "REJECTED_ROUTE",
+    routeAuthorityState: "REJECTED",
     certification: {
       ...route.certification,
       rejectionReason: reason || "Rejected during engineering review.",

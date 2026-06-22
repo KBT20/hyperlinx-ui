@@ -50,6 +50,11 @@ import type { CandidateSite } from "../types/candidateSite";
 import type { GraphExtension } from "../types/graphExtension";
 import type { OpportunitySeed } from "../types/portfolio";
 import type { CertifiedRoute } from "../routing/CertifiedRouteAuthority";
+import {
+  logKernelFallbackActive,
+  normalizeControlWorkStatus,
+  normalizeRouteAuthorityState,
+} from "../kernel/KernelStateRegistry";
 
 function createId(prefix: string) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return `${prefix}-${crypto.randomUUID()}`;
@@ -75,6 +80,11 @@ async function tryRemote<T>(url: string, init?: RequestInit): Promise<T | null> 
   try {
     return await requestJson<T>(url, init);
   } catch (err: any) {
+    logKernelFallbackActive({
+      source: "dalClient",
+      url,
+      reason: err?.message ?? String(err),
+    });
     console.warn("DAL LOCAL FALLBACK ACTIVE", url, err?.message ?? String(err));
     return null;
   }
@@ -187,6 +197,20 @@ function normalizeCandidateSite(raw: any): CandidateSite {
     sourceDatasetId: site?.sourceDatasetId,
     status: site?.status ?? "IMPORTED",
     createdAt: String(site?.createdAt ?? now()),
+  };
+}
+
+function normalizeControlWorkItem(raw: ControlWorkItem): ControlWorkItem {
+  return {
+    ...raw,
+    status: normalizeControlWorkStatus<ControlWorkItem["status"]>(raw.status),
+  };
+}
+
+function normalizeCertifiedRouteRecord(raw: CertifiedRoute): CertifiedRoute {
+  return {
+    ...raw,
+    routeAuthorityState: normalizeRouteAuthorityState<CertifiedRoute["routeAuthorityState"]>(raw.routeAuthorityState),
   };
 }
 
@@ -438,30 +462,30 @@ export async function saveCloseEvent(closeEvent: CloseEvent) {
 
 export async function listCertifiedRoutes() {
   const remote = await requestJson<any>(apiUrl("/api/certified-routes"));
-  return unwrapList<CertifiedRoute>(remote, ["certifiedRoutes"]);
+  return unwrapList<CertifiedRoute>(remote, ["certifiedRoutes"]).map(normalizeCertifiedRouteRecord);
 }
 
 export async function getCertifiedRoute(id: string) {
   const remote = await requestJson<any>(apiUrl(`/api/certified-routes/${encodeURIComponent(id)}`));
-  return (remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute;
+  return normalizeCertifiedRouteRecord((remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute);
 }
 
 export async function createCertifiedRoute(route: CertifiedRoute) {
   const remote = await requestJson<any>(apiUrl("/api/certified-routes"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ certifiedRoute: route }),
+    body: JSON.stringify({ certifiedRoute: normalizeCertifiedRouteRecord(route) }),
   });
-  return (remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute;
+  return normalizeCertifiedRouteRecord((remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute);
 }
 
 export async function updateCertifiedRoute(route: CertifiedRoute) {
   const remote = await requestJson<any>(apiUrl(`/api/certified-routes/${encodeURIComponent(route.certifiedRouteId)}`), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ certifiedRoute: route }),
+    body: JSON.stringify({ certifiedRoute: normalizeCertifiedRouteRecord(route) }),
   });
-  return (remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute;
+  return normalizeCertifiedRouteRecord((remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute);
 }
 
 export async function certifyCertifiedRoute(
@@ -473,7 +497,7 @@ export async function certifyCertifiedRoute(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return (remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute;
+  return normalizeCertifiedRouteRecord((remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute);
 }
 
 export async function rejectCertifiedRoute(id: string, payload: { reason: string }) {
@@ -482,7 +506,7 @@ export async function rejectCertifiedRoute(id: string, payload: { reason: string
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return (remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute;
+  return normalizeCertifiedRouteRecord((remote?.certifiedRoute ?? remote?.data ?? remote) as CertifiedRoute);
 }
 
 export async function listPrismOpportunities() {
@@ -552,16 +576,17 @@ export async function saveMarketplaceQuote(quote: MarketplaceQuote) {
 
 export async function listControlWorkItems() {
   const remote = await tryRemote<any>(apiUrl("/api/control/work-items"));
-  return remote ? unwrapList<ControlWorkItem>(remote, ["workItems"]) : readCollection<ControlWorkItem>("workItems");
+  const items = remote ? unwrapList<ControlWorkItem>(remote, ["workItems"]) : await readCollection<ControlWorkItem>("workItems");
+  return items.map(normalizeControlWorkItem);
 }
 
 export async function saveControlWorkItem(workItem: ControlWorkItem) {
   const remote = await tryRemote<any>(apiUrl("/api/control/work-items"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(workItem),
+    body: JSON.stringify(normalizeControlWorkItem(workItem)),
   });
-  const saved = (remote?.workItem ?? remote?.data ?? remote ?? workItem) as ControlWorkItem;
+  const saved = normalizeControlWorkItem((remote?.workItem ?? remote?.data ?? remote ?? workItem) as ControlWorkItem);
   if (!remote) await writeRecord("workItems", saved);
   return saved;
 }

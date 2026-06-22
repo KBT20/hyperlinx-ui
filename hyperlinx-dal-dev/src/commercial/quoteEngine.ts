@@ -1,6 +1,7 @@
 import { createId, now } from "../api/dalClient";
 import { deriveRouteCertificationState } from "../certification/CertificationAuthority";
 import { DEFAULT_CONSTRUCTION_TYPE } from "../engineering/constructionModel";
+import { normalizeRouteAuthorityState } from "../kernel/KernelStateRegistry";
 import { getAuthoritativeLifecycleState, transitionScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
 import type { MarketplaceQuote, OperationalEvent, ScopeVersion } from "../types/dal";
 
@@ -90,14 +91,15 @@ export function scopeCommercialBasis(scopeVersion?: ScopeVersion | null) {
 
 export function generatePreliminaryQuote(scopeVersion: ScopeVersion, termMonths = 36): MarketplaceQuote {
   const basis = scopeCommercialBasis(scopeVersion);
+  const routeCertificationStatus = normalizeRouteAuthorityState(basis.routeCertification?.status);
   const certificationAuthority =
     basis.certificationAuthority ??
     deriveRouteCertificationState({
       routeGeometryHash: basis.routeGeometryHash,
       constraintEvidencePackage: basis.constraintEvidencePackage,
       engineerApproval: {
-        approved: basis.routeCertification?.status === "CERTIFIED_ROUTE" || basis.routeCertification?.status === "PROVISIONALLY_CERTIFIED",
-        rejected: basis.routeCertification?.status === "REJECTED_ROUTE",
+        approved: routeCertificationStatus === "CERTIFIED_ROUTE" || routeCertificationStatus === "PROVISIONALLY_CERTIFIED",
+        rejected: routeCertificationStatus === "REJECTED",
         notes: basis.routeCertification?.certificationNotes ?? basis.engineeringBasis?.engineerNotes,
         certifiedBy: basis.routeCertification?.engineerName,
         certifiedAt: basis.routeCertification?.certifiedAt,

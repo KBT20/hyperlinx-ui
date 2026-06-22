@@ -28,9 +28,23 @@ function geometry(value, fallback = []) {
   return Array.isArray(value) ? value.map((item) => coordinate(item)).filter(([lon, lat]) => Number.isFinite(lon) && Number.isFinite(lat)) : fallback;
 }
 
+function normalizeRouteAuthorityState(value) {
+  const upper = typeof value === "string" ? value.trim().toUpperCase() : "";
+  const normalized = upper === "DRAFT_ROUTE" ? "DRAFT" : upper === "REJECTED_ROUTE" ? "REJECTED" : upper;
+  if (upper && normalized !== upper) {
+    console.log("[KERNEL_ALIAS_NORMALIZED]", {
+      domain: "routeAuthority",
+      from: upper,
+      to: normalized,
+    });
+  }
+  return normalized || undefined;
+}
+
 function normalizeAuthority(route) {
-  const directFallback = route.routeMode === "DIRECT_FALLBACK" || route.routeAuthorityState === "DIRECT_FALLBACK";
-  const certified = route.routeAuthorityState === "CERTIFIED_ROUTE";
+  const routeAuthorityState = normalizeRouteAuthorityState(route.routeAuthorityState);
+  const directFallback = route.routeMode === "DIRECT_FALLBACK" || routeAuthorityState === "DIRECT_FALLBACK";
+  const certified = routeAuthorityState === "CERTIFIED_ROUTE";
   const requiredActions = Array.isArray(route.authority?.requiredActions) ? route.authority.requiredActions : [];
   const warnings = Array.isArray(route.authority?.warnings) ? route.authority.warnings : [];
   return {
@@ -50,7 +64,7 @@ function normalizeCertifiedRoute(input) {
   const candidateCoordinate = coordinate(route?.candidateCoordinate);
   const attachmentCoordinate = coordinate(route?.attachmentCoordinate, candidateCoordinate);
   const routeGeometry = geometry(route?.geometry, [candidateCoordinate, attachmentCoordinate]);
-  const routeAuthorityState = route?.routeAuthorityState ?? (route?.routeMode === "DIRECT_FALLBACK" ? "DIRECT_FALLBACK" : "DRAFT_ROUTE");
+  const routeAuthorityState = normalizeRouteAuthorityState(route?.routeAuthorityState) ?? (route?.routeMode === "DIRECT_FALLBACK" ? "DIRECT_FALLBACK" : "DRAFT");
   const normalized = {
     certifiedRouteId: String(route?.certifiedRouteId ?? createId("CR")),
     routeAuthorityState,
@@ -104,13 +118,13 @@ export async function handleCertifiedRoutes(req, res, pathname) {
   if (handleOptions(req, res)) return true;
 
   if (match.base && req.method === "GET") {
-    jsonResponse(res, 200, { certifiedRoutes: sortedByUpdated(await listRecords(DIRS.certifiedRoutes)) });
+    jsonResponse(res, 200, { certifiedRoutes: sortedByUpdated((await listRecords(DIRS.certifiedRoutes)).map(normalizeCertifiedRoute)) });
     return true;
   }
 
   if (!match.base && req.method === "GET") {
     try {
-      jsonResponse(res, 200, { certifiedRoute: await loadRecord(DIRS.certifiedRoutes, match.id) });
+      jsonResponse(res, 200, { certifiedRoute: normalizeCertifiedRoute(await loadRecord(DIRS.certifiedRoutes, match.id)) });
     } catch {
       errorResponse(res, 404, `certifiedRoute not found: ${match.id}`);
     }
@@ -173,7 +187,7 @@ export async function handleCertifiedRoutes(req, res, pathname) {
       const body = await readRequestJson(req);
       const certifiedRoute = normalizeCertifiedRoute({
         ...existing,
-        routeAuthorityState: "REJECTED_ROUTE",
+        routeAuthorityState: "REJECTED",
         certification: {
           ...existing.certification,
           rejectionReason: body?.reason ?? body?.rejectionReason ?? "Rejected during route authority review.",

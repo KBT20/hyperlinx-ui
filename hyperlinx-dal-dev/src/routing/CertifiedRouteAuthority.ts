@@ -1,12 +1,15 @@
 import type { DALCoordinate } from "../types/dal";
 
 export type RouteAuthorityState =
+  | "DRAFT"
   | "DRAFT_ROUTE"
   | "DIRECT_FALLBACK"
   | "ENGINEER_REVIEW_REQUIRED"
   | "PROVISIONALLY_CERTIFIED"
   | "CERTIFIED_ROUTE"
+  | "REJECTED"
   | "REJECTED_ROUTE"
+  | "SUPERSEDED"
   | "BLOCKED";
 
 export type RouteMode =

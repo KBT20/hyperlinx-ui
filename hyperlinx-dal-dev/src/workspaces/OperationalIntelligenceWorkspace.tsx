@@ -9,6 +9,7 @@ import type { CloseEvent, ClosureRecord, ControlWorkItem, FieldClosure, Inventor
 import type { CandidateSite } from "../types/candidateSite";
 import type { OpportunitySeed } from "../types/portfolio";
 import { renderIOFPackage, renderScopeVersion, summarizeMapKernelMetrics } from "../mapkernel";
+import { normalizeRouteAuthorityState } from "../kernel/KernelStateRegistry";
 import { buildFieldExecutionViewModel } from "../field/FieldExecutionViewModel";
 import { calculateScopeVersionProgress } from "../scopeversion/ClosureAuthorityEngine";
 import { deriveLifecycleViolations } from "../scopeversion/LifecycleAuthorityEngine";
@@ -260,10 +261,11 @@ export default function OperationalIntelligenceWorkspace() {
   const completedPackages = iofPackages.filter((iofPackage) => iofPackage.status === "COMPLETE");
   const closedPackages = iofPackages.filter((iofPackage) => iofPackage.status === "CLOSED");
   const certifiedRouteCount = certifiedRoutes.filter((route) => route.routeAuthorityState === "CERTIFIED_ROUTE").length;
-  const draftRouteCount = certifiedRoutes.filter((route) => route.routeAuthorityState === "DRAFT_ROUTE").length;
+  const routeAuthorityFor = (route: CertifiedRoute) => normalizeRouteAuthorityState(route.routeAuthorityState);
+  const draftRouteCount = certifiedRoutes.filter((route) => routeAuthorityFor(route) === "DRAFT").length;
   const directFallbackRouteCount = certifiedRoutes.filter((route) => route.routeAuthorityState === "DIRECT_FALLBACK" || route.routeMode === "DIRECT_FALLBACK").length;
-  const routesAwaitingEngineerReview = certifiedRoutes.filter((route) => route.routeAuthorityState === "ENGINEER_REVIEW_REQUIRED").length;
-  const rejectedRouteCount = certifiedRoutes.filter((route) => route.routeAuthorityState === "REJECTED_ROUTE").length;
+  const routesAwaitingEngineerReview = certifiedRoutes.filter((route) => routeAuthorityFor(route) === "ENGINEER_REVIEW_REQUIRED").length;
+  const rejectedRouteCount = certifiedRoutes.filter((route) => routeAuthorityFor(route) === "REJECTED").length;
   const authoritativeQuotesBlockedByRoute = certifiedRoutes.filter((route) => !route.authority.canGenerateAuthoritativeQuote).length;
   const iofPackagesBlockedByRoute = certifiedRoutes.filter((route) => !route.authority.canCreateIOFPackage).length;
   const controlWorkBlockedByRoute = certifiedRoutes.filter((route) => !route.authority.canCreateControlWork).length;

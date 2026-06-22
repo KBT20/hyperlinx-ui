@@ -4,6 +4,7 @@ import { createScopeVersion, loadScopeVersion } from "./scopeVersionRepository";
 import { createCloseEvent } from "./closeEventRepository";
 import { createChildScopeVersionFromCloseEvent, createCloseEventFromPackage } from "../closeevents";
 import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
+import { logKernelFallbackActive } from "../kernel/KernelStateRegistry";
 import type { CloseEvent, IOFPackage, IOFPackageProgress, IOFPackageStatus, IOFPackageType, ScopeVersion } from "../types/dal";
 
 type IOFPackageListResponse = {
@@ -46,6 +47,11 @@ async function tryRemote<T>(url: string, init?: RequestInit): Promise<T | null> 
   try {
     return await requestJson<T>(url, init);
   } catch (err) {
+    logKernelFallbackActive({
+      source: "iofPackageRepository",
+      url,
+      reason: err instanceof Error ? err.message : String(err),
+    });
     console.warn("DAL IOF PACKAGE LOCAL FALLBACK ACTIVE", url, err instanceof Error ? err.message : String(err));
     return null;
   }

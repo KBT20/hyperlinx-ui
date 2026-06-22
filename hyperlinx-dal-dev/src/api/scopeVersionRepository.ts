@@ -3,10 +3,12 @@ import { findRecord, readCollection, writeRecord, deleteRecord } from "./dalStor
 import { createScopeVersionFromInventoryGraph } from "../scopeversion/scopeVersionUtils";
 import { applyScopeVersionCertification } from "../scopeversion/scopeVersionCertification";
 import { getAuthoritativeLifecycleState, mergeScopeVersionLifecycle, reconcileScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
+import { logKernelFallbackActive, normalizeRouteAuthorityState } from "../kernel/KernelStateRegistry";
 import type {
   ClosureRecord,
   InventoryGraph,
   ScopeVersion,
+  ScopeVersionCertifiedRouteReference,
   ScopeVersionCertificationState,
   ScopeVersionGraphSummary,
   ScopeVersionRelationshipType,
@@ -18,6 +20,16 @@ type ScopeVersionListResponse = {
   items?: ScopeVersion[];
   data?: ScopeVersion[];
 };
+
+function normalizeCertifiedRouteReference(
+  reference: ScopeVersionCertifiedRouteReference | undefined
+): ScopeVersionCertifiedRouteReference | undefined {
+  if (!reference) return undefined;
+  return {
+    ...reference,
+    routeAuthorityState: normalizeRouteAuthorityState<ScopeVersionCertifiedRouteReference["routeAuthorityState"]>(reference.routeAuthorityState),
+  };
+}
 
 function apiUrl(path: string) {
   return `${DAL_API}${path}`;
@@ -34,6 +46,11 @@ async function tryRemote<T>(url: string, init?: RequestInit): Promise<T | null> 
   try {
     return await requestJson<T>(url, init);
   } catch (err) {
+    logKernelFallbackActive({
+      source: "scopeVersionRepository",
+      url,
+      reason: err instanceof Error ? err.message : String(err),
+    });
     console.warn("DAL SCOPEVERSION LOCAL FALLBACK ACTIVE", url, err instanceof Error ? err.message : String(err));
     return null;
   }
@@ -190,8 +207,11 @@ function normalizeScopeVersion(raw: unknown): ScopeVersion {
     routeCount: Number((reconciled.canonicalTruth as any)?.routeCount ?? 0),
   };
   const lifecycleState = getAuthoritativeLifecycleState(reconciled);
+  const certifiedRouteReference = normalizeCertifiedRouteReference(reconciled.certifiedRouteReference);
+  const canonicalCertifiedRouteReference = normalizeCertifiedRouteReference((reconciled.canonicalTruth as any)?.certifiedRouteReference);
   return {
     ...reconciled,
+    certifiedRouteReference,
     type,
     relationshipType,
     rootScopeVersionId,
@@ -202,6 +222,7 @@ function normalizeScopeVersion(raw: unknown): ScopeVersion {
     iofPackageIds: Array.isArray(scope.iofPackageIds) ? scope.iofPackageIds : [],
     canonicalTruth: {
       ...(reconciled.canonicalTruth ?? {}),
+      certifiedRouteReference: certifiedRouteReference ?? canonicalCertifiedRouteReference,
       graphSummary,
       lifecycleState,
       lifecycleTimestamp: reconciled.canonicalTruth?.lifecycleTimestamp ?? reconciled.updatedAt,

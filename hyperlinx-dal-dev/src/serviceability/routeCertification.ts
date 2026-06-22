@@ -7,6 +7,7 @@ import {
   type EvidenceGrade,
   type RouteCertificationState,
 } from "../certification/CertificationAuthority";
+import { normalizeRouteAuthorityState } from "../kernel/KernelStateRegistry";
 import {
   hashRouteGeometry,
   type CertificationReadiness,
@@ -241,6 +242,7 @@ export function createRouteCertificationSnapshot(args: {
   routingMode?: AttachmentAwareRoutingMode;
   constraintAnalysis?: ConstraintAnalysisResult;
 }): RouteCertificationSnapshot {
+  const normalizedInputStatus = normalizeRouteAuthorityState<RouteCertificationState>(args.status);
   const certifiedGeometryHash = hashRouteGeometry(args.geometry);
   const constraintEvidencePackage = evidencePackageFromAnalysis(args.constraintAnalysis);
   const constraintEvidenceStatus = evidenceStatusFor(constraintEvidencePackage, certifiedGeometryHash);
@@ -249,16 +251,19 @@ export function createRouteCertificationSnapshot(args: {
     routeGeometryHash: certifiedGeometryHash,
     constraintEvidencePackage,
     engineerApproval: {
-      approved: args.status === "CERTIFIED_ROUTE" || args.status === "PROVISIONALLY_CERTIFIED",
-      rejected: args.status === "REJECTED_ROUTE",
+      approved: normalizedInputStatus === "CERTIFIED_ROUTE" || normalizedInputStatus === "PROVISIONALLY_CERTIFIED",
+      rejected: normalizedInputStatus === "REJECTED",
       notes: args.certificationNotes,
       certifiedBy: args.engineerName,
       certifiedAt: args.certifiedAt,
     },
   });
-  const status = args.status === "REJECTED_ROUTE" ? "REJECTED_ROUTE" : certificationAuthority.state;
+  const status =
+    normalizedInputStatus === "REJECTED"
+      ? "REJECTED"
+      : normalizeRouteAuthorityState<RouteCertificationState>(certificationAuthority.state);
   const timestamp =
-    status === "CERTIFIED_ROUTE" || status === "PROVISIONALLY_CERTIFIED" || status === "REJECTED_ROUTE"
+    status === "CERTIFIED_ROUTE" || status === "PROVISIONALLY_CERTIFIED" || status === "REJECTED"
       ? args.certifiedAt ?? new Date().toISOString()
       : undefined;
   return {
@@ -298,14 +303,15 @@ export function createRouteCertificationSnapshot(args: {
 
 export function canCreateScopeVersionFromRoute(snapshot: RouteCertificationSnapshot | null | undefined) {
   if (!snapshot) return false;
+  const normalizedStatus = normalizeRouteAuthorityState<RouteCertificationState>(snapshot.status);
   const authority =
     snapshot.certificationAuthority ??
     deriveRouteCertificationState({
       routeGeometryHash: snapshot.certifiedGeometryHash,
       constraintEvidencePackage: snapshot.constraintEvidencePackage,
       engineerApproval: {
-        approved: snapshot.status === "CERTIFIED_ROUTE" || snapshot.status === "PROVISIONALLY_CERTIFIED",
-        rejected: snapshot.status === "REJECTED_ROUTE",
+        approved: normalizedStatus === "CERTIFIED_ROUTE" || normalizedStatus === "PROVISIONALLY_CERTIFIED",
+        rejected: normalizedStatus === "REJECTED",
         notes: snapshot.certificationNotes,
         certifiedBy: snapshot.engineerName,
         certifiedAt: snapshot.certifiedAt,
@@ -313,7 +319,7 @@ export function canCreateScopeVersionFromRoute(snapshot: RouteCertificationSnaps
     });
   return Boolean(
     authority.canCreateChildScopeVersion &&
-      (snapshot.status === "CERTIFIED_ROUTE" || snapshot.status === "PROVISIONALLY_CERTIFIED") &&
+      (normalizedStatus === "CERTIFIED_ROUTE" || normalizedStatus === "PROVISIONALLY_CERTIFIED") &&
       snapshot.certifiedGeometrySnapshot.length >= 2 &&
       snapshot.engineerName.trim() &&
       snapshot.certificationNotes.trim() &&

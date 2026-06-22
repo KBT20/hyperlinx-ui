@@ -12,6 +12,7 @@ import CertificationAuthorityStrip from "../components/CertificationAuthorityStr
 import RouteEngineeringPanel from "../components/RouteEngineeringPanel";
 import SnapAuthorityPanel from "../components/SnapAuthorityPanel";
 import { useDALState } from "../dal/DALState";
+import { normalizeRouteAuthorityState } from "../kernel/KernelStateRegistry";
 import { MapKernel, buildMapKernelDiagnostics, renderScopeVersion, type MapSelection } from "../mapkernel";
 import { boundsForRouteGeometry, constraintFeaturesToReferenceLayers, getConstraintRegistryAnalysisContext } from "../reference/ConstraintGeometryRegistry";
 import { renderReferenceLayers } from "../reference/ReferenceLayerManager";
@@ -119,7 +120,7 @@ export default function NetworkAffinityWorkspace() {
   const [routeGeometry, setRouteGeometry] = useState<DALCoordinate[]>([]);
   const [selectedRouteVertexIndex, setSelectedRouteVertexIndex] = useState<number | null>(null);
   const [routeCertificationBySiteId, setRouteCertificationBySiteId] = useState<Record<string, RouteCertificationSnapshot>>({});
-  const [routeCertificationStatus, setRouteCertificationStatus] = useState<RouteCertificationState>("DRAFT_ROUTE");
+  const [routeCertificationStatus, setRouteCertificationStatus] = useState<RouteCertificationState>("DRAFT");
   const [routeEngineerName, setRouteEngineerName] = useState("");
   const [routeCertificationNotes, setRouteCertificationNotes] = useState("");
   const [selectedRouteAlternativeId, setSelectedRouteAlternativeId] = useState("");
@@ -192,7 +193,7 @@ export default function NetworkAffinityWorkspace() {
     setRouteGeometry(certification?.routeGeometry ?? activeRecord?.result.lateralPath?.geometry ?? []);
     setSelectedRouteAlternativeId("");
     setSelectedRouteVertexIndex(null);
-    setRouteCertificationStatus(certification?.status ?? "DRAFT_ROUTE");
+    setRouteCertificationStatus(normalizeRouteAuthorityState<RouteCertificationState>(certification?.status ?? "DRAFT"));
     setSnapAuthority(snapCertification ?? activeRecord?.result.snapAuthority ?? null);
     setSnapCertificationState(snapCertification?.status ?? (activeRecord?.result.snapAuthority ? "DRAFT_SNAP" : "REJECTED_SNAP"));
     if (certification) {
@@ -245,7 +246,7 @@ export default function NetworkAffinityWorkspace() {
         engineerApproval: activeRouteCertification
           ? {
               approved: activeRouteCertification.status === "CERTIFIED_ROUTE" || activeRouteCertification.status === "PROVISIONALLY_CERTIFIED",
-              rejected: activeRouteCertification.status === "REJECTED_ROUTE",
+              rejected: normalizeRouteAuthorityState(activeRouteCertification.status) === "REJECTED",
               notes: activeRouteCertification.certificationNotes,
               certifiedBy: activeRouteCertification.engineerName,
               certifiedAt: activeRouteCertification.certifiedAt,
@@ -368,7 +369,7 @@ export default function NetworkAffinityWorkspace() {
       delete next[activeRecord.site.candidateId];
       return next;
     });
-    setRouteCertificationStatus("DRAFT_ROUTE");
+    setRouteCertificationStatus("DRAFT");
     setActiveScopePreview(null);
     setRecords((prev) =>
       prev.map((record) =>
@@ -414,7 +415,7 @@ export default function NetworkAffinityWorkspace() {
       delete next[activeRecord.site.candidateId];
       return next;
     });
-    setRouteCertificationStatus("REJECTED_ROUTE");
+    setRouteCertificationStatus("REJECTED");
     setActiveScopePreview(null);
     setStatus("Street snap rejected. Route certification and child ScopeVersion creation are blocked.");
   }
@@ -443,7 +444,7 @@ export default function NetworkAffinityWorkspace() {
         constraintEvidencePackage: certification.constraintEvidencePackage ?? activeRouteConstraintAnalysis,
         engineerApproval: {
           approved: certification.status === "CERTIFIED_ROUTE" || certification.status === "PROVISIONALLY_CERTIFIED",
-          rejected: certification.status === "REJECTED_ROUTE",
+          rejected: normalizeRouteAuthorityState(certification.status) === "REJECTED",
           notes: certification.certificationNotes,
           certifiedBy: certification.engineerName,
           certifiedAt: certification.certifiedAt,
@@ -474,7 +475,7 @@ export default function NetworkAffinityWorkspace() {
   function rejectRoute(certification: RouteCertificationSnapshot) {
     if (!activeRecord) return;
     setRouteCertificationBySiteId((prev) => ({ ...prev, [activeRecord.site.candidateId]: certification }));
-    setRouteCertificationStatus("REJECTED_ROUTE");
+    setRouteCertificationStatus("REJECTED");
     setActiveScopePreview(null);
     setStatus("Route rejected. No child ScopeVersion can be created until engineering certifies a route.");
   }

@@ -131,13 +131,13 @@ export async function handleJsonCollection(req, res, pathname, options) {
   } = options;
 
   if (match.base && req.method === "GET") {
-    jsonResponse(res, 200, { [listKey]: sortedByUpdated(await listRecords(dir)) });
+    jsonResponse(res, 200, { [listKey]: sortedByUpdated((await listRecords(dir)).map(normalize)) });
     return true;
   }
 
   if (!match.base && req.method === "GET") {
     try {
-      jsonResponse(res, 200, { [itemKey]: await loadRecord(dir, match.id) });
+      jsonResponse(res, 200, { [itemKey]: normalize(await loadRecord(dir, match.id)) });
     } catch {
       errorResponse(res, 404, `${itemKey} not found: ${match.id}`);
     }

@@ -170,7 +170,7 @@ export default function RouteEngineeringPanel({
       createRouteCertificationSnapshot({
         geometry,
         originalGeometry,
-        status: "REJECTED_ROUTE",
+        status: "REJECTED",
         engineerName: engineerName.trim() || "Unassigned Engineer",
         certificationNotes: certificationNotes.trim() || "Rejected during route engineering review.",
         metrics: metricHints,

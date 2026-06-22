@@ -363,12 +363,15 @@ export type ScopeVersionCertifiedRouteReference = {
   certifiedRouteId: string;
   geometryHash: string;
   routeAuthorityState:
+    | "DRAFT"
     | "DRAFT_ROUTE"
     | "DIRECT_FALLBACK"
     | "ENGINEER_REVIEW_REQUIRED"
     | "PROVISIONALLY_CERTIFIED"
     | "CERTIFIED_ROUTE"
+    | "REJECTED"
     | "REJECTED_ROUTE"
+    | "SUPERSEDED"
     | "BLOCKED";
   routeMode:
     | "DIRECT_FALLBACK"
@@ -903,7 +906,7 @@ export type MarketplaceQuote = {
   createdAt: string;
 };
 
-export type ControlWorkStatus = "PENDING" | "ACTIVE" | "ON_HOLD" | "COMPLETE" | "CANCELLED";
+export type ControlWorkStatus = "PENDING" | "ACTIVE" | "HOLD" | "ON_HOLD" | "COMPLETE" | "CANCELLED" | "BLOCKED";
 
 export type ScopeVersionExecutionState = {
   scopeVersionId: string;
@@ -1014,7 +1017,7 @@ export type TwinGraphContext = {
 
 export type TwinState = {
   twinStateId: string;
-  projectionSource?: "SERVER" | "LOCAL_FALLBACK";
+  projectionSource?: "SERVER" | "LOCAL_FALLBACK" | "DEVELOPMENT_FALLBACK";
   inventoryId?: string;
   scopeVersionId?: string;
   scopeVersion?: ScopeVersion;

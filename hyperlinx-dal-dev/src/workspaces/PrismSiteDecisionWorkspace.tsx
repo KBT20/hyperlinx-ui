@@ -26,6 +26,7 @@ import RouteEngineeringPanel from "../components/RouteEngineeringPanel";
 import SnapAuthorityPanel from "../components/SnapAuthorityPanel";
 import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
 import { useDALState } from "../dal/DALState";
+import { normalizeRouteAuthorityState } from "../kernel/KernelStateRegistry";
 import { geocodeCandidateSite, isValidGeocodeCoordinate, realGeocoderConfigured } from "../geocoding/geocodeEngine";
 import { MapKernel, buildMapKernelDiagnostics, renderScopeVersion, type MapKernelRenderSpec, type MapSelection } from "../mapkernel";
 import { generateOpportunitySeedForCandidate } from "../prism/opportunityGenerator";
@@ -1265,7 +1266,7 @@ function applyCertifiedRouteToScopeVersion(
       constraintEvidencePackage,
       engineerApproval: {
         approved: certification.status === "CERTIFIED_ROUTE" || certification.status === "PROVISIONALLY_CERTIFIED",
-        rejected: certification.status === "REJECTED_ROUTE",
+        rejected: normalizeRouteAuthorityState(certification.status) === "REJECTED",
         notes: certification.certificationNotes,
         certifiedBy: certification.engineerName,
         certifiedAt: certification.certifiedAt,
@@ -1678,7 +1679,7 @@ export default function PrismSiteDecisionWorkspace() {
   const [mapSelection, setMapSelection] = useState<MapSelection | null>(null);
   const [routeGeometry, setRouteGeometry] = useState<DALCoordinate[]>([]);
   const [selectedRouteVertexIndex, setSelectedRouteVertexIndex] = useState<number | null>(null);
-  const [routeCertificationState, setRouteCertificationState] = useState<RouteCertificationState>("DRAFT_ROUTE");
+  const [routeCertificationState, setRouteCertificationState] = useState<RouteCertificationState>("DRAFT");
   const [routeCertification, setRouteCertification] = useState<RouteCertificationSnapshot | null>(null);
   const [routeEngineerName, setRouteEngineerName] = useState("");
   const [routeCertificationNotes, setRouteCertificationNotes] = useState("");
@@ -1880,7 +1881,7 @@ export default function PrismSiteDecisionWorkspace() {
     setSnapCertification(null);
     setSnapCertificationState("REVIEW_SNAP");
     setRouteCertification(null);
-    setRouteCertificationState("DRAFT_ROUTE");
+    setRouteCertificationState("DRAFT");
     setQuoteWorksheet(null);
     setStatus("Street snap reference updated. Certify snap evidence before route certification.");
   }
@@ -1897,7 +1898,7 @@ export default function PrismSiteDecisionWorkspace() {
     setSnapAuthority(snapshot);
     setSnapCertificationState("REJECTED_SNAP");
     setRouteCertification(null);
-    setRouteCertificationState("REJECTED_ROUTE");
+    setRouteCertificationState("REJECTED");
     setStatus("Street snap rejected. Route certification and child ScopeVersion creation are blocked.");
   }
 
@@ -1913,7 +1914,7 @@ export default function PrismSiteDecisionWorkspace() {
         constraintEvidencePackage: certification.constraintEvidencePackage ?? decisionRouteConstraintAnalysis,
         engineerApproval: {
           approved: certification.status === "CERTIFIED_ROUTE" || certification.status === "PROVISIONALLY_CERTIFIED",
-          rejected: certification.status === "REJECTED_ROUTE",
+          rejected: normalizeRouteAuthorityState(certification.status) === "REJECTED",
           notes: certification.certificationNotes,
           certifiedBy: certification.engineerName,
           certifiedAt: certification.certifiedAt,
@@ -1936,7 +1937,7 @@ export default function PrismSiteDecisionWorkspace() {
 
   function rejectDecisionRoute(certification: RouteCertificationSnapshot) {
     setRouteCertification(certification);
-    setRouteCertificationState("REJECTED_ROUTE");
+    setRouteCertificationState("REJECTED");
     setStatus("Route rejected. Create ScopeVersion remains blocked until an engineer certifies route geometry.");
   }
 
@@ -2075,7 +2076,7 @@ export default function PrismSiteDecisionWorkspace() {
     setSelectedRouteAlternativeId("");
     setSelectedRouteVertexIndex(null);
     setRouteCertification(null);
-    setRouteCertificationState(certifiedLateralGeometry.length >= 2 ? "DRAFT_ROUTE" : "REJECTED_ROUTE");
+    setRouteCertificationState(certifiedLateralGeometry.length >= 2 ? "DRAFT" : "REJECTED");
   }, [activeSeed?.id, activeSite?.candidateId, certifiedLateralGeometry]);
 
   const decisionContext = useMemo<DecisionContext | null>(() => {
@@ -2232,7 +2233,7 @@ export default function PrismSiteDecisionWorkspace() {
         engineerApproval: routeCertification
           ? {
               approved: routeCertification.status === "CERTIFIED_ROUTE" || routeCertification.status === "PROVISIONALLY_CERTIFIED",
-              rejected: routeCertification.status === "REJECTED_ROUTE",
+              rejected: normalizeRouteAuthorityState(routeCertification.status) === "REJECTED",
               notes: routeCertification.certificationNotes,
               certifiedBy: routeCertification.engineerName,
               certifiedAt: routeCertification.certifiedAt,

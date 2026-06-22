@@ -8,6 +8,7 @@ import { resolveAttachmentAuthority, type AttachmentAuthorityResult } from "../a
 import { deriveRouteCertificationState } from "../certification/CertificationAuthority";
 import { certifySiteDecision } from "../engineering/certificationEngine";
 import { DEFAULT_CONSTRUCTION_TYPE, estimateBuriedConstructionCost } from "../engineering/constructionModel";
+import { normalizeRouteAuthorityState } from "../kernel/KernelStateRegistry";
 import { renderConstraintAnalysis, analyzeRouteConstraints, type ConstraintAnalysisResult } from "../routing/ConstraintAnalysisEngine";
 import { boundsForRouteGeometry, getConstraintRegistryAnalysisContext, streetCenterlinesFromConstraintFeatures } from "../reference/ConstraintGeometryRegistry";
 import type { CandidateSite } from "../types/candidateSite";
@@ -909,7 +910,7 @@ export function createCandidateScopeVersionFromServiceability(args: {
       constraintEvidencePackage: args.routeCertification.constraintEvidencePackage,
       engineerApproval: {
         approved: args.routeCertification.status === "CERTIFIED_ROUTE" || args.routeCertification.status === "PROVISIONALLY_CERTIFIED",
-        rejected: args.routeCertification.status === "REJECTED_ROUTE",
+        rejected: normalizeRouteAuthorityState(args.routeCertification.status) === "REJECTED",
         notes: args.routeCertification.certificationNotes,
         certifiedBy: args.routeCertification.engineerName,
         certifiedAt: args.routeCertification.certifiedAt,
