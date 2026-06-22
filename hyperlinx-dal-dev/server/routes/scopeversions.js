@@ -18,14 +18,19 @@ function normalizeScopeVersion(input = {}) {
   const raw = input.scopeVersion ?? input;
   const timestamp = nowIso();
   const status = raw.status ?? "DRAFT";
+  const reconciledLifecycle = highestLifecycleState(
+    highestLifecycleState(raw.canonicalTruth?.lifecycleState, status),
+    inferLifecycleStateFromAuthority(raw)
+  );
   return {
     ...raw,
     scopeVersionId: String(raw.scopeVersionId),
-    status,
+    status: reconciledLifecycle ?? status,
     certificationState: raw.certificationState ?? "DRAFT",
     canonicalTruth: {
       ...(raw.canonicalTruth ?? {}),
-      lifecycleState: normalizeLifecycleState(raw.canonicalTruth?.lifecycleState ?? status) ?? status,
+      lifecycleState: reconciledLifecycle ?? normalizeLifecycleState(raw.canonicalTruth?.lifecycleState ?? status) ?? status,
+      lifecycleTimestamp: raw.canonicalTruth?.lifecycleTimestamp ?? raw.updatedAt ?? timestamp,
     },
     createdAt: raw.createdAt ?? timestamp,
     updatedAt: raw.updatedAt ?? timestamp,
@@ -42,7 +47,6 @@ const LIFECYCLE_ORDER = [
   "APPROVED",
   "CONTROL",
   "CONTROL_ACTIVE",
-  "FIELD_ACTIVE",
   "FIELD",
   "PARTIALLY_COMPLETE",
   "COMPLETE",
@@ -55,9 +59,9 @@ const LIFECYCLE_RANKS = new Map(LIFECYCLE_ORDER.map((state, index) => [state, in
 const LIFECYCLE_ALIASES = {
   RELEASED_TO_CONTROL: "CONTROL",
   ACTIVATED: "CONTROL_ACTIVE",
-  IN_FIELD: "FIELD_ACTIVE",
-  IN_CONSTRUCTION: "FIELD_ACTIVE",
-  FIELD: "FIELD_ACTIVE",
+  FIELD_ACTIVE: "FIELD",
+  IN_FIELD: "FIELD",
+  IN_CONSTRUCTION: "FIELD",
 };
 
 const EXCEPTION_STATES = new Set(["BLOCKED", "REJECTED"]);
@@ -88,6 +92,68 @@ function highestLifecycleState(existing, incoming) {
   return normalizeLifecycleState(incoming) ?? incoming;
 }
 
+function inferLifecycleStateFromAuthority(scopeVersion = {}) {
+  const events = Array.isArray(scopeVersion.events) ? scopeVersion.events : [];
+  const closures = [
+    ...(Array.isArray(scopeVersion.canonicalTruth?.closures) ? scopeVersion.canonicalTruth.closures : []),
+    ...(Array.isArray(scopeVersion.closures) ? scopeVersion.closures : []),
+  ];
+  const executionState = scopeVersion.canonicalTruth?.executionState;
+  let inferred;
+  const advance = (state) => {
+    if (!state) return;
+    inferred = highestLifecycleState(inferred, state);
+  };
+  events.forEach((event) => {
+    const type = String(event?.type ?? "");
+    if (type === "scopeversion.quoted") advance("QUOTED");
+    if (type === "scopeversion.approved") advance("APPROVED");
+    if (type === "scopeversion.control.work_created") advance("CONTROL");
+    if (type === "scopeversion.control.activated") advance("CONTROL_ACTIVE");
+    if (type.startsWith("field.") || type.includes("field_") || type.includes("FIELD_CLOSE")) advance("FIELD");
+    if (type === "scopeversion.complete" || type === "scopeversion.control.work_complete") advance("COMPLETE");
+    if (type === "scopeversion.operational") advance("OPERATIONAL");
+  });
+  if (closures.length) advance("FIELD");
+  if (executionState?.overallExecutionState === "ACTIVE") advance("CONTROL_ACTIVE");
+  if (executionState?.overallExecutionState === "COMPLETE") advance("COMPLETE");
+  return inferred;
+}
+
+function inferLifecycleTimestampFromAuthority(scopeVersion = {}) {
+  const events = Array.isArray(scopeVersion.events) ? scopeVersion.events : [];
+  const closures = [
+    ...(Array.isArray(scopeVersion.canonicalTruth?.closures) ? scopeVersion.canonicalTruth.closures : []),
+    ...(Array.isArray(scopeVersion.closures) ? scopeVersion.closures : []),
+  ];
+  const timestamps = [];
+  events.forEach((event) => {
+    const type = String(event?.type ?? "");
+    if (
+      type === "scopeversion.quoted" ||
+      type === "scopeversion.approved" ||
+      type === "scopeversion.control.work_created" ||
+      type === "scopeversion.control.activated" ||
+      type === "scopeversion.complete" ||
+      type === "scopeversion.control.work_complete" ||
+      type === "scopeversion.operational" ||
+      type.startsWith("field.") ||
+      type.includes("field_") ||
+      type.includes("FIELD_CLOSE")
+    ) {
+      if (event.createdAt) timestamps.push(event.createdAt);
+    }
+  });
+  closures.forEach((closure) => {
+    const timestamp = closure.updatedAt ?? closure.createdAt;
+    if (timestamp) timestamps.push(timestamp);
+  });
+  if (scopeVersion.canonicalTruth?.executionState?.updatedAt) {
+    timestamps.push(scopeVersion.canonicalTruth.executionState.updatedAt);
+  }
+  return timestamps.sort().at(-1);
+}
+
 function logBlockedRegression(scopeVersionId, field, existing, incoming, preserved) {
   if (existing === incoming || incoming === undefined || preserved !== existing) return;
   console.log("[LIFECYCLE_REGRESSION_BLOCKED]", {
@@ -100,21 +166,53 @@ function logBlockedRegression(scopeVersionId, field, existing, incoming, preserv
 }
 
 function mergeScopeVersionLifecycle(existing, incoming) {
-  if (!existing) return incoming;
+  const incomingInferredLifecycle = inferLifecycleStateFromAuthority(incoming);
+  if (!existing) {
+    const lifecycleState = highestLifecycleState(
+      highestLifecycleState(incoming.canonicalTruth?.lifecycleState, incoming.status),
+      incomingInferredLifecycle
+    );
+    return {
+      ...incoming,
+      status: lifecycleState ?? incoming.status,
+      canonicalTruth: {
+        ...(incoming.canonicalTruth ?? {}),
+        lifecycleState: lifecycleState ?? incoming.canonicalTruth?.lifecycleState,
+        lifecycleTimestamp: inferLifecycleTimestampFromAuthority(incoming) ?? incoming.canonicalTruth?.lifecycleTimestamp ?? incoming.updatedAt ?? nowIso(),
+      },
+    };
+  }
   const preservedStatus = highestLifecycleState(existing.status, incoming.status);
   const existingLifecycle = existing.canonicalTruth?.lifecycleState;
   const incomingLifecycle = incoming.canonicalTruth?.lifecycleState;
-  const preservedLifecycle = highestLifecycleState(existingLifecycle, incomingLifecycle);
+  const existingInferredLifecycle = inferLifecycleStateFromAuthority(existing);
+  const preservedLifecycle = highestLifecycleState(
+    highestLifecycleState(existingLifecycle, incomingLifecycle),
+    highestLifecycleState(existingInferredLifecycle, incomingInferredLifecycle)
+  );
+  const preservedTopLevelLifecycle = highestLifecycleState(preservedStatus, preservedLifecycle);
+  const existingNormalized = normalizeLifecycleState(existingLifecycle);
+  const incomingNormalized = normalizeLifecycleState(incomingLifecycle);
+  const preservedNormalized = normalizeLifecycleState(preservedLifecycle);
+  const lifecycleTimestamp =
+    preservedNormalized && incomingNormalized === preservedNormalized && incomingNormalized !== existingNormalized
+      ? incoming.canonicalTruth?.lifecycleTimestamp ?? incoming.updatedAt ?? nowIso()
+      : preservedNormalized && incomingInferredLifecycle === preservedNormalized
+        ? inferLifecycleTimestampFromAuthority(incoming) ?? incoming.canonicalTruth?.lifecycleTimestamp ?? incoming.updatedAt ?? nowIso()
+        : preservedNormalized && existingInferredLifecycle === preservedNormalized
+          ? inferLifecycleTimestampFromAuthority(existing) ?? existing.canonicalTruth?.lifecycleTimestamp ?? existing.updatedAt ?? nowIso()
+      : existing.canonicalTruth?.lifecycleTimestamp ?? incoming.canonicalTruth?.lifecycleTimestamp ?? incoming.updatedAt ?? nowIso();
 
   logBlockedRegression(incoming.scopeVersionId, "status", existing.status, incoming.status, preservedStatus);
   logBlockedRegression(incoming.scopeVersionId, "canonicalTruth.lifecycleState", existingLifecycle, incomingLifecycle, preservedLifecycle);
 
   return {
     ...incoming,
-    status: preservedStatus,
+    status: preservedTopLevelLifecycle,
     canonicalTruth: {
       ...(incoming.canonicalTruth ?? {}),
       lifecycleState: preservedLifecycle ?? incoming.canonicalTruth?.lifecycleState,
+      lifecycleTimestamp,
     },
   };
 }
@@ -291,10 +389,11 @@ function deriveLifecycleState(scopeVersion) {
   if (stationStates.length && stationStates.every((state) => state === "VERIFIED")) return "VERIFIED";
   if (stationStates.length && stationStates.every((state) => state === "COMPLETE" || state === "VERIFIED")) return "COMPLETE";
   if (stationStates.some((state) => state === "COMPLETE" || state === "VERIFIED")) return "PARTIALLY_COMPLETE";
-  if (stationStates.includes("IN_PROGRESS") || objectStates.some((state) => ["INSTALLED", "TESTED", "ACCEPTED"].includes(state))) return "FIELD_ACTIVE";
+  if (stationStates.includes("IN_PROGRESS") || objectStates.some((state) => ["INSTALLED", "TESTED", "ACCEPTED"].includes(state))) return "FIELD";
+  if (closureRecords(scopeVersion).length) return "FIELD";
   if (scopeVersion.status === "CONTROL_ACTIVE" || stationStates.includes("RELEASED")) return "CONTROL_ACTIVE";
   if (scopeVersion.status === "CONTROL") return "CONTROL";
-  if (scopeVersion.status === "FIELD" || scopeVersion.status === "FIELD_ACTIVE") return "FIELD_ACTIVE";
+  if (scopeVersion.status === "FIELD" || scopeVersion.status === "FIELD_ACTIVE") return "FIELD";
   if (scopeVersion.status === "QUOTED") return "QUOTED";
   if (scopeVersion.status === "APPROVED" || scopeVersion.status === "ACTIVATED") return "APPROVED";
   if (scopeVersion.certifiedRouteReference?.routeAuthorityState === "PROVISIONALLY_CERTIFIED") return "PROVISIONALLY_CERTIFIED";
@@ -354,6 +453,7 @@ function applyClosureRecord(scopeVersion, closureRecord) {
       ...(nextScope.canonicalTruth ?? {}),
       progress,
       lifecycleState,
+      lifecycleTimestamp: timestamp,
     },
   });
 }
@@ -463,7 +563,7 @@ export async function handleScopeVersions(req, res, pathname) {
   if (handleOptions(req, res)) return true;
 
   if (match.base && req.method === "GET") {
-    jsonResponse(res, 200, { scopeVersions: sortedByUpdated(await listRecords(DIRS.scopeVersions)) });
+    jsonResponse(res, 200, { scopeVersions: sortedByUpdated((await listRecords(DIRS.scopeVersions)).map(normalizeScopeVersion)) });
     return true;
   }
 
@@ -480,10 +580,10 @@ export async function handleScopeVersions(req, res, pathname) {
       const closureRecord = unwrapBody(body, "closureRecord");
       const existing = await loadScopeVersion(match.id);
       const lifecycleState = normalizeLifecycleState(existing.canonicalTruth?.lifecycleState ?? existing.status);
-      if (!["CONTROL_ACTIVE", "FIELD_ACTIVE"].includes(lifecycleState)) {
+      if (!["CONTROL_ACTIVE", "FIELD"].includes(lifecycleState)) {
         jsonResponse(res, 409, {
           error: "LIFECYCLE_AUTHORITY_VIOLATION",
-          message: "Cannot append Field closure unless ScopeVersion lifecycle is CONTROL_ACTIVE or FIELD_ACTIVE.",
+          message: "Cannot append Field closure unless ScopeVersion lifecycle is CONTROL_ACTIVE or FIELD.",
           lifecycleState,
         });
         return true;

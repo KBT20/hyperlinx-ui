@@ -27,7 +27,7 @@ import type { DALCoordinate, InventoryGraphMetadata, ScopeVersion } from "../typ
 import type { CandidateSite } from "../types/candidateSite";
 import type { OpportunitySeed } from "../types/portfolio";
 import { useDALState } from "../dal/DALState";
-import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
+import { getAuthoritativeLifecycleState, transitionScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
 
 type TargetType = "candidate" | "opportunity";
 
@@ -349,14 +349,12 @@ export default function RouteEngineeringWorkspace() {
       return;
     }
     const timestamp = new Date().toISOString();
-    const saved = await saveScopeVersion({
+    const approvedScope = transitionScopeVersionLifecycle({
       ...approvalScope,
-      status: "APPROVED",
       certifiedRouteReference: routeReference,
       updatedAt: timestamp,
       canonicalTruth: {
         ...approvalScope.canonicalTruth,
-        lifecycleState: "APPROVED",
       },
       events: [
         ...approvalScope.events,
@@ -374,7 +372,8 @@ export default function RouteEngineeringWorkspace() {
           createdAt: timestamp,
         },
       ],
-    });
+    }, "APPROVED", timestamp);
+    const saved = await saveScopeVersion(approvedScope);
     setScopeVersions((prev) => [saved, ...prev.filter((scope) => scope.scopeVersionId !== saved.scopeVersionId)]);
     setSelectedScopeVersion(saved);
     setSelectedScopeVersionId(saved.scopeVersionId);

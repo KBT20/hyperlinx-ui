@@ -8,7 +8,7 @@ const RIBBON_STATES = [
   { key: "APPROVED", label: "APPROVED" },
   { key: "CONTROL", label: "CONTROL" },
   { key: "CONTROL_ACTIVE", label: "CONTROL ACTIVE" },
-  { key: "FIELD_ACTIVE", label: "FIELD" },
+  { key: "FIELD", label: "FIELD" },
   { key: "COMPLETE", label: "COMPLETE" },
   { key: "OPERATIONAL", label: "OPERATIONAL" },
 ] as const;
@@ -16,7 +16,7 @@ const RIBBON_STATES = [
 function normalizedState(scopeVersion?: ScopeVersion | null) {
   if (!scopeVersion) return "";
   const state = getAuthoritativeLifecycleState(scopeVersion);
-  if (state === "PARTIALLY_COMPLETE") return "FIELD_ACTIVE";
+  if (state === "PARTIALLY_COMPLETE") return "FIELD";
   if (state === "VERIFIED") return "COMPLETE";
   if (state === "BLOCKED" || state === "REJECTED") return state;
   return state;

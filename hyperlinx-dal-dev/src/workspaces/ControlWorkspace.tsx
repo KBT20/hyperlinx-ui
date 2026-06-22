@@ -6,7 +6,7 @@ import { buildFieldExecutionViewModel } from "../field/FieldExecutionViewModel";
 import { LeafletMap, type GISBuildPath, type GISPoint, type GISRoute } from "../gis";
 import { calculateScopeVersionProgress } from "../scopeversion/ClosureAuthorityEngine";
 import { canControlActivateWork, canControlCreateWork, isScopeVersionApprovedForControl, withScopeVersionExecutionState } from "../scopeversion/LifecycleAuthorityEngine";
-import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
+import { getAuthoritativeLifecycleState, transitionScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
 import type { ControlWorkItem, ControlWorkStatus, DALCoordinate, MarketplaceQuote, OperationalEvent, RouteStation, ScopeVersion } from "../types/dal";
 
 const statuses: ControlWorkStatus[] = ["PENDING", "ACTIVE", "ON_HOLD", "COMPLETE", "CANCELLED"];
@@ -184,18 +184,14 @@ export default function ControlWorkspace() {
 
   async function saveScopeStatus(scope: ScopeVersion, nextStatus: ScopeVersion["status"], eventType: string, payload: Record<string, unknown>, nextWorkItems = selectedScopeWorkItems) {
     const timestamp = now();
+    const transitionedScope = transitionScopeVersionLifecycle({
+      ...scope,
+      updatedAt: timestamp,
+      events: [...scope.events, controlEvent(scope.scopeVersionId, eventType, payload)],
+    }, nextStatus, timestamp);
     const saved = await saveScopeVersion(
       withScopeVersionExecutionState(
-        {
-          ...scope,
-          status: nextStatus,
-          updatedAt: timestamp,
-          canonicalTruth: {
-            ...scope.canonicalTruth,
-            lifecycleState: nextStatus,
-          },
-          events: [...scope.events, controlEvent(scope.scopeVersionId, eventType, payload)],
-        },
+        transitionedScope,
         nextWorkItems
       )
     );

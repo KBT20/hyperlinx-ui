@@ -1,7 +1,7 @@
 import { createId, now } from "../api/dalClient";
 import { deriveRouteCertificationState } from "../certification/CertificationAuthority";
 import { DEFAULT_CONSTRUCTION_TYPE } from "../engineering/constructionModel";
-import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
+import { getAuthoritativeLifecycleState, transitionScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
 import type { MarketplaceQuote, OperationalEvent, ScopeVersion } from "../types/dal";
 
 function asNumber(value: unknown, fallback = 0) {
@@ -227,10 +227,9 @@ export function generatePreliminaryQuote(scopeVersion: ScopeVersion, termMonths 
 export function applyQuoteToScopeVersion(scopeVersion: ScopeVersion, quote: MarketplaceQuote): ScopeVersion {
   const timestamp = now();
   const lifecycleState = getAuthoritativeLifecycleState(scopeVersion);
-  const nextStatus = lifecycleState === "ANALYZED" ? "QUOTED" : lifecycleState;
-  return {
+  const nextStatus = ["ANALYZED", "CERTIFIED", "PROVISIONALLY_CERTIFIED"].includes(lifecycleState) ? "QUOTED" : lifecycleState;
+  return transitionScopeVersionLifecycle({
     ...scopeVersion,
-    status: nextStatus,
     updatedAt: timestamp,
     canonicalTruth: {
       ...scopeVersion.canonicalTruth,
@@ -239,7 +238,6 @@ export function applyQuoteToScopeVersion(scopeVersion: ScopeVersion, quote: Mark
         preliminaryQuote: quote,
         quotedAt: timestamp,
       },
-      lifecycleState: nextStatus,
     },
     events: [
       ...scopeVersion.events,
@@ -250,5 +248,5 @@ export function applyQuoteToScopeVersion(scopeVersion: ScopeVersion, quote: Mark
         totalContractValue: quote.totalContractValue,
       }),
     ],
-  };
+  }, nextStatus, timestamp);
 }

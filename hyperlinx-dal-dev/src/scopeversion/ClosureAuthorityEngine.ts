@@ -9,6 +9,7 @@ import type {
   ScopeVersion,
   ScopeVersionLifecycleState,
 } from "../types/dal";
+import { transitionScopeVersionLifecycle } from "./ScopeVersionLifecycleGuard";
 
 const STATION_TRANSITIONS: Record<RouteStationState, RouteStationState[]> = {
   PLANNED: ["RELEASED", "BLOCKED", "REJECTED"],
@@ -323,15 +324,13 @@ export function applyClosureToScopeVersion(scopeVersion: ScopeVersion, closureRe
   };
   const progress = calculateScopeVersionProgress(nextScope);
   const lifecycleState = deriveScopeVersionLifecycleState(nextScope);
-  const updated: ScopeVersion = {
+  const updated = transitionScopeVersionLifecycle({
     ...nextScope,
-    status: lifecycleState,
     canonicalTruth: {
       ...nextScope.canonicalTruth,
       progress,
-      lifecycleState,
     },
-  };
+  }, lifecycleState, timestamp);
   console.log("[CLOSURE_AUTHORITY]", {
     closureId: closureRecord.closureId,
     scopeVersionId: scopeVersion.scopeVersionId,
@@ -402,10 +401,11 @@ export function deriveScopeVersionLifecycleState(scopeVersion: ScopeVersion): Sc
   if (stations.length && stationStates.every((state) => state === "VERIFIED")) return "VERIFIED";
   if (stations.length && stationStates.every((state) => state === "COMPLETE" || state === "VERIFIED")) return "COMPLETE";
   if (stationStates.some((state) => state === "COMPLETE" || state === "VERIFIED")) return "PARTIALLY_COMPLETE";
-  if (stationStates.includes("IN_PROGRESS") || objectStates.some((state) => ["INSTALLED", "TESTED", "ACCEPTED"].includes(state))) return "FIELD_ACTIVE";
+  if (stationStates.includes("IN_PROGRESS") || objectStates.some((state) => ["INSTALLED", "TESTED", "ACCEPTED"].includes(state))) return "FIELD";
+  if (closureRecords(scopeVersion).length) return "FIELD";
   if (scopeVersion.status === "CONTROL_ACTIVE" || stationStates.includes("RELEASED")) return "CONTROL_ACTIVE";
   if (scopeVersion.status === "CONTROL") return "CONTROL";
-  if (scopeVersion.status === "FIELD" || scopeVersion.status === "FIELD_ACTIVE") return "FIELD_ACTIVE";
+  if (scopeVersion.status === "FIELD" || scopeVersion.status === "FIELD_ACTIVE") return "FIELD";
   if (scopeVersion.status === "QUOTED") return "QUOTED";
   if (scopeVersion.status === "APPROVED" || scopeVersion.status === "ACTIVATED") return "APPROVED";
   if (scopeVersion.certifiedRouteReference?.routeAuthorityState === "PROVISIONALLY_CERTIFIED") return "PROVISIONALLY_CERTIFIED";

@@ -36,10 +36,28 @@ function dedupeById(records, idKey) {
 const LIFECYCLE_ALIASES = {
   RELEASED_TO_CONTROL: "CONTROL",
   ACTIVATED: "CONTROL_ACTIVE",
-  IN_FIELD: "FIELD_ACTIVE",
-  IN_CONSTRUCTION: "FIELD_ACTIVE",
-  FIELD: "FIELD_ACTIVE",
+  FIELD_ACTIVE: "FIELD",
+  IN_FIELD: "FIELD",
+  IN_CONSTRUCTION: "FIELD",
 };
+
+const LIFECYCLE_ORDER = [
+  "DRAFT",
+  "ANALYZED",
+  "CERTIFIED",
+  "PROVISIONALLY_CERTIFIED",
+  "QUOTED",
+  "APPROVED",
+  "CONTROL",
+  "CONTROL_ACTIVE",
+  "FIELD",
+  "PARTIALLY_COMPLETE",
+  "COMPLETE",
+  "VERIFIED",
+  "OPERATIONAL",
+];
+
+const LIFECYCLE_RANKS = new Map(LIFECYCLE_ORDER.map((state, index) => [state, index]));
 
 function normalizeLifecycleState(state) {
   if (typeof state !== "string") return undefined;
@@ -47,8 +65,47 @@ function normalizeLifecycleState(state) {
   return LIFECYCLE_ALIASES[upper] ?? upper;
 }
 
+function highestLifecycleState(existing, incoming) {
+  const existingNormalized = normalizeLifecycleState(existing);
+  const incomingNormalized = normalizeLifecycleState(incoming);
+  const existingRank = existingNormalized ? LIFECYCLE_RANKS.get(existingNormalized) ?? -1 : -1;
+  const incomingRank = incomingNormalized ? LIFECYCLE_RANKS.get(incomingNormalized) ?? -1 : -1;
+  if (existingRank < 0 && incomingRank < 0) return incomingNormalized ?? existingNormalized;
+  return existingRank >= incomingRank ? existingNormalized : incomingNormalized;
+}
+
+function inferLifecycleStateFromAuthority(scopeVersion = {}) {
+  const events = Array.isArray(scopeVersion.events) ? scopeVersion.events : [];
+  const closures = [
+    ...(Array.isArray(scopeVersion.canonicalTruth?.closures) ? scopeVersion.canonicalTruth.closures : []),
+    ...(Array.isArray(scopeVersion.closures) ? scopeVersion.closures : []),
+  ];
+  const executionState = scopeVersion.canonicalTruth?.executionState;
+  let inferred;
+  const advance = (state) => {
+    inferred = highestLifecycleState(inferred, state);
+  };
+  events.forEach((event) => {
+    const type = String(event?.type ?? "");
+    if (type === "scopeversion.quoted") advance("QUOTED");
+    if (type === "scopeversion.approved") advance("APPROVED");
+    if (type === "scopeversion.control.work_created") advance("CONTROL");
+    if (type === "scopeversion.control.activated") advance("CONTROL_ACTIVE");
+    if (type.startsWith("field.") || type.includes("field_") || type.includes("FIELD_CLOSE")) advance("FIELD");
+    if (type === "scopeversion.complete" || type === "scopeversion.control.work_complete") advance("COMPLETE");
+    if (type === "scopeversion.operational") advance("OPERATIONAL");
+  });
+  if (closures.length) advance("FIELD");
+  if (executionState?.overallExecutionState === "ACTIVE") advance("CONTROL_ACTIVE");
+  if (executionState?.overallExecutionState === "COMPLETE") advance("COMPLETE");
+  return inferred;
+}
+
 function authoritativeLifecycleState(scopeVersion) {
-  return normalizeLifecycleState(scopeVersion?.canonicalTruth?.lifecycleState) ?? normalizeLifecycleState(scopeVersion?.status) ?? "ANALYZED";
+  return highestLifecycleState(
+    highestLifecycleState(scopeVersion?.canonicalTruth?.lifecycleState, scopeVersion?.status),
+    inferLifecycleStateFromAuthority(scopeVersion)
+  ) ?? "ANALYZED";
 }
 
 function stateCounts(records, stateKey) {
@@ -134,7 +191,7 @@ function hasRouteAuthority(scopeVersion) {
 
 function approvedForControl(scopeVersion) {
   return (
-    ["APPROVED", "CONTROL", "CONTROL_ACTIVE", "FIELD_ACTIVE", "PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "OPERATIONAL"].includes(String(authoritativeLifecycleState(scopeVersion))) &&
+    ["APPROVED", "CONTROL", "CONTROL_ACTIVE", "FIELD", "PARTIALLY_COMPLETE", "COMPLETE", "VERIFIED", "OPERATIONAL"].includes(String(authoritativeLifecycleState(scopeVersion))) &&
     hasRouteAuthority(scopeVersion) &&
     routeStations(scopeVersion).length > 0 &&
     scopeObjects(scopeVersion).length > 0

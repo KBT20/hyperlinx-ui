@@ -36,7 +36,7 @@ const CONTROL_APPROVED_STATUSES = new Set([
   "APPROVED",
   "CONTROL",
   "CONTROL_ACTIVE",
-  "FIELD_ACTIVE",
+  "FIELD",
   "PARTIALLY_COMPLETE",
   "COMPLETE",
   "VERIFIED",
@@ -44,7 +44,7 @@ const CONTROL_APPROVED_STATUSES = new Set([
 ]);
 
 const CONTROL_ACTIVATION_STATUSES = new Set(["APPROVED", "CONTROL"]);
-const FIELD_EXECUTABLE_STATUSES = new Set(["CONTROL_ACTIVE", "FIELD_ACTIVE"]);
+const FIELD_EXECUTABLE_STATUSES = new Set(["CONTROL_ACTIVE", "FIELD"]);
 
 const CLOSED_OBJECT_STATES = new Set(["INSTALLED", "TESTED", "ACCEPTED", "COMPLETE", "VERIFIED"]);
 const COMPLETE_OBJECT_STATES = new Set(["COMPLETE", "VERIFIED"]);
@@ -169,7 +169,7 @@ export function canFieldExecute(scope: ScopeVersion | null | undefined, workItem
   const reasons: string[] = [];
   const lifecycleState = getAuthoritativeLifecycleState(scope);
   if (!scope) reasons.push("Select a ScopeVersion before Field execution.");
-  if (scope && !FIELD_EXECUTABLE_STATUSES.has(String(lifecycleState))) reasons.push("LIFECYCLE_AUTHORITY_VIOLATION: ScopeVersion must be CONTROL_ACTIVE or FIELD_ACTIVE before Field execution.");
+  if (scope && !FIELD_EXECUTABLE_STATUSES.has(String(lifecycleState))) reasons.push("LIFECYCLE_AUTHORITY_VIOLATION: ScopeVersion must be CONTROL_ACTIVE or FIELD before Field execution.");
   if (!workItem) reasons.push("No active Control work package is selected.");
   if (workItem && workItem.status !== "ACTIVE") reasons.push("Selected Control work package must be ACTIVE.");
   if (scope && workItem && workItem.scopeVersionId !== scope.scopeVersionId) reasons.push("Selected Control work package does not belong to this ScopeVersion.");

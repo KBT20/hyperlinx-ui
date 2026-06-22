@@ -2,7 +2,7 @@ import { DAL_API } from "../config/dalApi";
 import { findRecord, readCollection, writeRecord, deleteRecord } from "./dalStorage";
 import { createScopeVersionFromInventoryGraph } from "../scopeversion/scopeVersionUtils";
 import { applyScopeVersionCertification } from "../scopeversion/scopeVersionCertification";
-import { getAuthoritativeLifecycleState, mergeScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
+import { getAuthoritativeLifecycleState, mergeScopeVersionLifecycle, reconcileScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
 import type {
   ClosureRecord,
   InventoryGraph,
@@ -177,20 +177,21 @@ function assertConstitutionalGuardrails(scopeVersion: ScopeVersion) {
 
 function normalizeScopeVersion(raw: unknown): ScopeVersion {
   const scope = ((raw as any)?.scopeVersion ?? (raw as any)?.data ?? raw) as ScopeVersion;
-  const type = inferType(scope);
-  const sourceInventoryId = scope.sourceInventoryId ?? scope.inventoryId;
-  const certificationState = (scope.certificationState ?? (scope.canonicalTruth as any)?.certification?.certificationState ?? "DRAFT") as ScopeVersionCertificationState;
-  const relationshipType = scope.relationshipType ?? (scope.parentScopeVersionId ? "AMENDMENT" : "ROOT");
-  const rootScopeVersionId = scope.rootScopeVersionId ?? scope.parentScopeVersionId ?? scope.scopeVersionId;
-  const graphSummary = scope.graphSummary ?? (scope.canonicalTruth as any)?.graphSummary ?? {
-    nodeCount: Number((scope.canonicalTruth as any)?.nodeCount ?? 0),
-    edgeCount: Number((scope.canonicalTruth as any)?.edgeCount ?? 0),
-    stationCount: Number((scope.canonicalTruth as any)?.stationCount ?? 0),
-    routeCount: Number((scope.canonicalTruth as any)?.routeCount ?? 0),
+  const reconciled = reconcileScopeVersionLifecycle(scope);
+  const type = inferType(reconciled);
+  const sourceInventoryId = reconciled.sourceInventoryId ?? reconciled.inventoryId;
+  const certificationState = (reconciled.certificationState ?? (reconciled.canonicalTruth as any)?.certification?.certificationState ?? "DRAFT") as ScopeVersionCertificationState;
+  const relationshipType = reconciled.relationshipType ?? (reconciled.parentScopeVersionId ? "AMENDMENT" : "ROOT");
+  const rootScopeVersionId = reconciled.rootScopeVersionId ?? reconciled.parentScopeVersionId ?? reconciled.scopeVersionId;
+  const graphSummary = reconciled.graphSummary ?? (reconciled.canonicalTruth as any)?.graphSummary ?? {
+    nodeCount: Number((reconciled.canonicalTruth as any)?.nodeCount ?? 0),
+    edgeCount: Number((reconciled.canonicalTruth as any)?.edgeCount ?? 0),
+    stationCount: Number((reconciled.canonicalTruth as any)?.stationCount ?? 0),
+    routeCount: Number((reconciled.canonicalTruth as any)?.routeCount ?? 0),
   };
-  const lifecycleState = getAuthoritativeLifecycleState(scope);
+  const lifecycleState = getAuthoritativeLifecycleState(reconciled);
   return {
-    ...scope,
+    ...reconciled,
     type,
     relationshipType,
     rootScopeVersionId,
@@ -200,9 +201,10 @@ function normalizeScopeVersion(raw: unknown): ScopeVersion {
     graphSummary,
     iofPackageIds: Array.isArray(scope.iofPackageIds) ? scope.iofPackageIds : [],
     canonicalTruth: {
-      ...(scope.canonicalTruth ?? {}),
+      ...(reconciled.canonicalTruth ?? {}),
       graphSummary,
       lifecycleState,
+      lifecycleTimestamp: reconciled.canonicalTruth?.lifecycleTimestamp ?? reconciled.updatedAt,
       constitutionalAuthority: certificationState === "CERTIFIED" ? "CERTIFIED_SCOPEVERSION" : "NON_AUTHORITATIVE",
     },
   };

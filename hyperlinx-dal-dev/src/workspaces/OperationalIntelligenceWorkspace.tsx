@@ -150,7 +150,7 @@ export default function OperationalIntelligenceWorkspace() {
   const draftScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "DRAFT");
   const analyzedScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "ANALYZED");
   const releasedToControlScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "CONTROL");
-  const inFieldScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "FIELD_ACTIVE");
+  const inFieldScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "FIELD");
   const partialScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "PARTIALLY_COMPLETE");
   const quotedScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "QUOTED");
   const approvedScopes = scopeVersions.filter((scope) => lifecycleFor(scope) === "APPROVED");

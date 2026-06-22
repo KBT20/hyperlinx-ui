@@ -751,6 +751,8 @@ export type ScopeVersionDecisionBasis = {
 };
 
 export type ScopeVersionCanonicalTruth = {
+  lifecycleState?: ScopeVersionLifecycleState | ScopeVersionStatus;
+  lifecycleTimestamp?: string;
   graphReference?: ScopeVersionGraphReference;
   networkBasis?: ScopeVersionNetworkBasis;
   geographicBasis?: ScopeVersionGeographicBasis;
