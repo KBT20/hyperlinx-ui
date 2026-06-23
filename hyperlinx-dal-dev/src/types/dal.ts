@@ -972,8 +972,11 @@ export type TwinProjectionMetrics = {
   completedWorkItems: number;
   activeWorkItems: number;
   pendingWorkItems: number;
+  holdWorkItems?: number;
   cancelledWorkItems: number;
+  blockedWorkItems?: number;
   closureCount: number;
+  totalFeet?: number;
   completedFeet: number;
   releasedObjects?: number;
   installedObjects?: number;
@@ -993,6 +996,9 @@ export type TwinProjectionMetrics = {
   percentComplete?: number;
   objectCompletionPercent?: number;
   stationDerivedCompletionPercent?: number;
+  workCompletionPercent?: number;
+  completionAuthority?: "CLOSURE_LEDGER" | "SCOPEVERSION_STATE" | "MIXED";
+  completionProjection?: Record<string, unknown>;
 };
 
 export type TwinLifecycleViolation = {
@@ -1030,6 +1036,7 @@ export type TwinState = {
   routeProgress: Array<{ routeId: string; completedFeet: number; totalFeet: number; percent: number }>;
   timeline: OperationalEvent[];
   metrics?: TwinProjectionMetrics;
+  completionProjection?: Record<string, unknown>;
   lifecycleViolations?: TwinLifecycleViolation[];
   graphContext?: TwinGraphContext;
   totals?: {

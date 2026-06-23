@@ -9,6 +9,7 @@ import type {
   ScopeVersion,
   ScopeVersionLifecycleState,
 } from "../types/dal";
+import { calculateCompletionProjection } from "../kernel/CompletionEngine";
 import { transitionScopeVersionLifecycle } from "./ScopeVersionLifecycleGuard";
 
 const STATION_TRANSITIONS: Record<RouteStationState, RouteStationState[]> = {
@@ -346,6 +347,7 @@ export function calculateScopeVersionProgress(scopeVersion: ScopeVersion) {
   const stations = sortedStations(scopeVersion);
   const objects = scopeObjects(scopeVersion);
   const closures = closureRecords(scopeVersion);
+  const completion = calculateCompletionProjection({ scopeVersion, closures });
   const stationStateCounts = stations.reduce<Record<string, number>>((counts, station) => {
     counts[station.stationState] = (counts[station.stationState] ?? 0) + 1;
     return counts;
@@ -354,31 +356,19 @@ export function calculateScopeVersionProgress(scopeVersion: ScopeVersion) {
     counts[object.objectState] = (counts[object.objectState] ?? 0) + 1;
     return counts;
   }, {});
-  const totalFeet = Number(scopeVersion.canonicalTruth?.stationing?.routeFeet ?? scopeVersion.certifiedRouteReference?.routeFeet ?? scopeVersion.buildFeet ?? stations.at(-1)?.measureFeet ?? 0);
-  const completeStations = stations.filter((station) => station.stationState === "COMPLETE" || station.stationState === "VERIFIED");
-  const verifiedStations = stations.filter((station) => station.stationState === "VERIFIED");
-  let completedFeet = completeStations.reduce((sum, station) => {
-    const index = stations.findIndex((item) => item.stationId === station.stationId);
-    if (index <= 0) return sum;
-    return sum + Math.max(0, Number(stations[index].measureFeet) - Number(stations[index - 1].measureFeet));
-  }, 0);
-  if (completeStations.length === 1 && stations[0]?.stationId === completeStations[0].stationId && stations[1]) {
-    completedFeet = Math.max(0, Number(stations[1].measureFeet) - Number(stations[0].measureFeet));
-  }
-  const percentComplete = totalFeet > 0 ? Math.min(100, (completedFeet / totalFeet) * 100) : stations.length ? (completeStations.length / stations.length) * 100 : 0;
   const lastClosure = closures.at(-1);
   const result = {
     scopeVersionId: scopeVersion.scopeVersionId,
-    totalStations: stations.length,
-    totalObjects: objects.length,
-    totalFeet,
-    releasedStations: stationStateCounts.RELEASED ?? 0,
-    inProgressStations: stationStateCounts.IN_PROGRESS ?? 0,
-    completeStations: completeStations.length,
-    verifiedStations: verifiedStations.length,
-    completedFeet,
-    remainingFeet: Math.max(0, totalFeet - completedFeet),
-    percentComplete,
+    totalStations: completion.totalStations,
+    totalObjects: completion.totalObjects,
+    totalFeet: completion.totalFeet,
+    releasedStations: completion.releasedStations,
+    inProgressStations: completion.inProgressStations,
+    completeStations: completion.completedStations + completion.verifiedStations,
+    verifiedStations: completion.verifiedStations,
+    completedFeet: completion.completedFeet,
+    remainingFeet: Math.max(0, completion.totalFeet - completion.completedFeet),
+    percentComplete: completion.percentComplete,
     closureCount: closures.length,
     latestClosureTimestamp: lastClosure?.updatedAt ?? lastClosure?.createdAt,
     lastClosureId: lastClosure?.closureId,

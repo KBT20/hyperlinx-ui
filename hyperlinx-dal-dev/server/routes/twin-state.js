@@ -1,4 +1,5 @@
 import { DIRS, errorResponse, handleOptions, jsonResponse, listRecords, loadRecord } from "./_shared.js";
+import { calculateCompletionProjection } from "../kernel/completion-engine.js";
 
 function isRouteStation(value) {
   return Boolean(value) && typeof value === "object" && typeof value.stationId === "string" && typeof value.stationState === "string";
@@ -108,14 +109,6 @@ function authoritativeLifecycleState(scopeVersion) {
   ) ?? "ANALYZED";
 }
 
-function stateCounts(records, stateKey) {
-  return records.reduce((counts, record) => {
-    const state = record?.[stateKey];
-    if (state) counts[state] = (counts[state] ?? 0) + 1;
-    return counts;
-  }, {});
-}
-
 function closureFeet(closure) {
   return Number(closure?.footage ?? closure?.feetAffected ?? 0);
 }
@@ -143,41 +136,40 @@ function graphContext(scopeVersion) {
 }
 
 function metricsFor(scopeVersion, workItems, closures) {
-  const stations = routeStations(scopeVersion);
-  const objects = scopeObjects(scopeVersion);
-  const stationStateCounts = stateCounts(stations, "stationState");
-  const objectStateCounts = stateCounts(objects, "objectState");
-  const completedFeet = closures.reduce((sum, closure) => sum + closureFeet(closure), 0);
-  const totalFeet = Number(scopeVersion?.canonicalTruth?.stationing?.routeFeet ?? scopeVersion?.certifiedRouteReference?.routeFeet ?? scopeVersion?.buildFeet ?? stations.at(-1)?.measureFeet ?? 0);
-  const completedObjects = Number(objectStateCounts.COMPLETE ?? 0) + Number(objectStateCounts.VERIFIED ?? 0);
-  const completedStations = Number(stationStateCounts.COMPLETE ?? 0) + Number(stationStateCounts.VERIFIED ?? 0);
+  const completionProjection = calculateCompletionProjection({ scopeVersion, workItems, closures });
 
   return {
-    openWorkItems: workItems.filter((item) => !["COMPLETE", "CANCELLED"].includes(item.status)).length,
-    completedWorkItems: workItems.filter((item) => item.status === "COMPLETE").length,
-    activeWorkItems: workItems.filter((item) => item.status === "ACTIVE").length,
-    pendingWorkItems: workItems.filter((item) => item.status === "PENDING").length,
-    cancelledWorkItems: workItems.filter((item) => item.status === "CANCELLED").length,
+    openWorkItems: completionProjection.totalWorkItems - completionProjection.completedWorkItems - completionProjection.cancelledWorkItems,
+    completedWorkItems: completionProjection.completedWorkItems,
+    activeWorkItems: completionProjection.activeWorkItems,
+    pendingWorkItems: completionProjection.pendingWorkItems,
+    holdWorkItems: completionProjection.holdWorkItems,
+    cancelledWorkItems: completionProjection.cancelledWorkItems,
+    blockedWorkItems: completionProjection.blockedWorkItems,
     closureCount: closures.length,
-    completedFeet,
-    releasedObjects: objectStateCounts.RELEASED ?? 0,
-    installedObjects: objectStateCounts.INSTALLED ?? 0,
-    testedObjects: objectStateCounts.TESTED ?? 0,
-    acceptedObjects: objectStateCounts.ACCEPTED ?? 0,
-    completedObjects: objectStateCounts.COMPLETE ?? 0,
-    verifiedObjects: objectStateCounts.VERIFIED ?? 0,
-    blockedObjects: objectStateCounts.BLOCKED ?? 0,
-    rejectedObjects: objectStateCounts.REJECTED ?? 0,
-    plannedAssets: stationStateCounts.PLANNED ?? 0,
-    releasedAssets: stationStateCounts.RELEASED ?? 0,
-    inProgressAssets: stationStateCounts.IN_PROGRESS ?? 0,
-    completedAssets: stationStateCounts.COMPLETE ?? 0,
-    verifiedAssets: stationStateCounts.VERIFIED ?? 0,
-    blockedAssets: stationStateCounts.BLOCKED ?? 0,
-    rejectedAssets: stationStateCounts.REJECTED ?? 0,
-    percentComplete: totalFeet > 0 ? Math.min(100, (completedFeet / totalFeet) * 100) : stations.length ? (completedStations / stations.length) * 100 : 0,
-    objectCompletionPercent: objects.length ? (completedObjects / objects.length) * 100 : 0,
-    stationDerivedCompletionPercent: stations.length ? (completedStations / stations.length) * 100 : 0,
+    totalFeet: completionProjection.totalFeet,
+    completedFeet: completionProjection.completedFeet,
+    releasedObjects: completionProjection.releasedObjects,
+    installedObjects: completionProjection.installedObjects,
+    testedObjects: completionProjection.testedObjects,
+    acceptedObjects: completionProjection.acceptedObjects,
+    completedObjects: completionProjection.completedObjects,
+    verifiedObjects: completionProjection.verifiedObjects,
+    blockedObjects: completionProjection.blockedObjects,
+    rejectedObjects: completionProjection.rejectedObjects,
+    plannedAssets: Math.max(0, completionProjection.totalStations - completionProjection.releasedStations - completionProjection.inProgressStations - completionProjection.completedStations - completionProjection.verifiedStations - completionProjection.blockedStations - completionProjection.rejectedStations),
+    releasedAssets: completionProjection.releasedStations,
+    inProgressAssets: completionProjection.inProgressStations,
+    completedAssets: completionProjection.completedStations,
+    verifiedAssets: completionProjection.verifiedStations,
+    blockedAssets: completionProjection.blockedStations,
+    rejectedAssets: completionProjection.rejectedStations,
+    percentComplete: completionProjection.percentComplete,
+    objectCompletionPercent: completionProjection.objectCompletionPercent,
+    stationDerivedCompletionPercent: completionProjection.stationCompletionPercent,
+    workCompletionPercent: completionProjection.workCompletionPercent,
+    completionAuthority: completionProjection.completionAuthority,
+    completionProjection,
   };
 }
 
@@ -290,6 +282,7 @@ async function buildProjection(scopeVersionId) {
       closures: [],
       timeline: [],
       metrics,
+      completionProjection: metrics.completionProjection,
       lifecycleViolations: [],
       graphContext: { matched: null },
       totals: {
@@ -330,6 +323,7 @@ async function buildProjection(scopeVersionId) {
     closures,
     timeline,
     metrics,
+    completionProjection: metrics.completionProjection,
     lifecycleViolations: violations,
     graphContext: graphContext(scopeVersion),
     totals: {

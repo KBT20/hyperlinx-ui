@@ -137,6 +137,7 @@ export default function TwinWorkspace() {
     objectCompletionPercent: twinProjection.objectCompletionPercent,
     stationDerivedCompletionPercent: twinProjection.stationDerivedCompletionPercent,
   };
+  const completionProjection = twinState?.completionProjection ?? projectionMetrics.completionProjection;
   const projectionTimeline = twinState?.timeline ?? [];
   const graphContext = twinState?.graphContext;
   const expectedInventoryId = graphContext?.inventoryId ?? projectionScopeVersion?.inventoryId ?? projectionScopeVersion?.sourceInventoryId ?? (projectionScopeVersion?.canonicalTruth as any)?.graphReference?.inventoryId;
@@ -259,6 +260,9 @@ export default function TwinWorkspace() {
           <span>Completed work: {fmt(projectionMetrics.completedWorkItems)}</span>
           <span>Closures: {fmt(projectionMetrics.closureCount)}</span>
           <span>Completed feet: {fmt(projectionMetrics.completedFeet)}</span>
+          <span>Total feet: {fmt(projectionMetrics.totalFeet)}</span>
+          <span>Completion %: {fmt(Math.round(projectionMetrics.percentComplete ?? 0))}%</span>
+          <span>Completion Authority: {projectionMetrics.completionAuthority ?? "n/a"}</span>
           <span>Lifecycle State: {authoritativeLifecycleState}</span>
           <span>Verified Stations: {fmt(twinProjection.verifiedStationCount)}</span>
           <span>Closure Timeline: {fmt(projectionTimeline.length)}</span>
@@ -370,6 +374,8 @@ export default function TwinWorkspace() {
           <span>Blocked Assets: {fmt(projectionMetrics.blockedAssets)}</span>
           <span>Rejected Assets: {fmt(projectionMetrics.rejectedAssets)}</span>
           <span>Percent Complete: {fmt(Math.round(projectionMetrics.percentComplete ?? 0))}%</span>
+          <span>Completed Feet / Total Feet: {fmt(Math.round(projectionMetrics.completedFeet ?? 0))} / {fmt(Math.round(projectionMetrics.totalFeet ?? 0))}</span>
+          <span>Completion Authority: {projectionMetrics.completionAuthority ?? "n/a"}</span>
           <span>Planned Objects: {fmt(twinObjectStateCounts.PLANNED)}</span>
           <span>Released Objects: {fmt(projectionMetrics.releasedObjects)}</span>
           <span>Installed Objects: {fmt(projectionMetrics.installedObjects)}</span>
@@ -380,7 +386,9 @@ export default function TwinWorkspace() {
           <span>Blocked Objects: {fmt(projectionMetrics.blockedObjects)}</span>
           <span>Rejected Objects: {fmt(projectionMetrics.rejectedObjects)}</span>
           <span>Object Completion: {fmt(Math.round(projectionMetrics.objectCompletionPercent ?? 0))}%</span>
-          <span>Station Derived Completion: {fmt(Math.round(projectionMetrics.stationDerivedCompletionPercent ?? 0))}%</span>
+          <span>Station Progress: {fmt(Math.round(projectionMetrics.stationDerivedCompletionPercent ?? 0))}%</span>
+          <span>Work Progress: {fmt(Math.round(projectionMetrics.workCompletionPercent ?? 0))}%</span>
+          <span>Completion Warnings: {fmt(Array.isArray((completionProjection as any)?.warnings) ? (completionProjection as any).warnings.length : 0)}</span>
         </div>
       </div>
 

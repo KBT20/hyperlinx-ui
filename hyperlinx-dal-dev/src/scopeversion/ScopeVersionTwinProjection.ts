@@ -1,6 +1,6 @@
 import type { ClosureRecord, ScopeInfrastructureObject, ScopeVersion } from "../types/dal";
 import { buildFieldExecutionViewModel } from "../field/FieldExecutionViewModel";
-import { calculateScopeVersionProgress } from "./ClosureAuthorityEngine";
+import { calculateCompletionProjection } from "../kernel/CompletionEngine";
 import { getAuthoritativeLifecycleState } from "./ScopeVersionLifecycleGuard";
 
 function objects(scopeVersion: ScopeVersion): ScopeInfrastructureObject[] {
@@ -44,14 +44,31 @@ export function buildScopeVersionTwinProjection(scopeVersion: ScopeVersion | nul
       rejectedStations: [],
     };
   }
-  const progress = calculateScopeVersionProgress(scopeVersion);
+  const progress = calculateCompletionProjection({ scopeVersion });
   const lifecycleState = getAuthoritativeLifecycleState(scopeVersion);
   const fieldExecution = buildFieldExecutionViewModel(scopeVersion);
   const stationList = Array.isArray(scopeVersion.canonicalTruth?.stations) ? (scopeVersion.canonicalTruth.stations as any[]) : [];
-  const objectStateCounts = progress.objectStateCounts as Record<string, number>;
+  const objectStateCounts = {
+    PLANNED: progress.plannedObjects,
+    RELEASED: progress.releasedObjects,
+    INSTALLED: progress.installedObjects,
+    TESTED: progress.testedObjects,
+    ACCEPTED: progress.acceptedObjects,
+    COMPLETE: progress.completedObjects,
+    VERIFIED: progress.verifiedObjects,
+    BLOCKED: progress.blockedObjects,
+    REJECTED: progress.rejectedObjects,
+  } as Record<string, number>;
+  const stationStateCounts = {
+    PLANNED: stationList.filter((station) => station.stationState === "PLANNED").length,
+    RELEASED: progress.releasedStations,
+    IN_PROGRESS: progress.inProgressStations,
+    COMPLETE: progress.completedStations,
+    VERIFIED: progress.verifiedStations,
+    BLOCKED: progress.blockedStations,
+    REJECTED: progress.rejectedStations,
+  } as Record<string, number>;
   const inProgressObjects = Number(objectStateCounts.INSTALLED ?? 0) + Number(objectStateCounts.TESTED ?? 0) + Number(objectStateCounts.ACCEPTED ?? 0);
-  const completedObjectCount = Number(objectStateCounts.COMPLETE ?? 0) + Number(objectStateCounts.VERIFIED ?? 0);
-  const objectCompletionPercent = progress.totalObjects ? (completedObjectCount / progress.totalObjects) * 100 : 0;
   const stationDerivedComplete =
     Number(fieldExecution.stationDerivedStateCounts.COMPLETE ?? 0) +
     Number(fieldExecution.stationDerivedStateCounts.VERIFIED ?? 0);
@@ -67,11 +84,11 @@ export function buildScopeVersionTwinProjection(scopeVersion: ScopeVersion | nul
     lifecycleState,
     currentInventory: scopeVersion.inventoryId ?? scopeVersion.sourceInventoryId ?? "none",
     proposedScopeVersionState: lifecycleState,
-    completedStationCount: progress.completeStations,
+    completedStationCount: progress.completedStations + progress.verifiedStations,
     verifiedStationCount: progress.verifiedStations,
     completedFeet: progress.completedFeet,
     percentComplete: progress.percentComplete,
-    stationStateCounts: progress.stationStateCounts,
+    stationStateCounts,
     stationDerivedStateCounts: fieldExecution.stationDerivedStateCounts,
     objectStateCounts,
     objectSummary,
@@ -86,7 +103,7 @@ export function buildScopeVersionTwinProjection(scopeVersion: ScopeVersion | nul
     blockedObjects: objectStateCounts.BLOCKED ?? 0,
     rejectedObjects: objectStateCounts.REJECTED ?? 0,
     stationDerivedCompletionPercent,
-    objectCompletionPercent,
+    objectCompletionPercent: progress.objectCompletionPercent,
     closureTimeline: closures(scopeVersion),
     blockedStations: stationList.filter((station) => station.stationState === "BLOCKED").map((station) => station.stationId),
     rejectedStations: stationList.filter((station) => station.stationState === "REJECTED").map((station) => station.stationId),

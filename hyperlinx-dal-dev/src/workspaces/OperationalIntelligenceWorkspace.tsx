@@ -10,6 +10,7 @@ import type { CandidateSite } from "../types/candidateSite";
 import type { OpportunitySeed } from "../types/portfolio";
 import { renderIOFPackage, renderScopeVersion, summarizeMapKernelMetrics } from "../mapkernel";
 import { normalizeRouteAuthorityState } from "../kernel/KernelStateRegistry";
+import { calculateCompletionProjection } from "../kernel/CompletionEngine";
 import { buildFieldExecutionViewModel } from "../field/FieldExecutionViewModel";
 import { calculateScopeVersionProgress } from "../scopeversion/ClosureAuthorityEngine";
 import { deriveLifecycleViolations } from "../scopeversion/LifecycleAuthorityEngine";
@@ -168,9 +169,14 @@ export default function OperationalIntelligenceWorkspace() {
   const candidateScopeVersions = scopeVersions.filter((scope) => scope.type === "CANDIDATE" || scope.source === "OpportunitySeed" || scope.source === "PrismOpportunity");
   const approvedScopeVersions = scopeVersions.filter((scope) => scope.type === "APPROVED" || lifecycleFor(scope) === "APPROVED");
   const fieldClosedScopeVersions = scopeVersions.filter((scope) => scope.type === "FIELD_CLOSED" || scope.source === "FieldClosure");
+  const completionProjections = scopeVersions.map((scope) => calculateCompletionProjection({ scopeVersion: scope, workItems, closures }));
   const scopeProgress = scopeVersions.map((scope) => calculateScopeVersionProgress(scope));
-  const totalPlannedFeet = scopeProgress.reduce((sum, progress) => sum + Number(progress.totalFeet || 0), 0);
-  const totalClosureCompletedFeet = scopeProgress.reduce((sum, progress) => sum + Number(progress.completedFeet || 0), 0);
+  const totalPlannedFeet = completionProjections.reduce((sum, progress) => sum + Number(progress.totalFeet || 0), 0);
+  const totalClosureCompletedFeet = completionProjections.reduce((sum, progress) => sum + Number(progress.completedFeet || 0), 0);
+  const portfolioCompletionPercent = totalPlannedFeet ? (totalClosureCompletedFeet / totalPlannedFeet) * 100 : completionProjections.reduce((sum, projection) => sum + Number(projection.objectCompletionPercent || 0), 0) / Math.max(completionProjections.length, 1);
+  const activeScopeVersions = completionProjections.filter((projection) => projection.activeWorkItems > 0).length;
+  const blockedScopeVersions = completionProjections.filter((projection) => projection.blockedWorkItems > 0 || projection.blockedObjects > 0 || projection.blockedStations > 0).length;
+  const completedScopeVersionsByCompletion = completionProjections.filter((projection) => projection.percentComplete >= 100 || projection.objectCompletionPercent >= 100).length;
   const totalVerifiedFeet = scopeVersions.reduce((sum, scope) => {
     const stations = Array.isArray(scope.canonicalTruth?.stations) ? (scope.canonicalTruth.stations as any[]) : [];
     const verified = stations.filter((station) => station.stationState === "VERIFIED");
@@ -185,7 +191,7 @@ export default function OperationalIntelligenceWorkspace() {
       }, 0)
     );
   }, 0);
-  const averageCompletionPercent = scopeProgress.reduce((sum, progress) => sum + Number(progress.percentComplete || 0), 0) / Math.max(scopeProgress.length, 1);
+  const averageCompletionPercent = completionProjections.reduce((sum, progress) => sum + Number(progress.percentComplete || 0), 0) / Math.max(completionProjections.length, 1);
   const constitutionalClosureCount = scopeProgress.reduce((sum, progress) => sum + Number(progress.closureCount || 0), 0);
   const latestConstitutionalClosureTimestamp = scopeProgress
     .map((progress) => progress.latestClosureTimestamp)
@@ -445,6 +451,10 @@ export default function OperationalIntelligenceWorkspace() {
           <span>Total Planned Feet: {fmt(Math.round(totalPlannedFeet))}</span>
           <span>Total Closure Completed Feet: {fmt(Math.round(totalClosureCompletedFeet))}</span>
           <span>Total Verified Feet: {fmt(Math.round(totalVerifiedFeet))}</span>
+          <span>Portfolio Completion: {fmt(Math.round(portfolioCompletionPercent))}%</span>
+          <span>Active ScopeVersions: {fmt(activeScopeVersions)}</span>
+          <span>Blocked ScopeVersions: {fmt(blockedScopeVersions)}</span>
+          <span>Completed ScopeVersions: {fmt(completedScopeVersionsByCompletion)}</span>
           <span>Average Completion: {fmt(Math.round(averageCompletionPercent))}%</span>
           <span>Constitutional Closure Count: {fmt(constitutionalClosureCount)}</span>
           <span>Latest Constitutional Closure: {latestConstitutionalClosureTimestamp ?? "none"}</span>
@@ -464,6 +474,8 @@ export default function OperationalIntelligenceWorkspace() {
           <span>Average Closure Velocity: {averageClosureVelocity.toLocaleString(undefined, { maximumFractionDigits: 1 })} / day</span>
           <span>Assets Closed Today: {fmt(assetsClosedToday)}</span>
           <span>Feet Completed Today: {fmt(Math.round(feetCompletedToday))}</span>
+          <span>Total Completed Feet: {fmt(Math.round(totalClosureCompletedFeet))}</span>
+          <span>Portfolio Completion: {fmt(Math.round(portfolioCompletionPercent))}%</span>
           <span>Object Closures Today: {fmt(objectClosuresToday)}</span>
           <span>Object Closure Velocity: {objectClosureVelocity.toLocaleString(undefined, { maximumFractionDigits: 1 })} / day</span>
           <span>Object Completion: {fmt(Math.round(percentCompleteByObjectCount))}%</span>

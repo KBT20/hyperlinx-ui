@@ -8,7 +8,8 @@ import type {
   TwinState,
 } from "../types/dal";
 import { getAuthoritativeLifecycleState, lifecycleRank, normalizeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
-import { isKernelAlias, kernelAliasTarget } from "./KernelStateRegistry";
+import { calculateCompletionProjection, type CompletionProjection } from "./CompletionEngine";
+import { isKernelAlias, kernelAliasTarget, normalizeControlWorkStatus } from "./KernelStateRegistry";
 
 export type KernelInvariantSeverity = "INFO" | "WARNING" | "BLOCKING";
 
@@ -32,6 +33,7 @@ export type KernelInvariantContext = {
   selectedScopeVersionId?: string;
   portfolioScopeVersionIds?: string[];
   certifiedRoutes?: Array<{ certifiedRouteId: string; routeAuthorityState?: string }>;
+  completionProjection?: CompletionProjection;
   fallbackMode?: "SERVER" | "LOCAL_FALLBACK" | "DEVELOPMENT_FALLBACK";
   environment?: "development" | "production";
   duplicateAuthorityDefinitions?: string[];
@@ -458,6 +460,104 @@ function addPortfolioBoundaryInvariants(
   });
 }
 
+function addCompletionInvariants(findings: KernelInvariant[], context: KernelInvariantContext) {
+  const scope = context.scopeVersion ?? context.nextScopeVersion ?? null;
+  const workItems = context.workItems ?? [];
+  const closures = context.closures ?? [];
+  const projection = context.completionProjection ?? calculateCompletionProjection({ scopeVersion: scope, workItems, closures });
+
+  if (!scope) {
+    findings.push(invariant({
+      severity: "BLOCKING",
+      code: "COMPLETION_PROJECTION_SCOPEVERSION_MISSING",
+      entityId: projection.scopeVersionId || "NO_SCOPE",
+      message: "Completion projection is missing a ScopeVersion.",
+      recommendedAction: "Load the selected ScopeVersion before calculating completion.",
+    }));
+    return;
+  }
+
+  workItems.forEach((workItem) => {
+    if (workItem.scopeVersionId !== scope.scopeVersionId) {
+      findings.push(invariant({
+        severity: "WARNING",
+        code: "COMPLETION_FOREIGN_WORK_ITEM",
+        entityId: workItem.workItemId,
+        message: "Completion projection input contains a work item from another ScopeVersion.",
+        recommendedAction: "Filter work items by selected scopeVersionId before projection.",
+      }));
+    }
+  });
+
+  closures.forEach((closure) => {
+    if (closureScopeVersionId(closure) !== scope.scopeVersionId) {
+      findings.push(invariant({
+        severity: "WARNING",
+        code: "COMPLETION_FOREIGN_CLOSURE",
+        entityId: closureId(closure),
+        message: "Completion projection input contains a closure from another ScopeVersion.",
+        recommendedAction: "Filter closures by selected scopeVersionId before projection.",
+      }));
+    }
+  });
+
+  projection.warnings.forEach((warning) => {
+    if (["COMPLETION_UNKNOWN_OBJECT", "COMPLETION_UNKNOWN_STATION"].includes(warning.code)) {
+      findings.push(invariant({
+        severity: warning.severity,
+        code: warning.code,
+        entityId: warning.entityId ?? scope.scopeVersionId,
+        message: warning.message,
+        recommendedAction: "Reconcile closure evidence against constitutional ScopeVersion stations and objects.",
+      }));
+    }
+  });
+
+  if (projection.totalFeet > 0 && projection.completedFeet > projection.totalFeet) {
+    findings.push(invariant({
+      severity: "WARNING",
+      code: "COMPLETION_FEET_EXCEEDS_TOTAL",
+      entityId: scope.scopeVersionId,
+      message: "Completed feet exceeds total ScopeVersion feet.",
+      recommendedAction: "Review closure footage evidence before treating completion as authoritative.",
+    }));
+  }
+
+  if (projection.percentComplete > 100) {
+    findings.push(invariant({
+      severity: "WARNING",
+      code: "COMPLETION_PERCENT_EXCEEDS_100",
+      entityId: scope.scopeVersionId,
+      message: "Completion percent exceeds 100.",
+      recommendedAction: "Clamp and audit completion footage inputs.",
+    }));
+  }
+
+  const lifecycle = getAuthoritativeLifecycleState(scope);
+  if (projection.completedWorkItems > 0 && lifecycleRank(lifecycle) < lifecycleRank("FIELD")) {
+    findings.push(invariant({
+      severity: "BLOCKING",
+      code: "COMPLETED_WORK_BEFORE_FIELD_LIFECYCLE",
+      entityId: scope.scopeVersionId,
+      message: `Completed work exists while lifecycle is ${lifecycle}.`,
+      recommendedAction: "Advance lifecycle through Field authority or repair stale work status.",
+    }));
+  }
+
+  const hasCompleteWork = workItems
+    .filter((workItem) => workItem.scopeVersionId === scope.scopeVersionId)
+    .some((workItem) => normalizeControlWorkStatus(workItem.status) === "COMPLETE");
+  if (projection.verifiedObjects > 0 && !hasCompleteWork) {
+    findings.push(invariant({
+      severity: "WARNING",
+      code: "VERIFIED_OBJECTS_WITHOUT_COMPLETE_WORK",
+      entityId: scope.scopeVersionId,
+      message: "Verified objects exist while no selected Control work item is COMPLETE.",
+      recommendedAction: "Complete the associated Control work package or audit object verification evidence.",
+    }));
+  }
+}
+
 export function checkKernelInvariants(context: KernelInvariantContext): KernelInvariant[] {
   const scopes = allScopeVersions(context);
   const scopesById = new Map(scopes.map((scope) => [scope.scopeVersionId, scope]));
@@ -479,6 +579,7 @@ export function checkKernelInvariants(context: KernelInvariantContext): KernelIn
   addClosureInvariants(findings, scopesById, workItemsById, closures);
   addTwinIsolationInvariants(findings, context.twinState, context.selectedScopeVersionId);
   addPortfolioBoundaryInvariants(findings, context.portfolioScopeVersionIds, workItems, closures);
+  addCompletionInvariants(findings, context);
 
   const unique = Array.from(new Map(findings.map((item) => [item.invariantId, item])).values());
   console.log("[KERNEL_INVARIANT_CHECK]", {
@@ -493,6 +594,7 @@ export function checkKernelInvariants(context: KernelInvariantContext): KernelIn
       if (item.code.includes("ALIAS")) console.log("[KERNEL_ALIAS_WARNING]", item);
       if (item.code.includes("DUPLICATE_AUTHORITY")) console.log("[KERNEL_DUPLICATE_AUTHORITY]", item);
       if (item.code.includes("FALLBACK")) console.log("[KERNEL_FALLBACK_WARNING]", item);
+      if (item.code.includes("COMPLETION")) console.log("[KERNEL_COMPLETION_INVARIANT]", item);
       console.log("[KERNEL_INVARIANT_VIOLATION]", item);
     }
   });
