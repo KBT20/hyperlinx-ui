@@ -2,6 +2,20 @@
 
 Status: doctrine validation only. No calculations are performed.
 
+## Decision Hierarchy Requirement
+
+Prism validation must evaluate candidates through ordered decision layers before any future flat ranking is considered.
+
+Layer order:
+
+1. `HARD_EXCLUSION`
+2. `STRATEGIC_FIT`
+3. `COMMERCIAL`
+4. `ENGINEERING`
+5. `OPTIMIZATION`
+
+Scoring must occur within the hierarchy. Prism must not flatten all categories into a single weighted score and call that a recommendation.
+
 ## Dallas To Kansas City AI Corridor
 
 Applicable categories:
@@ -112,3 +126,17 @@ Prism should consume:
 - enrichment summaries.
 
 Prism still must not treat enrichment as authority. Enrichment prepares evidence for scoring; it does not score or promote.
+
+## Hierarchy Readiness
+
+Phase 6.2F adds `PrismDecisionHierarchy` as the constitutional decision contract.
+
+Future Prism scoring should:
+
+- apply hard exclusions first.
+- evaluate strategic fit before commercial return.
+- evaluate commercial potential before engineering optimization.
+- evaluate engineering feasibility before route optimization.
+- use optimization only to compare otherwise acceptable candidates.
+
+Decision layers govern future recommendation behavior.

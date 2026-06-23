@@ -2,6 +2,22 @@
 
 Status: doctrine and type contract.
 
+## Decision Hierarchy Requirement
+
+Prism scoring categories must operate inside the Prism Decision Hierarchy.
+
+Prism must not flatten all categories into a single weighted score before applying decision precedence.
+
+Layer order governs recommendation behavior:
+
+1. Hard Exclusions.
+2. Strategic Fit.
+3. Commercial Potential.
+4. Engineering Feasibility.
+5. Optimization.
+
+Weighted categories may support a layer in a future scoring engine, but lower-layer optimization can never rescue a corridor that fails a higher layer.
+
 ## Primary Categories
 
 | Category | Measures |
@@ -77,6 +93,10 @@ Enrichment does not calculate Prism scores. It prepares evidence.
 ## Implementation Reference
 
 `src/corridor/PrismScoringContract.ts`
+
+Decision hierarchy contract:
+
+`src/corridor/PrismDecisionHierarchy.ts`
 
 Defines:
 
