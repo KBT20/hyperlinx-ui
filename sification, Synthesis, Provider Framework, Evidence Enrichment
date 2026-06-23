@@ -1,0 +1,208 @@
+[33mtag teralinx-v0.6-foundation[m
+Tagger: Kyle Towns <kyle@estellaconsulting.net>
+Date:   Tue Jun 23 07:58:19 2026 -0500
+
+Corridor, Promotion, Evidence, Prism and Translate foundation
+
+[33mcommit 3811e15496c54294311ea3254215abba8bb23eaa[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;33mtag: [m[1;33mteralinx-v0.6-foundation[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Kyle Towns <kyle@estellaconsulting.net>
+Date:   Tue Jun 23 07:35:06 2026 -0500
+
+    "Teralinx Phase 6.1A - Corridor Architecture and Translate Foundation"
+
+[1mdiff --git a/hyperlinx-dal-dev/AI_CORRIDOR_EVALUATION.md b/hyperlinx-dal-dev/AI_CORRIDOR_EVALUATION.md[m
+[1mnew file mode 100644[m
+[1mindex 0000000..66bb7e0[m
+[1m--- /dev/null[m
+[1m+++ b/hyperlinx-dal-dev/AI_CORRIDOR_EVALUATION.md[m
+[36m@@ -0,0 +1,63 @@[m
+[32m+[m[32m# AI Corridor Evaluation[m
+[32m+[m
+[32m+[m[32mStatus: doctrine only.[m
+[32m+[m
+[32m+[m[32m## Objective[m
+[32m+[m
+[32m+[m[32mAI corridor evaluation identifies whether a corridor candidate is suitable for hyperscaler, neocloud, GPU, and AI infrastructure demand.[m
+[32m+[m
+[32m+[m[32m## Attributes[m
+[32m+[m
+[32m+[m[32mAI corridor evaluation should consider:[m
+[32m+[m
+[32m+[m[32m- power proximity.[m
+[32m+[m[32m- substation proximity.[m
+[32m+[m[32m- transmission proximity.[m
+[32m+[m[32m- AI campus suitability.[m
+[32m+[m[32m- interconnection density.[m
+[32m+[m[32m- carrier hotel proximity.[m
+[32m+[m[32m- cloud on-ramp proximity.[m
+[32m+[m[32m- data center density.[m
+[32m+[m[32m- future expansion land.[m
+[32m+[m[32m- corridor scalability.[m
+[32m+[m[32m- optical scalability.[m
+[32m+[m[32m- route diversity.[m
+[32m+[m
+[32m+[m[32m## Power[m
+[32m+[m
+[32m+[m[32mPower evidence should distinguish:[m
+[32m+[m
+[32m+[m[32m- substation proximity.[m
+[32m+[m[32m- transmission proximity.[m
+[32m+[m[32m- utility diversity.[m
+[32m+[m[32m- capacity known or unknown.[m
+[32m+[m[32m- future expansion potential.[m
+[32m+[m
+[32m+[m[32mPower evidence is not authority. Utility confirmation or human engineering review remains required.[m
+[32m+[m
+[32m+[m[32m## Interconnection[m
+[32m+[m
+[32m+[m[32mInterconnection evidence should distinguish:[m
+[32m+[m
+[32m+[m[32m- carrier hotels.[m
+[32m+[m[32m- internet exchanges.[m
+[32m+[m[32m- cloud on-ramps.[m
+[32m+[m[32m- meet-me capability.[m
+[32m+[m[32m- cross-connect availability.[m
+[32m+[m[32m- data center density.[m
+[32m+[m
+[32m+[m[32m## Scalability[m
+[32m+[m
+[32m+[m[32mScalability should consider:[m
+[32m+[m
+[32m+[m[32m- spare ducts.[m
+[32m+[m[32m- spare fibers.[m
+[32m+[m[32m- optical capacity.[m
+[32m+[m[32m- regen requirements.[m
+[32m+[m[32m- expansion land.[m
+[32m+[m[32m- route operations feasibility.[m
+[32m+[m
+[32m+[m[32m## Human Review[m
+[32m+[m
+[32m+[m[32mAI corridor suitability is advisory until reviewed. Prism may recommend an AI corridor candidate, but Route Engineering and human commercial review remain authoritative.[m
+[32m+[m
+[1mdiff --git a/hyperlinx-dal-dev/CORRIDOR_AUTHORITY_BOUNDARY.md b/hyperlinx-dal-dev/CORRIDOR_AUTHORITY_BOUNDARY.md[m
+[1mnew file mode 100644[m
+[1mindex 0000000..e33c0b1[m
+[1m--- /dev/null[m
+[1m+++ b/hyperlinx-dal-dev/CORRIDOR_AUTHORITY_BOUNDARY.md[m
+[36m@@ -0,0 +1,102 @@[m
+[32m+[m[32m# Corridor Authority Boundary[m
+[32m+[m
+[32m+[m[32mStatus: doctrine only.[m
+[32m+[m
+[32m+[m[32m## Frozen Kernel Boundary[m
+[32m+[m
+[32m+[m[32mThis phase does not modify:[m
+[32m+[m
+[32m+[m[32m- lifecycle authority.[m
+[32m+[m[32m- closure authority.[m
+[32m+[m[32m- completion engine.[m
+[32m+[m[32m- Twin projection contracts.[m
+[32m+[m[32m- Control execution contracts.[m
+[32m+[m[32m- Field execution contracts.[m
+[32m+[m[32m- Operational Intelligence portfolio contracts.[m
+[32m+[m
+[32m+[m[32mCorridor objects are additive development objects. They do not mutate execution state.[m
+[32m+[m
+[32m+[m[32m## Authority Owners[m
+[32m+[m
+[32m+[m[32m| Domain | Owner | Authority |[m
+[32m+[m[32m| --- | --- | --- |[m
+[32m+[m[32m| Translate | Translate | Ingestion and normalization |[m
+[32m+[m[32m| Corridor Synthesis | Corridor Synthesis | Candidate generation |[m
+[32m+[m[32m| Prism | Prism | Scoring and ranking |[m
+[32m+[m[32m| Marketplace | Marketplace | Product/commercial modeling |[m
+[32m+[m[32m| Kernel | DAL Kernel | Lifecycle, execution, closure, completion, projection |[m
+[32m+[m[32m| Twin | Twin | Selected ScopeVersion projection |[m
+[32m+[m[32m| Operational Intelligence | OI | Portfolio and corridor aggregation |[m
+[32m+[m[32m| Human Engineering | Human reviewer | Promotion decision and certified review evidence |[m
+[32m+[m
+[32m+[m[32m## External API Rule[m
+[32m+[m
+[32m+[m[32mNo external API is authoritative.[m
+[32m+[m
+[32m+[m[32mAPIs may provide:[m
+[32m+[m
+[32m+[m[32m- route evidence.[m
+[32m+[m[32m- endpoint evidence.[m
+[32m+[m[32m- cost evidence.[m
+[32m+[m[32m- permit evidence.[m
+[32m+[m[32m- parcel evidence.[m
+[32m+[m[32m- power evidence.[m
+[32m+[m[32m- latency evidence.[m
+[32m+[m
+[32m+[m[32mAPIs may not:[m
+[32m+[m
+[32m+[m[32m- mutate ScopeVersion truth.[m
+[32m+[m[32m- bypass human engineering approval.[m
+[32m+[m[32m- create execution authority.[m
+[32m+[m[32m- replace certified ScopeVersion state.[m
+[32m+[m
+[32m+[m[32m## Promotion Boundary[m
+[32m+[m
+[32m+[m[32m```text[m
+[32m+[m[32mCorridorRouteCandidate[m
+[32m+[m[32m  -> Promotion Gate[m
+[32m+[m[32m  -> Human Engineering Approval[m
+[32m+[m[32m  -> ScopeVersion Draft[m
+[32m+[m[32m  -> Route Engineering Approval[m
+[32m+[m[32m  -> ScopeVersion[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32mPromotion evaluation is not authority.[m
+[32m+[m
+[32m+[m[32mPromotion recommendation is not authority.[m
+[32m+[m
+[32m+[m[32mPromotion may prepare a ScopeVersion draft only. Route Engineering owns certification and approval. Only after Route Engineering approval does corridor design enter the kernel truth chain.[m
+[32m+[m
+[32m+[m[32mPromotion may not:[m
+[32m+[m
+[32m+[m[32m- save authoritative ScopeVersion truth.[m
+[32m+[m[32m- create ACTIVE work.[m
+[32m+[m[32m- create FIELD closures.[m
+[32m+[m[32m- mutate lifecycle authority.[m
+[32m+[m[32m- bypass Route Engineering approval.[m
+[32m+[m
+[32m+[m[32m## ScopeVersion Boundary[m
+[32m+[m
+[32m+[m[32mScopeVersion remains:[m
+[32m+[m
+[32m+[m[32m- truth object.[m
+[32m+[m[32m- execution source.[m
+[32m+[m[32m- map render source.[m
+[32m+[m[32m- Twin projection source.[m
+[32m+[m[32m- IOF package source.[m
+[32m+[m
+[32m+[m[32mCorridor remains:[m
+[32m+[m
+[32m+[m[32m- development object.[m
+[32m+[m[32m- opportunity object.[m
+[32m+[m[32m- evidence container.[m
+[32m+[m[32m- synthesis context.[m
+[32m+[m[32m- product context.[m
+[32m+[m
+[32m+[m[32mDo not merge them.[m
+[32m+[m
+[32m+[m[32m## Work Boundary[m
+[32m+[m
+[32m+[m[32mIOF Package establishes work. Close Event establishes authorized transformation. Child ScopeVersion establishes new truth.[m
+[32m+[m
+[32m+[m[32mCorridor objects may inform work package generation later, but this phase does not wire that behavior.[m
+[1mdiff --git a/hyperlinx-dal-dev/CORRIDOR_DATA_SOURCE_REGISTRY.md b/hyperlinx-dal-dev/CORRIDOR_DATA_SOURCE_REGISTRY.md[m
+[1mnew file mode 100644[m
+[1mindex 0000000..3d27b83[m
+[1m--- /dev/null[m
+[1m+++ b/hyperlinx-dal-dev/CORRIDOR_DATA_SOURCE_REGISTRY.md[m
+[36m@@ -0,0 +1,40 @@[m
+[32m+[m[32m# Corridor Data Source Registry[m
+[32m+[m
+[32m+[m[32mStatus: doctrine and isolated source registry.[m
+[32m+[m
+[32m+[m[32m## Source Rule[m
+[32m+[m
+[32m+[m[32mAll sources are evidence-only. No source is authoritative.[m
+[32m+[m
+[32m+[m[32mAuthority remains inside the DAL kernel and Route Engineering approval path.[m
+[32m+[m
+[32m+[m[32m## Source Definitions[m
+[32m+[m
+[3
