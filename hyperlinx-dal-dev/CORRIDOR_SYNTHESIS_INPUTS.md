@@ -74,7 +74,22 @@ Every synthesis input should preserve:
 - raw reference when available.
 - normalized geometry reference when available.
 
+## Classification Inputs
+
+Synthesis inputs may include classification context:
+
+- A MSA.
+- Z MSA.
+- same-MSA flag.
+- endpoint role.
+- network role hint.
+- corridor class hint.
+- aggregation point IDs.
+- customer intent.
+- product intent.
+
+Classification context is evidence for candidate generation. It is not route authority.
+
 ## Mixed Input Rule
 
 When multiple inputs disagree, synthesis may create multiple candidates or conflicts. It may not discard either input.
-

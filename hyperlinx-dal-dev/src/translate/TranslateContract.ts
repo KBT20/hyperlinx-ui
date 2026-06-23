@@ -1,4 +1,4 @@
-export type TranslateSourceType = "CSV" | "GEOJSON" | "KML" | "KMZ";
+export type TranslateSourceType = "CSV" | "GEOJSON" | "KML" | "KMZ" | "SHAPEFILE";
 
 export type TranslateArtifactType = "ENDPOINT" | "ROUTE_CANDIDATE";
 
@@ -24,4 +24,3 @@ export interface TranslateArtifact {
   label: string;
   summary: Record<string, unknown>;
 }
-

@@ -39,6 +39,41 @@ Prism consumes diversity evidence using:
 
 Diversity must be backed by evidence. Different geometry alone is not enough.
 
+## Classification Context
+
+Prism may consume corridor classification context as weighting evidence:
+
+- `networkRole`
+- `corridorClass`
+- `msaRelationship`
+- `aggregationRole`
+
+Classification changes how evidence is interpreted. It does not replace category scoring, human review, or Route Engineering authority.
+
+Examples:
+
+- `METRO_AGGREGATION` emphasizes interconnection density, constructability, monetization, and maintainability.
+- `AI_FABRIC` emphasizes power, interconnection, expansion, reliability, and diversity.
+- `BACKBONE_INTERCONNECT` emphasizes latency, reliability, restoration, jurisdiction, and cost.
+- `INTERCONNECTION` emphasizes carrier hotel, IX, cloud on-ramp, and handoff evidence.
+
+## Enriched Candidate Readiness
+
+Future Prism scoring should consume `EnrichedCorridorCandidate` when available.
+
+Enrichment categories map naturally into Prism categories:
+
+| Enrichment evidence | Prism category support |
+| --- | --- |
+| POWER, SUBSTATION, TRANSMISSION, GENERATION | POWER, HYPERSCALER_ALIGNMENT, FUTURE_CAPACITY_EXPANSION |
+| DATA_CENTER, CARRIER_HOTEL, IX, CLOUD_ONRAMP, INTERCONNECTION | INTERCONNECTION, HYPERSCALER_ALIGNMENT |
+| PARCEL, DEVELOPMENT_SITE | EXPANSION, CONSTRUCTABILITY, RISK |
+| JURISDICTION, CROSSING, CONSTRAINT, UTILITY | CONSTRUCTABILITY, COST, RISK, JURISDICTION_COMPLEXITY |
+| MONETIZATION | MONETIZATION, RESIDUAL_ASSET_VALUE |
+| RESTORATION, MAINTENANCE | RESTORATION_COMPLEXITY, OPERATIONAL_MAINTAINABILITY |
+
+Enrichment does not calculate Prism scores. It prepares evidence.
+
 ## Implementation Reference
 
 `src/corridor/PrismScoringContract.ts`
@@ -50,4 +85,3 @@ Defines:
 - `PrismCandidateScore`
 - `PrismCandidateRecommendation`
 - `PrismEvaluationResult`
-

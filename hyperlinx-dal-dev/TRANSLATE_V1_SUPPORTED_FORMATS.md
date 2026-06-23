@@ -10,6 +10,7 @@ Status: implementation document.
 | GeoJSON | `translateGeoJson()` | Point endpoints and LineString/MultiLineString route evidence |
 | KML | `translateKml()` | Placemark Point endpoints and LineString route evidence |
 | KMZ | `translateKmz()` | Extracted KML endpoints and route evidence |
+| Shapefile | `translateShapefilePackage()` | Feature evidence from SHP geometry and DBF attributes |
 
 ## CSV Rules
 
@@ -64,9 +65,7 @@ KMZ parser selects the first `.kml` file in the archive and passes it through th
 
 Planned but not implemented:
 
-- Phase 6.1B: Shapefile support.
 - Phase 6.1C: PDF support.
 - Phase 6.1D: DWG/CAD support.
 
 Future support must continue to produce evidence, not truth.
-

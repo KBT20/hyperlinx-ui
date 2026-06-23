@@ -6,6 +6,15 @@ Status: doctrine only.
 
 AI corridor evaluation identifies whether a corridor candidate is suitable for hyperscaler, neocloud, GPU, and AI infrastructure demand.
 
+## Classification
+
+AI corridor classification is represented as:
+
+- `networkRole = AI_FABRIC`
+- `corridorClass = AI_CORRIDOR`
+
+The underlying geography may still be metro, middle-mile, regional, or longhaul. AI fabric is an advisory overlay driven by AI compute, GPU, hyperscaler, neocloud, power, substation, transmission, data center, and interconnection evidence.
+
 ## Attributes
 
 AI corridor evaluation should consider:
@@ -60,4 +69,3 @@ Scalability should consider:
 ## Human Review
 
 AI corridor suitability is advisory until reviewed. Prism may recommend an AI corridor candidate, but Route Engineering and human commercial review remain authoritative.
-

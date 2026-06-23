@@ -33,6 +33,22 @@ Candidates may represent:
 - AI infrastructure corridor concepts.
 - expansion or monetization paths.
 
+## Classification Relationship
+
+Corridor Classification determines what the corridor is trying to be before candidates are synthesized.
+
+Classification may identify:
+
+- metro aggregation.
+- MSA interconnect.
+- backbone interconnect.
+- AI fabric.
+- campus.
+- regional aggregation.
+- interconnection.
+
+The classification result informs synthesis request context, but it does not choose routes, score candidates, or create authority.
+
 ## Authority Boundary
 
 External routing APIs are evidence providers.
@@ -59,4 +75,3 @@ Normalized Evidence Bundle
 ## Preservation Rule
 
 Generated routes never overwrite customer routes. Conflicting routes remain evidence. Every candidate must retain provenance through evidence IDs and provider IDs.
-

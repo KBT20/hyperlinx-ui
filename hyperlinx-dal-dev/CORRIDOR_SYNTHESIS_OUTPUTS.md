@@ -45,6 +45,17 @@ Each candidate should include:
 - score placeholder.
 - promotion eligibility flag.
 
+## Classification Output Context
+
+Synthesis outputs may preserve advisory classification fields:
+
+- `corridorClass`
+- `networkRole`
+- `msaRelationship`
+- `aggregationRole`
+
+These fields help Prism select weighting context later. They do not score the candidate and do not authorize promotion.
+
 ## Score Placeholder
 
 Synthesis does not score.
@@ -69,4 +80,3 @@ Synthesis result should include diagnostics for:
 - unsupported provider.
 - preserved customer geometry.
 - diversity uncertainty.
-

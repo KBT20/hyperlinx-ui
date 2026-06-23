@@ -46,9 +46,23 @@ Profiles do not:
 | DARK_FIBER | diversity, reliability, constructability, residual value |
 | DUCT_SALE | constructability, residual duct value, cost, maintenance |
 
+## Classification Alignment
+
+Future Prism execution should select or adjust profiles using corridor classification context:
+
+| Network role | Likely profile context |
+| --- | --- |
+| `METRO_AGGREGATION` | `METRO_OVERBUILD`, `DARK_FIBER`, `DUCT_SALE` |
+| `MSA_INTERCONNECT` | `MIDDLE_MILE`, `TRANSPORT` |
+| `BACKBONE_INTERCONNECT` | `LONG_HAUL`, `TRANSPORT` |
+| `AI_FABRIC` | `GOOGLE_AI`, `AMAZON_AI`, `META_AI`, `ORACLE_AI`, `NEOCLOUD` |
+| `CAMPUS` | future campus profile |
+| `INTERCONNECTION` | `TRANSPORT`, future interconnection profile |
+
+This is doctrine only. No scoring execution is added in this phase.
+
 ## Implementation Reference
 
 `src/corridor/prismWeightingProfiles.ts`
 
 Each profile returns a complete `Record<PrismScoreCategory, number>`.
-

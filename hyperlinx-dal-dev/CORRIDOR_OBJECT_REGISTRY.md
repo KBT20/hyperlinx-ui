@@ -72,6 +72,17 @@ Corridor objects are classified as:
 - `EVIDENCE`: source records and human review.
 - `EXECUTION_REFERENCE`: ScopeVersion linkage only.
 
+## Classification Context
+
+Corridors may also carry advisory classification context:
+
+- `corridorClass`: physical or commercial corridor family.
+- `networkRole`: functional role in the network.
+- `msaContext`: A/Z MSA relationship.
+- `aggregationRole`: LSO, data center, AI compute, POP, backbone, campus, or interconnection aggregation function.
+
+These fields classify development intent. They do not create ScopeVersion truth or execution authority.
+
 ## Implementation Reference
 
 Additive TypeScript definitions live in:
@@ -81,4 +92,3 @@ Additive TypeScript definitions live in:
 - `src/corridor/corridorEvidence.ts`
 
 These files are isolated from the DAL kernel and do not wire corridor objects into execution.
-

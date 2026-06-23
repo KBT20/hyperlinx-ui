@@ -7,7 +7,40 @@ export type CorridorClass =
   | "INTERSTATE"
   | "INTRASTATE"
   | "CAMPUS"
-  | "REGIONAL";
+  | "REGIONAL"
+  | "AI_CORRIDOR"
+  | "INTERCONNECTION";
+
+export type CorridorNetworkRole =
+  | "CAMPUS"
+  | "METRO_AGGREGATION"
+  | "MSA_INTERCONNECT"
+  | "BACKBONE_INTERCONNECT"
+  | "AI_FABRIC"
+  | "REGIONAL_AGGREGATION"
+  | "INTERCONNECTION";
+
+export type CorridorMsaRelationship =
+  | "SAME_MSA"
+  | "MSA_TO_MSA"
+  | "REGIONAL_TO_MSA"
+  | "INTERREGIONAL"
+  | "UNKNOWN";
+
+export type CorridorAggregationFunction =
+  | "LSO_AGGREGATION"
+  | "DATA_CENTER_AGGREGATION"
+  | "AI_COMPUTE_AGGREGATION"
+  | "REGIONAL_POP_AGGREGATION"
+  | "TRANSPORT_BACKBONE"
+  | "CAMPUS_DISTRIBUTION"
+  | "INTERCONNECTION_HANDOFF"
+  | "UNKNOWN";
+
+export interface CorridorAggregationRole {
+  aggregationFunction?: CorridorAggregationFunction;
+  aggregationPointIds?: string[];
+}
 
 export type CorridorCustomerType =
   | "HYPERSCALER"
@@ -70,6 +103,14 @@ export interface Corridor {
   corridorId: string;
   corridorName: string;
   corridorClass: CorridorClass;
+  networkRole?: CorridorNetworkRole;
+  msaContext?: {
+    aMsa?: string;
+    zMsa?: string;
+    sameMsa?: boolean;
+    msaRelationship?: CorridorMsaRelationship;
+  };
+  aggregationRole?: CorridorAggregationRole;
   customerType: CorridorCustomerType;
   designObjective: string;
   endpointIds: string[];
@@ -424,4 +465,3 @@ export type CorridorAuthorityOwner =
   | "TWIN"
   | "OPERATIONAL_INTELLIGENCE"
   | "HUMAN_ENGINEERING";
-

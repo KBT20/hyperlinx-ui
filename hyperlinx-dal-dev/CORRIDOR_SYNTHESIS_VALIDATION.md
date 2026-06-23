@@ -1,104 +1,121 @@
 # Corridor Synthesis Validation
 
-Status: doctrine validation only.
+Status: V1 engine validation document.
 
-## Endpoint Pair Example
+## Fixture Location
+
+`src/corridor/fixtures/corridorSynthesisFixtures.ts`
+
+Fixtures include:
+
+1. Dallas to Kansas City endpoint pair.
+2. Customer supplied route.
+3. Metro overbuild corridor.
+4. Long-haul corridor.
+5. AI corridor request.
+6. Middle-mile request.
+
+## Endpoint Synthesis Example
 
 Input:
 
 ```text
 A endpoint
 Z endpoint
-hyperscaler requirement
+requirements
 ```
 
-Expected synthesis output:
+Expected output:
 
-- primary candidate request.
-- possible low-latency candidate request.
-- diagnostics showing provider evidence is required.
+- `PRIMARY` candidate.
+- straight-line placeholder geometry.
+- endpoint evidence IDs.
+- no routing provider call.
 - no ScopeVersion creation.
 
-## Customer Route Example
+## Customer Route Preservation Example
 
 Input:
 
 ```text
-customer supplied route
-A/Z endpoints
-requirement sheet
+route evidence already exists
+endpoint evidence exists
+requirements exist
 ```
 
-Expected synthesis output:
+Expected output:
 
 - `CUSTOMER_SUPPLIED` candidate.
-- preserved customer route evidence IDs.
-- optional generated alternatives in future phases.
-- no overwrite of customer geometry.
+- original route geometry preserved.
+- source route evidence retained in `preservedCustomerRouteEvidenceIds`.
+- no geometry overwrite.
 
 ## AI Corridor Example
 
 Input:
 
 ```text
-data center endpoints
-power/substation evidence
-cloud on-ramp evidence
-future AI demand evidence
+hyperscaler endpoints
+AI corridor requirements
 ```
 
-Expected synthesis output:
+Expected output:
 
-- `AI_CORRIDOR` candidate.
-- attributes for power proximity, transmission, data centers, interconnection density, expansion land, future AI demand.
-- score placeholder only.
+- `AI_CORRIDOR` placeholder candidate.
+- placeholder attributes for power, substations, transmission, interconnection, expansion land, and AI demand.
+- no enrichment.
+- no scoring.
 
-## Metro Overbuild Example
+## Expansion Corridor Example
 
 Input:
 
 ```text
-metro endpoint list
-existing fiber evidence
-commercial product intent
+endpoint pair or customer route
+expansion requested
 ```
 
-Expected synthesis output:
+Expected output:
 
-- `PRIMARY` candidate.
-- `EXPANSION` candidate when residual capacity evidence exists.
-- diagnostics for shared ROW and permitting evidence gaps.
+- `EXPANSION` placeholder candidate.
+- placeholder attributes for future capacity, residual duct, residual fiber, expansion land, and future build zones.
+- no calculations.
 
-## Middle-Mile Example
+## Candidate Output Examples
 
-Input:
+Every candidate retains:
 
-```text
-regional endpoints
-existing conduit route
-desired diversity
-```
+- candidate ID.
+- candidate type.
+- source.
+- evidence IDs.
+- requirements.
+- attributes.
+- diagnostics.
+- provider sources.
+- creation method.
+- generated timestamp.
 
-Expected synthesis output:
+## Known Limitations
 
-- `PRIMARY` candidate.
-- `DIVERSE` candidate request.
-- diversity evidence requirements.
-- unresolved overlap diagnostics until calculated later.
+- Endpoint candidates use straight-line placeholder geometry.
+- Diversity is `NOT_EVALUATED`.
+- AI attributes are placeholders.
+- Expansion attributes are placeholders.
+- No provider integrations exist.
+- No Prism scoring exists.
+- No promotion or ScopeVersion creation occurs.
 
-## Remaining Risks Before Implementation
+## Future Provider Integrations
 
-- Provider calls must preserve provenance.
-- Geometry normalization must preserve customer files exactly.
-- Diversity cannot be inferred from line separation alone.
-- Existing fiber/conduit references must not become execution truth.
-- Candidate generation must remain separate from Prism scoring.
+Future integration points:
 
-## Remaining Risks Before Prism
+- OSRM.
+- GraphHopper.
+- OpenRouteService.
+- Google Roads.
+- DOT GIS.
+- Internal Teralinx Models.
 
-- Score placeholders must not be shown as final rankings.
-- Diversity claims require overlap evidence.
-- AI corridor attributes need source-specific confidence.
-- Monetization potential must not override customer service requirements.
-- Promotion must remain draft-only until Route Engineering approval.
+Provider output must remain evidence-only.
 

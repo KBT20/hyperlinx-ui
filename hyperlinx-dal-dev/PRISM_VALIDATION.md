@@ -99,3 +99,16 @@ Likely profiles:
 
 This phase validates category applicability only. It does not calculate score values, rankings, recommendations, or ScopeVersion readiness.
 
+## Enrichment Readiness
+
+After Phase 6.2E, Prism should score `EnrichedCorridorCandidate` objects rather than raw corridor candidates when enrichment is available.
+
+Prism should consume:
+
+- enrichment findings.
+- finding confidence.
+- missing-category warnings.
+- conflict warnings.
+- enrichment summaries.
+
+Prism still must not treat enrichment as authority. Enrichment prepares evidence for scoring; it does not score or promote.
