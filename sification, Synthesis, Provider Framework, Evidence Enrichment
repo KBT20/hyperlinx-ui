@@ -205,4 +205,309 @@ Date:   Tue Jun 23 07:35:06 2026 -0500
 [32m+[m
 [32m+[m[32m## Source Definitions[m
 [32m+[m
-[3
+[32m+[m[32m| Source | Default confidence | Geometry | Endpoints | Constraints | Crossings | Power | Interconnect |[m
+[32m+[m[32m| --- | ---: | --- | --- | --- | --- | --- | --- |[m
+[32m+[m[32m| CUSTOMER_ROUTE | 82 | Yes | No | No | No | No | No |[m
+[32m+[m[32m| CUSTOMER_ENDPOINT | 80 | No | Yes | No | No | No | Yes |[m
+[32m+[m[32m| CSV | 58 | Yes | Yes | Yes | Yes | Yes | Yes |[m
+[32m+[m[32m| KML | 74 | Yes | Yes | Yes | Yes | No | Yes |[m
+[32m+[m[32m| KMZ | 74 | Yes | Yes | Yes | Yes | No | Yes |[m
+[32m+[m[32m| GEOJSON | 76 | Yes | Yes | Yes | Yes | No | Yes |[m
+[32m+[m[32m| SHAPEFILE | 80 | Yes | Yes | Yes | Yes | Yes | Yes |[m
+[32m+[m[32m| OSRM | 55 | Yes | No | No | No | No | No |[m
+[32m+[m[32m| GRAPHHOPPER | 60 | Yes | No | No | No | No | No |[m
+[32m+[m[32m| OPENROUTESERVICE | 60 | Yes | No | No | No | No | No |[m
+[32m+[m[32m| GOOGLE_ROADS | 65 | Yes | No | No | No | No | No |[m
+[32m+[m[32m| DOT_GIS | 82 | Yes | No | Yes | Yes | No | No |[m
+[32m+[m[32m| POWER_DATASET | 78 | Yes | No | Yes | No | Yes | No |[m
+[32m+[m[32m| PARCEL_DATASET | 72 | Yes | No | Yes | No | No | No |[m
+[32m+[m[32m| DATA_CENTER_DATASET | 74 | Yes | Yes | No | No | Yes | Yes |[m
+[32m+[m[32m| HUMAN_ENGINEERING | 92 | Yes | Yes | Yes | Yes | Yes | Yes |[m
+[32m+[m[32m| FIELD_VALIDATION | 95 | Yes | Yes | Yes | Yes | Yes | Yes |[m
+[32m+[m[32m| PERMIT_RECORD | 86 | No | No | Yes | Yes | No | No |[m
+[32m+[m[32m| UNKNOWN | 25 | Yes | Yes | Yes | Yes | Yes | Yes |[m
+[32m+[m
+[32m+[m[32m## Implementation Reference[m
+[32m+[m
+[32m+[m[32m`src/corridor/CorridorEvidenceRegistry.ts`[m
+[32m+[m
+[32m+[m[32mThe registry intentionally uses `authorityLevel = EVIDENCE_ONLY` for every source.[m
+[32m+[m
+[1mdiff --git a/hyperlinx-dal-dev/CORRIDOR_EVIDENCE_CONFIDENCE_MODEL.md b/hyperlinx-dal-dev/CORRIDOR_EVIDENCE_CONFIDENCE_MODEL.md[m
+[1mnew file mode 100644[m
+[1mindex 0000000..9254fbe[m
+[1m--- /dev/null[m
+[1m+++ b/hyperlinx-dal-dev/CORRIDOR_EVIDENCE_CONFIDENCE_MODEL.md[m
+[36m@@ -0,0 +1,57 @@[m
+[32m+[m[32m# Corridor Evidence Confidence Model[m
+[32m+[m
+[32m+[m[32mStatus: doctrine and isolated scoring helper.[m
+[32m+[m
+[32m+[m[32m## Confidence Categories[m
+[32m+[m
+[32m+[m[32m| Category | Score range | Meaning |[m
+[32m+[m[32m| --- | ---: | --- |[m
+[32m+[m[32m| VERY_LOW | 0-24 | Weak, unknown, failed, or heavily conflicted evidence |[m
+[32m+[m[32m| LOW | 25-49 | Usable context but not enough for promotion |[m
+[32m+[m[32m| MEDIUM | 50-74 | Useful evidence with incomplete validation |[m
+[32m+[m[32m| HIGH | 75-89 | Strong source but not fully certified |[m
+[32m+[m[32m| VERIFIED | 90-100 | Human-reviewed, field-validated, or otherwise review-grade evidence |[m
+[32m+[m
+[32m+[m[32m## Default Examples[m
+[32m+[m
+[32m+[m[32m| Evidence source | Default category |[m
+[32m+[m[32m| --- | --- |[m
+[32m+[m[32m| Customer supplied route | HIGH |[m
+[32m+[m[32m| Human reviewed route | VERIFIED |[m
+[32m+[m[32m| OSRM generated route | MEDIUM |[m
+[32m+[m[32m| DOT jurisdiction data | HIGH |[m
+[32m+[m[32m| Unknown geometry | LOW |[m
+[32m+[m
+[32m+[m[32m## Additive Scoring[m
+[32m+[m
+[32m+[m[32mConfidence starts from the source registry default and adjusts for:[m
+[32m+[m
+[32m+[m[32m- geometry present.[m
+[32m+[m[32m- endpoint fields present.[m
+[32m+[m[32m- required fields present.[m
+[32m+[m[32m- human review.[m
+[32m+[m[32m- field validation.[m
+[32m+[m[32m- conflict count.[m
+[32m+[m[32m- unknown geometry.[m
+[32m+[m
+[32m+[m[32m## Conflict Handling[m
+[32m+[m
+[32m+[m[32mConflicting evidence should not delete confidence and should not delete evidence.[m
+[32m+[m
+[32m+[m[32mInstead:[m
+[32m+[m
+[32m+[m[32m- create a warning.[m
+[32m+[m[32m- reduce confidence.[m
+[32m+[m[32m- preserve both evidence records.[m
+[32m+[m[32m- require human review before promotion.[m
+[32m+[m
+[32m+[m[32m## Implementation Reference[m
+[32m+[m
+[32m+[m[32m`src/corridor/CorridorConfidenceEngine.ts`[m
+[32m+[m
+[32m+[m[32mExports:[m
+[32m+[m
+[32m+[m[32m- `scoreCorridorEvidenceConfidence()`[m
+[32m+[m[32m- `corridorConfidenceCategory()`[m
+[32m+[m[32m- `detectEvidenceConflicts()`[m
+[32m+[m
+[1mdiff --git a/hyperlinx-dal-dev/CORRIDOR_EVIDENCE_MODEL.md b/hyperlinx-dal-dev/CORRIDOR_EVIDENCE_MODEL.md[m
+[1mnew file mode 100644[m
+[1mindex 0000000..7658628[m
+[1m--- /dev/null[m
+[1m+++ b/hyperlinx-dal-dev/CORRIDOR_EVIDENCE_MODEL.md[m
+[36m@@ -0,0 +1,90 @@[m
+[32m+[m[32m# Corridor Evidence Model[m
+[32m+[m
+[32m+[m[32mStatus: doctrine only.[m
+[32m+[m
+[32m+[m[32m## Evidence Doctrine[m
+[32m+[m
+[32m+[m[32mExternal APIs and files provide evidence.[m
+[32m+[m
+[32m+[m[32mEvidence is not authority. Evidence supports authority.[m
+[32m+[m
+[32m+[m[32mThe DAL kernel synthesizes truth through governed objects and transitions. Conflicting evidence must be preserved, not overwritten.[m
+[32m+[m
+[32m+[m[32m## Evidence Sources[m
+[32m+[m
+[32m+[m[32mEvidence may come from:[m
+[32m+[m
+[32m+[m[32m- Customer route file.[m
+[32m+[m[32m- Endpoint CSV.[m
+[32m+[m[32m- KML/KMZ.[m
+[32m+[m[32m- GeoJSON.[m
+[32m+[m[32m- Shapefile.[m
+[32m+[m[32m- DOT GIS.[m
+[32m+[m[32m- OSRM.[m
+[32m+[m[32m- GraphHopper.[m
+[32m+[m[32m- OpenRouteService.[m
+[32m+[m[32m- Power dataset.[m
+[32m+[m[32m- Parcel dataset.[m
+[32m+[m[32m- Data center dataset.[m
+[32m+[m[32m- Human engineering review.[m
+[32m+[m[32m- Field validation.[m
+[32m+[m[32m- Permit record.[m
+[32m+[m
+[32m+[m[32m## CorridorEvidence Fields[m
+[32m+[m
+[32m+[m[32m```ts[m
+[32m+[m[32m{[m
+[32m+[m[32m  evidenceId;[m
+[32m+[m[32m  sourceType;[m
+[32m+[m[32m  sourceName;[m
+[32m+[m[32m  collectedAt;[m
+[32m+[m[32m  confidence;[m
+[32m+[m[32m  entityType;[m
+[32m+[m[32m  entityId;[m
+[32m+[m[32m  rawReference;[m
+[32m+[m[32m  normalizedValue;[m
+[32m+[m[32m  notes;[m
+[32m+[m[32m}[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m## Confidence[m
+[32m+[m
+[32m+[m[32mConfidence is advisory and should be normalized to `0-100`.[m
+[32m+[m
+[32m+[m[32mSuggested interpretation:[m
+[32m+[m
+[32m+[m[32m- `90-100`: authoritative-looking source, human-confirmed, or field-confirmed.[m
+[32m+[m[32m- `70-89`: strong source but not human-certified.[m
+[32m+[m[32m- `40-69`: useful source with incomplete metadata.[m
+[32m+[m[32m- `1-39`: weak match, inferred, stale, or conflicting.[m
+[32m+[m[32m- `0`: unknown, failed, or not applicable.[m
+[32m+[m
+[32m+[m[32m## Conflict Preservation[m
+[32m+[m
+[32m+[m[32mIf two evidence records disagree:[m
+[32m+[m
+[32m+[m[32m- Preserve both evidence records.[m
+[32m+[m[32m- Do not silently replace either.[m
+[32m+[m[32m- Attach conflict notes.[m
+[32m+[m[32m- Require human review before promotion into ScopeVersion truth.[m
+[32m+[m
+[32m+[m[32m## Human Override[m
+[32m+[m
+[32m+[m[32mHuman override creates evidence.[m
+[32m+[m
+[32m+[m[32mHuman override evidence should include:[m
+[32m+[m
+[32m+[m[32m- reviewer identity when available.[m
+[32m+[m[32m- timestamp.[m
+[32m+[m[32m- reason.[m
+[32m+[m[32m- prior evidence references.[m
+[32m+[m[32m- changed normalized value.[m
+[32m+[m
+[32m+[m[32m## Certified Truth Reference[m
+[32m+[m
+[32m+[m[32mCertified corridor truth should reference evidence IDs. A selected ScopeVersion should be able to explain why an endpoint, route, crossing, constraint, product, or monetization assumption exists.[m
+[32m+[m
+[32m+[m[32m## Implementation Reference[m
+[32m+[m
+[32m+[m[32m`src/corridor/corridorEvidence.ts` provides small helpers for creating evidence records and checking whether evidence supports an entity. It does not persist evidence and does not establish authority.[m
+[32m+[m
+[1mdiff --git a/hyperlinx-dal-dev/CORRIDOR_EVIDENCE_PIPELINE.md b/hyperlinx-dal-dev/CORRIDOR_EVIDENCE_PIPELINE.md[m
+[1mnew file mode 100644[m
+[1mindex 0000000..3899e61[m
+[1m--- /dev/null[m
+[1m+++ b/hyperlinx-dal-dev/CORRIDOR_EVIDENCE_PIPELINE.md[m
+[36m@@ -0,0 +1,75 @@[m
+[32m+[m[32m# Corridor Evidence Pipeline[m
+[32m+[m
+[32m+[m[32mStatus: doctrine only.[m
+[32m+[m
+[32m+[m[32m## Pipeline[m
+[32m+[m
+[32m+[m[32m```text[m
+[32m+[m[32mRaw Input[m
+[32m+[m[32m  -> Source Classification[m
+[32m+[m[32m  -> Normalized Evidence[m
+[32m+[m[32m  -> Confidence Scoring[m
+[32m+[m[32m  -> Conflict Detection[m
+[32m+[m[32m  -> Evidence Bundle[m
+[32m+[m[32m  -> Corridor Promotion[m
+[32m+[m[32m```[m
+[32m+[m
+[32m+[m[32m## Raw Inputs[m
+[32m+[m
+[32m+[m[32mSupported future input types:[m
+[32m+[m
+[32m+[m[32m- endpoint pairs.[m
+[32m+[m[32m- customer route files.[m
+[32m+[m[32m- KML.[m
+[32m+[m[32m- KMZ.[m
+[32m+[m[32m- GeoJSON.[m
+[32m+[m[32m- shapefile.[m
+[32m+[m[32m- CSV.[m
+[32m+[m[32m- hyperscaler corridor concepts.[m
+[32m+[m[32m- metro overbuild opportunities.[m
+[32m+[m[32m- long-haul corridor concepts.[m
+[32m+[m[32m- middle-mile concepts.[m
+[32m+[m[32m- AI infrastructure opportunities.[m
+[32m+[m
+[32m+[m[32m## Normalized Evidence[m
+[32m+[m
+[32m+[m[32mEvery normalized evidence record should include:[m
+[32m+[m
+[32m+[m[32m- evidence ID.[m
+[32m+[m[32m- source type.[m
+[32m+[m[32m- source name.[m
+[32m+[m[32m- entity type.[m
+[32m+[m[32m- entity ID.[m
+[32m+[m[32m- confidence.[m
+[32m+[m[32m- collected timestamp.[m
+[32m+[m[32m- normalized payload.[m
+[32m+[m[32m- raw reference.[m
+[32m+[m[32m- geometry reference when present.[m
+[32m+[m[32m- notes.[m
+[32m+[m
+[32m+[m[32m## Evidence Bundle[m
+[32m+[m
+[32m+[m[32mThe evidence bundle groups normalized evidence into:[m
+[32m+[m
+[32m+[m[32m- endpoints.[m
+[32m+[m[32m- routes.[m
+[32m+[m[32m- constraints.[m
+[32m+[m[32m- crossings.[m
+[32m+[m[32m- jurisdictions.[m
+[32m+[m[32m- power.[m
+[32m+[m[32m- interconnection.[m
+[32m+[m[32m- regen.[m
+[32m+[m[32m- monetization.[m
+[32m+[m
+[32m+[m[32mThe bundle also contains conflicts. Conflict records are not resolutions.[m
+[32m+[m
+[32m+[m[32m## Diagnostics[m
+[32m+[m
+[32m+[m[32mThe isolated engines emit:[m
+[32m+[m
+[32m+[m[32m- `[CORRIDOR_CONFIDENCE_SCORE]`[m
+[32m+[m[32m- `[CORRIDOR_EVIDENCE_CONFLICT]`[m
+[32m+[m[32m- `[CORRIDOR_EVIDENCE_VERIFIED]`[m
+[32m+[m
+[32m+[m[32mThese diagnostics support development and review. They do not establish authority.[m
+[32m+[m
+[1mdiff --git a/hyperlinx-dal-dev/CORRIDOR_NORMALIZATION_DOCTRINE.md b/hyperlinx-dal-dev/CORRIDOR_NORMALIZATION_DOCTRINE.md[m
+[1mnew file mode 100644[m
+[1mindex 0000000..f9cb0df[m
+[1m--- /dev/null[m
+[1m+++ b/hyperlinx-dal-dev/CORRIDOR_NORMALIZATION_DOCTRINE.md[m
+[36m@@ -0,0 +1,53 @@[m
+[32m+[m[32m# Corridor Normalization Doctrine[m
+[32m+[m
+[32m+[m[32mStatus: doctrine and isolated read-only engine.[m
+[32m+[m
+[32m+[m[32m## Constitutional Rule[m
+[32m+[m
+[32m+[m[32mTranslate does not create truth.[m
+[32m+[m
+[32m+[m[32mTranslate creates evidence. Evidence is normalized. Evidence is attached to Corridor development objects. Corridor Promotion evaluates evidence. Route Engineering creates executable truth.[m
+[32m+[m
+[32m+[m[32m## Non-Goals[m
+[32m+[m
+[32m+[m[32mThis phase does not:[m
+[32m+[m
+[32m+[m[32m- generate routes.[m
+[32m+[m[32m- score routes.[m
+[32m+[m[32m- create ScopeVersions.[m
+[32m+[m[32m- persist evidence.[m
+[32m+[m[32m- call external APIs.[m
+[32m+[m[32m- mutate lifecycle authority.[m
+[32m+[m[32m- change Control, Field, Twin, Operational Intelligence, completion, or closure contracts.[m
+[32m+[m
+[32m+[m[32m## Evidence Preservation[m
+[32m+[m
+[32m+[m[32mNo evidence should be discarded simply because newer evidence exists.[m
+[32m+[m
+[32m+[m[32mWhen sources conflict:[m
+[32m+[m
+[32m+[m[32m- preserve all records.[m
+[32m+[m[32m- create a conflict record.[m
+[32m+[m[32m- reduce confidence when appropriate.[m
+[32m+[m[32m- require human review before pro
