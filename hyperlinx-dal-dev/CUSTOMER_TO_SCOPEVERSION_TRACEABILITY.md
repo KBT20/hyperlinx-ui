@@ -1,0 +1,57 @@
+# Customer To ScopeVersion Traceability
+
+Every ScopeVersion must trace back to:
+
+- Customer
+- Opportunity
+- Corridor
+
+## Mandatory ScopeVersion Traceability
+
+A ScopeVersion must include:
+
+- customerId
+- opportunityId
+- corridorId
+
+This creates the chain:
+
+Customer
+
+to
+
+Opportunity
+
+to
+
+Corridor
+
+to
+
+ScopeVersion
+
+## Why This Matters
+
+ScopeVersion is execution truth.
+
+Execution truth without business lineage is orphan truth.
+
+Orphan truth cannot support Marketplace budgets, contracts, Control work, Field closure, Twin reporting, or Operational Intelligence.
+
+## Corridor Relationship
+
+A Corridor cannot exist without an Opportunity.
+
+An Opportunity cannot exist without a Customer.
+
+Corridor analysis is advisory until promoted through Route Engineering.
+
+## Execution Relationship
+
+Control and Field remain tied to ScopeVersions.
+
+Control does not execute raw corridor analysis.
+
+Field does not close against opportunities or corridors.
+
+Field closes against ScopeVersion truth.

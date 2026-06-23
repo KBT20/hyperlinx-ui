@@ -75,3 +75,18 @@ Normalized Evidence Bundle
 ## Preservation Rule
 
 Generated routes never overwrite customer routes. Conflicting routes remain evidence. Every candidate must retain provenance through evidence IDs and provider IDs.
+## Customer Opportunity Authority
+
+A corridor cannot exist without an opportunity.
+
+An opportunity cannot exist without a customer.
+
+Corridor Synthesis evaluates possible solutions for a customer opportunity.
+
+Corridor Synthesis does not create business authority or execution truth.
+
+Every promoted corridor must preserve:
+
+- customerId
+- opportunityId
+- corridorId

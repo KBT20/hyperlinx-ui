@@ -74,4 +74,15 @@ Promotion may not map directly to:
 - Operational lifecycle state beyond `ANALYZED`.
 
 Promotion prepares a draft; Route Engineering owns authority.
+## Customer Opportunity Traceability
+
+Every ScopeVersion created from corridor work must preserve:
+
+- customerId
+- opportunityId
+- corridorId
+
+ScopeVersion is execution truth, but it must remain traceable to the customer and opportunity that initiated the work.
+
+No ScopeVersion should be promoted as executable without business lineage.
 
