@@ -1,0 +1,270 @@
+import type {
+  PrismScoreCategory,
+  PrismScoreProfile,
+} from "./PrismScoringContract";
+
+export type PrismWeightingProfileId =
+  | "GOOGLE_AI"
+  | "AMAZON_AI"
+  | "META_AI"
+  | "ORACLE_AI"
+  | "NEOCLOUD"
+  | "LONG_HAUL"
+  | "MIDDLE_MILE"
+  | "METRO_OVERBUILD"
+  | "TRANSPORT"
+  | "DARK_FIBER"
+  | "DUCT_SALE";
+
+const zeroWeights: Record<PrismScoreCategory, number> = {
+  LATENCY: 0,
+  RELIABILITY: 0,
+  DIVERSITY: 0,
+  CONSTRUCTABILITY: 0,
+  POWER: 0,
+  INTERCONNECTION: 0,
+  EXPANSION: 0,
+  MONETIZATION: 0,
+  COST: 0,
+  RISK: 0,
+  OPERATIONAL_MAINTAINABILITY: 0,
+  RESTORATION_COMPLEXITY: 0,
+  JURISDICTION_COMPLEXITY: 0,
+  RESIDUAL_ASSET_VALUE: 0,
+  FUTURE_CAPACITY_EXPANSION: 0,
+  HYPERSCALER_ALIGNMENT: 0,
+};
+
+function weights(values: Partial<Record<PrismScoreCategory, number>>): Record<PrismScoreCategory, number> {
+  return {
+    ...zeroWeights,
+    ...values,
+  };
+}
+
+export const PRISM_WEIGHTING_PROFILES: Record<PrismWeightingProfileId, PrismScoreProfile> = {
+  GOOGLE_AI: {
+    profileId: "GOOGLE_AI",
+    displayName: "Google AI Corridor",
+    customerSegment: "HYPERSCALER",
+    doctrineNotes: "Emphasizes hyperscaler alignment, power, interconnection, reliability, diversity, and future capacity.",
+    weights: weights({
+      HYPERSCALER_ALIGNMENT: 16,
+      POWER: 14,
+      INTERCONNECTION: 12,
+      RELIABILITY: 10,
+      DIVERSITY: 10,
+      FUTURE_CAPACITY_EXPANSION: 10,
+      LATENCY: 8,
+      CONSTRUCTABILITY: 6,
+      RISK: 6,
+      EXPANSION: 4,
+      COST: 4,
+    }),
+  },
+  AMAZON_AI: {
+    profileId: "AMAZON_AI",
+    displayName: "Amazon AI Corridor",
+    customerSegment: "HYPERSCALER",
+    doctrineNotes: "Weights expansion, reliability, power, diversity, and maintainability for large-scale AI infrastructure.",
+    weights: weights({
+      HYPERSCALER_ALIGNMENT: 14,
+      POWER: 13,
+      EXPANSION: 10,
+      RELIABILITY: 10,
+      DIVERSITY: 9,
+      FUTURE_CAPACITY_EXPANSION: 9,
+      INTERCONNECTION: 8,
+      OPERATIONAL_MAINTAINABILITY: 7,
+      CONSTRUCTABILITY: 7,
+      RISK: 6,
+      COST: 4,
+      LATENCY: 3,
+    }),
+  },
+  META_AI: {
+    profileId: "META_AI",
+    displayName: "Meta AI Corridor",
+    customerSegment: "HYPERSCALER",
+    doctrineNotes: "Balances route diversity, reliability, interconnection density, power, and future scaling.",
+    weights: weights({
+      HYPERSCALER_ALIGNMENT: 14,
+      DIVERSITY: 13,
+      RELIABILITY: 11,
+      POWER: 11,
+      INTERCONNECTION: 10,
+      FUTURE_CAPACITY_EXPANSION: 9,
+      EXPANSION: 8,
+      LATENCY: 7,
+      CONSTRUCTABILITY: 6,
+      RISK: 5,
+      COST: 4,
+      OPERATIONAL_MAINTAINABILITY: 2,
+    }),
+  },
+  ORACLE_AI: {
+    profileId: "ORACLE_AI",
+    displayName: "Oracle AI Corridor",
+    customerSegment: "HYPERSCALER",
+    doctrineNotes: "Prioritizes cloud on-ramp access, reliability, latency, power, and scalable transport capability.",
+    weights: weights({
+      INTERCONNECTION: 14,
+      HYPERSCALER_ALIGNMENT: 13,
+      RELIABILITY: 12,
+      LATENCY: 10,
+      POWER: 10,
+      FUTURE_CAPACITY_EXPANSION: 8,
+      DIVERSITY: 8,
+      CONSTRUCTABILITY: 7,
+      RISK: 6,
+      COST: 5,
+      EXPANSION: 4,
+      OPERATIONAL_MAINTAINABILITY: 3,
+    }),
+  },
+  NEOCLOUD: {
+    profileId: "NEOCLOUD",
+    displayName: "Neocloud AI Corridor",
+    customerSegment: "NEOCLOUD",
+    doctrineNotes: "Optimizes for power access, speed to deploy, interconnection, cost, and expansion.",
+    weights: weights({
+      POWER: 15,
+      CONSTRUCTABILITY: 12,
+      INTERCONNECTION: 10,
+      COST: 10,
+      EXPANSION: 9,
+      HYPERSCALER_ALIGNMENT: 8,
+      FUTURE_CAPACITY_EXPANSION: 8,
+      LATENCY: 7,
+      RELIABILITY: 7,
+      RISK: 6,
+      MONETIZATION: 5,
+      DIVERSITY: 3,
+    }),
+  },
+  LONG_HAUL: {
+    profileId: "LONG_HAUL",
+    displayName: "Long-Haul Corridor",
+    customerSegment: "LONG_HAUL",
+    doctrineNotes: "Weights latency, reliability, restoration, jurisdiction complexity, and cost across long distances.",
+    weights: weights({
+      LATENCY: 14,
+      RELIABILITY: 13,
+      RESTORATION_COMPLEXITY: 11,
+      JURISDICTION_COMPLEXITY: 10,
+      COST: 10,
+      RISK: 9,
+      DIVERSITY: 8,
+      CONSTRUCTABILITY: 8,
+      OPERATIONAL_MAINTAINABILITY: 7,
+      MONETIZATION: 5,
+      INTERCONNECTION: 3,
+      POWER: 2,
+    }),
+  },
+  MIDDLE_MILE: {
+    profileId: "MIDDLE_MILE",
+    displayName: "Middle-Mile Corridor",
+    customerSegment: "MIDDLE_MILE",
+    doctrineNotes: "Balances buildability, cost, jurisdiction burden, reliability, and monetization.",
+    weights: weights({
+      CONSTRUCTABILITY: 14,
+      COST: 13,
+      RELIABILITY: 11,
+      JURISDICTION_COMPLEXITY: 10,
+      RISK: 9,
+      MONETIZATION: 9,
+      OPERATIONAL_MAINTAINABILITY: 8,
+      DIVERSITY: 7,
+      LATENCY: 6,
+      RESIDUAL_ASSET_VALUE: 6,
+      INTERCONNECTION: 4,
+      POWER: 3,
+    }),
+  },
+  METRO_OVERBUILD: {
+    profileId: "METRO_OVERBUILD",
+    displayName: "Metro Overbuild",
+    customerSegment: "METRO",
+    doctrineNotes: "Weights constructability, interconnection density, monetization, cost, and jurisdiction complexity.",
+    weights: weights({
+      CONSTRUCTABILITY: 15,
+      INTERCONNECTION: 12,
+      MONETIZATION: 11,
+      COST: 10,
+      JURISDICTION_COMPLEXITY: 10,
+      RISK: 8,
+      RESIDUAL_ASSET_VALUE: 8,
+      OPERATIONAL_MAINTAINABILITY: 7,
+      RELIABILITY: 6,
+      EXPANSION: 5,
+      DIVERSITY: 4,
+      LATENCY: 4,
+    }),
+  },
+  TRANSPORT: {
+    profileId: "TRANSPORT",
+    displayName: "Transport Service",
+    customerSegment: "TRANSPORT",
+    doctrineNotes: "Prioritizes optical reliability, latency, interconnection, restoration, and operational maintainability.",
+    weights: weights({
+      RELIABILITY: 15,
+      LATENCY: 13,
+      INTERCONNECTION: 12,
+      RESTORATION_COMPLEXITY: 10,
+      OPERATIONAL_MAINTAINABILITY: 10,
+      DIVERSITY: 9,
+      RISK: 8,
+      FUTURE_CAPACITY_EXPANSION: 7,
+      COST: 6,
+      CONSTRUCTABILITY: 5,
+      POWER: 3,
+      MONETIZATION: 2,
+    }),
+  },
+  DARK_FIBER: {
+    profileId: "DARK_FIBER",
+    displayName: "Dark Fiber IRU",
+    customerSegment: "DARK_FIBER",
+    doctrineNotes: "Weights route diversity, reliability, constructability, maintainability, and residual strand value.",
+    weights: weights({
+      DIVERSITY: 14,
+      RELIABILITY: 13,
+      CONSTRUCTABILITY: 11,
+      OPERATIONAL_MAINTAINABILITY: 10,
+      RESIDUAL_ASSET_VALUE: 10,
+      COST: 9,
+      RISK: 8,
+      JURISDICTION_COMPLEXITY: 7,
+      FUTURE_CAPACITY_EXPANSION: 6,
+      LATENCY: 5,
+      MONETIZATION: 4,
+      INTERCONNECTION: 3,
+    }),
+  },
+  DUCT_SALE: {
+    profileId: "DUCT_SALE",
+    displayName: "Duct Sale",
+    customerSegment: "DUCT",
+    doctrineNotes: "Weights constructability, residual duct value, cost, jurisdiction complexity, and maintenance burden.",
+    weights: weights({
+      CONSTRUCTABILITY: 15,
+      RESIDUAL_ASSET_VALUE: 14,
+      COST: 12,
+      JURISDICTION_COMPLEXITY: 10,
+      OPERATIONAL_MAINTAINABILITY: 9,
+      RISK: 9,
+      MONETIZATION: 8,
+      FUTURE_CAPACITY_EXPANSION: 7,
+      RELIABILITY: 5,
+      DIVERSITY: 4,
+      RESTORATION_COMPLEXITY: 4,
+      EXPANSION: 3,
+    }),
+  },
+};
+
+export function getPrismWeightingProfile(profileId: PrismWeightingProfileId) {
+  return PRISM_WEIGHTING_PROFILES[profileId];
+}
+
