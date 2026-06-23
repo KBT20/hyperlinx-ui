@@ -33,7 +33,18 @@ Capabilities describe evidence potential only.
 
 A provider with `ROUTING` may eventually produce route evidence. It does not create authoritative route geometry, ScopeVersions, work packages, closures, or Twin state.
 
+## Lens-Driven Provider Strategy
+
+Corridor Lens definitions select provider priorities before provider execution exists.
+
+Examples:
+
+- `HYPERSCALER` prioritizes data center, substation, transmission, generation, cloud on-ramp, carrier hotel, parcel, land, and DOT providers.
+- `DUCT_MONETIZATION` prioritizes parcel, municipal, county, utility, wireless-site, enterprise-data, and Teralinx model providers.
+- `TRANSPORT` prioritizes data center, carrier hotel, IX, cloud on-ramp, DOT, and Teralinx model providers.
+
+Provider priority does not call a provider. It describes evidence strategy.
+
 ## Future Extension
 
 New provider capabilities should be additive and should not require architecture changes.
-

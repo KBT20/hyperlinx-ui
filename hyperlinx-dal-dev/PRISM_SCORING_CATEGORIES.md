@@ -18,6 +18,34 @@ Layer order governs recommendation behavior:
 
 Weighted categories may support a layer in a future scoring engine, but lower-layer optimization can never rescue a corridor that fails a higher layer.
 
+## Phase 6.3A Executable Categories
+
+Phase 6.3A introduces an advisory V1 category set:
+
+- `INFRASTRUCTURE`
+- `POWER`
+- `INTERCONNECTION`
+- `COMMERCIAL`
+- `AI`
+- `STRATEGIC`
+- `ENGINEERING`
+- `OPTIMIZATION`
+
+These categories produce scored observations only. They do not produce recommendations or rankings.
+
+## Lens-Driven Emphasis
+
+Corridor Lenses determine which categories matter most for a given commercial or strategic view.
+
+Examples:
+
+- `HYPERSCALER`: POWER, INTERCONNECTION, AI, and STRATEGIC are high.
+- `DUCT_MONETIZATION`: COMMERCIAL and INFRASTRUCTURE are high.
+- `ENTERPRISE`: COMMERCIAL is high; INTERCONNECTION, INFRASTRUCTURE, and ENGINEERING are medium.
+- `TRANSPORT`: OPTIMIZATION, STRATEGIC, and INTERCONNECTION are high.
+
+The scoring category definitions do not change. Lens changes emphasis.
+
 ## Primary Categories
 
 | Category | Measures |
@@ -90,6 +118,28 @@ Enrichment categories map naturally into Prism categories:
 
 Enrichment does not calculate Prism scores. It prepares evidence.
 
+## Object-Driven Evaluation
+
+Future Prism scoring should evaluate corridors through the objects they contain.
+
+Canonical object definitions live in:
+
+`src/corridor/CorridorObjectCatalog.ts`
+
+Object evidence supports scoring categories:
+
+| Object family | Prism category support |
+| --- | --- |
+| Infrastructure objects | RELIABILITY, CONSTRUCTABILITY, COST, RESIDUAL_ASSET_VALUE |
+| Power objects | POWER, HYPERSCALER_ALIGNMENT, FUTURE_CAPACITY_EXPANSION |
+| Interconnection objects | INTERCONNECTION, MONETIZATION, HYPERSCALER_ALIGNMENT |
+| Property objects | EXPANSION, CONSTRUCTABILITY, RISK |
+| Network objects | STRATEGIC_FIT context, RELIABILITY, MONETIZATION |
+| Operational objects | CONSTRUCTABILITY, RISK, RESTORATION_COMPLEXITY, JURISDICTION_COMPLEXITY |
+| Monetization objects | MONETIZATION, RESIDUAL_ASSET_VALUE |
+
+Objects are evidence-backed. They do not create truth or recommendations.
+
 ## Implementation Reference
 
 `src/corridor/PrismScoringContract.ts`
@@ -105,3 +155,23 @@ Defines:
 - `PrismCandidateScore`
 - `PrismCandidateRecommendation`
 - `PrismEvaluationResult`
+## Corridor Design Standards Context
+
+Prism scoring categories are lens-aware and standards-aware.
+
+Lens determines which categories are emphasized.
+
+Reference Architecture determines which components, tools, objects, and design standards must be considered.
+
+Design standards determine the engineering requirements behind the scored evidence.
+
+Examples:
+
+- POWER scoring must not treat substation or transmission proximity as available capacity.
+- INFRASTRUCTURE scoring must separate residual, committed, and sale-eligible capacity.
+- ENGINEERING scoring must elevate crossings, jurisdictions, constraints, and unresolved review requirements.
+- OPTIMIZATION scoring must not override Route Engineering review of topology, optical reach, regen placement, or ADM placement.
+
+Recommendations remain future advisory output.
+
+Route Engineering remains authoritative.

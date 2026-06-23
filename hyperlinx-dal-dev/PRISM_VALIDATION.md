@@ -140,3 +140,25 @@ Future Prism scoring should:
 - use optimization only to compare otherwise acceptable candidates.
 
 Decision layers govern future recommendation behavior.
+
+## Scoring Engine Readiness
+
+Phase 6.3A implements advisory scoring.
+
+Prism scoring now produces:
+
+- overall score.
+- category scores.
+- confidence.
+- warnings.
+- evidence used.
+- diagnostics.
+
+Prism scoring still does not produce:
+
+- recommendations.
+- rankings.
+- ScopeVersions.
+- promotion decisions.
+
+Recommendations remain Phase 6.3B.

@@ -53,3 +53,14 @@ Enrichment status values:
 | `CAMPUS` | Parcel, development site, utility, interconnection, maintenance, restoration |
 | `REGIONAL_AGGREGATION` | Jurisdiction, crossing, utility, parcel, transmission, restoration, monetization |
 
+## Lens-Aware Target Selection
+
+Future enrichment should consider both network role and Corridor Lens.
+
+Examples:
+
+- `HYPERSCALER` elevates power, substation, transmission, generation, data center, cloud on-ramp, parcel, development site, and interconnection evidence.
+- `DUCT_MONETIZATION` elevates parcel, utility, right-of-way, conduit, innerduct, wireless, municipal, and monetization evidence.
+- `TRANSPORT` elevates data center, carrier hotel, IX, cloud on-ramp, POP, backbone node, regen, ADM, restoration, and optimization evidence.
+
+Lens-aware enrichment remains advisory and does not create truth.

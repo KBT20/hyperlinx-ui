@@ -61,6 +61,24 @@ Future Prism execution should select or adjust profiles using corridor classific
 
 This is doctrine only. No scoring execution is added in this phase.
 
+## Lens Alignment
+
+Future Prism profile selection should consider:
+
+1. Corridor Lens.
+2. Network role.
+3. Customer requirement.
+4. Commercial product.
+
+Examples:
+
+- `HYPERSCALER` aligns with AI profiles and emphasizes power, interconnection, AI, and strategic categories.
+- `DUCT_MONETIZATION` aligns with duct sale and residual value profiles and emphasizes commercial and infrastructure categories.
+- `TRANSPORT` aligns with transport profiles and emphasizes optimization, strategic, and interconnection categories.
+- `ENTERPRISE` aligns with commercial service profiles and emphasizes commercial, infrastructure, and engineering categories.
+
+Lens definitions do not execute scoring. They define emphasis.
+
 ## Implementation Reference
 
 `src/corridor/prismWeightingProfiles.ts`
