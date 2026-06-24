@@ -105,3 +105,49 @@ Readiness is not execution and does not create legal obligation.
 Contract execution creates `CONTRACT_CLOSE`.
 
 Control activation follows `CONTRACT_CLOSE`.
+# Opportunity Intake Traceability
+
+Opportunity Intake must preserve `customerId` and `opportunityId` in every Opportunity Package Candidate.
+
+```text
+Customer
+  -> Opportunity Intake
+  -> Translate
+  -> Scope Review
+  -> Prism
+  -> Corridor
+  -> ScopeVersion
+```
+
+`corridorId` and `scopeVersionId` remain placeholders during intake and may only be populated by later constitutional stages.
+
+## Customer Workspace and Opportunity Launch Traceability
+
+Customer Workspace is the business entry point.
+
+Opportunity Launch initiates Translate.
+
+Translate does not own customer creation.
+
+Translate does not own opportunity creation.
+
+Opportunity Launch must preserve:
+
+- `customerId`
+- `opportunityId`
+- selected `networkType`
+- selected `protectionSchema`
+
+```text
+Customer
+  -> Customer Workspace
+  -> Opportunity
+  -> Opportunity Launch
+  -> Translate
+  -> Scope Review
+  -> Prism
+  -> Marketplace
+  -> Execution
+```
+
+Launch results are non-authoritative and may not create ScopeVersion truth.

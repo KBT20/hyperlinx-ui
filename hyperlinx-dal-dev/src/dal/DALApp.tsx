@@ -13,7 +13,10 @@ import ControlWorkspace from "../workspaces/ControlWorkspace";
 import MarketplaceWorkspace from "../workspaces/MarketplaceWorkspace";
 import NetworkAffinityWorkspace from "../workspaces/NetworkAffinityWorkspace";
 import OperationalIntelligenceWorkspace from "../workspaces/OperationalIntelligenceWorkspace";
+import OpportunityWorkspace from "../components/workspaces/OpportunityWorkspace";
 import PortfolioWorkspace from "../workspaces/PortfolioWorkspace";
+import PreliminaryQuoteWorkspace from "../components/workspaces/PreliminaryQuoteWorkspace";
+import ComposedPrismWorkspace from "../components/workspaces/PrismWorkspace";
 import PrismWorkspace from "../workspaces/PrismWorkspace";
 import PrismSiteDecisionWorkspace from "../workspaces/PrismSiteDecisionWorkspace";
 import RouteEngineeringWorkspace from "../workspaces/RouteEngineeringWorkspace";
@@ -25,12 +28,17 @@ import { DALStateProvider, useDALState } from "./DALState";
 function DALWorkspaceOutlet() {
   const { workspace } = useDALState();
 
+  if (workspace === "customers") return <DALPlaceholderWorkspace title="Customers" />;
   if (workspace === "inventory") return <DALInventoryWorkspace />;
+  if (workspace === "opportunity") return <OpportunityWorkspace />;
+  if (workspace === "scopeReview") return <DALPlaceholderWorkspace title="Scope Review" />;
+  if (workspace === "preliminaryQuote") return <PreliminaryQuoteWorkspace />;
   if (workspace === "inventoryRecovery") return <InventoryRecoveryWorkspace />;
   if (workspace === "graphViewer") return <GraphViewerWorkspace />;
   if (workspace === "graphExtensions") return <GraphExtensionWorkspace />;
   if (workspace === "design") return <DALPlaceholderWorkspace title="Design" />;
   if (workspace === "prism") return <PrismWorkspace />;
+  if (workspace === "prismWorkspace") return <ComposedPrismWorkspace />;
   if (workspace === "siteDecision") return <PrismSiteDecisionWorkspace />;
   if (workspace === "routeEngineering") return <RouteEngineeringWorkspace />;
   if (workspace === "candidateSites") return <CandidateSitesWorkspace />;
@@ -39,22 +47,33 @@ function DALWorkspaceOutlet() {
   if (workspace === "marketplace") return <MarketplaceWorkspace />;
   if (workspace === "control") return <ControlWorkspace />;
   if (workspace === "field") return <FieldWorkspace />;
+  if (workspace === "completion") return <DALPlaceholderWorkspace title="Completion" />;
   if (workspace === "twin") return <TwinWorkspace />;
   if (workspace === "ops") return <OperationalIntelligenceWorkspace />;
   return <TranslateWorkspace />;
 }
 
 function reasoningWorkspace(workspace: ReturnType<typeof useDALState>["workspace"]): ReasoningWorkspace {
+  if (workspace === "customers") return "portfolio";
+  if (workspace === "scopeReview") return "prism";
+  if (workspace === "preliminaryQuote") return "marketplace";
+  if (workspace === "completion") return "field";
   if (workspace === "graphViewer" || workspace === "graphExtensions" || workspace === "inventoryRecovery") return "graph-viewer";
   if (workspace === "siteDecision") return "prism";
+  if (workspace === "prismWorkspace") return "prism";
   if (workspace === "routeEngineering") return "prism";
+  if (workspace === "opportunity") return "portfolio";
   if (workspace === "portfolio" || workspace === "candidateSites" || workspace === "networkAffinity") return "portfolio";
   if (workspace === "ops") return "operational-intelligence";
   return workspace;
 }
 
 function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]) {
+  if (workspace === "customers") return ["Summarize customer context", "Which opportunities are ready?", "What is the next customer action?"];
   if (workspace === "translate") return ["Explain what was extracted", "Which validation warnings matter?", "Suggest normalization corrections"];
+  if (workspace === "opportunity") return ["Summarize this opportunity", "What is the next action?", "Which workflow blockers matter?"];
+  if (workspace === "scopeReview") return ["Summarize review readiness", "Which comments or approvals matter?", "What blocks Prism?"];
+  if (workspace === "preliminaryQuote") return ["Explain quote readiness", "Which assumptions are risky?", "What must be validated before customer discussion?"];
   if (workspace === "inventory") return ["Summarize this inventory graph", "Identify graph anomalies", "What should I inspect next?"];
   if (workspace === "inventoryRecovery") return ["Which graphs are browser only?", "What should be pushed to the server?", "Summarize sync failures"];
   if (workspace === "graphViewer") return ["Explain the selected graph context", "Summarize route structure", "Suggest extension candidates"];
@@ -67,6 +86,7 @@ function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]
       "What additional infrastructure may be required?",
     ];
   if (workspace === "prism") return ["Explain this opportunity", "Why is serviceability green/yellow/red?", "Draft opportunity seed rationale"];
+  if (workspace === "prismWorkspace") return ["Summarize Prism recommendations", "Which risks block quote readiness?", "Which marketplace matches matter?"];
   if (workspace === "siteDecision")
     return [
       "Can this site be built?",
@@ -116,6 +136,7 @@ function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]
   if (workspace === "marketplace") return ["Explain NRC/MRC/TCV", "What pricing inputs are missing?", "Suggest quote refinements"];
   if (workspace === "control") return ["Explain work queue risk", "Why is work blocked or active?", "Suggest next human actions"];
   if (workspace === "field") return ["Validate closure completeness", "Explain what the tech is closing", "What field data is missing?"];
+  if (workspace === "completion") return ["Summarize completion readiness", "What remains open?", "Which closure evidence matters?"];
   if (workspace === "twin") return ["Explain current operational state", "Summarize timeline", "Explain open versus closed work"];
   if (workspace === "ops") return ["Summarize operational readiness", "What matters most now?", "Recommend deployment sequencing", "Explain permit backlog"];
   return ["Help me form design intent", "Explain design tradeoffs", "Draft a candidate scope narrative"];

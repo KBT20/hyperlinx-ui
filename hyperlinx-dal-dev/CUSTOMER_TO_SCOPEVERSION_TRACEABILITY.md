@@ -63,3 +63,16 @@ All authority resolves through ScopeVersion Close events.
 A ScopeVersion close must preserve `customerId`, `opportunityId`, and `corridorId` so customer lineage remains replayable.
 
 Advisory objects remain advisory until validated close authority exists against `scopeVersionId`.
+# Opportunity Intake Boundary
+
+The customer-to-ScopeVersion chain begins with Opportunity Intake:
+
+```text
+Customer
+  -> Opportunity Intake
+  -> Translate
+  -> Corridor
+  -> ScopeVersion
+```
+
+Opportunity Intake may preserve future `corridorId` and `scopeVersionId` placeholders, but it may not create either object.

@@ -6,13 +6,18 @@ import type { NetworkAffinity } from "../types/networkAffinity";
 import type { OpportunitySeed } from "../types/portfolio";
 
 export type DALWorkspace =
+  | "customers"
   | "translate"
+  | "opportunity"
+  | "scopeReview"
+  | "preliminaryQuote"
   | "inventory"
   | "inventoryRecovery"
   | "graphViewer"
   | "graphExtensions"
   | "design"
   | "prism"
+  | "prismWorkspace"
   | "siteDecision"
   | "routeEngineering"
   | "candidateSites"
@@ -21,6 +26,7 @@ export type DALWorkspace =
   | "marketplace"
   | "control"
   | "field"
+  | "completion"
   | "twin"
   | "ops";
 

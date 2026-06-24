@@ -55,3 +55,32 @@ Customer intent does not create engineering truth.
 Route Engineering approves executable design.
 
 ScopeVersion represents approved execution truth.
+
+## Customer Workspace Entry Point
+
+Customer Workspace is the business entry point.
+
+Ryan, CROs, account owners, engineers, and authorized stakeholders start with Customer or Opportunity, not Translate.
+
+Opportunity Launch initiates Translate.
+
+Translate does not own customer creation.
+
+Translate does not own opportunity creation.
+
+## Opportunity Intake Entry Point
+
+Opportunity Intake is the constitutional entry point for customer asks:
+
+```text
+Customer
+  -> Customer Workspace
+  -> Opportunity
+  -> Opportunity Launch
+  -> Opportunity Intake
+  -> Translate
+  -> Corridor
+  -> ScopeVersion
+```
+
+Opportunity Intake preserves `customerId` and `opportunityId` before Translate, Corridor Synthesis, Prism, Route Engineering, Marketplace, Control, Field, Twin, or Operational Intelligence consume the work.

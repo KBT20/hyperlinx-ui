@@ -67,3 +67,24 @@ Opportunities frame the customer ask.
 Corridors evaluate possible solutions.
 
 ScopeVersions represent approved execution truth.
+
+## Intake Doctrine
+
+Customer Workspace is the business entry point.
+
+Opportunity Launch initiates Translate.
+
+Opportunity Intake creates an Opportunity Package Candidate and Translate readiness decision, but it does not create corridors, ScopeVersions, engineering truth, budgets, contracts, or execution authority.
+
+```text
+Customer
+  -> Customer Workspace
+  -> Opportunity
+  -> Opportunity Launch
+  -> Opportunity Intake
+  -> Translate
+  -> Corridor
+  -> ScopeVersion
+```
+
+Translate does not own customer creation or opportunity creation.

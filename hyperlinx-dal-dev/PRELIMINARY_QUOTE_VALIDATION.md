@@ -1,122 +1,94 @@
 # Preliminary Quote Validation
 
-This validation confirms that preliminary quotes and opportunity packages can be created as advisory commercial artifacts.
+Phase: 6.8J
 
-Fixtures live in:
+## Google Quote
 
-`src/commercial/fixtures/preliminaryQuoteFixtures.ts`
+Fixture:
 
-## Fixture Scenarios
+- Google Texas AI Expansion
 
-1. Dallas to Kansas City Hyperscaler Long Haul
-2. West Texas AI Expansion
-3. Metro Data Center Interconnect
-4. Duct Monetization Opportunity
-5. Enterprise Access Opportunity
-6. Dark Fiber IRU Opportunity
+Expected:
 
-## Example Opportunity Package
+- Recommended AI corridor products display.
+- NRC, MRC, term, and TCV display.
+- Scope Review / Prism blockers affect readiness.
 
-An Opportunity Package contains:
+## Carrier Quote
 
-- Customer Ask
-- Lens
-- Reference Architecture
-- Recommended Products
-- Object Plan
-- Estimated Quantities
-- Estimated NRC
-- Estimated MRC
-- Estimated IRU
-- Commercial Assumptions
-- Commercial Risks
-- Confidence
-- Engineering Review Required
-- Marketplace Budget Required
-- Status: PRELIMINARY
+Fixture:
 
-## Product Estimate Examples
+- Carrier Long Haul
 
-Hyperscaler long haul may produce:
+Expected:
 
-- AI_INTERCONNECT estimate
-- NRC estimate
-- MRC estimate
-- power review risk
-- engineering review requirement
+- Dark Fiber, Wavelength, and Long Haul products display.
+- Long term advisory commercial values display.
 
-Duct monetization may produce:
+## AI Corridor Quote
 
-- DUCT_SALE estimate
-- RESIDUAL_CAPACITY estimate
-- spare duct assumptions
-- budget-not-established risk
+Fixtures:
 
-Dark fiber IRU may produce:
+- Google Texas AI Expansion
+- Oracle GPU Expansion
+- AI Corridor Diverse
 
-- DARK_FIBER_IRU estimate
-- ROUTE_OPERATIONS estimate
-- strand reservation assumptions
-- Route Engineering review requirement
+Expected:
 
-## Confidence Examples
+- AI Interconnect, Data Center Interconnect, GPU Facility, Power Infrastructure, and Long Haul products display where applicable.
 
-HIGH confidence requires:
+## Metro Quote
 
-- strong architecture fit
-- strong evidence confidence
-- design standard context
-- no major missing object/tool evidence
+Fixture:
 
-LOW confidence may result from:
+- Metro Ring
 
-- missing architecture fit
-- missing tool evidence
-- missing object evidence
-- unresolved review blockers
+Expected:
 
-## Estimate Vs Budget
+- Metro Access, Ethernet, and Managed Infrastructure products display.
 
-Preliminary Quote:
+## Blocked Quote
 
-- advisory
-- assumption-based
-- no budget authority
-- no contract authority
-- no execution authority
+Fixture:
 
-Marketplace Budget:
+- Blocked Example
 
-- future process
-- requires approved ScopeVersion
-- converts estimate to budget
-- may support commercial approval
+Expected:
 
-## Future Boundary
+- Readiness displays `BLOCKED`.
+- Blockers appear in diagnostics.
+- No customer discussion readiness.
 
-Future Marketplace receives:
+## Ready For Customer Discussion Quote
 
-Approved ScopeVersion
+Fixture:
 
-and converts:
+- Ready For Customer Discussion Example
 
-Estimate
+Expected:
 
-to
+- Readiness displays `QUOTE_GENERATED`.
+- Next action displays `READY_FOR_CUSTOMER_DISCUSSION`.
+- Quote remains advisory and non-contractual.
 
-Budget
+## Ryan Workflow
 
-Future SOF/Contract generation occurs only after:
+Ryan can open Preliminary Quote, select a fixture opportunity, inspect products, commercial values, assumptions, risks, confidence, and customer-discussion readiness without creating authority.
 
-- Engineering Approval
-- Marketplace Budget Lock
-- Commercial Approval
+## Required Commands
 
-## Remaining Risks
+```bash
+npx tsc --noEmit
+npm run build
+git diff --check -- hyperlinx-dal-dev
+```
 
-- No Marketplace integration exists.
-- No SOF generation exists.
-- No contract generation exists.
-- No pricing API exists.
-- No ScopeVersion creation exists.
-- No budget authority exists.
+## Boundary Validation
+
+- No contract.
+- No budget lock.
+- No SOF.
+- No persistence.
+- No server routes.
+- No authority creation.
+- No Chicago/root production modifications.

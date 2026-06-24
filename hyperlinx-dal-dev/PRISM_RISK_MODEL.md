@@ -1,67 +1,40 @@
 # Prism Risk Model
 
-Status: doctrine only.
+Phase: 6.8I
 
 ## Risk Categories
 
-Prism risk evaluation should consider:
+Supported categories:
 
-- jurisdiction risk.
-- environmental risk.
-- permitting risk.
-- restoration risk.
-- constructability risk.
-- utility conflict risk.
-- diversity overclaim risk.
-- monetization assumption risk.
-- power availability risk.
+- `DIVERSITY_RISK`
+- `COST_RISK`
+- `CAPACITY_RISK`
+- `POWER_RISK`
+- `FACILITY_RISK`
+- `CONSTRUCTION_RISK`
+- `RIGHT_OF_WAY_RISK`
+- `MARKETPLACE_RISK`
 
-## Teralinx Risk Factors
+## Risk Fields
 
-### Jurisdiction Complexity
+Each risk includes:
 
-Measures:
+- `riskId`
+- `riskCategory`
+- `severity`
+- `summary`
+- `mitigation`
+- `evidenceIds`
 
-- number of authorities.
-- permit diversity.
-- coordination burden.
-- railroad, federal, tribal, private, or utility authority exposure.
+## Cost Drivers
 
-### Restoration Complexity
+Cost drivers are advisory summaries for:
 
-Measures:
+- Construction
+- Power
+- Facility
+- Marketplace
+- Right of way
+- Engineering
 
-- crew access.
-- fault isolation complexity.
-- spare path assumptions.
-- available route operations model.
-
-### Operational Maintainability
-
-Measures:
-
-- access.
-- maintenance burden.
-- restoration feasibility.
-- service zone coverage.
-
-### Residual Asset Risk
-
-Measures:
-
-- overestimating unused duct/fiber value.
-- uncertain adjacent demand.
-- unclear ownership or maintenance model.
-
-## Risk Output
-
-Prism should eventually emit:
-
-- category risk components.
-- diagnostics.
-- evidence IDs.
-- unresolved blockers.
-- human review requirements.
-
-Risk does not create authority. It informs recommendation only.
-
+Cost drivers do not become budget locks, vendor awards, or execution authority.

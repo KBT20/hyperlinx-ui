@@ -267,7 +267,39 @@ textarea {
   padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
+}
+
+.dal-nav-group {
+  display: grid;
+  gap: 7px;
+}
+
+.dal-nav-group-label {
+  color: #6fd3ff;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dal-nav-subgroup {
+  display: grid;
+  gap: 6px;
+}
+
+.dal-nav-subgroup-label {
+  color: #9fbed8;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 2px 0;
+}
+
+.dal-nav-subgroup-items {
+  display: grid;
+  gap: 6px;
+  padding-left: 10px;
+  border-left: 1px solid #1d334a;
 }
 
 .dal-nav-item {
@@ -443,6 +475,153 @@ textarea {
 .dal-list-row small {
   color: #b7c9dc;
   overflow-wrap: anywhere;
+}
+
+.opportunity-header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.opportunity-header h2 {
+  margin-bottom: 4px;
+}
+
+.opportunity-header p {
+  margin-bottom: 0;
+}
+
+.opportunity-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  color: #d7e7f5;
+}
+
+.opportunity-header-meta span:not(.dal-badge) {
+  border: 1px solid #284662;
+  background: #081827;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.opportunity-facts {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.45fr) minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
+}
+
+.opportunity-facts span {
+  color: #9fbed8;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.opportunity-facts b {
+  color: #f8fbff;
+  overflow-wrap: anywhere;
+}
+
+.opportunity-list-row {
+  grid-template-columns: minmax(180px, 1fr) minmax(110px, 0.35fr) minmax(140px, 0.65fr);
+}
+
+.opportunity-workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.opportunity-status-card {
+  border: 1px solid #18344e;
+  border-radius: 8px;
+  background: #071827;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  min-height: 190px;
+}
+
+.opportunity-status-card h3 {
+  font-size: 15px;
+  margin-bottom: 0;
+}
+
+.opportunity-status-card p {
+  margin-bottom: 0;
+}
+
+.opportunity-blockers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.opportunity-next-action {
+  align-content: start;
+}
+
+.opportunity-next-action-label {
+  color: #f8fbff;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.prism-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.prism-advisory-card {
+  border: 1px solid #18344e;
+  border-radius: 8px;
+  background: #071827;
+  padding: 12px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 180px;
+}
+
+.prism-advisory-card h3 {
+  margin-bottom: 0;
+  font-size: 15px;
+}
+
+.prism-advisory-card p {
+  margin-bottom: 0;
+}
+
+.quote-total-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.quote-total-grid div {
+  border: 1px solid #284662;
+  border-radius: 8px;
+  background: #071827;
+  padding: 12px;
+  display: grid;
+  gap: 6px;
+}
+
+.quote-total-grid span {
+  color: #9fbed8;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.quote-total-grid b {
+  color: #f8fbff;
+  font-size: 20px;
 }
 
 .dal-table-wrap {
@@ -914,6 +1093,17 @@ textarea {
     border-bottom: 1px solid #1d334a;
   }
 
+  .opportunity-header,
+  .opportunity-workflow-grid,
+  .prism-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .opportunity-header-meta {
+    justify-content: flex-start;
+  }
+
+  .opportunity-facts,
   .dal-validation-row {
     grid-template-columns: 1fr;
   }
