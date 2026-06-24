@@ -55,3 +55,11 @@ Control does not execute raw corridor analysis.
 Field does not close against opportunities or corridors.
 
 Field closes against ScopeVersion truth.
+
+## ScopeVersion Close Authority Alignment
+
+All authority resolves through ScopeVersion Close events.
+
+A ScopeVersion close must preserve `customerId`, `opportunityId`, and `corridorId` so customer lineage remains replayable.
+
+Advisory objects remain advisory until validated close authority exists against `scopeVersionId`.

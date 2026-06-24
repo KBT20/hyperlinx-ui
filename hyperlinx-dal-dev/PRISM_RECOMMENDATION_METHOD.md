@@ -47,3 +47,11 @@ Recommendation does not persist.
 Recommendation does not create ScopeVersions.
 
 Recommendation does not create execution work.
+
+## ScopeVersion Close Authority Alignment
+
+All authority resolves through ScopeVersion Close events.
+
+Prism recommendations remain advisory.
+
+Prism output may support evidence for a future `DESIGN_CLOSE` or `COMMERCIAL_CLOSE`, but it may not validate a close or create authority by itself.

@@ -69,3 +69,15 @@ to
 Budget
 
 after Engineering Approval and Marketplace Budget Lock.
+
+## Contract and SOF Readiness Alignment
+
+Opportunity Packages are advisory and may not establish SOF or contract readiness.
+
+SOF and contract readiness depends on ScopeVersion Close Authority and Lifecycle Authority after promotion and acceptance.
+
+Readiness is not execution.
+
+Contract execution creates `CONTRACT_CLOSE`.
+
+Control activation follows `CONTRACT_CLOSE`.

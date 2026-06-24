@@ -77,3 +77,31 @@ Field receives:
 - workItems
 
 Field closure is operational evidence against ScopeVersion truth.
+
+## ScopeVersion Close Authority Alignment
+
+All authority resolves through ScopeVersion Close events.
+
+Customer, opportunity, corridor, contract, marketplace, Control, and Field records remain traceability evidence until a validated close exists against `scopeVersionId`.
+
+No customer-facing authority may be inferred from an orphan close or a close without ScopeVersion traceability.
+
+## ScopeVersion Lifecycle Authority Alignment
+
+Customer traceability is required evidence for lifecycle governance.
+
+Customer acceptance, contract execution, Control activation, Field execution, completion, and operations must remain traceable to the same `scopeVersionId`.
+
+No customer-facing lifecycle state may be inferred from a workspace-local record, recommendation, quote, or contract artifact without ScopeVersion Transition Authority.
+
+## Contract and SOF Readiness Alignment
+
+SOF and contract readiness must preserve the customer traceability chain.
+
+Readiness depends on ScopeVersion Close Authority and Lifecycle Authority.
+
+Readiness is not execution and does not create legal obligation.
+
+Contract execution creates `CONTRACT_CLOSE`.
+
+Control activation follows `CONTRACT_CLOSE`.
