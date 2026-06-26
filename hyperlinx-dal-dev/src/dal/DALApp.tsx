@@ -5,18 +5,23 @@ import { endpointBaseUrl, getReasoningEndpointCandidates } from "../api/reasonin
 import CandidateSitesWorkspace from "../workspaces/CandidateSitesWorkspace";
 import DALInventoryWorkspace from "../workspaces/DALInventoryWorkspace";
 import DALPlaceholderWorkspace from "../workspaces/DALPlaceholderWorkspace";
+import DesignWorkspace from "../components/workspaces/DesignWorkspace";
 import FieldWorkspace from "../workspaces/FieldWorkspace";
 import GraphExtensionWorkspace from "../workspaces/GraphExtensionWorkspace";
 import GraphViewerWorkspace from "../workspaces/GraphViewerWorkspace";
+import GoogleRfpWorkspace from "../components/workspaces/GoogleRfpWorkspace";
 import InventoryRecoveryWorkspace from "../workspaces/InventoryRecoveryWorkspace";
 import ControlWorkspace from "../workspaces/ControlWorkspace";
 import MarketplaceWorkspace from "../workspaces/MarketplaceWorkspace";
 import NetworkAffinityWorkspace from "../workspaces/NetworkAffinityWorkspace";
 import OperationalIntelligenceWorkspace from "../workspaces/OperationalIntelligenceWorkspace";
 import PortfolioWorkspace from "../workspaces/PortfolioWorkspace";
+import PreliminaryProposalWorkspace from "../components/workspaces/PreliminaryProposalWorkspace";
+import ProposedNetworkWorkspace from "../components/workspaces/ProposedNetworkWorkspace";
 import PrismWorkspace from "../workspaces/PrismWorkspace";
 import PrismSiteDecisionWorkspace from "../workspaces/PrismSiteDecisionWorkspace";
 import RouteEngineeringWorkspace from "../workspaces/RouteEngineeringWorkspace";
+import TeralinxRouteWorkspace from "../components/workspaces/TeralinxRouteWorkspace";
 import TranslateWorkspace from "../workspaces/TranslateWorkspace";
 import TwinWorkspace from "../workspaces/TwinWorkspace";
 import DALNavigation from "./DALNavigation";
@@ -25,11 +30,15 @@ import { DALStateProvider, useDALState } from "./DALState";
 function DALWorkspaceOutlet() {
   const { workspace } = useDALState();
 
+  if (workspace === "teralinxRoute") return <TeralinxRouteWorkspace />;
+  if (workspace === "googleRfp") return <GoogleRfpWorkspace />;
   if (workspace === "inventory") return <DALInventoryWorkspace />;
   if (workspace === "inventoryRecovery") return <InventoryRecoveryWorkspace />;
   if (workspace === "graphViewer") return <GraphViewerWorkspace />;
   if (workspace === "graphExtensions") return <GraphExtensionWorkspace />;
-  if (workspace === "design") return <DALPlaceholderWorkspace title="Design" />;
+  if (workspace === "design") return <DesignWorkspace />;
+  if (workspace === "proposedNetwork") return <ProposedNetworkWorkspace />;
+  if (workspace === "preliminaryProposal") return <PreliminaryProposalWorkspace />;
   if (workspace === "prism") return <PrismWorkspace />;
   if (workspace === "siteDecision") return <PrismSiteDecisionWorkspace />;
   if (workspace === "routeEngineering") return <RouteEngineeringWorkspace />;
@@ -45,6 +54,10 @@ function DALWorkspaceOutlet() {
 }
 
 function reasoningWorkspace(workspace: ReturnType<typeof useDALState>["workspace"]): ReasoningWorkspace {
+  if (workspace === "teralinxRoute") return "translate";
+  if (workspace === "googleRfp") return "marketplace";
+  if (workspace === "proposedNetwork") return "translate";
+  if (workspace === "preliminaryProposal") return "marketplace";
   if (workspace === "graphViewer" || workspace === "graphExtensions" || workspace === "inventoryRecovery") return "graph-viewer";
   if (workspace === "siteDecision") return "prism";
   if (workspace === "routeEngineering") return "prism";
@@ -55,6 +68,10 @@ function reasoningWorkspace(workspace: ReturnType<typeof useDALState>["workspace
 
 function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]) {
   if (workspace === "translate") return ["Explain what was extracted", "Which validation warnings matter?", "Suggest normalization corrections"];
+  if (workspace === "teralinxRoute") return ["Summarize this route request", "What blocks Design readiness?", "Draft a customer route intake summary"];
+  if (workspace === "googleRfp") return ["Summarize the RFP response plan", "What blocks Google submission readiness?", "Explain the civil mix assumptions"];
+  if (workspace === "proposedNetwork") return ["Explain this proposed network", "What should the customer review?", "What is still non-authoritative?"];
+  if (workspace === "preliminaryProposal") return ["Explain this preliminary proposal", "What assumptions matter?", "What blocks Route Engineering handoff?"];
   if (workspace === "inventory") return ["Summarize this inventory graph", "Identify graph anomalies", "What should I inspect next?"];
   if (workspace === "inventoryRecovery") return ["Which graphs are browser only?", "What should be pushed to the server?", "Summarize sync failures"];
   if (workspace === "graphViewer") return ["Explain the selected graph context", "Summarize route structure", "Suggest extension candidates"];

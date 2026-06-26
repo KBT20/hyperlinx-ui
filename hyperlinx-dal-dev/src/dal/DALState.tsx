@@ -1,17 +1,23 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import type { InventoryGraph, InventoryGraphMetadata, PrismOpportunity, ScopeVersion } from "../types/dal";
 import type { CandidateSite } from "../types/candidateSite";
+import type { DesignLaunchResult } from "../design/DesignLaunchResult";
 import type { GraphExtension } from "../types/graphExtension";
 import type { NetworkAffinity } from "../types/networkAffinity";
 import type { OpportunitySeed } from "../types/portfolio";
+import type { ProposedGraph } from "../proposedGraph/ProposedGraph";
 
 export type DALWorkspace =
   | "translate"
+  | "teralinxRoute"
+  | "googleRfp"
   | "inventory"
   | "inventoryRecovery"
   | "graphViewer"
   | "graphExtensions"
   | "design"
+  | "proposedNetwork"
+  | "preliminaryProposal"
   | "prism"
   | "siteDecision"
   | "routeEngineering"
@@ -57,6 +63,10 @@ type DALState = {
   setSelectedCandidateSite: (candidateSite: CandidateSite | null) => void;
   selectedNetworkAffinity: NetworkAffinity | null;
   setSelectedNetworkAffinity: (networkAffinity: NetworkAffinity | null) => void;
+  selectedDesignLaunchResult: DesignLaunchResult | null;
+  setSelectedDesignLaunchResult: (result: DesignLaunchResult | null) => void;
+  selectedProposedGraph: ProposedGraph | null;
+  setSelectedProposedGraph: (proposedGraph: ProposedGraph | null) => void;
   inventorySummaries: DALInventorySummary[];
   upsertInventorySummary: (summary: DALInventorySummary) => void;
 };
@@ -79,6 +89,8 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
   const [selectedCandidateSiteId, setSelectedCandidateSiteId] = useState("");
   const [selectedCandidateSite, setSelectedCandidateSite] = useState<CandidateSite | null>(null);
   const [selectedNetworkAffinity, setSelectedNetworkAffinity] = useState<NetworkAffinity | null>(null);
+  const [selectedDesignLaunchResult, setSelectedDesignLaunchResult] = useState<DesignLaunchResult | null>(null);
+  const [selectedProposedGraph, setSelectedProposedGraph] = useState<ProposedGraph | null>(null);
   const [inventorySummaries, setInventorySummaries] = useState<DALInventorySummary[]>([]);
 
   function upsertInventorySummary(summary: DALInventorySummary) {
@@ -117,6 +129,10 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
       setSelectedCandidateSite,
       selectedNetworkAffinity,
       setSelectedNetworkAffinity,
+      selectedDesignLaunchResult,
+      setSelectedDesignLaunchResult,
+      selectedProposedGraph,
+      setSelectedProposedGraph,
       inventorySummaries,
       upsertInventorySummary,
     }),
@@ -136,6 +152,8 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
       selectedCandidateSiteId,
       selectedCandidateSite,
       selectedNetworkAffinity,
+      selectedDesignLaunchResult,
+      selectedProposedGraph,
       inventorySummaries,
     ]
   );

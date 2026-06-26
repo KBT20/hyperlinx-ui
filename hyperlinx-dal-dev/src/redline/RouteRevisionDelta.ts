@@ -1,0 +1,33 @@
+export interface RouteRevisionDelta {
+  deltaId: string;
+  originalRouteCandidateId: string;
+  revisedRouteCandidateId: string;
+  originalMiles: number;
+  revisedMiles: number;
+  mileDelta: number;
+  originalFiberFeet: number;
+  revisedFiberFeet: number;
+  fiberFeetDelta: number;
+  originalDuctFeet: number;
+  revisedDuctFeet: number;
+  ductFeetDelta: number;
+  originalEstimatedCost: number;
+  revisedEstimatedCost: number;
+  estimatedCostDelta: number;
+  originalCrossingCount: number;
+  revisedCrossingCount: number;
+  crossingDelta: number;
+  originalVaultCount: number;
+  revisedVaultCount: number;
+  vaultDelta: number;
+  originalRegenCount: number;
+  revisedRegenCount: number;
+  regenDelta: number;
+  changedSegments: string[];
+  newConstraints: string[];
+  removedConstraints: string[];
+  confidenceChange: number;
+  scheduleDeltaDays?: number;
+  unresolvedWarningCount: number;
+  summary: string;
+}

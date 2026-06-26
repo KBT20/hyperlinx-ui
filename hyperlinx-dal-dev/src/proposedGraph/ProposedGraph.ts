@@ -1,0 +1,58 @@
+import type { TeralinxNetworkType, TeralinxPrimaryProduct, TeralinxProtection } from "../teralinx/TeralinxDesignIntent";
+import type { NetworkClass } from "../designDoctrine/NetworkClass";
+import type { ProtectionClass } from "../designDoctrine/ProtectionClass";
+import type { TopologyClass } from "../designDoctrine/TopologyClass";
+import type { CenterlineRoute } from "../corridor/CenterlineRoute";
+import type { StationedCorridor } from "../corridor/StationedCorridor";
+import type { CorridorTakeoff } from "../corridor/CorridorTakeoff";
+import type { RouteCandidate } from "../routeGeneration/RouteCandidate";
+import type { EngineeringConstraintCandidate } from "../routeGeneration/RouteConstraint";
+import type { RouteStatistics } from "../routeGeneration/RouteStatistics";
+import type { ProposedGraphDiagnostic } from "./ProposedGraphDiagnostics";
+import type { ProposedGraphEdge } from "./ProposedGraphEdge";
+import type { ProposedGraphNode } from "./ProposedGraphNode";
+import type { ProposedGraphStatistics } from "./ProposedGraphStatistics";
+
+export type ProposedGraphReadiness = "READY_FOR_PROPOSAL" | "READY_FOR_ENGINEERING" | "BLOCKED";
+
+export interface ProposedGraph {
+  proposedGraphId: string;
+  proposalId: string;
+  customerId: string;
+  customerName: string;
+  opportunityId: string;
+  opportunityName: string;
+  routeRequestId: string;
+  sourceDesignLaunchId: string;
+  designDoctrineId: string;
+  routeCandidateId: string;
+  centerlineRouteId?: string;
+  stationedCorridorId?: string;
+  takeoffId?: string;
+  networkType: TeralinxNetworkType;
+  networkClass: NetworkClass;
+  topology: TopologyClass;
+  protection: TeralinxProtection;
+  protectionClass: ProtectionClass;
+  primaryProduct: TeralinxPrimaryProduct;
+  nodes: ProposedGraphNode[];
+  edges: ProposedGraphEdge[];
+  statistics: ProposedGraphStatistics;
+  routeStatistics: RouteStatistics;
+  routeCandidate: RouteCandidate;
+  centerlineRoute?: CenterlineRoute;
+  stationedCorridor?: StationedCorridor;
+  takeoff?: CorridorTakeoff;
+  engineeringConstraintCandidates: EngineeringConstraintCandidate[];
+  readiness: ProposedGraphReadiness;
+  diagnostics: ProposedGraphDiagnostic[];
+  generatedAt: string;
+  metadata: Record<string, unknown>;
+  readOnly: true;
+  noEngineering: true;
+  salesEstimate: true;
+  engineeringCertificationRequired: true;
+  noScopeVersionCreation: true;
+  noInventoryMutation: true;
+  noPersistence: true;
+}
