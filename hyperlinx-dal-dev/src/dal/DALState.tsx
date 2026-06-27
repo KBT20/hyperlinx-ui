@@ -74,7 +74,7 @@ type DALState = {
 const DALStateContext = createContext<DALState | null>(null);
 
 export function DALStateProvider({ children }: { children: ReactNode }) {
-  const [workspace, setWorkspace] = useState<DALWorkspace>("translate");
+  const [workspace, setWorkspace] = useState<DALWorkspace>("googleRfp");
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
   const [selectedGraph, setSelectedGraph] = useState<InventoryGraph | null>(null);
   const [selectedScopeVersionId, setSelectedScopeVersionId] = useState("");

@@ -502,6 +502,33 @@ export async function createGoogleRfpRouteRevisionPlan(args: {
       status: "BLOCKED",
     };
   }
+  return createGoogleRfpRoutePlanFromRevisionResult({
+    routePlan,
+    revisionResult,
+    persistRevision: true,
+  });
+}
+
+export function createGoogleRfpLiveDraftRoutePlan(args: {
+  routePlan: GoogleRfpRouteBidPlan;
+  revisionResult: RouteRevisionBuildResult;
+}): GoogleRfpRouteBidPlan {
+  return createGoogleRfpRoutePlanFromRevisionResult({
+    routePlan: args.routePlan,
+    revisionResult: args.revisionResult,
+    persistRevision: false,
+  });
+}
+
+function createGoogleRfpRoutePlanFromRevisionResult(args: {
+  routePlan: GoogleRfpRouteBidPlan;
+  revisionResult: RouteRevisionBuildResult;
+  persistRevision: boolean;
+}): GoogleRfpRouteBidPlan {
+  const { routePlan, revisionResult } = args;
+  const session = routePlan.designLaunchResult.session;
+  if (!session || !routePlan.proposedGraph || !revisionResult.stationedCorridor || revisionResult.revision.snapStatus !== "OSRM_RESNAPPED") return routePlan;
+
   const stationedCorridor = revisionResult.stationedCorridor;
   const proposedGraph = createProposedGraphFromStationedCorridor(session, stationedCorridor);
   const quotePackage = createPreliminaryQuotePackageFromGraph(proposedGraph);
@@ -514,8 +541,8 @@ export async function createGoogleRfpRouteRevisionPlan(args: {
     ...revisionResult.revision,
     civilMixEstimateId: civilMixEstimate.civilMixEstimateId,
     quotePreviewId: `VENDOR-RESPONSE-${routePlan.routeRequirement.routeRequirementId}`,
-    selectedForProposal: true,
-    revisionStatus: "SELECTED_FOR_PROPOSAL" as const,
+    selectedForProposal: args.persistRevision,
+    revisionStatus: args.persistRevision ? "SELECTED_FOR_PROPOSAL" as const : "READY_FOR_REVIEW" as const,
   };
   const routeVerification = verificationFromRevisedRoute({
     requirement: routePlan.routeRequirement,
@@ -540,8 +567,8 @@ export async function createGoogleRfpRouteRevisionPlan(args: {
     quotePackage,
     civilMixEstimate,
     routeVerification,
-    routeRevisions: [...(routePlan.routeRevisions ?? []), revision],
-    selectedRevisionId: revision.revisionId,
+    routeRevisions: args.persistRevision ? [...(routePlan.routeRevisions ?? []), revision] : routePlan.routeRevisions,
+    selectedRevisionId: args.persistRevision ? revision.revisionId : routePlan.selectedRevisionId,
     status: "READY",
   };
   return {

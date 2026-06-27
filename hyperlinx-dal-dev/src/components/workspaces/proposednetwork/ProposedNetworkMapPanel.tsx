@@ -7,6 +7,8 @@ import type { DALCoordinate } from "../../../types/dal";
 import type { ProposedGraph } from "../../../proposedGraph/ProposedGraph";
 import type { ProposedGraphEdge } from "../../../proposedGraph/ProposedGraphEdge";
 import type { ProposedGraphNode } from "../../../proposedGraph/ProposedGraphNode";
+import { sourceLayerIdsForVisibleDomain, visibleCommercialMapLayerIds, type CommercialMapLayer } from "../../../commercial/CommercialMapLayerManager";
+import type { CustomerTwinLayer, CustomerTwinObjectType, CustomerTwinRenderableState, CustomerTwinStation } from "../../../customerTwin/CustomerTwin";
 
 export type ProposedNetworkSelection =
   | { type: "node"; value: ProposedGraphNode }
@@ -103,8 +105,20 @@ export type ProposedNetworkRedlineControls = {
   onSplitSelectedSegment?: () => void;
   onRedlineDragComplete?: (coordinate?: DALCoordinate, affectedSegmentId?: string) => void;
   onSaveRevision?: () => void;
+  saveRevisionLabel?: string;
   onDiscardRevision?: () => void;
   onSelectRevisionForProposal?: () => void;
+};
+
+export type CommercialMapOpportunityOverlay = {
+  draftType?: "NEW_GRAPH_CORRIDOR" | "EXISTING_GRAPH_EXTENSION";
+  candidateCoordinate?: DALCoordinate;
+  candidateLabel?: string;
+  azPoints?: Array<{ id: string; label: string; coordinate: DALCoordinate; role: "A" | "Z" }>;
+  attachmentCandidates?: Array<{ id: string; label: string; coordinate: DALCoordinate; selected?: boolean }>;
+  corridorGeometry?: DALCoordinate[];
+  quickQuoteLabel?: string;
+  confidence?: number;
 };
 
 const MIN_ZOOM = 4;
@@ -140,6 +154,39 @@ function objectColor(type: CorridorInventoryObjectType) {
   return "#0ea5e9";
 }
 
+function customerTwinFeatureColor(type: CustomerTwinObjectType) {
+  if (type === "POP" || type === "FACILITY") return "#facc15";
+  if (type === "SPLICE_CASE") return "#a855f7";
+  if (type === "HANDHOLE" || type === "VAULT") return "#f59e0b";
+  if (type === "BUILDING") return "#38bdf8";
+  if (type === "REGENERATION_SITE") return "#7c3aed";
+  if (type === "CAMPUS" || type === "CUSTOMER_FACILITY") return "#22c55e";
+  return "#e5e7eb";
+}
+
+function customerTwinLayerRank(layer: CustomerTwinLayer) {
+  if (layer.domain === "EXISTING_INVENTORY") return 10;
+  if (layer.domain === "CUSTOMER_PROPOSED") return 20;
+  return 30;
+}
+
+function customerTwinLineStyle(layer: CustomerTwinLayer, index: number) {
+  if (layer.domain === "CUSTOMER_PROPOSED") {
+    return { stroke: "#7c3aed", strokeDasharray: "10 7", opacity: 0.5 };
+  }
+  if (layer.routeUse === "DIVERSITY_CONSTRAINT") {
+    return { stroke: "#be123c", strokeDasharray: "10 8", opacity: 0.58 };
+  }
+  if (layer.routeUse === "AVOIDANCE_CONSTRAINT") {
+    return { stroke: "#a16207", strokeDasharray: "3 7", opacity: 0.5 };
+  }
+  return {
+    stroke: index % 2 === 0 ? "#0f766e" : "#475569",
+    strokeDasharray: index % 2 === 0 ? "7 6" : "4 6",
+    opacity: 0.52,
+  };
+}
+
 function objectVisible(type: CorridorInventoryObjectType, layers: LayerState, zoom: number) {
   if (type === "REGEN_SITE") return layers.regenSites;
   if (type === "VAULT" || type === "HANDHOLE") return layers.vaults && zoom >= 9;
@@ -147,6 +194,13 @@ function objectVisible(type: CorridorInventoryObjectType, layers: LayerState, zo
   if (type === "UNKNOWN_CONSTRAINT") return layers.constraints && zoom >= 11;
   if (type === "DUCT" || type === "FIBER" || type === "SPLICE_POINT") return layers.ductFiberObjects && zoom >= 14;
   return zoom >= 14;
+}
+
+function customerTwinObjectVisible(type: CustomerTwinObjectType, zoom: number) {
+  if (zoom < 9) return type === "POP" || type === "FACILITY" || type === "CUSTOMER_FACILITY" || type === "CAMPUS";
+  if (zoom < 12) return ["POP", "FACILITY", "CUSTOMER_FACILITY", "CAMPUS", "BUILDING", "REGENERATION_SITE"].includes(type);
+  if (zoom < 14) return !["HANDHOLE"].includes(type);
+  return true;
 }
 
 function stationRenderSpacingFeet(zoom: number) {
@@ -170,6 +224,12 @@ function visibleStationsForZoom(stations: CorridorStation[], zoom: number) {
     }
     return false;
   });
+}
+
+function visibleCustomerTwinStationsForZoom(stations: CustomerTwinStation[], zoom: number) {
+  if (zoom < 11) return [];
+  const step = zoom < 13 ? 20 : zoom < 15 ? 5 : 1;
+  return stations.filter((station) => station.stationIndex === 0 || station.stationIndex % step === 0);
 }
 
 function inViewport(point: { x: number; y: number }, width: number, height: number, pad = 48) {
@@ -225,26 +285,104 @@ export default function ProposedNetworkMapPanel({
   onSelect,
   compare,
   redline,
+  customerTwinState,
+  commercialMapLayers = [],
+  commercialOpportunityOverlay,
   mapMinHeight = 560,
+  mapTitle = "Proposed Network Map",
+  mapBadgeLabel,
+  onMapCoordinateClick,
+  onCommercialLayerVisibilityToggle,
 }: {
   graph: ProposedGraph;
   selected: ProposedNetworkSelection;
   onSelect: (selection: ProposedNetworkSelection) => void;
   compare?: ProposedNetworkCompareOverlay;
   redline?: ProposedNetworkRedlineControls;
+  customerTwinState?: CustomerTwinRenderableState | null;
+  commercialMapLayers?: CommercialMapLayer[];
+  commercialOpportunityOverlay?: CommercialMapOpportunityOverlay;
   mapMinHeight?: number;
+  mapTitle?: string;
+  mapBadgeLabel?: string;
+  onMapCoordinateClick?: (coordinate: DALCoordinate) => void;
+  onCommercialLayerVisibilityToggle?: (networkId: string) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const fittedRouteRef = useRef<string | null>(null);
   const previousViewRef = useRef<ViewState | null>(null);
   const [size, setSize] = useState({ width: 960, height: 560 });
+  const salesMode = redline?.presentationMode === "SALES";
+  const visibleLayerIds = useMemo(() => visibleCommercialMapLayerIds(commercialMapLayers), [commercialMapLayers]);
+  const visibleCustomerInventoryRouteLayerIds = useMemo(
+    () => sourceLayerIdsForVisibleDomain(commercialMapLayers, "CUSTOMER_INVENTORY", "ROUTES"),
+    [commercialMapLayers],
+  );
+  const visibleCustomerInventoryObjectLayerIds = useMemo(
+    () => sourceLayerIdsForVisibleDomain(commercialMapLayers, "CUSTOMER_INVENTORY", "OBJECTS"),
+    [commercialMapLayers],
+  );
+  const visibleCustomerProposedRouteLayerIds = useMemo(
+    () => sourceLayerIdsForVisibleDomain(commercialMapLayers, "CUSTOMER_PROPOSED_NETWORK", "ROUTES"),
+    [commercialMapLayers],
+  );
+  const customerTwinLayers = customerTwinState?.layers ?? [];
+  const hasCommercialTwinLayerRegistry = commercialMapLayers.some((layer) => Boolean(layer.sourceLayerId));
+  const routeVisibleCustomerTwinLayers = useMemo(
+    () => customerTwinLayers.filter((layer) => (
+      !hasCommercialTwinLayerRegistry && layer.visibleByDefault
+    ) || (
+      (layer.domain === "EXISTING_INVENTORY" && visibleCustomerInventoryRouteLayerIds.has(layer.layerId)) ||
+      (layer.domain === "CUSTOMER_PROPOSED" && visibleCustomerProposedRouteLayerIds.has(layer.layerId))
+    )),
+    [customerTwinLayers, hasCommercialTwinLayerRegistry, visibleCustomerInventoryRouteLayerIds, visibleCustomerProposedRouteLayerIds],
+  );
+  const objectVisibleCustomerTwinLayers = useMemo(
+    () => customerTwinLayers.filter((layer) => layer.domain === "EXISTING_INVENTORY" && (
+      (!hasCommercialTwinLayerRegistry && layer.visibleByDefault) ||
+      visibleCustomerInventoryObjectLayerIds.has(layer.layerId)
+    )),
+    [customerTwinLayers, hasCommercialTwinLayerRegistry, visibleCustomerInventoryObjectLayerIds],
+  );
+  const salesDraftVisible = visibleLayerIds.has("sales-commercial-draft:active-corridor");
+  const graphFeatureRenderingVisible = !salesMode || salesDraftVisible;
+  const inventoryCoordinates = useMemo(
+    () => routeVisibleCustomerTwinLayers.flatMap((layer) => [
+      ...layer.routes.flatMap((route) => route.coordinates),
+      ...(!hasCommercialTwinLayerRegistry || visibleCustomerInventoryObjectLayerIds.has(layer.layerId) ? layer.objects.map((object) => object.coordinate) : []),
+      ...(!hasCommercialTwinLayerRegistry || visibleCustomerInventoryObjectLayerIds.has(layer.layerId) ? layer.stations.map((station) => station.coordinate) : []),
+    ]),
+    [hasCommercialTwinLayerRegistry, routeVisibleCustomerTwinLayers, visibleCustomerInventoryObjectLayerIds],
+  );
+  const inventoryRouteKey = commercialMapLayers
+    .map((layer) => `${layer.id}:${layer.visibility}:${layer.renderState}:${layer.featureCount}`)
+    .join("|");
+  const sortedCustomerTwinRouteLayers = useMemo(
+    () => [...routeVisibleCustomerTwinLayers].sort((a, b) => customerTwinLayerRank(a) - customerTwinLayerRank(b)),
+    [routeVisibleCustomerTwinLayers],
+  );
+  const sortedCustomerTwinObjectLayers = useMemo(
+    () => [...objectVisibleCustomerTwinLayers].sort((a, b) => customerTwinLayerRank(a) - customerTwinLayerRank(b)),
+    [objectVisibleCustomerTwinLayers],
+  );
+  const mapLayerDockLayers = useMemo(
+    () => commercialMapLayers
+      .filter((layer) => layer.featureScope !== "BASE")
+      .sort((a, b) => b.zIndex - a.zIndex || a.label.localeCompare(b.label)),
+    [commercialMapLayers],
+  );
   const coordinates = useMemo(
     () => [
-      ...collectCoordinates(graph),
-      ...(compare ? collectCoordinates(compare.secondaryGraph) : []),
-      ...(compare?.sharedCoordinates ?? []),
+      ...(graphFeatureRenderingVisible ? collectCoordinates(graph) : []),
+      ...(graphFeatureRenderingVisible && compare ? collectCoordinates(compare.secondaryGraph) : []),
+      ...(graphFeatureRenderingVisible ? compare?.sharedCoordinates ?? [] : []),
+      ...inventoryCoordinates,
+      ...(commercialOpportunityOverlay?.candidateCoordinate ? [commercialOpportunityOverlay.candidateCoordinate] : []),
+      ...(commercialOpportunityOverlay?.azPoints?.map((point) => point.coordinate) ?? []),
+      ...(commercialOpportunityOverlay?.attachmentCandidates?.map((attachment) => attachment.coordinate) ?? []),
+      ...(commercialOpportunityOverlay?.corridorGeometry ?? []),
     ],
-    [compare, graph],
+    [commercialOpportunityOverlay?.attachmentCandidates, commercialOpportunityOverlay?.azPoints, commercialOpportunityOverlay?.candidateCoordinate, commercialOpportunityOverlay?.corridorGeometry, compare, graph, graphFeatureRenderingVisible, inventoryCoordinates],
   );
   const [view, setView] = useState<ViewState>(() => ({
     center: centerFromCoordinates(coordinates, [-97.7431, 30.2672]),
@@ -292,11 +430,11 @@ export default function ProposedNetworkMapPanel({
   }
 
   useEffect(() => {
-    const routeKey = `${graph.proposedGraphId}:${graph.centerlineRouteId ?? "NO_CENTERLINE"}:${compare?.secondaryGraph.proposedGraphId ?? "SINGLE"}`;
+    const routeKey = `${graph.proposedGraphId}:${graph.centerlineRouteId ?? "NO_CENTERLINE"}:${compare?.secondaryGraph.proposedGraphId ?? "SINGLE"}:${inventoryRouteKey}`;
     if (fittedRouteRef.current === routeKey) return;
     fittedRouteRef.current = routeKey;
     fitViewForCoordinates(coordinates, "initial-route-load");
-  }, [compare?.secondaryGraph.proposedGraphId, coordinates, graph.centerlineRouteId, graph.proposedGraphId]);
+  }, [compare?.secondaryGraph.proposedGraphId, coordinates, graph.centerlineRouteId, graph.proposedGraphId, inventoryRouteKey]);
 
   useEffect(() => {
     const previous = previousViewRef.current;
@@ -505,8 +643,16 @@ export default function ProposedNetworkMapPanel({
       view.zoom,
     );
     const point: DALCoordinate = [Number(coordinate[0].toFixed(6)), Number(coordinate[1].toFixed(6))];
-    if (redline?.mode === "ADD_VIA_POINT") redline.onAddViaPoint?.(point);
-    if (redline?.mode === "AVOID_AREA") redline.onAddAvoidancePoint?.(point);
+    let handled = false;
+    if (redline?.mode === "ADD_VIA_POINT") {
+      redline.onAddViaPoint?.(point);
+      handled = true;
+    }
+    if (redline?.mode === "AVOID_AREA") {
+      redline.onAddAvoidancePoint?.(point);
+      handled = true;
+    }
+    if (!handled) onMapCoordinateClick?.(point);
   }
 
   function toggleLayer(layer: keyof LayerState) {
@@ -514,7 +660,6 @@ export default function ProposedNetworkMapPanel({
   }
 
   const centerlinePath = graph.centerlineRoute?.geometry ?? [];
-  const salesMode = redline?.presentationMode === "SALES";
   const originalPath = redline?.originalGeometry?.length ? redline.originalGeometry : centerlinePath;
   const secondaryCenterlinePath = compare?.secondaryGraph.centerlineRoute?.geometry ?? [];
   const sharedCenterlinePath = compare?.sharedCoordinates ?? [];
@@ -528,6 +673,11 @@ export default function ProposedNetworkMapPanel({
   const visibleObjects = objects
     .filter((object) => objectVisible(object.objectType, layers, view.zoom))
     .filter((object) => inViewport(project([object.lng, object.lat]), size.width, size.height));
+  const visibleCustomerTwinObjects = sortedCustomerTwinObjectLayers.flatMap((layer) => layer.objects)
+    .filter((object) => customerTwinObjectVisible(object.objectType, view.zoom))
+    .filter((object) => inViewport(project(object.coordinate), size.width, size.height, 40));
+  const visibleCustomerTwinStations = sortedCustomerTwinObjectLayers.flatMap((layer) => visibleCustomerTwinStationsForZoom(layer.stations, view.zoom))
+    .filter((station) => inViewport(project(station.coordinate), size.width, size.height, 40));
   const siteNodes = graph.nodes.filter((node) => node.type === "A_SITE" || node.type === "Z_SITE" || node.type === "INTERMEDIATE_SITE");
   const regenObjects = objects.filter((object) => object.objectType === "REGEN_SITE");
   const selectedStation = selected?.type === "station" ? selected.value : null;
@@ -563,20 +713,59 @@ export default function ProposedNetworkMapPanel({
   const proposalLabelPoint = proposalPath.length > 1 ? project(proposalPath[Math.floor(proposalPath.length / 2)]) : null;
   const renderStationLabels = layers.labels && view.zoom >= 12;
   const renderDetailedLabels = layers.labels && view.zoom >= 14;
+  const fitButtonCoordinates = salesMode && !salesDraftVisible && inventoryCoordinates.length
+    ? inventoryCoordinates
+    : centerlinePath.length > 1
+      ? centerlinePath
+      : coordinates;
+  const opportunityOverlayPoint = commercialOpportunityOverlay?.candidateCoordinate ? project(commercialOpportunityOverlay.candidateCoordinate) : null;
+  const opportunityAzPoints = commercialOpportunityOverlay?.azPoints ?? [];
+  const opportunityAttachmentCandidates = commercialOpportunityOverlay?.attachmentCandidates ?? [];
+  const opportunityOverlayPath = commercialOpportunityOverlay?.corridorGeometry ?? [];
   const projectedLabels = labelsWithoutCollisions([
-    ...siteNodes.map((node) => {
-      const point = project([node.lng, node.lat]);
-      return {
-        key: `node-label:${node.id}`,
-        text: node.name,
-        x: point.x + 12,
-        y: point.y + 4,
-        priority: node.type === "A_SITE" || node.type === "Z_SITE" ? 100 : 80,
-        fill: "#0f172a",
-        fontSize: 12,
-      };
-    }),
+    ...(layers.labels && view.zoom >= 10
+      ? visibleCustomerTwinObjects.map((object) => {
+          const point = project(object.coordinate);
+          return {
+            key: `customer-twin-object-label:${object.objectId}`,
+            text: view.zoom >= 12 ? `${object.name} | ${object.objectType.replaceAll("_", " ")}` : object.name,
+            x: point.x + 8,
+            y: point.y + 4,
+            priority: ["POP", "FACILITY", "CUSTOMER_FACILITY", "CAMPUS"].includes(object.objectType) ? 92 : 48,
+            fill: "#111827",
+            fontSize: view.zoom >= 12 ? 11 : 10,
+          };
+        })
+      : []),
     ...(layers.labels && view.zoom >= 12
+      ? visibleCustomerTwinStations.map((station) => {
+          const point = project(station.coordinate);
+          return {
+            key: `customer-twin-station-label:${station.stationId}`,
+            text: `STA ${Math.round(station.cumulativeFeet).toLocaleString()} ft`,
+            x: point.x + 7,
+            y: point.y + 4,
+            priority: 34,
+            fill: "#075985",
+            fontSize: 10,
+          };
+        })
+      : []),
+    ...(graphFeatureRenderingVisible
+      ? siteNodes.map((node) => {
+          const point = project([node.lng, node.lat]);
+          return {
+            key: `node-label:${node.id}`,
+            text: node.name,
+            x: point.x + 12,
+            y: point.y + 4,
+            priority: node.type === "A_SITE" || node.type === "Z_SITE" ? 100 : 80,
+            fill: "#0f172a",
+            fontSize: 12,
+          };
+        })
+      : []),
+    ...(graphFeatureRenderingVisible && layers.labels && view.zoom >= 12
       ? regenObjects.map((object) => {
           const point = project([object.lng, object.lat]);
           return {
@@ -590,7 +779,7 @@ export default function ProposedNetworkMapPanel({
           };
         })
       : []),
-    ...(renderStationLabels
+    ...(graphFeatureRenderingVisible && renderStationLabels
       ? visibleStations.map((station) => {
           const point = project(station.coordinate);
           return {
@@ -604,7 +793,7 @@ export default function ProposedNetworkMapPanel({
           };
         })
       : []),
-    ...(renderDetailedLabels
+    ...(graphFeatureRenderingVisible && renderDetailedLabels
       ? visibleObjects
           .filter((object) => !["DUCT", "FIBER", "REGEN_SITE"].includes(object.objectType))
           .map((object) => {
@@ -625,12 +814,12 @@ export default function ProposedNetworkMapPanel({
   return (
     <section className="dal-panel">
       <div className="dal-panel-title-row">
-        <h3>Proposed Network Map</h3>
-        <span className="dal-badge warning">Sales route candidate</span>
+        <h3>{mapTitle}</h3>
+        <span className="dal-badge warning">{mapBadgeLabel ?? (salesMode && !salesDraftVisible ? "Customer inventory" : "Sales route candidate")}</span>
       </div>
       <div className="dal-actions">
-        <button type="button" onClick={() => fitViewForCoordinates(centerlinePath.length > 1 ? centerlinePath : coordinates, "fit-entire-route")}>
-          {salesMode ? "Fit Route" : "Fit Entire Route"}
+        <button type="button" onClick={() => fitViewForCoordinates(fitButtonCoordinates, "fit-entire-route")}>
+          {salesMode && !salesDraftVisible ? "Fit Inventory" : salesMode ? "Fit Route" : "Fit Entire Route"}
         </button>
         {!salesMode && (
           <>
@@ -652,7 +841,7 @@ export default function ProposedNetworkMapPanel({
           </>
         )}
       </div>
-      {redline && (
+      {redline && graphFeatureRenderingVisible && (
         <div className="dal-actions">
           {((salesMode ? ["REVIEW", "COMPARE"] : ["REVIEW", "EDIT_CORRIDOR", "AVOID_AREA", "COMPARE"]) as ProposedNetworkRedlineMode[]).map((mode) => (
             <button key={mode} type="button" className={redline.mode === mode ? "primary" : "secondary"} onClick={() => redline.onModeChange?.(mode)}>
@@ -679,7 +868,7 @@ export default function ProposedNetworkMapPanel({
             </>
           )}
           <button type="button" onClick={() => redline.onSaveRevision?.()} disabled={!redline.pendingViaPoints?.length && !redline.avoidancePolygon?.length}>
-            Save Revision
+            {redline.saveRevisionLabel ?? "Save Revision"}
           </button>
           <button type="button" onClick={() => redline.onDiscardRevision?.()} disabled={!redline.pendingViaPoints?.length && !redline.avoidancePolygon?.length && !redline.revisionGeometry?.length}>
             Discard Revision
@@ -712,7 +901,116 @@ export default function ProposedNetworkMapPanel({
       >
         <BasemapLayer tiles={tiles} />
         <svg className="dal-map-svg" width={size.width} height={size.height} role="img" aria-label="Proposed network visualization">
-          {salesMode && originalPath.length > 1 && (
+          {sortedCustomerTwinObjectLayers.map((layer) => (
+            <g key={`customer-twin-objects-${layer.layerId}`} className="customer-inventory-object-layer" pointerEvents="none">
+              {layer.objects
+                .filter((object) => customerTwinObjectVisible(object.objectType, view.zoom))
+                .filter((object) => inViewport(project(object.coordinate), size.width, size.height, 40))
+                .map((object) => {
+                  const projected = project(object.coordinate);
+                  return (
+                    <g key={object.objectId} transform={`translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`}>
+                      <circle r={view.zoom >= 10 ? 6 : 4.5} fill={customerTwinFeatureColor(object.objectType)} stroke="#111827" strokeWidth={1.5} opacity={0.9} />
+                    </g>
+                  );
+                })}
+              {visibleCustomerTwinStationsForZoom(layer.stations, view.zoom)
+                .filter((station) => inViewport(project(station.coordinate), size.width, size.height, 40))
+                .map((station) => {
+                  const projected = project(station.coordinate);
+                  return (
+                    <g key={station.stationId} transform={`translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`}>
+                      <rect x={-3} y={-3} width={6} height={6} rx={1} fill="#0ea5e9" stroke="#e0f2fe" strokeWidth={1.3} opacity={0.78} />
+                    </g>
+                  );
+                })}
+            </g>
+          ))}
+          {sortedCustomerTwinRouteLayers.map((layer, layerIndex) => {
+            const style = customerTwinLineStyle(layer, layerIndex);
+            return (
+              <g key={`customer-twin-layer-${layer.layerId}`} className="customer-inventory-reference-layer" pointerEvents="none">
+                {layer.routes.map((route) => (
+                  <path
+                    key={route.routeId}
+                    d={pathData(route.coordinates, project)}
+                    stroke={style.stroke}
+                    strokeWidth={layer.domain === "CUSTOMER_PROPOSED" ? 5 : 4}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray={style.strokeDasharray}
+                    opacity={style.opacity}
+                  />
+                ))}
+              </g>
+            );
+          })}
+          {opportunityOverlayPath.length > 1 && (
+            <path
+              d={pathData(opportunityOverlayPath, project)}
+              stroke={commercialOpportunityOverlay?.draftType === "NEW_GRAPH_CORRIDOR" ? "#7c3aed" : "#f97316"}
+              strokeWidth={commercialOpportunityOverlay?.draftType === "NEW_GRAPH_CORRIDOR" ? 6 : 5}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray={commercialOpportunityOverlay?.draftType === "NEW_GRAPH_CORRIDOR" ? undefined : "10 6"}
+              opacity={commercialOpportunityOverlay?.draftType === "NEW_GRAPH_CORRIDOR" ? 0.92 : 0.88}
+              pointerEvents="none"
+            />
+          )}
+          {opportunityAttachmentCandidates.map((attachment) => {
+            const projected = project(attachment.coordinate);
+            return (
+              <g
+                key={attachment.id}
+                className="commercial-opportunity-overlay"
+                transform={`translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`}
+                pointerEvents="none"
+              >
+                <circle r={attachment.selected ? 10 : 7} fill={attachment.selected ? "#dbeafe" : "#eff6ff"} stroke={attachment.selected ? "#1d4ed8" : "#60a5fa"} strokeWidth={attachment.selected ? 3 : 2} opacity={0.95} />
+                <path d="M -5 0 L 5 0 M 0 -5 L 0 5" stroke={attachment.selected ? "#1e3a8a" : "#2563eb"} strokeWidth={2} strokeLinecap="round" />
+                <text x={12} y={-7} fill="#1e3a8a" fontSize={11} fontWeight="800">
+                  {attachment.label}
+                </text>
+              </g>
+            );
+          })}
+          {opportunityOverlayPoint && (
+            <g
+              className="commercial-opportunity-overlay"
+              transform={`translate(${opportunityOverlayPoint.x.toFixed(1)} ${opportunityOverlayPoint.y.toFixed(1)})`}
+              pointerEvents="none"
+            >
+              <circle r={13} fill="#fff7ed" stroke="#f97316" strokeWidth={3} opacity={0.96} />
+              <circle r={5} fill="#ea580c" />
+              <text x={15} y={-8} fill="#9a3412" fontSize={12} fontWeight="800">
+                {commercialOpportunityOverlay?.candidateLabel ?? "Scout Candidate"}
+              </text>
+              {commercialOpportunityOverlay?.quickQuoteLabel ? (
+                <text x={15} y={8} fill="#7c2d12" fontSize={11} fontWeight="700">
+                  {commercialOpportunityOverlay.quickQuoteLabel}
+                  {typeof commercialOpportunityOverlay.confidence === "number" ? ` | ${commercialOpportunityOverlay.confidence}%` : ""}
+                </text>
+              ) : null}
+            </g>
+          )}
+          {opportunityAzPoints.map((point) => {
+            const projected = project(point.coordinate);
+            return (
+              <g
+                key={point.id}
+                className="commercial-opportunity-overlay"
+                transform={`translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`}
+                pointerEvents="none"
+              >
+                <circle r={11} fill={point.role === "A" ? "#dcfce7" : "#fee2e2"} stroke={point.role === "A" ? "#16a34a" : "#dc2626"} strokeWidth={3} opacity={0.95} />
+                <text x={-4} y={4} fill="#111827" fontSize={11} fontWeight="900">{point.role}</text>
+                <text x={14} y={-6} fill="#111827" fontSize={11} fontWeight="800">{point.label}</text>
+              </g>
+            );
+          })}
+          {salesMode && salesDraftVisible && redline?.mode === "COMPARE" && originalPath.length > 1 && (
             <path
               d={pathData(originalPath, project)}
               className="proposed-network-centerline"
@@ -724,7 +1022,7 @@ export default function ProposedNetworkMapPanel({
               opacity={0.42}
             />
           )}
-          {salesMode && proposalPath.length > 1 && (
+          {salesMode && salesDraftVisible && proposalPath.length > 1 && (
             <path
               d={pathData(proposalPath, project)}
               className="proposed-network-centerline"
@@ -918,7 +1216,7 @@ export default function ProposedNetworkMapPanel({
               </g>
             );
           })}
-          {siteNodes.map((node) => {
+          {graphFeatureRenderingVisible && siteNodes.map((node) => {
             const point = project([node.lng, node.lat]);
             const selectedNode = selected?.type === "node" && selected.value.id === node.id;
             return (
@@ -937,14 +1235,14 @@ export default function ProposedNetworkMapPanel({
             );
           })}
           <g pointerEvents="none">
-            {salesMode && originalLabelPoint && (
+            {salesMode && salesDraftVisible && redline?.mode === "COMPARE" && originalLabelPoint && (
               <text x={originalLabelPoint.x.toFixed(1)} y={(originalLabelPoint.y - 14).toFixed(1)} fill="#475569" fontSize={12} fontWeight="800">
                 Original Corridor
               </text>
             )}
-            {salesMode && proposalLabelPoint && (
+            {salesMode && salesDraftVisible && proposalLabelPoint && (
               <text x={proposalLabelPoint.x.toFixed(1)} y={(proposalLabelPoint.y + 18).toFixed(1)} fill="#1d4ed8" fontSize={12} fontWeight="800">
-                Proposal Corridor
+                Sales Draft Corridor
               </text>
             )}
             {projectedLabels.map((label) => (
@@ -1039,6 +1337,24 @@ export default function ProposedNetworkMapPanel({
             </>
           </div>
         )}
+        <div
+          className="commercial-map-layer-dock"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <b>Commercial Layers</b>
+          {mapLayerDockLayers.map((layer) => (
+            <label key={layer.id}>
+              <input
+                type="checkbox"
+                checked={layer.visibility === "VISIBLE"}
+                disabled={!layer.sourceNetworkId}
+                onChange={() => layer.sourceNetworkId && onCommercialLayerVisibilityToggle?.(layer.sourceNetworkId)}
+              />
+              <span>{layer.label}</span>
+            </label>
+          ))}
+        </div>
         <div className="dal-map-attribution">OpenStreetMap | Zoom {view.zoom}</div>
       </div>
       {compare && (

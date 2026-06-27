@@ -5,10 +5,12 @@ import { priceHyperscalerRoutes } from "../../../commercial/HyperscalerPricingEn
 import type { SelectedScopePricingSummary } from "../../../commercial/SelectedScopePricingSummary";
 import { googleHeliumBudgetaryCostProfileV1 } from "../../../construction/fixtures/civilMixFixtures";
 import type { StationedCorridor } from "../../../corridor/StationedCorridor";
-import { createGoogleRfpRouteRevisionPlan, previewGoogleRfpRouteRevision } from "../../../rfp/GoogleRfpResponseEngine";
+import { createGoogleRfpLiveDraftRoutePlan, previewGoogleRfpRouteRevision } from "../../../rfp/GoogleRfpResponseEngine";
 import type { GoogleRfpBidPlan, GoogleRfpRouteBidPlan } from "../../../rfp/GoogleRfpBidPlan";
 import type { RouteRevisionBuildResult } from "../../../redline/RouteRedlineEngine";
 import type { DALCoordinate } from "../../../types/dal";
+import type { CommercialMapLayer } from "../../../commercial/CommercialMapLayerManager";
+import type { CustomerTwinRenderableState } from "../../../customerTwin/CustomerTwin";
 import ProposedNetworkMapPanel, { type ProposedNetworkRedlineMode, type ProposedNetworkSelection } from "../proposednetwork/ProposedNetworkMapPanel";
 
 function money(value: number | undefined) {
@@ -66,12 +68,28 @@ export default function GoogleBidRouteReviewPanel({
   pricingSummary,
   onRoutePlanRevised,
   onCommercialRecalculationChange,
+  onLiveDraftRoutePlanRecalculated,
+  onLiveDraftRecalculationError,
+  onSaveLiveProposalSnapshot,
+  onDiscardLiveProposalDraft,
+  liveDraftDirty,
+  liveDraftRecalculationStatus,
+  customerTwinState,
+  commercialMapLayers = [],
 }: {
   bidPlan: GoogleRfpBidPlan;
   selectedScopeId: string;
   pricingSummary: SelectedScopePricingSummary;
   onRoutePlanRevised?: (routePlan: GoogleRfpRouteBidPlan) => void;
   onCommercialRecalculationChange?: (recalculating: boolean) => void;
+  onLiveDraftRoutePlanRecalculated?: (routePlan: GoogleRfpRouteBidPlan, revisionResult: RouteRevisionBuildResult) => void;
+  onLiveDraftRecalculationError?: (message: string) => void;
+  onSaveLiveProposalSnapshot?: () => void;
+  onDiscardLiveProposalDraft?: () => void;
+  liveDraftDirty?: boolean;
+  liveDraftRecalculationStatus?: "CURRENT" | "RECALCULATING" | "ERROR";
+  customerTwinState?: CustomerTwinRenderableState | null;
+  commercialMapLayers?: CommercialMapLayer[];
 }) {
   const [mapSelection, setMapSelection] = useState<ProposedNetworkSelection>(null);
   const [redlineMode, setRedlineMode] = useState<ProposedNetworkRedlineMode>("REVIEW");
@@ -138,54 +156,68 @@ export default function GoogleBidRouteReviewPanel({
     return points;
   }
 
-  async function previewRevision(finalCoordinate?: DALCoordinate) {
+  async function previewRevision(finalCoordinate?: DALCoordinate, affectedSegmentId?: string) {
     if (!selectedRoute) return;
     const viaPoints = viaPointsForPreview(finalCoordinate);
     if (!viaPoints.length) return;
     setPendingViaPoints(viaPoints);
-    const previewResult = await previewGoogleRfpRouteRevision({
-      routePlan: selectedRoute,
-      viaPoints,
-      affectedSegmentIds: [],
-      actor: "Ryan",
-      reason: "Sales corridor decision preview for Teralinx Bid Engine.",
-    });
-    setPreviewGeometry(previewResult?.revision.geometry ?? []);
-    setPreviewResult(previewResult);
-  }
-
-  async function saveRevision() {
-    if (!selectedRoute || !pendingViaPoints.length || revisionSaveStatus === "RECALCULATING") return;
     setRevisionSaveStatus("RECALCULATING");
     onCommercialRecalculationChange?.(true);
     try {
-      const nextRoutePlan = await createGoogleRfpRouteRevisionPlan({
+      const previewResult = await previewGoogleRfpRouteRevision({
         routePlan: selectedRoute,
-        viaPoints: pendingViaPoints,
-        affectedSegmentIds: [],
+        viaPoints,
+        affectedSegmentIds: affectedSegmentId ? [affectedSegmentId] : [],
         actor: "Ryan",
-        reason: "Sales corridor decision proposal for Teralinx Bid Engine route review.",
+        reason: "Sales corridor decision preview for Teralinx Bid Engine.",
       });
-      const activeCorridorWasReplaced =
-        nextRoutePlan.routeVerification.routeSnapStatus === "ROUTE_SNAPPED" &&
-        Boolean(nextRoutePlan.stationedCorridor) &&
-        nextRoutePlan.stationedCorridor?.stationedCorridorId !== selectedRoute.stationedCorridor?.stationedCorridorId;
-      onRoutePlanRevised?.(nextRoutePlan);
-      if (activeCorridorWasReplaced) {
-        setPendingViaPoints([]);
-        setPreviewGeometry([]);
-        setPreviewResult(null);
-        setRedlineMode("REVIEW");
-        setRevisionSaveStatus("IDLE");
+      setPreviewGeometry(previewResult?.revision.geometry ?? []);
+      setPreviewResult(previewResult);
+      if (previewResult?.stationedCorridor && previewResult.revision.snapStatus === "OSRM_RESNAPPED") {
+        const liveDraftPlan = createGoogleRfpLiveDraftRoutePlan({
+          routePlan: selectedRoute,
+          revisionResult: previewResult,
+        });
+        const activeCorridorWasReplaced =
+          Boolean(liveDraftPlan.stationedCorridor) &&
+          liveDraftPlan.stationedCorridor?.stationedCorridorId !== selectedRoute.stationedCorridor?.stationedCorridorId;
+        if (activeCorridorWasReplaced) {
+          onLiveDraftRoutePlanRecalculated?.(liveDraftPlan, previewResult);
+          setRevisionSaveStatus("IDLE");
+        } else {
+          setRevisionSaveStatus("FAILED");
+          onLiveDraftRecalculationError?.("OSRM returned a route preview, but the active commercial corridor did not change.");
+        }
       } else {
         setRevisionSaveStatus("FAILED");
+        onLiveDraftRecalculationError?.("OSRM resnap did not complete. The previous live proposal draft remains active.");
       }
     } catch (error) {
-      console.warn("Teralinx Bid Engine route revision recalculation failed", error);
+      console.warn("Teralinx Bid Engine live route recalculation failed", error);
       setRevisionSaveStatus("FAILED");
+      onLiveDraftRecalculationError?.("Live route recalculation failed. The previous live proposal draft remains active.");
     } finally {
       onCommercialRecalculationChange?.(false);
     }
+  }
+
+  function saveSnapshot() {
+    if (revisionSaveStatus === "RECALCULATING") return;
+    onSaveLiveProposalSnapshot?.();
+    setPendingViaPoints([]);
+    setPreviewGeometry([]);
+    setPreviewResult(null);
+    setRedlineMode("REVIEW");
+    setRevisionSaveStatus("IDLE");
+  }
+
+  function discardLiveDraft() {
+    setPendingViaPoints([]);
+    setPreviewGeometry([]);
+    setPreviewResult(null);
+    setRedlineMode("REVIEW");
+    setRevisionSaveStatus("IDLE");
+    onDiscardLiveProposalDraft?.();
   }
 
   if (!selectedRoute) {
@@ -203,12 +235,12 @@ export default function GoogleBidRouteReviewPanel({
   return (
     <section className="dal-panel bid-route-review-panel">
       <div className="dal-panel-title-row">
-        <h3>Corridor Planning</h3>
-        <span className="dal-badge warning">Budgetary</span>
+        <h3>Route Engineering - Commercial Mode</h3>
+        <span className="dal-badge warning">Draft Authority</span>
       </div>
       <div className="dal-status">
-        Selected commercial scope: {pricingSummary.scope.label}. The active proposal corridor drives every commercial recalculation.
-        The original corridor remains immutable and available for Compare.
+        Selected commercial scope: {pricingSummary.scope.label}. Edit Corridor uses the shared geometry editor; Commercial Planning does not own a second routing engine.
+        The active proposal overlay drives recalculation, while Customer Inventory and the original corridor remain immutable references.
       </div>
       {revisionSaveStatus === "RECALCULATING" ? (
         <div className="dal-status bid-recalculation-status">Recalculating Commercial Plan...</div>
@@ -216,12 +248,17 @@ export default function GoogleBidRouteReviewPanel({
       {revisionSaveStatus === "FAILED" ? (
         <div className="dal-status bid-recalculation-status">Commercial recalculation failed. The previous proposal corridor remains active.</div>
       ) : null}
+      {liveDraftDirty && liveDraftRecalculationStatus === "CURRENT" ? (
+        <div className="dal-status bid-live-draft-status">Live draft is current and unsaved. Save Snapshot is optional.</div>
+      ) : null}
 
       {selectedGraph ? (
         <ProposedNetworkMapPanel
           graph={selectedGraph}
           selected={mapSelection}
           onSelect={setMapSelection}
+          customerTwinState={customerTwinState}
+          commercialMapLayers={commercialMapLayers}
           mapMinHeight={720}
           redline={{
             mode: redlineMode,
@@ -243,13 +280,9 @@ export default function GoogleBidRouteReviewPanel({
               return next;
             }),
             onRedlineDragComplete: previewRevision,
-            onSaveRevision: saveRevision,
-            onDiscardRevision: () => {
-              setPendingViaPoints([]);
-              setPreviewGeometry([]);
-              setPreviewResult(null);
-              setRedlineMode("REVIEW");
-            },
+            onSaveRevision: saveSnapshot,
+            saveRevisionLabel: "Save Snapshot",
+            onDiscardRevision: discardLiveDraft,
             onSelectRevisionForProposal: () => {
               if (selectedRoute.selectedRevisionId) onRoutePlanRevised?.(selectedRoute);
             },

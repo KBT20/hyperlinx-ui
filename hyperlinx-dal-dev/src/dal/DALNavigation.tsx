@@ -1,9 +1,9 @@
 import { useDALState, type DALWorkspace } from "./DALState";
 
 const items: Array<{ id: DALWorkspace; label: string }> = [
+  { id: "googleRfp", label: "Commercial Planning" },
   { id: "translate", label: "Translate" },
   { id: "teralinxRoute", label: "Teralinx Route" },
-  { id: "googleRfp", label: "Bid Workspace" },
   { id: "design", label: "Design" },
   { id: "proposedNetwork", label: "Proposed Network" },
   { id: "preliminaryProposal", label: "Preliminary Proposal" },

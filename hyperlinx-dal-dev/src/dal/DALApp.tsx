@@ -69,7 +69,13 @@ function reasoningWorkspace(workspace: ReturnType<typeof useDALState>["workspace
 function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]) {
   if (workspace === "translate") return ["Explain what was extracted", "Which validation warnings matter?", "Suggest normalization corrections"];
   if (workspace === "teralinxRoute") return ["Summarize this route request", "What blocks Design readiness?", "Draft a customer route intake summary"];
-  if (workspace === "googleRfp") return ["Summarize the RFP response plan", "What blocks Google submission readiness?", "Explain the civil mix assumptions"];
+  if (workspace === "googleRfp")
+    return [
+      "Summarize this commercial engagement",
+      "What blocks customer acceptance?",
+      "Explain the current proposal assumptions",
+      "What must transfer to Engineering?",
+    ];
   if (workspace === "proposedNetwork") return ["Explain this proposed network", "What should the customer review?", "What is still non-authoritative?"];
   if (workspace === "preliminaryProposal") return ["Explain this preliminary proposal", "What assumptions matter?", "What blocks Route Engineering handoff?"];
   if (workspace === "inventory") return ["Summarize this inventory graph", "Identify graph anomalies", "What should I inspect next?"];
