@@ -1625,6 +1625,94 @@ textarea {
   color: #7ea6c8;
 }
 
+.transparent-calibration-panel {
+  background: rgba(2, 6, 23, 0.42);
+  border: 1px solid rgba(20, 184, 166, 0.24);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.transparent-calibration-heading {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.transparent-calibration-heading > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.transparent-calibration-heading b {
+  color: #e5f1ff;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.transparent-calibration-heading span,
+.transparent-impact-panel span,
+.transparent-impact-panel small,
+.transparent-readiness-grid span,
+.transparent-readiness-grid small,
+.transparent-opportunity-grid span,
+.transparent-opportunity-grid small {
+  color: #9fbed8;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.transparent-calibration-heading select {
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 6px;
+  color: #e5f1ff;
+  font: inherit;
+  min-height: 34px;
+  min-width: 160px;
+  padding: 7px 8px;
+}
+
+.transparent-impact-panel {
+  background: rgba(15, 23, 42, 0.56);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.transparent-impact-panel b,
+.transparent-readiness-grid b,
+.transparent-opportunity-grid b {
+  color: #e5f1ff;
+  overflow-wrap: anywhere;
+}
+
+.transparent-readiness-grid,
+.transparent-opportunity-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.transparent-readiness-grid div,
+.transparent-opportunity-grid div {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px;
+}
+
 .transparent-authority-summary {
   display: grid;
   gap: 8px;
@@ -1822,7 +1910,7 @@ textarea {
 }
 
 .transparent-estimate-table .dal-table {
-  min-width: 1520px;
+  min-width: 1680px;
 }
 
 .transparent-estimate-table td span,
@@ -1986,7 +2074,9 @@ textarea {
   .transparent-authority-summary,
   .transparent-estimate-summary,
   .transparent-estimate-metrics,
-  .transparent-estimate-versions {
+  .transparent-estimate-versions,
+  .transparent-readiness-grid,
+  .transparent-opportunity-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2033,8 +2123,15 @@ textarea {
   .transparent-authority-summary,
   .transparent-estimate-summary,
   .transparent-estimate-metrics,
-  .transparent-estimate-versions {
+  .transparent-estimate-versions,
+  .transparent-readiness-grid,
+  .transparent-opportunity-grid {
     grid-template-columns: 1fr;
+  }
+
+  .transparent-calibration-heading {
+    align-items: stretch;
+    display: grid;
   }
 
   .transparent-authority-row,

@@ -375,6 +375,13 @@ const TRANSPARENT_CONSTRAINT_PRODUCTION_MAP: Partial<Record<string, keyof Transp
   "production.splicingTerminationsPerDay": "splicingTerminationsPerDay",
 };
 
+const CIVIL_MIX_CONSTRAINT_KEYS = [
+  "civil.plowPercent",
+  "civil.directionalBoreDirtPercent",
+  "civil.directionalBoreRockPercent",
+  "civil.openTrenchPercent",
+] as const;
+
 const NETWORK_CATEGORY_LABELS: Record<CommercialNetworkCategory, string> = {
   CUSTOMER_INVENTORY: "Existing Networks",
   CUSTOMER_PROPOSED: "Customer Proposed Networks",
@@ -2434,7 +2441,9 @@ export default function GoogleRfpWorkspace() {
     commercialCorridorDraft?.routeId,
     commercialCorridorDraft?.transparentEstimate.totalKnownCost,
     commercialCorridorDraft?.transparentEstimate.sellPrice,
+    commercialCorridorDraft?.transparentEstimate.mrc,
     commercialCorridorDraft?.transparentEstimate.confidence.score,
+    commercialCorridorDraft?.transparentEstimate.commercialReadiness.score,
     commercialCorridorDraft?.transparentEstimate.controls.targetDurationDays,
   ]);
   const commercialDraftValidation = useMemo(() => {
@@ -2649,10 +2658,114 @@ export default function GoogleRfpWorkspace() {
     }));
   }
 
+  function transparentConstraintTemplate(key: string, prev: TransparentEstimateControls, fallback?: ConstraintValue): ConstraintValue {
+    const estimateConstraint = commercialCorridorDraft?.transparentEstimate.constraintValues[key];
+    const existing = prev.constraints?.[key];
+    if (existing) return existing;
+    if (estimateConstraint) return estimateConstraint;
+    if (fallback) return fallback;
+    return {
+      key,
+      label: key,
+      value: null,
+      authorityMode: "UNKNOWN",
+      confidence: 0,
+      source: "Estimate control",
+      affectsCost: true,
+      affectsSchedule: true,
+      affectsConfidence: true,
+    };
+  }
+
+  function baseCivilMixValue(key: string, prev: TransparentEstimateControls) {
+    const existing = prev.constraints?.[key]?.value;
+    if (typeof existing === "number") return existing;
+    const estimateValue = commercialCorridorDraft?.transparentEstimate.constraintValues[key]?.value;
+    if (typeof estimateValue === "number") return estimateValue;
+    if (key === "civil.plowPercent") return selectedAssumptionState.civilMix.plowPercent;
+    if (key === "civil.directionalBoreDirtPercent") return selectedAssumptionState.civilMix.hddPercent;
+    if (key === "civil.openTrenchPercent") return selectedAssumptionState.civilMix.openCutPercent;
+    return 0;
+  }
+
+  function rebalanceCivilMixConstraints(prev: TransparentEstimateControls, changed: ConstraintValue) {
+    if (!CIVIL_MIX_CONSTRAINT_KEYS.includes(changed.key as (typeof CIVIL_MIX_CONSTRAINT_KEYS)[number])) return { ...(prev.constraints ?? {}), [changed.key]: changed };
+    const changedValue = typeof changed.value === "number" ? Math.max(0, Math.min(100, changed.value)) : 0;
+    if (prev.civilMixMode === "MANUAL") {
+      return {
+        ...(prev.constraints ?? {}),
+        [changed.key]: { ...changed, value: changedValue },
+      };
+    }
+    const remainingKeys = CIVIL_MIX_CONSTRAINT_KEYS.filter((key) => key !== changed.key);
+    const remainingTarget = Math.max(0, 100 - changedValue);
+    const currentRemainingTotal = remainingKeys.reduce((total, key) => total + baseCivilMixValue(key, prev), 0);
+    let allocated = 0;
+    const nextConstraints: Record<string, ConstraintValue> = {
+      ...(prev.constraints ?? {}),
+      [changed.key]: { ...changed, value: changedValue },
+    };
+    remainingKeys.forEach((key, index) => {
+      const template = transparentConstraintTemplate(key, prev);
+      const rawValue = currentRemainingTotal > 0
+        ? (baseCivilMixValue(key, prev) / currentRemainingTotal) * remainingTarget
+        : remainingTarget / remainingKeys.length;
+      const remainingAllocation = Math.max(0, remainingTarget - allocated);
+      const balancedValue = index === remainingKeys.length - 1 ? roundTwo(remainingAllocation) : Math.min(roundTwo(rawValue), remainingAllocation);
+      allocated += balancedValue;
+      nextConstraints[key] = {
+        ...template,
+        key,
+        value: balancedValue,
+        authorityMode: template.authorityMode === "APPROVED" ? "APPROVED" : "ALGORITHM",
+        confidence: template.authorityMode === "APPROVED" ? template.confidence : 62,
+        source: template.authorityMode === "APPROVED" ? template.source : "Civil mix auto-balance",
+        sourceDetail: "Locked mode redistributed the remaining route percentage to keep civil mix at 100%.",
+        lastUpdated: new Date().toISOString(),
+      };
+    });
+    return nextConstraints;
+  }
+
+  function roundTwo(value: number) {
+    return Math.round(value * 100) / 100;
+  }
+
+  function updateTransparentCivilMixMode(mode: TransparentEstimateControls["civilMixMode"]) {
+    setTransparentEstimateControls((prev) => {
+      if (mode !== "LOCKED") return { ...prev, civilMixMode: mode };
+      const driverKey = CIVIL_MIX_CONSTRAINT_KEYS.reduce((largestKey, key) => (
+        baseCivilMixValue(key, prev) > baseCivilMixValue(largestKey, prev) ? key : largestKey
+      ), CIVIL_MIX_CONSTRAINT_KEYS[0]);
+      const driverTemplate = transparentConstraintTemplate(driverKey, prev);
+      return {
+        ...prev,
+        civilMixMode: mode,
+        constraints: rebalanceCivilMixConstraints(
+          { ...prev, civilMixMode: "LOCKED" },
+          {
+            ...driverTemplate,
+            value: baseCivilMixValue(driverKey, prev),
+            lastUpdated: new Date().toISOString(),
+          },
+        ),
+      };
+    });
+  }
+
   function updateTransparentConstraint(next: ConstraintValue) {
     setTransparentEstimateControls((prev) => {
       const productionKey = TRANSPARENT_CONSTRAINT_PRODUCTION_MAP[next.key];
       const numericValue = typeof next.value === "number" ? Math.max(0, next.value) : null;
+      const constraints = CIVIL_MIX_CONSTRAINT_KEYS.includes(next.key as (typeof CIVIL_MIX_CONSTRAINT_KEYS)[number])
+        ? rebalanceCivilMixConstraints(prev, next)
+        : {
+            ...(prev.constraints ?? {}),
+            [next.key]: {
+              ...next,
+              lastUpdated: next.lastUpdated ?? new Date().toISOString(),
+            },
+          };
       return {
         ...prev,
         production: productionKey
@@ -2667,13 +2780,7 @@ export default function GoogleRfpWorkspace() {
               monthlyOmPerRouteMile: numericValue === null ? 0 : Number((numericValue / 12).toFixed(2)),
             }
           : prev.financial,
-        constraints: {
-          ...(prev.constraints ?? {}),
-          [next.key]: {
-            ...next,
-            lastUpdated: next.lastUpdated ?? new Date().toISOString(),
-          },
-        },
+        constraints,
       };
     });
   }
@@ -3918,6 +4025,7 @@ export default function GoogleRfpWorkspace() {
             onProductionChange={updateTransparentProduction}
             onFinancialChange={updateTransparentFinancial}
             onConstraintChange={updateTransparentConstraint}
+            onCivilMixModeChange={updateTransparentCivilMixMode}
           />
         </section>
       ) : null}

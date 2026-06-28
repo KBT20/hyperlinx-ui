@@ -21,6 +21,7 @@ export type TransparentEstimateSectionId =
   | "CORRIDOR"
   | "FIBER"
   | "OSP_CONSTRUCTION"
+  | "OPTICAL_ENGINEERING_PREVIEW"
   | "ILA_FACILITIES"
   | "MATERIALS"
   | "LABOR"
@@ -30,6 +31,7 @@ export type TransparentEstimateSectionId =
   | "CONTINGENCY"
   | "FINANCIAL_MODEL"
   | "REVENUE"
+  | "LAYER_1_LIFECYCLE"
   | "ASSUMPTIONS"
   | "ESTIMATE_CONFIDENCE"
   | "ESTIMATE_AUDIT";
@@ -45,7 +47,18 @@ export type TransparentEstimateLineCategory =
   | "MOBILIZATION"
   | "CONTINGENCY"
   | "FINANCIAL"
+  | "LIFECYCLE"
+  | "OPTICAL"
   | "UNKNOWN";
+
+export type TransparentCivilMixMode = "LOCKED" | "MANUAL";
+export type TransparentEstimateStatus =
+  | "CURRENT"
+  | "MODIFIED"
+  | "RECALCULATING"
+  | "EXTERNAL_REFRESH_REQUIRED"
+  | "ROUTE_GEOMETRY_STALE"
+  | "PROPOSAL_READY";
 
 export interface TransparentEstimateValue<T = number> {
   value: T | null;
@@ -75,6 +88,7 @@ export interface TransparentEstimateLineItem {
   workbook?: string;
   formula: string;
   authority: ConstraintValue;
+  dependencies: string[];
   editableFields: string[];
 }
 
@@ -149,6 +163,7 @@ export interface TransparentEstimateFinancialControls {
 
 export interface TransparentEstimateControls {
   targetDurationDays: number;
+  civilMixMode: TransparentCivilMixMode;
   production: TransparentEstimateProductionControls;
   financial: TransparentEstimateFinancialControls;
   constraints?: Record<string, ConstraintValue>;
@@ -185,6 +200,64 @@ export interface TransparentEstimateConfidence {
     impact: number;
     reason: string;
   }>;
+}
+
+export interface TransparentCommercialReadiness {
+  score: number;
+  level: "READY" | "REVIEW" | "BLOCKED";
+  drivers: Array<{
+    label: string;
+    status: "Ready" | "Review" | "Blocked";
+    impact: number;
+    reason: string;
+  }>;
+}
+
+export interface TransparentContingencyCategory {
+  key: string;
+  label: string;
+  percent: number;
+  cost: number;
+  authority: ConstraintValue;
+}
+
+export interface TransparentOmLifecycleComponent {
+  key: string;
+  label: string;
+  annualCostPerRouteMile: number;
+  annualCost: number;
+  authority: ConstraintValue;
+}
+
+export interface TransparentLayer1RecurringOpportunity {
+  opportunityId: string;
+  label: string;
+  description: string;
+  optionalLineItem: true;
+  requiresLightingFiber: false;
+  proposalAuthority: "OPTIONAL";
+}
+
+export interface TransparentOpticalEngineeringPreview {
+  routeLengthMiles: number;
+  routeLengthKm: number;
+  attenuationDb: number;
+  approximateSpliceLossDb: number;
+  connectorLossDb: number;
+  estimatedEndToEndLossDb: number;
+  estimatedSpanLengthMiles: number;
+  estimatedIlaSpacingMiles: number;
+  preliminaryEngineeringEstimate: true;
+}
+
+export interface TransparentCivilMixSummary {
+  mode: TransparentCivilMixMode;
+  plowPercent: number;
+  directionalBoreDirtPercent: number;
+  directionalBoreRockPercent: number;
+  openTrenchPercent: number;
+  totalPercent: number;
+  warning: string | null;
 }
 
 export interface TransparentFinancialModel {
@@ -236,6 +309,13 @@ export interface TransparentCorridorEstimate {
   ilaFacilities: TransparentIlaFacility[];
   unknownQuantities: TransparentUnknownQuantity[];
   constraintValues: Record<string, ConstraintValue>;
+  civilMix: TransparentCivilMixSummary;
+  estimateStatus: TransparentEstimateStatus;
+  commercialReadiness: TransparentCommercialReadiness;
+  contingencyCategories: TransparentContingencyCategory[];
+  omLifecycleComponents: TransparentOmLifecycleComponent[];
+  layer1RecurringOpportunities: TransparentLayer1RecurringOpportunity[];
+  opticalEngineeringPreview: TransparentOpticalEngineeringPreview;
   confidence: TransparentEstimateConfidence;
   financialModel: TransparentFinancialModel;
   auditTrail: TransparentEstimateAuditEntry[];
@@ -250,6 +330,7 @@ export interface TransparentCorridorEstimate {
 
 export const DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS: TransparentEstimateControls = {
   targetDurationDays: 120,
+  civilMixMode: "LOCKED",
   production: {
     directionalBoreDirtFeetPerDay: 600,
     directionalBoreRockFeetPerDay: 300,
@@ -269,6 +350,45 @@ export const DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS: TransparentEstimateControls 
     monthlyOmPerRouteMile: 1200 / 12,
   },
 };
+
+const CONTINGENCY_CATEGORIES = [
+  { key: "contingency.projectAdministration", label: "Project Administration", percent: 0.45 },
+  { key: "contingency.projectManagement", label: "Project Management", percent: 0.65 },
+  { key: "contingency.materialHandling", label: "Material Handling", percent: 0.5 },
+  { key: "contingency.shipping", label: "Shipping", percent: 0.45 },
+  { key: "contingency.storage", label: "Storage", percent: 0.25 },
+  { key: "contingency.smallToolsConsumables", label: "Small Tools / Consumables", percent: 0.45 },
+  { key: "contingency.insuranceBonding", label: "Insurance / Bonding", percent: 0.55 },
+  { key: "contingency.generalConditions", label: "General Conditions", percent: 0.75 },
+  { key: "contingency.overheadRecovery", label: "Overhead Recovery", percent: 0.8 },
+  { key: "contingency.cogsBuffer", label: "COGS Buffer", percent: 0.75 },
+  { key: "contingency.estimatingRisk", label: "Estimating Risk", percent: 0.85 },
+  { key: "contingency.unknownConditions", label: "Unknown Conditions", percent: 1.05 },
+] as const;
+
+const OM_LIFECYCLE_COMPONENTS = [
+  { key: "om.layer1Monitoring", label: "Layer 1 Monitoring", annualPerRouteMile: 180 },
+  { key: "om.preventiveMaintenance", label: "Preventive Maintenance", annualPerRouteMile: 180 },
+  { key: "om.locateSupport", label: "Locate Support", annualPerRouteMile: 150 },
+  { key: "om.emergencyResponse", label: "Emergency Response", annualPerRouteMile: 210 },
+  { key: "om.annualInspection", label: "Annual Inspection", annualPerRouteMile: 120 },
+  { key: "om.documentation", label: "Documentation", annualPerRouteMile: 90 },
+  { key: "om.assetRegistry", label: "Asset Registry", annualPerRouteMile: 120 },
+  { key: "om.slaReporting", label: "SLA Reporting", annualPerRouteMile: 150 },
+] as const;
+
+const LAYER_1_RECURRING_OPPORTUNITIES: TransparentLayer1RecurringOpportunity[] = [
+  { opportunityId: "L1-PROACTIVE-FIBER-MONITORING", label: "Layer 1 Proactive Fiber Monitoring", description: "Optional dark-fiber infrastructure monitoring without transport service.", optionalLineItem: true, requiresLightingFiber: false, proposalAuthority: "OPTIONAL" },
+  { opportunityId: "OTDR-MONITORING", label: "OTDR Monitoring", description: "Optional optical time-domain reflectometry monitoring placeholder for future engineering workflows.", optionalLineItem: true, requiresLightingFiber: false, proposalAuthority: "OPTIONAL" },
+  { opportunityId: "FIBER-HEALTH-ANALYTICS", label: "Fiber Health Analytics", description: "Optional analytics around physical fiber condition and route health.", optionalLineItem: true, requiresLightingFiber: false, proposalAuthority: "OPTIONAL" },
+  { opportunityId: "ASSET-INVENTORY", label: "Asset Inventory", description: "Optional recurring asset inventory support for Layer 1 records.", optionalLineItem: true, requiresLightingFiber: false, proposalAuthority: "OPTIONAL" },
+  { opportunityId: "FIBER-ASSURANCE", label: "Fiber Assurance", description: "Optional physical-layer assurance service, not a lit service.", optionalLineItem: true, requiresLightingFiber: false, proposalAuthority: "OPTIONAL" },
+  { opportunityId: "ROUTE-INTEGRITY-MONITORING", label: "Route Integrity Monitoring", description: "Optional monitoring for route integrity, encroachment, and physical risk indicators.", optionalLineItem: true, requiresLightingFiber: false, proposalAuthority: "OPTIONAL" },
+  { opportunityId: "MAINTENANCE-CONTRACTS", label: "Maintenance Contracts", description: "Optional maintenance contract structure for dark infrastructure lifecycle management.", optionalLineItem: true, requiresLightingFiber: false, proposalAuthority: "OPTIONAL" },
+  { opportunityId: "EMERGENCY-RESTORATION-RETAINER", label: "Emergency Restoration Retainers", description: "Optional retainer for emergency restoration readiness.", optionalLineItem: true, requiresLightingFiber: false, proposalAuthority: "OPTIONAL" },
+  { opportunityId: "ROUTE-DOCUMENTATION", label: "Route Documentation Services", description: "Optional recurring route documentation upkeep.", optionalLineItem: true, requiresLightingFiber: false, proposalAuthority: "OPTIONAL" },
+  { opportunityId: "ASBUILT-LIFECYCLE", label: "As-Built Lifecycle Management", description: "Optional as-built lifecycle management for Layer 1 records.", optionalLineItem: true, requiresLightingFiber: false, proposalAuthority: "OPTIONAL" },
+];
 
 const MASTER_OSP_WORKBOOK = "Google Fiber Project - 20251121.xlsx / Master OSP Build Metrics";
 const FIBER_SUMMARY_WORKBOOK = "Google Fiber Project - 20251121.xlsx / Fiber Summary";
@@ -329,6 +449,7 @@ function clampPositive(value: number, fallback: number) {
 function cloneControls(controls?: TransparentEstimateControls): TransparentEstimateControls {
   return {
     targetDurationDays: clampPositive(controls?.targetDurationDays ?? DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.targetDurationDays, DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.targetDurationDays),
+    civilMixMode: controls?.civilMixMode ?? DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.civilMixMode,
     production: {
       ...DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.production,
       ...(controls?.production ?? {}),
@@ -346,6 +467,9 @@ function constraint<T = number | string | boolean>(args: Parameters<typeof creat
 }
 
 function buildConstraintValues(assumptionState: BudgetAssumptionState, controls: TransparentEstimateControls): Record<string, ConstraintValue> {
+  const annualOmTotal = controls.financial.monthlyOmPerRouteMile * 12;
+  const defaultOmTotal = OM_LIFECYCLE_COMPONENTS.reduce((total, component) => total + component.annualPerRouteMile, 0);
+  const omScale = defaultOmTotal > 0 ? annualOmTotal / defaultOmTotal : 1;
   const base: ConstraintValue[] = [
     constraint<number>({
       key: "civil.plowPercent",
@@ -540,6 +664,41 @@ function buildConstraintValues(assumptionState: BudgetAssumptionState, controls:
       affectsSchedule: false,
       affectsConfidence: true,
     }),
+    ...OM_LIFECYCLE_COMPONENTS.map((component) => constraint<number>({
+      key: component.key,
+      label: component.label,
+      value: round(component.annualPerRouteMile * omScale, 2),
+      unit: "$/route mile/year",
+      authorityMode: "ALGORITHM" as const,
+      source: "Infrastructure Lifecycle Management default",
+      sourceDetail: "Layer 1 lifecycle O&M component; not a Layer 2 or lit service.",
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    })),
+    ...CONTINGENCY_CATEGORIES.map((category) => constraint<number>({
+      key: category.key,
+      label: category.label,
+      value: category.percent,
+      unit: "%",
+      authorityMode: "ALGORITHM" as const,
+      source: "Estimator contingency model",
+      sourceDetail: "Commercial contingency category; separate from estimate confidence.",
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    })),
+    constraint<string>({
+      key: "crossing.riverMethod",
+      label: "River crossing method",
+      value: "Directional Bore",
+      authorityMode: "ALGORITHM",
+      source: "Estimator crossing default",
+      sourceDetail: "All rivers default to directional bore unless explicitly overridden. Open cut is not assumed.",
+      affectsCost: false,
+      affectsSchedule: true,
+      affectsConfidence: true,
+    }),
     constraint<number>({
       key: "crossing.rail",
       label: "Rail crossings",
@@ -613,6 +772,149 @@ function buildConstraintValues(assumptionState: BudgetAssumptionState, controls:
       unit: "USD",
       authorityMode: "UNKNOWN",
       source: "Permit jurisdiction review required",
+      affectsCost: true,
+      affectsSchedule: true,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "labor.plowLaborPerFoot",
+      label: "Plow labor rate",
+      value: WORKBOOK_RATES.plowLaborPerFoot,
+      unit: "$/ft",
+      authorityMode: "ALGORITHM",
+      source: MASTER_OSP_WORKBOOK,
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "labor.dirtBoreLaborPerFoot",
+      label: "Directional bore dirt labor rate",
+      value: WORKBOOK_RATES.dirtBoreLaborPerFoot,
+      unit: "$/ft",
+      authorityMode: "ALGORITHM",
+      source: MASTER_OSP_WORKBOOK,
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "labor.openTrenchLaborPerFoot",
+      label: "Open trench labor rate",
+      value: WORKBOOK_RATES.openTrenchLaborPerFoot,
+      unit: "$/ft",
+      authorityMode: "ALGORITHM",
+      source: MASTER_OSP_WORKBOOK,
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "labor.fiberBlowLaborPerFoot",
+      label: "Fiber placement labor rate",
+      value: WORKBOOK_RATES.fiberBlowLaborPerFoot,
+      unit: "$/ft",
+      authorityMode: "ALGORITHM",
+      source: MASTER_OSP_WORKBOOK,
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "labor.splicingLaborPerTermination",
+      label: "Splicing labor rate",
+      value: WORKBOOK_RATES.splicingLaborPerTermination,
+      unit: "$/termination",
+      authorityMode: "ALGORITHM",
+      source: MASTER_OSP_WORKBOOK,
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "labor.projectManagerAnnualLoadedCost",
+      label: "Project manager annual loaded cost",
+      value: WORKBOOK_RATES.projectManagerAnnualLoadedCost,
+      unit: "$/year",
+      authorityMode: "ALGORITHM",
+      source: MASTER_OSP_WORKBOOK,
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "material.conduitPerFoot",
+      label: "Conduit material rate",
+      value: WORKBOOK_RATES.conduitMaterialPerFoot,
+      unit: "$/ft",
+      authorityMode: "ALGORITHM",
+      source: MASTER_OSP_WORKBOOK,
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "material.futurePathPerFoot",
+      label: "FuturePath material rate",
+      value: WORKBOOK_RATES.futurePathPerFoot,
+      unit: "$/ft",
+      authorityMode: "ALGORITHM",
+      source: MASTER_OSP_WORKBOOK,
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "material.fiber864PerFoot",
+      label: "864-count fiber material rate",
+      value: WORKBOOK_RATES.fiber864MaterialPerFoot,
+      unit: "$/ft",
+      authorityMode: "ALGORITHM",
+      source: MASTER_OSP_WORKBOOK,
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "material.handholeLaborEach",
+      label: "Handhole labor rate",
+      value: WORKBOOK_RATES.handholeLaborEach,
+      unit: "$/ea",
+      authorityMode: "ALGORITHM",
+      source: MASTER_OSP_WORKBOOK,
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "material.handholeMaterialEach",
+      label: "Handhole material rate",
+      value: WORKBOOK_RATES.handholeMaterialEach,
+      unit: "$/ea",
+      authorityMode: "ALGORITHM",
+      source: MASTER_OSP_WORKBOOK,
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "material.spliceCaseEach",
+      label: "Splice case material rate",
+      value: WORKBOOK_RATES.spliceCaseEach,
+      unit: "$/ea",
+      authorityMode: "ALGORITHM",
+      source: MASTER_OSP_WORKBOOK,
+      affectsCost: true,
+      affectsSchedule: false,
+      affectsConfidence: true,
+    }),
+    constraint<number>({
+      key: "ila.facilityCost",
+      label: "36-rack ILA facility cost",
+      value: ILA_36_RACK_COSTS.reduce((total, item) => total + item.cost, 0),
+      unit: "$/site",
+      authorityMode: "ALGORITHM",
+      source: DOBSON_ILA_WORKBOOK,
       affectsCost: true,
       affectsSchedule: true,
       affectsConfidence: true,
@@ -798,6 +1100,7 @@ function totalLine(
   source: string,
   formula: string,
   authority?: ConstraintValue,
+  dependencies: string[] = [],
 ): TransparentEstimateLineItem {
   const lineAuthority = authority ?? createConstraintValue({
     key: id,
@@ -825,6 +1128,7 @@ function totalLine(
     source,
     formula,
     authority: lineAuthority,
+    dependencies: dependencies.length ? dependencies : [lineAuthority.key, sectionId],
     editableFields: [],
   };
 }
@@ -843,6 +1147,7 @@ function laborLine(args: {
   productionFormula: string;
   costFormula?: string;
   authority?: ConstraintValue;
+  dependencies?: string[];
 }): TransparentEstimateLineItem {
   const quantity = Math.max(0, args.quantity);
   const production = args.productionFeetPerDay && args.productionFeetPerDay > 0 ? args.productionFeetPerDay : null;
@@ -907,6 +1212,7 @@ function laborLine(args: {
     workbook: args.workbook,
     formula: args.costFormula ?? "Quantity, production, crew count, and workbook rate create the labor value.",
     authority: lineAuthority,
+    dependencies: args.dependencies ?? [lineAuthority.key, "targetDurationDays", "production", "labor"],
     editableFields: ["production", "targetDurationDays", "crewCount"],
   };
 }
@@ -921,6 +1227,7 @@ function materialLine(args: {
   workbook?: string;
   formula: string;
   authority?: ConstraintValue;
+  dependencies?: string[];
 }): TransparentEstimateLineItem {
   const lineAuthority = args.authority ?? createConstraintValue({
     key: args.lineItemId,
@@ -949,11 +1256,12 @@ function materialLine(args: {
     workbook: args.workbook,
     formula: "Quantity x workbook unit cost.",
     authority: lineAuthority,
+    dependencies: args.dependencies ?? [lineAuthority.key, "physicalQuantities", "materialRate"],
     editableFields: ["quantityAssumption", "unitCost"],
   };
 }
 
-function unknownLine(sectionId: TransparentEstimateSectionId, id: string, description: string, source: string, authority?: ConstraintValue): TransparentEstimateLineItem {
+function unknownLine(sectionId: TransparentEstimateSectionId, id: string, description: string, source: string, authority?: ConstraintValue, dependencies: string[] = []): TransparentEstimateLineItem {
   const lineAuthority: ConstraintValue = authority ?? createConstraintValue<number | string | boolean>({
     key: id,
     label: description,
@@ -984,6 +1292,7 @@ function unknownLine(sectionId: TransparentEstimateSectionId, id: string, descri
     source,
     formula: "Unknown quantity; cost impact is intentionally zero until reviewed.",
     authority: lineAuthority,
+    dependencies: dependencies.length ? dependencies : [lineAuthority.key, "humanReview"],
     editableFields: ["humanReviewQuantity"],
   };
 }
@@ -1001,8 +1310,9 @@ function buildIlaFacilities(args: {
   regenCount: number;
   aLabel: string;
   zLabel: string;
+  facilityCost: number;
 }): TransparentIlaFacility[] {
-  const siteCost = ILA_36_RACK_COSTS.reduce((total, item) => total + item.cost, 0);
+  const siteCost = args.facilityCost;
   const facilityCount = args.regenCount + 2;
   return Array.from({ length: facilityCount }, (_, index) => {
     const ratio = facilityCount === 1 ? 0 : index / (facilityCount - 1);
@@ -1163,16 +1473,39 @@ export function buildTransparentCorridorEstimate(args: {
   const routeFeet = Math.round(args.routeFeet);
   const routeMiles = round(args.routeMiles, 2);
   const plowPercent = constraintNumber(constraintValues, "civil.plowPercent", args.assumptionState.civilMix.plowPercent);
-  const borePercent = constraintNumber(constraintValues, "civil.directionalBoreDirtPercent", args.assumptionState.civilMix.hddPercent);
+  const dirtBorePercent = constraintNumber(constraintValues, "civil.directionalBoreDirtPercent", args.assumptionState.civilMix.hddPercent);
+  const rockBorePercent = constraintNumber(constraintValues, "civil.directionalBoreRockPercent", 0);
   const openTrenchPercent = constraintNumber(constraintValues, "civil.openTrenchPercent", args.assumptionState.civilMix.openCutPercent);
+  const civilMixTotalPercent = round(plowPercent + dirtBorePercent + rockBorePercent + openTrenchPercent, 2);
+  const civilMix: TransparentCivilMixSummary = {
+    mode: controls.civilMixMode,
+    plowPercent,
+    directionalBoreDirtPercent: dirtBorePercent,
+    directionalBoreRockPercent: rockBorePercent,
+    openTrenchPercent,
+    totalPercent: civilMixTotalPercent,
+    warning: Math.abs(civilMixTotalPercent - 100) > 0.1 ? `Civil mix totals ${civilMixTotalPercent}%; expected 100%.` : null,
+  };
   const plowFeet = Math.round(routeFeet * (plowPercent / 100));
-  const boreFeet = Math.round(routeFeet * (borePercent / 100));
+  const dirtBoreFeet = Math.round(routeFeet * (dirtBorePercent / 100));
+  const rockBoreFeet = Math.round(routeFeet * (rockBorePercent / 100));
   const openTrenchFeet = Math.round(routeFeet * (openTrenchPercent / 100));
   const rockPercentAuthority = authorityFor(constraintValues, "civil.directionalBoreRockPercent");
   const rockAdderAuthority = authorityFor(constraintValues, "civil.rockAdderPerFoot");
-  const rockPercent = authorityModeCostIncluded(rockPercentAuthority) && typeof rockPercentAuthority.value === "number" ? rockPercentAuthority.value : 0;
   const rockAdderPerFoot = authorityModeCostIncluded(rockAdderAuthority) && typeof rockAdderAuthority.value === "number" ? rockAdderAuthority.value : 30;
-  const rockBoreFeet = Math.round(boreFeet * (rockPercent / 100));
+  const plowLaborPerFoot = constraintNumber(constraintValues, "labor.plowLaborPerFoot", WORKBOOK_RATES.plowLaborPerFoot);
+  const dirtBoreLaborPerFoot = constraintNumber(constraintValues, "labor.dirtBoreLaborPerFoot", WORKBOOK_RATES.dirtBoreLaborPerFoot);
+  const openTrenchLaborPerFoot = constraintNumber(constraintValues, "labor.openTrenchLaborPerFoot", WORKBOOK_RATES.openTrenchLaborPerFoot);
+  const fiberBlowLaborPerFoot = constraintNumber(constraintValues, "labor.fiberBlowLaborPerFoot", WORKBOOK_RATES.fiberBlowLaborPerFoot);
+  const splicingLaborPerTermination = constraintNumber(constraintValues, "labor.splicingLaborPerTermination", WORKBOOK_RATES.splicingLaborPerTermination);
+  const projectManagerAnnualLoadedCost = constraintNumber(constraintValues, "labor.projectManagerAnnualLoadedCost", WORKBOOK_RATES.projectManagerAnnualLoadedCost);
+  const conduitMaterialPerFoot = constraintNumber(constraintValues, "material.conduitPerFoot", WORKBOOK_RATES.conduitMaterialPerFoot);
+  const futurePathPerFoot = constraintNumber(constraintValues, "material.futurePathPerFoot", WORKBOOK_RATES.futurePathPerFoot);
+  const fiber864MaterialPerFoot = constraintNumber(constraintValues, "material.fiber864PerFoot", WORKBOOK_RATES.fiber864MaterialPerFoot);
+  const handholeLaborEach = constraintNumber(constraintValues, "material.handholeLaborEach", WORKBOOK_RATES.handholeLaborEach);
+  const handholeMaterialEach = constraintNumber(constraintValues, "material.handholeMaterialEach", WORKBOOK_RATES.handholeMaterialEach);
+  const spliceCaseEach = constraintNumber(constraintValues, "material.spliceCaseEach", WORKBOOK_RATES.spliceCaseEach);
+  const ilaFacilityCost = constraintNumber(constraintValues, "ila.facilityCost", ILA_36_RACK_COSTS.reduce((total, item) => total + item.cost, 0));
   const stationCount = Math.max(2, Math.ceil(routeFeet / WORKBOOK_RATES.stationSpacingFeet) + 1);
   const vaultCount = Math.max(2, Math.ceil(routeMiles / 8));
   const handholeCount = Math.max(4, Math.ceil(routeFeet / WORKBOOK_RATES.handholeSpacingFeet));
@@ -1196,7 +1529,7 @@ export function buildTransparentCorridorEstimate(args: {
       lineItemId: `${args.estimateId}:LABOR:PLOW`,
       description: "Plowing",
       quantity: plowFeet,
-      unitCost: WORKBOOK_RATES.plowLaborPerFoot,
+      unitCost: plowLaborPerFoot,
       productionFeetPerDay: constraintProduction(constraintValues, "production.plowFeetPerDay", controls.production.plowFeetPerDay),
       targetDurationDays,
       source: "Production Engine",
@@ -1205,12 +1538,13 @@ export function buildTransparentCorridorEstimate(args: {
       unitCostFormula: "Master OSP Build Metrics: Plow Labor / Plow Ft / Labor.",
       productionFormula: "Phase 4 default: Plowing 5,280 ft/day.",
       authority: authorityFor(constraintValues, "civil.plowPercent"),
+      dependencies: ["civil.plowPercent", "labor.plowLaborPerFoot", "production.plowFeetPerDay", "targetDurationDays", "financial"],
     }),
     laborLine({
       lineItemId: `${args.estimateId}:LABOR:DIRT-BORE`,
       description: "Directional bore - dirt",
-      quantity: boreFeet,
-      unitCost: WORKBOOK_RATES.dirtBoreLaborPerFoot,
+      quantity: dirtBoreFeet,
+      unitCost: dirtBoreLaborPerFoot,
       productionFeetPerDay: constraintProduction(constraintValues, "production.directionalBoreDirtFeetPerDay", controls.production.directionalBoreDirtFeetPerDay),
       targetDurationDays,
       source: "Production Engine",
@@ -1219,26 +1553,28 @@ export function buildTransparentCorridorEstimate(args: {
       unitCostFormula: "Master OSP Build Metrics: Bore Labor / Bore Ft / Labor.",
       productionFormula: "Phase 4 default: Directional Bore Dirt 600 ft/day.",
       authority: authorityFor(constraintValues, "civil.directionalBoreDirtPercent"),
+      dependencies: ["civil.directionalBoreDirtPercent", "labor.dirtBoreLaborPerFoot", "production.directionalBoreDirtFeetPerDay", "targetDurationDays", "financial"],
     }),
     laborLine({
       lineItemId: `${args.estimateId}:LABOR:ROCK-ADDER`,
-      description: "Directional bore - rock adder",
+      description: "Directional bore - rock",
       quantity: rockBoreFeet,
-      unitCost: rockAdderPerFoot,
+      unitCost: dirtBoreLaborPerFoot + rockAdderPerFoot,
       productionFeetPerDay: constraintProduction(constraintValues, "production.directionalBoreRockFeetPerDay", controls.production.directionalBoreRockFeetPerDay),
       targetDurationDays,
       source: rockPercentAuthority.source,
       workbook: MASTER_OSP_WORKBOOK,
-      quantityFormula: "Directional bore feet x approved/algorithm/human/API rock percentage.",
-      unitCostFormula: "Explicit rock adder per foot.",
+      quantityFormula: "Route feet x directional bore rock percentage.",
+      unitCostFormula: "Directional bore dirt labor rate + explicit rock adder per foot.",
       productionFormula: "Phase 4 default: Directional Bore Rock 300 ft/day.",
       authority: rockPercentAuthority,
+      dependencies: ["civil.directionalBoreRockPercent", "civil.rockAdderPerFoot", "labor.dirtBoreLaborPerFoot", "production.directionalBoreRockFeetPerDay", "targetDurationDays", "contingency", "margin"],
     }),
     laborLine({
       lineItemId: `${args.estimateId}:LABOR:OPEN-TRENCH`,
       description: "Open trench - dirt",
       quantity: openTrenchFeet,
-      unitCost: WORKBOOK_RATES.openTrenchLaborPerFoot,
+      unitCost: openTrenchLaborPerFoot,
       productionFeetPerDay: constraintProduction(constraintValues, "production.openTrenchDirtFeetPerDay", controls.production.openTrenchDirtFeetPerDay),
       targetDurationDays,
       source: "Estimator default pending workbook-specific open trench rate",
@@ -1246,12 +1582,13 @@ export function buildTransparentCorridorEstimate(args: {
       unitCostFormula: "Existing Hyperlinx development-seed open trench rate.",
       productionFormula: "Phase 4 default: Open Trench Dirt 300 ft/day.",
       authority: authorityFor(constraintValues, "civil.openTrenchPercent"),
+      dependencies: ["civil.openTrenchPercent", "labor.openTrenchLaborPerFoot", "production.openTrenchDirtFeetPerDay", "targetDurationDays", "financial"],
     }),
     laborLine({
       lineItemId: `${args.estimateId}:LABOR:FIBER-BLOWING`,
       description: "Fiber placement - blowing",
       quantity: purchasedFiberFeet,
-      unitCost: WORKBOOK_RATES.fiberBlowLaborPerFoot,
+      unitCost: fiberBlowLaborPerFoot,
       productionFeetPerDay: constraintProduction(constraintValues, "production.fiberBlowingFeetPerDay", controls.production.fiberBlowingFeetPerDay),
       targetDurationDays,
       source: "Material / Labor Engine",
@@ -1260,12 +1597,13 @@ export function buildTransparentCorridorEstimate(args: {
       unitCostFormula: "Master OSP Build Metrics: Blow Fiber Labor / Per Fiber Material Calc / Labor.",
       productionFormula: "Separate blowing production is user-editable; default remains synthesis pending because the workbook provides rate but not ft/day.",
       authority: authorityFor(constraintValues, "production.fiberBlowingFeetPerDay"),
+      dependencies: ["production.fiberBlowingFeetPerDay", "labor.fiberBlowLaborPerFoot", "physicalQuantities.purchasedFiberFeet", "targetDurationDays"],
     }),
     laborLine({
       lineItemId: `${args.estimateId}:LABOR:SPLICING`,
       description: "Splicing by fiber terminations",
       quantity: fiberTerminations,
-      unitCost: WORKBOOK_RATES.splicingLaborPerTermination,
+      unitCost: splicingLaborPerTermination,
       productionFeetPerDay: constraintProduction(constraintValues, "production.splicingTerminationsPerDay", controls.production.splicingTerminationsPerDay),
       targetDurationDays,
       source: "Labor Engine",
@@ -1275,6 +1613,7 @@ export function buildTransparentCorridorEstimate(args: {
       productionFormula: "Splicing production is user-editable; default remains synthesis pending until estimator sets terminations/day.",
       costFormula: "Fiber terminations x splicing labor per termination.",
       authority: authorityFor(constraintValues, "production.splicingTerminationsPerDay"),
+      dependencies: ["production.splicingTerminationsPerDay", "labor.splicingLaborPerTermination", "physicalQuantities.fiberTerminations", "targetDurationDays"],
     }),
   ].filter((line) => (line.quantity.value ?? 0) > 0);
 
@@ -1291,12 +1630,12 @@ export function buildTransparentCorridorEstimate(args: {
   const projectScheduleDays = laborLines
     .map((line) => line.durationDays.value ?? 0)
     .reduce((max, duration) => Math.max(max, duration), 0);
-  const projectManagerCost = (Math.max(projectScheduleDays, targetDurationDays) / 260) * WORKBOOK_RATES.projectManagerAnnualLoadedCost;
+  const projectManagerCost = (Math.max(projectScheduleDays, targetDurationDays) / 260) * projectManagerAnnualLoadedCost;
   const projectManagementLine = laborLine({
     lineItemId: `${args.estimateId}:LABOR:PROJECT-MANAGEMENT`,
     description: "Project management",
     quantity: Math.max(projectScheduleDays, targetDurationDays),
-    unitCost: WORKBOOK_RATES.projectManagerAnnualLoadedCost / 260,
+    unitCost: projectManagerAnnualLoadedCost / 260,
     productionFeetPerDay: 1,
     targetDurationDays,
     source: "Crew Optimization",
@@ -1306,6 +1645,7 @@ export function buildTransparentCorridorEstimate(args: {
     productionFormula: "One project-management day per elapsed project day.",
     costFormula: "Project management days x daily loaded project manager cost.",
     authority: authorityFor(constraintValues, "labor.assumptions"),
+    dependencies: ["labor.projectManagerAnnualLoadedCost", "targetDurationDays", "projectScheduleDays"],
   });
   projectManagementLine.extendedCost = currencyValue({
     value: projectManagerCost,
@@ -1320,55 +1660,60 @@ export function buildTransparentCorridorEstimate(args: {
       description: "1 1/2 inch conduit material",
       quantity: conduitFeet,
       unit: "ft",
-      unitCost: WORKBOOK_RATES.conduitMaterialPerFoot,
+      unitCost: conduitMaterialPerFoot,
       source: "Material Engine",
       workbook: MASTER_OSP_WORKBOOK,
       formula: "Route feet x standard duct package conduit count + conduit waste.",
       authority: authorityFor(constraintValues, "bom.assumptions"),
+      dependencies: ["material.conduitPerFoot", "physicalQuantities.conduitFeet", "civilMix"],
     }),
     materialLine({
       lineItemId: `${args.estimateId}:MAT:FIBER-864`,
       description: "864-count shielded fiber material",
       quantity: purchasedFiberFeet,
       unit: "ft",
-      unitCost: WORKBOOK_RATES.fiber864MaterialPerFoot,
+      unitCost: fiber864MaterialPerFoot,
       source: "Material Engine",
       workbook: MASTER_OSP_WORKBOOK,
       formula: "Route fiber feet + vault slack + handhole slack + fiber waste.",
       authority: authorityFor(constraintValues, "bom.assumptions"),
+      dependencies: ["material.fiber864PerFoot", "physicalQuantities.purchasedFiberFeet"],
     }),
     materialLine({
       lineItemId: `${args.estimateId}:MAT:HANDHOLE-LABOR`,
       description: "Handhole labor",
       quantity: handholeCount,
       unit: "ea",
-      unitCost: WORKBOOK_RATES.handholeLaborEach,
+      unitCost: handholeLaborEach,
       source: "Material Engine",
       workbook: MASTER_OSP_WORKBOOK,
       formula: "Route feet / 2,500 ft handhole spacing.",
       authority: authorityFor(constraintValues, "bom.assumptions"),
+      dependencies: ["material.handholeLaborEach", "physicalQuantities.handholeCount"],
     }),
     materialLine({
       lineItemId: `${args.estimateId}:MAT:HANDHOLE-MATERIAL`,
       description: "Handhole material",
       quantity: handholeCount,
       unit: "ea",
-      unitCost: WORKBOOK_RATES.handholeMaterialEach,
+      unitCost: handholeMaterialEach,
       source: "Material Engine",
       workbook: MASTER_OSP_WORKBOOK,
       formula: "Route feet / 2,500 ft handhole spacing.",
       authority: authorityFor(constraintValues, "bom.assumptions"),
+      dependencies: ["material.handholeMaterialEach", "physicalQuantities.handholeCount"],
     }),
     materialLine({
       lineItemId: `${args.estimateId}:MAT:SPLICE-CASE`,
       description: "Splice case materials",
       quantity: spliceCaseCount,
       unit: "ea",
-      unitCost: WORKBOOK_RATES.spliceCaseEach,
+      unitCost: spliceCaseEach,
       source: "Material Engine",
       workbook: MASTER_OSP_WORKBOOK,
       formula: "Field splice locations derived from purchased fiber feet / reel length.",
       authority: authorityFor(constraintValues, "bom.assumptions"),
+      dependencies: ["material.spliceCaseEach", "physicalQuantities.spliceCaseCount"],
     }),
   ];
 
@@ -1378,11 +1723,12 @@ export function buildTransparentCorridorEstimate(args: {
         description: "4-way FuturePath 18/14mm and couplers",
         quantity: routeFeet * args.assumptionState.materials.futurePathMultiplier,
         unit: "ft",
-        unitCost: WORKBOOK_RATES.futurePathPerFoot,
+        unitCost: futurePathPerFoot,
         source: "Material Engine",
         workbook: MASTER_OSP_WORKBOOK,
         formula: "Route feet x FuturePath multiplier when enabled by commercial assumption.",
         authority: authorityFor(constraintValues, "bom.assumptions"),
+        dependencies: ["material.futurePathPerFoot", "physicalQuantities.routeFeet", "materials.futurePathMultiplier"],
       })
     : null;
   const allMaterialLines = futurePathLine ? [...materialLines, futurePathLine] : materialLines;
@@ -1394,6 +1740,7 @@ export function buildTransparentCorridorEstimate(args: {
     regenCount,
     aLabel: args.aLabel,
     zLabel: args.zLabel,
+    facilityCost: ilaFacilityCost,
   });
   const ilaTotal = ilaFacilities.reduce((total, facility) => total + (facility.total.value ?? 0), 0);
   const ilaLine = totalLine(
@@ -1531,7 +1878,18 @@ export function buildTransparentCorridorEstimate(args: {
   const permitCost = engineeringLine.extendedCost.value ?? 0;
   const equipmentCost = ilaTotal;
   const constructionCost = laborCost + materialCost + permitCost + equipmentCost;
-  const contingency = constructionCost * (controls.financial.contingencyPercent / 100);
+  const contingencyCategories: TransparentContingencyCategory[] = CONTINGENCY_CATEGORIES.map((category) => {
+    const authority = authorityFor(constraintValues, category.key);
+    const percent = constraintNumber(constraintValues, category.key, category.percent);
+    return {
+      key: category.key,
+      label: category.label,
+      percent,
+      cost: constructionCost * (percent / 100),
+      authority,
+    };
+  });
+  const contingency = contingencyCategories.reduce((total, category) => total + category.cost, 0);
   const overhead = constructionCost * (controls.financial.overheadPercent / 100);
   const costBeforeMarkup = constructionCost + contingency + overhead;
   const markup = costBeforeMarkup * (controls.financial.markupPercent / 100);
@@ -1539,7 +1897,18 @@ export function buildTransparentCorridorEstimate(args: {
   const margin = sellPrice > 0 ? ((sellPrice - costBeforeMarkup) / sellPrice) * 100 : 0;
   const financialAuthority = authorityFor(constraintValues, "financial.assumptions");
   const omAuthority = authorityFor(constraintValues, "financial.omCostPerRouteMile");
-  const annualOmPerRouteMile = authorityModeCostIncluded(omAuthority) && typeof omAuthority.value === "number" ? omAuthority.value : 0;
+  const omLifecycleComponents: TransparentOmLifecycleComponent[] = OM_LIFECYCLE_COMPONENTS.map((component) => {
+    const authority = authorityFor(constraintValues, component.key);
+    const annualCostPerRouteMile = constraintNumber(constraintValues, component.key, component.annualPerRouteMile);
+    return {
+      key: component.key,
+      label: component.label,
+      annualCostPerRouteMile,
+      annualCost: routeMiles * annualCostPerRouteMile,
+      authority,
+    };
+  });
+  const annualOmPerRouteMile = omLifecycleComponents.reduce((total, component) => total + component.annualCostPerRouteMile, 0);
   const monthlyOmPerRouteMile = annualOmPerRouteMile / 12;
   const mrc = routeMiles * monthlyOmPerRouteMile;
 
@@ -1575,11 +1944,11 @@ export function buildTransparentCorridorEstimate(args: {
     }),
     contingency: currencyValue({
       value: contingency,
-      formula: "Construction cost x explicit contingency percent.",
-      source: "Financial assumption",
+      formula: "Construction cost x sum of editable contingency category percentages.",
+      source: "Categorized contingency model",
       workbook: MASTER_OSP_WORKBOOK,
       editable: true,
-      userOverride: `${controls.financial.contingencyPercent}%`,
+      userOverride: `${round(contingencyCategories.reduce((total, category) => total + category.percent, 0), 2)}% categorized`,
     }),
     overhead: currencyValue({
       value: overhead,
@@ -1613,8 +1982,8 @@ export function buildTransparentCorridorEstimate(args: {
     }),
     mrc: currencyValue({
       value: mrc,
-      formula: "Route miles x monthly O&M per route mile.",
-      source: "Revenue",
+      formula: "Route miles x monthly Layer 1 infrastructure lifecycle management per route mile.",
+      source: "Infrastructure Lifecycle Management",
       workbook: FIBER_SUMMARY_WORKBOOK,
       editable: true,
       userOverride: `$${round(monthlyOmPerRouteMile, 2)} / route mile / month`,
@@ -1695,13 +2064,81 @@ export function buildTransparentCorridorEstimate(args: {
     { metricId: "CONFIDENCE-LEVEL", label: "Level", value: textMetricValue({ value: confidence.level, formula: "Score band.", source: "Estimate Confidence" }) },
   ];
 
+  const opticalEngineeringPreview: TransparentOpticalEngineeringPreview = {
+    routeLengthMiles: routeMiles,
+    routeLengthKm: round(routeMiles * 1.609344, 2),
+    attenuationDb: round(routeMiles * 1.609344 * 0.25, 2),
+    approximateSpliceLossDb: round(spliceCaseCount * 0.05, 2),
+    connectorLossDb: 1,
+    estimatedEndToEndLossDb: round((routeMiles * 1.609344 * 0.25) + (spliceCaseCount * 0.05) + 1, 2),
+    estimatedSpanLengthMiles: round(routeMiles / Math.max(1, regenCount + 1), 2),
+    estimatedIlaSpacingMiles: WORKBOOK_RATES.regenSpacingMiles,
+    preliminaryEngineeringEstimate: true,
+  };
+  const opticalMetrics: TransparentEstimateMetric[] = [
+    { metricId: "OPTICAL-ROUTE-LENGTH", label: "Route length", value: numericValue({ value: opticalEngineeringPreview.routeLengthMiles, formula: "Commercial corridor route miles.", source: "Preliminary optical estimate", suffix: " mi" }) },
+    { metricId: "OPTICAL-ATTENUATION", label: "Estimated attenuation", value: numericValue({ value: opticalEngineeringPreview.attenuationDb, formula: "Route km x 0.25 dB/km preliminary assumption.", source: "Preliminary optical estimate", suffix: " dB" }) },
+    { metricId: "OPTICAL-SPLICE-LOSS", label: "Approximate splice loss", value: numericValue({ value: opticalEngineeringPreview.approximateSpliceLossDb, formula: "Splice case count x 0.05 dB.", source: "Preliminary optical estimate", suffix: " dB" }) },
+    { metricId: "OPTICAL-CONNECTOR-LOSS", label: "Connector loss", value: numericValue({ value: opticalEngineeringPreview.connectorLossDb, formula: "Two connector allowance at 0.5 dB each.", source: "Preliminary optical estimate", suffix: " dB" }) },
+    { metricId: "OPTICAL-END-TO-END", label: "End-to-end loss", value: numericValue({ value: opticalEngineeringPreview.estimatedEndToEndLossDb, formula: "Attenuation + splice loss + connector allowance.", source: "Preliminary optical estimate", suffix: " dB" }) },
+    { metricId: "OPTICAL-SPAN", label: "Estimated span length", value: numericValue({ value: opticalEngineeringPreview.estimatedSpanLengthMiles, formula: "Route miles / span count.", source: "Preliminary optical estimate", suffix: " mi" }) },
+    { metricId: "OPTICAL-ILA-SPACING", label: "Estimated ILA spacing", value: numericValue({ value: opticalEngineeringPreview.estimatedIlaSpacingMiles, formula: "Current commercial regen spacing assumption.", source: "Preliminary optical estimate", suffix: " mi" }) },
+  ];
+
+  const unknownAuthorityCount = Object.values(constraintValues).filter((constraintValue) => constraintValue.affectsConfidence && constraintValue.authorityMode === "UNKNOWN").length;
+  const approvedAuthorityCount = Object.values(constraintValues).filter((constraintValue) => constraintValue.authorityMode === "APPROVED").length;
+  const humanAuthorityCount = Object.values(constraintValues).filter((constraintValue) => constraintValue.authorityMode === "HUMAN" || constraintValue.authorityMode === "API").length;
+  const readinessDrivers: TransparentCommercialReadiness["drivers"] = [
+    { label: "Geometry", status: args.geometry.length > 1 ? "Ready" : "Blocked", impact: args.geometry.length > 1 ? 0 : 30, reason: args.geometry.length > 1 ? "Route geometry is present." : "Route geometry is missing." },
+    { label: "Estimate", status: constructionCost > 0 ? "Ready" : "Blocked", impact: constructionCost > 0 ? 0 : 25, reason: constructionCost > 0 ? "Known construction cost is calculated." : "Known construction cost is not available." },
+    { label: "Unknown Constraints", status: unknownAuthorityCount <= 3 ? "Ready" : "Review", impact: Math.min(20, unknownAuthorityCount * 2), reason: `${unknownAuthorityCount} authority-aware constraints remain unknown.` },
+    { label: "Human Review", status: humanAuthorityCount + approvedAuthorityCount > 0 ? "Ready" : "Review", impact: humanAuthorityCount + approvedAuthorityCount > 0 ? 0 : 8, reason: humanAuthorityCount + approvedAuthorityCount > 0 ? "At least one estimator-supplied or approved assumption exists." : "No human or approved estimate calibration has been captured." },
+    { label: "Financial Review", status: financialAuthority.authorityMode === "APPROVED" ? "Ready" : "Review", impact: financialAuthority.authorityMode === "APPROVED" ? 0 : 8, reason: `Financial assumptions are ${financialAuthority.authorityMode}.` },
+    { label: "Proposal Completeness", status: sellPrice > 0 && mrc >= 0 ? "Ready" : "Review", impact: sellPrice > 0 && mrc >= 0 ? 0 : 10, reason: "NRC/MRC preview and proposal summary values are present." },
+    { label: "Customer Decisions", status: "Review", impact: 6, reason: "Customer decisions remain outside the estimator until proposal review." },
+  ];
+  const readinessScore = Math.max(0, 100 - readinessDrivers.reduce((total, driver) => total + driver.impact, 0));
+  const commercialReadiness: TransparentCommercialReadiness = {
+    score: readinessScore,
+    level: readinessScore >= 85 ? "READY" : readinessScore >= 55 ? "REVIEW" : "BLOCKED",
+    drivers: readinessDrivers,
+  };
+  const readinessMetrics: TransparentEstimateMetric[] = [
+    { metricId: "COMMERCIAL-READINESS-SCORE", label: "Commercial readiness", value: numericValue({ value: commercialReadiness.score, formula: "100 minus commercial readiness impacts.", source: "Commercial Readiness", suffix: "%" }) },
+    { metricId: "COMMERCIAL-READINESS-LEVEL", label: "Readiness level", value: textMetricValue({ value: commercialReadiness.level, formula: "Readiness score band.", source: "Commercial Readiness" }) },
+  ];
+
+  const contingencyLines = contingencyCategories.map((category) => totalLine(
+    "CONTINGENCY",
+    "CONTINGENCY",
+    `${args.estimateId}:${category.key.toUpperCase().replaceAll(".", ":")}`,
+    category.label,
+    category.cost,
+    "Categorized contingency model",
+    `Construction cost x ${category.percent}% ${category.label}.`,
+    category.authority,
+    [category.key, "constructionCost", "financialModel", "margin"],
+  ));
+  const omLifecycleLines = omLifecycleComponents.map((component) => totalLine(
+    "LAYER_1_LIFECYCLE",
+    "LIFECYCLE",
+    `${args.estimateId}:${component.key.toUpperCase().replaceAll(".", ":")}`,
+    component.label,
+    component.annualCost,
+    "Infrastructure Lifecycle Management",
+    `Route miles x ${component.annualCostPerRouteMile} annual dollars per route mile.`,
+    component.authority,
+    [component.key, "routeMiles", "mrc", "financialSummary"],
+  ));
+
   const sections = [
     buildSection("EXECUTIVE_SUMMARY", "Executive Summary", "Known cost, price, duration, and confidence.", [
       totalLine("EXECUTIVE_SUMMARY", "FINANCIAL", `${args.estimateId}:SUMMARY:CONSTRUCTION`, "Construction cost", constructionCost, "Executive Summary", financialModel.constructionCost.formula, financialAuthority),
       totalLine("EXECUTIVE_SUMMARY", "FINANCIAL", `${args.estimateId}:SUMMARY:SELL`, "Sell price", sellPrice, "Executive Summary", financialModel.sellPrice.formula, financialAuthority),
-    ], [...financialMetrics, ...confidenceMetrics]),
+    ], [...financialMetrics, ...confidenceMetrics, ...readinessMetrics]),
     buildSection("CORRIDOR", "Corridor", "Physical corridor quantities derived from routed geometry.", [], corridorMetrics),
     buildSection("FIBER", "Fiber", "Fiber footage, slack, waste, and terminations.", [], fiberMetrics),
+    buildSection("OPTICAL_ENGINEERING_PREVIEW", "Optical Engineering Preview", "Preliminary Layer 1 optical metrics for future engineering workflows.", [], opticalMetrics),
     buildSection("OSP_CONSTRUCTION", "OSP Construction", "Civil production and construction line items.", ospLines),
     buildSection("ILA_FACILITIES", "ILA Facilities", "Bookend and intermediate Hyperlinx-managed ILA sites.", [ilaLine]),
     buildSection("MATERIALS", "Materials", "Workbook-derived OSP materials.", allMaterialLines),
@@ -1716,9 +2153,7 @@ export function buildTransparentCorridorEstimate(args: {
     buildSection("MOBILIZATION", "Mobilization", "Mobilization is not fabricated without a mobilization plan.", [
       unknownLine("MOBILIZATION", `${args.estimateId}:MOBILIZATION:PLAN`, "Mobilization plan", "Human Review Required"),
     ]),
-    buildSection("CONTINGENCY", "Contingency", "Explicit contingency assumption, separate from confidence.", [
-      totalLine("CONTINGENCY", "CONTINGENCY", `${args.estimateId}:CONTINGENCY:BASE`, "Contingency", contingency, "Financial assumption", financialModel.contingency.formula, financialAuthority),
-    ]),
+    buildSection("CONTINGENCY", "Contingency", "Editable categorized contingency, separate from confidence.", contingencyLines),
     buildSection("FINANCIAL_MODEL", "Financial Model", "Financial assumptions are isolated from engineering quantities.", [
       totalLine("FINANCIAL_MODEL", "FINANCIAL", `${args.estimateId}:FINANCIAL:OVERHEAD`, "Overhead", overhead, "Financial assumption", financialModel.overhead.formula, financialAuthority),
       totalLine("FINANCIAL_MODEL", "FINANCIAL", `${args.estimateId}:FINANCIAL:MARKUP`, "Markup", markup, "Financial assumption", financialModel.markup.formula, financialAuthority),
@@ -1728,6 +2163,7 @@ export function buildTransparentCorridorEstimate(args: {
       totalLine("REVENUE", "FINANCIAL", `${args.estimateId}:REVENUE:NRC`, "NRC", sellPrice, "Commercial Proposal", financialModel.nrc.formula, financialAuthority),
       totalLine("REVENUE", "FINANCIAL", `${args.estimateId}:REVENUE:MRC`, "MRC", mrc, "Revenue", financialModel.mrc.formula, omAuthority),
     ]),
+    buildSection("LAYER_1_LIFECYCLE", "Layer 1 Lifecycle", "Infrastructure lifecycle management and optional recurring Layer 1 opportunities.", omLifecycleLines),
     buildSection("ASSUMPTIONS", "Assumptions", "Editable production and financial assumptions.", [], assumptionMetrics),
     buildSection("ESTIMATE_CONFIDENCE", "Estimate Confidence", "Confidence changes independently from construction cost.", unknownLines, confidenceMetrics),
   ];
@@ -1748,6 +2184,13 @@ export function buildTransparentCorridorEstimate(args: {
     ilaFacilities,
     unknownQuantities,
     constraintValues,
+    civilMix,
+    estimateStatus: commercialReadiness.level === "READY" ? "PROPOSAL_READY" : "CURRENT",
+    commercialReadiness,
+    contingencyCategories,
+    omLifecycleComponents,
+    layer1RecurringOpportunities: LAYER_1_RECURRING_OPPORTUNITIES,
+    opticalEngineeringPreview,
     confidence,
     financialModel,
     auditTrail,

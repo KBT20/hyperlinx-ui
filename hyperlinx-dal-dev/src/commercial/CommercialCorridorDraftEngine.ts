@@ -250,8 +250,10 @@ export function buildCommercialCorridorDraft(args: {
     waterCrossings,
     unknownQuantities: transparentEstimate.unknownQuantities,
     constructionMix: {
-      ...constructionMix,
-      label: `${constructionMix.plowPercent}% plow / ${constructionMix.hddPercent}% bore / ${constructionMix.openCutPercent}% open cut`,
+      hddPercent: transparentEstimate.civilMix.directionalBoreDirtPercent + transparentEstimate.civilMix.directionalBoreRockPercent,
+      plowPercent: transparentEstimate.civilMix.plowPercent,
+      openCutPercent: transparentEstimate.civilMix.openTrenchPercent,
+      label: `${transparentEstimate.civilMix.plowPercent}% plow / ${transparentEstimate.civilMix.directionalBoreDirtPercent}% dirt bore / ${transparentEstimate.civilMix.directionalBoreRockPercent}% rock bore / ${transparentEstimate.civilMix.openTrenchPercent}% open trench`,
     },
     ilaFacilities: transparentEstimate.ilaFacilities,
     transparentEstimate,
@@ -273,6 +275,8 @@ export function buildCommercialCorridorDraft(args: {
       `${routeMiles.toLocaleString()} route miles with ${routeSegments.length.toLocaleString()} commercial segments.`,
       `${quantities.ilaCount.toLocaleString()} Hyperlinx-managed ILA sites, ${quantities.spliceCaseCount.toLocaleString()} splice cases, ${quantities.vaultCount.toLocaleString()} vaults, ${quantities.handholeCount.toLocaleString()} handholes.`,
       `Budget ${money(totalCost).toLocaleString()} / Sell ${sellPrice.toLocaleString()} / GM ${grossMarginPercent}%.`,
+      `Commercial readiness ${transparentEstimate.commercialReadiness.score}% (${transparentEstimate.commercialReadiness.level}); estimate status ${transparentEstimate.estimateStatus.replaceAll("_", " ")}.`,
+      `Layer 1 lifecycle MRC ${transparentEstimate.financialModel.mrc.display}; optional recurring opportunities remain unselected.`,
       `Estimate confidence ${transparentEstimate.confidence.score}% (${transparentEstimate.confidence.level}); unknown constraints affect confidence only.`,
     ],
     supportingInformation: [

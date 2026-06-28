@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   TransparentCorridorEstimate,
   TransparentEstimateControls,
@@ -31,7 +31,6 @@ const PRODUCTION_CONTROLS: Array<{ key: ProductionKey; label: string; unit: stri
 ];
 
 const FINANCIAL_CONTROLS: Array<{ key: FinancialKey; label: string; unit: string }> = [
-  { key: "contingencyPercent", label: "Contingency", unit: "%" },
   { key: "overheadPercent", label: "Overhead", unit: "%" },
   { key: "markupPercent", label: "Markup", unit: "%" },
   { key: "monthlyOmPerRouteMile", label: "Monthly O&M", unit: "$/mi" },
@@ -67,9 +66,53 @@ const AUTHORITY_CONTROL_GROUPS: Array<{ label: string; keys: string[] }> = [
     ],
   },
   {
+    label: "Crew / Material Rates",
+    keys: [
+      "labor.plowLaborPerFoot",
+      "labor.dirtBoreLaborPerFoot",
+      "labor.openTrenchLaborPerFoot",
+      "labor.fiberBlowLaborPerFoot",
+      "labor.splicingLaborPerTermination",
+      "labor.projectManagerAnnualLoadedCost",
+      "material.conduitPerFoot",
+      "material.futurePathPerFoot",
+      "material.fiber864PerFoot",
+      "material.handholeLaborEach",
+      "material.handholeMaterialEach",
+      "material.spliceCaseEach",
+      "ila.facilityCost",
+    ],
+  },
+  {
+    label: "Contingency Categories",
+    keys: [
+      "contingency.projectAdministration",
+      "contingency.projectManagement",
+      "contingency.materialHandling",
+      "contingency.shipping",
+      "contingency.storage",
+      "contingency.smallToolsConsumables",
+      "contingency.insuranceBonding",
+      "contingency.generalConditions",
+      "contingency.overheadRecovery",
+      "contingency.cogsBuffer",
+      "contingency.estimatingRisk",
+      "contingency.unknownConditions",
+    ],
+  },
+  {
     label: "O&M / Crossings",
     keys: [
       "financial.omCostPerRouteMile",
+      "om.layer1Monitoring",
+      "om.preventiveMaintenance",
+      "om.locateSupport",
+      "om.emergencyResponse",
+      "om.annualInspection",
+      "om.documentation",
+      "om.assetRegistry",
+      "om.slaReporting",
+      "crossing.riverMethod",
       "crossing.rail",
       "crossing.water",
       "crossing.dot",
@@ -98,6 +141,10 @@ function shortTimestamp(value: string | null | undefined) {
 
 function sumCrewCount(estimate: TransparentCorridorEstimate) {
   return estimate.laborLineItems.reduce((total, line) => total + (line.crewCount.value ?? 0), 0);
+}
+
+function calculatedDurationDays(estimate: TransparentCorridorEstimate) {
+  return Math.round(estimate.laborLineItems.reduce((max, line) => Math.max(max, line.durationDays.value ?? 0), 0));
 }
 
 function authorityBadgeClass(mode: ConstraintAuthorityMode) {
@@ -143,23 +190,58 @@ function updateConstraint(
   constraint: ConstraintValue,
   patch: Partial<ConstraintValue>,
   onConstraintChange?: (value: ConstraintValue) => void,
+  onEditStart?: (label: string, affectedSections: string[]) => void,
 ) {
   if (!onConstraintChange) return;
-  const nextMode = patch.authorityMode ?? constraint.authorityMode;
+  onEditStart?.(constraint.label, affectedSectionsForConstraint(constraint.key));
+  const valueEdited = Object.prototype.hasOwnProperty.call(patch, "value");
+  const modeEdited = Object.prototype.hasOwnProperty.call(patch, "authorityMode");
+  const nextMode = patch.authorityMode ?? (valueEdited ? (patch.value === null ? "UNKNOWN" : "HUMAN") : constraint.authorityMode);
+  const resetApproval = valueEdited || (modeEdited && nextMode !== "APPROVED");
   onConstraintChange({
     ...constraint,
     ...patch,
-    confidence: patch.confidence ?? (patch.authorityMode ? authorityModeConfidence(nextMode) : constraint.confidence),
+    authorityMode: nextMode,
+    confidence: patch.confidence ?? ((modeEdited || valueEdited) ? authorityModeConfidence(nextMode) : constraint.confidence),
+    source: patch.source ?? (valueEdited ? "Ryan estimate calibration" : constraint.source),
+    approvedBy: resetApproval ? undefined : (patch.approvedBy ?? constraint.approvedBy),
+    approvedAt: resetApproval ? undefined : (patch.approvedAt ?? constraint.approvedAt),
     lastUpdated: new Date().toISOString(),
   });
+}
+
+function affectedSectionsForConstraint(key: string) {
+  if (key.startsWith("civil.")) return ["Labor", "OSP construction", "Schedule", "Contingency", "Margin"];
+  if (key.startsWith("production.")) return ["Duration", "Crew requirements", "Labor", "Schedule"];
+  if (key.startsWith("labor.")) return ["Labor", "Construction cost", "Contingency", "Margin"];
+  if (key.startsWith("material.")) return ["Materials", "Construction cost", "Contingency", "Margin"];
+  if (key.startsWith("contingency.")) return ["Contingency", "Sell price", "Margin"];
+  if (key.startsWith("om.") || key === "financial.omCostPerRouteMile") return ["MRC", "Layer 1 lifecycle", "Financial summary"];
+  if (key.startsWith("crossing.")) return ["Confidence", "Schedule review", "Commercial readiness"];
+  if (key.startsWith("ila.")) return ["ILA facilities", "Equipment cost", "Margin"];
+  return ["Estimate", "Financial model"];
+}
+
+function moneyDelta(value: number) {
+  const rounded = Math.round(value);
+  if (rounded === 0) return "$0";
+  return `${rounded > 0 ? "+" : "-"}$${Math.abs(rounded).toLocaleString()}`;
+}
+
+function numberDelta(value: number, suffix = "") {
+  const rounded = Math.round(value * 10) / 10;
+  if (rounded === 0) return `0${suffix}`;
+  return `${rounded > 0 ? "+" : ""}${rounded.toLocaleString()}${suffix}`;
 }
 
 function AuthorityControls({
   estimate,
   onConstraintChange,
+  onEditStart,
 }: {
   estimate: TransparentCorridorEstimate;
   onConstraintChange?: (value: ConstraintValue) => void;
+  onEditStart?: (label: string, affectedSections: string[]) => void;
 }) {
   return (
     <div className="transparent-authority-controls">
@@ -192,6 +274,7 @@ function AuthorityControls({
                           approvedAt: undefined,
                         },
                         onConstraintChange,
+                        onEditStart,
                       )}
                     >
                       {AUTHORITY_MODES.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
@@ -208,6 +291,7 @@ function AuthorityControls({
                         constraint,
                         { value: parseConstraintInput(constraint, event.currentTarget.value) },
                         onConstraintChange,
+                        onEditStart,
                       )}
                     />
                   </label>
@@ -222,6 +306,7 @@ function AuthorityControls({
                         constraint,
                         { confidence: Math.max(0, Math.min(100, Math.round(Number(event.currentTarget.value) || 0))) },
                         onConstraintChange,
+                        onEditStart,
                       )}
                     />
                   </label>
@@ -237,6 +322,7 @@ function AuthorityControls({
                         constraint,
                         { authorityMode: "ALGORITHM", confidence: authorityModeConfidence("ALGORITHM"), approvedBy: undefined, approvedAt: undefined },
                         onConstraintChange,
+                        onEditStart,
                       )}
                     >
                       Use Algorithm
@@ -247,6 +333,7 @@ function AuthorityControls({
                         constraint,
                         { authorityMode: "HUMAN", confidence: authorityModeConfidence("HUMAN"), source: "Ryan", approvedBy: undefined, approvedAt: undefined },
                         onConstraintChange,
+                        onEditStart,
                       )}
                     >
                       Enter Human Value
@@ -263,6 +350,7 @@ function AuthorityControls({
                           approvedAt: new Date().toISOString(),
                         },
                         onConstraintChange,
+                        onEditStart,
                       )}
                     >
                       Approve
@@ -298,6 +386,116 @@ function AuthorityTransparencySummary({ estimate }: { estimate: TransparentCorri
   );
 }
 
+function CommercialReadinessPanel({ estimate }: { estimate: TransparentCorridorEstimate }) {
+  return (
+    <div className="transparent-calibration-panel">
+      <div className="transparent-calibration-heading">
+        <div>
+          <b>Commercial Readiness</b>
+          <span>Separate from estimate confidence</span>
+        </div>
+        <span className={`dal-badge ${estimate.commercialReadiness.level === "READY" ? "pass" : estimate.commercialReadiness.level === "BLOCKED" ? "fail" : "warning"}`}>
+          {estimate.commercialReadiness.score}% {estimate.commercialReadiness.level}
+        </span>
+      </div>
+      <div className="transparent-readiness-grid">
+        {estimate.commercialReadiness.drivers.map((driver) => (
+          <div key={driver.label}>
+            <b>{driver.label}</b>
+            <span>{driver.status}</span>
+            <small>{driver.impact ? `-${driver.impact}` : "No deduction"} / {driver.reason}</small>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CivilMixStatusPanel({
+  estimate,
+  onCivilMixModeChange,
+}: {
+  estimate: TransparentCorridorEstimate;
+  onCivilMixModeChange: (mode: TransparentEstimateControls["civilMixMode"]) => void;
+}) {
+  return (
+    <div className="transparent-calibration-panel">
+      <div className="transparent-calibration-heading">
+        <div>
+          <b>Civil Mix</b>
+          <span>Plow, dirt bore, rock bore, and open trench must total 100%</span>
+        </div>
+        <select
+          aria-label="Civil mix balancing mode"
+          value={estimate.civilMix.mode}
+          onChange={(event) => onCivilMixModeChange(event.currentTarget.value as TransparentEstimateControls["civilMixMode"])}
+        >
+          <option value="LOCKED">Locked balance</option>
+          <option value="MANUAL">Manual</option>
+        </select>
+      </div>
+      <div className="transparent-estimate-metrics">
+        <div><span>Plow</span><b>{estimate.civilMix.plowPercent}%</b></div>
+        <div><span>Dirt Bore</span><b>{estimate.civilMix.directionalBoreDirtPercent}%</b></div>
+        <div><span>Rock Bore</span><b>{estimate.civilMix.directionalBoreRockPercent}%</b></div>
+        <div><span>Open Trench</span><b>{estimate.civilMix.openTrenchPercent}%</b></div>
+        <div><span>Total</span><b>{estimate.civilMix.totalPercent}%</b></div>
+        <div><span>Mode</span><b>{estimate.civilMix.mode}</b></div>
+      </div>
+      {estimate.civilMix.warning ? <div className="dal-status">{estimate.civilMix.warning}</div> : null}
+    </div>
+  );
+}
+
+function CalibrationPanel({
+  estimate,
+  impact,
+}: {
+  estimate: TransparentCorridorEstimate;
+  impact: {
+    label: string;
+    budgetDelta: number;
+    durationDelta: number;
+    confidenceDelta: number;
+    affectedSections: string[];
+  } | null;
+}) {
+  return (
+    <div className="transparent-calibration-panel">
+      <div className="transparent-calibration-heading">
+        <div>
+          <b>Estimate Calibration</b>
+          <span>Production, rates, civil mix, contingencies, O&M, and authority changes recalculate immediately</span>
+        </div>
+        <span className="dal-badge pass">{estimate.estimateStatus.replaceAll("_", " ")}</span>
+      </div>
+      <div className="transparent-estimate-metrics">
+        <div><span>Duration</span><b>{calculatedDurationDays(estimate).toLocaleString()} days</b></div>
+        <div><span>Cost</span><b>{estimate.financialModel.constructionCost.display}</b></div>
+        <div><span>Sell Price</span><b>{estimate.financialModel.sellPrice.display}</b></div>
+        <div><span>Margin</span><b>{estimate.grossMarginPercent}%</b></div>
+        <div><span>Confidence</span><b>{estimate.confidence.score}%</b></div>
+        <div><span>MRC</span><b>{estimate.financialModel.mrc.display}</b></div>
+      </div>
+      {impact ? (
+        <div className="transparent-impact-panel">
+          <b>{impact.label}</b>
+          <span>Budget: {moneyDelta(impact.budgetDelta)}</span>
+          <span>Duration: {numberDelta(impact.durationDelta, " days")}</span>
+          <span>Confidence: {numberDelta(impact.confidenceDelta, " pts")}</span>
+          <small>Affects: {impact.affectedSections.join(", ")}</small>
+        </div>
+      ) : (
+        <div className="transparent-impact-panel">
+          <b>Ready for calibration</b>
+          <span>Local estimate inputs recalculate without a manual refresh.</span>
+          <small>Manual refresh remains reserved for OSRM, API, synthesis, customer inventory, and geometry changes.</small>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LineTable({ lineItems }: { lineItems: TransparentEstimateLineItem[] }) {
   if (!lineItems.length) return null;
   return (
@@ -317,6 +515,7 @@ function LineTable({ lineItems }: { lineItems: TransparentEstimateLineItem[] }) 
             <th>Confidence</th>
             <th>Cost Impact</th>
             <th>Schedule Impact</th>
+            <th>Dependencies</th>
             <th>Source</th>
           </tr>
         </thead>
@@ -335,6 +534,7 @@ function LineTable({ lineItems }: { lineItems: TransparentEstimateLineItem[] }) 
               <td>{line.authority.confidence}%</td>
               <td>{costImpactLabel(line.authority)}</td>
               <td>{scheduleImpactLabel(line.authority)}</td>
+              <td>{line.dependencies.join(", ")}</td>
               <td>
                 <span>{line.source}</span>
                 {line.workbook ? <small>{line.workbook}</small> : null}
@@ -470,6 +670,17 @@ function SectionDetails({
           </table>
         </div>
       ) : null}
+      {section.sectionId === "LAYER_1_LIFECYCLE" ? (
+        <div className="transparent-opportunity-grid">
+          {estimate.layer1RecurringOpportunities.map((opportunity) => (
+            <div key={opportunity.opportunityId}>
+              <b>{opportunity.label}</b>
+              <span>Optional proposal line item</span>
+              <small>{opportunity.description}</small>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </details>
   );
 }
@@ -483,6 +694,7 @@ export default function TransparentEstimateExplorer({
   onProductionChange,
   onFinancialChange,
   onConstraintChange,
+  onCivilMixModeChange,
 }: {
   estimate: TransparentCorridorEstimate;
   controls: TransparentEstimateControls;
@@ -492,11 +704,21 @@ export default function TransparentEstimateExplorer({
   onProductionChange: (key: ProductionKey, value: number | null) => void;
   onFinancialChange: (key: FinancialKey, value: number) => void;
   onConstraintChange?: (value: ConstraintValue) => void;
+  onCivilMixModeChange: (mode: TransparentEstimateControls["civilMixMode"]) => void;
 }) {
   const storageKey = `hyperlinx:transparent-estimate:sections:${estimate.estimateId}`;
   const versionStorageKey = `hyperlinx:transparent-estimate:versions:${estimate.estimateId}`;
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [openVersions, setOpenVersions] = useState<Record<string, boolean>>({});
+  const [lastImpact, setLastImpact] = useState<{
+    label: string;
+    budgetDelta: number;
+    durationDelta: number;
+    confidenceDelta: number;
+    affectedSections: string[];
+  } | null>(null);
+  const pendingEditRef = useRef<{ label: string; affectedSections: string[] } | null>(null);
+  const previousMetricsRef = useRef<{ budget: number; duration: number; confidence: number } | null>(null);
   useEffect(() => {
     try {
       setOpenSections(JSON.parse(window.localStorage.getItem(storageKey) ?? "{}") as Record<string, boolean>);
@@ -506,6 +728,27 @@ export default function TransparentEstimateExplorer({
       setOpenVersions({});
     }
   }, [storageKey, versionStorageKey]);
+  const currentDurationDays = calculatedDurationDays(estimate);
+  useEffect(() => {
+    const current = {
+      budget: estimate.sellPrice,
+      duration: currentDurationDays,
+      confidence: estimate.confidence.score,
+    };
+    const previous = previousMetricsRef.current;
+    const pending = pendingEditRef.current;
+    if (previous && pending) {
+      setLastImpact({
+        label: pending.label,
+        budgetDelta: current.budget - previous.budget,
+        durationDelta: current.duration - previous.duration,
+        confidenceDelta: current.confidence - previous.confidence,
+        affectedSections: pending.affectedSections,
+      });
+      pendingEditRef.current = null;
+    }
+    previousMetricsRef.current = current;
+  }, [currentDurationDays, estimate.confidence.score, estimate.sellPrice]);
   const versionComparisons = useMemo(() => [
     {
       id: "BASE_ESTIMATE",
@@ -577,6 +820,9 @@ export default function TransparentEstimateExplorer({
       return next;
     });
   }
+  function noteLocalEdit(label: string, affectedSections: string[]) {
+    pendingEditRef.current = { label, affectedSections };
+  }
   const requiredCrews = sumCrewCount(estimate);
   return (
     <div className="transparent-estimate-explorer">
@@ -585,7 +831,7 @@ export default function TransparentEstimateExplorer({
         <div><span>Construction Cost</span><b>{estimate.financialModel.constructionCost.display}</b></div>
         <div><span>Sell Price</span><b>{estimate.financialModel.sellPrice.display}</b></div>
         <div><span>Gross Margin</span><b>{estimate.grossMarginPercent}%</b></div>
-        <div><span>Duration</span><b>{controls.targetDurationDays.toLocaleString()} days</b></div>
+        <div><span>Duration</span><b>{currentDurationDays.toLocaleString()} days</b></div>
         <div><span>Required Crews</span><b>{requiredCrews.toLocaleString()}</b></div>
         <div><span>Confidence</span><b>{estimate.confidence.score}% {estimate.confidence.level}</b></div>
         <div><span>Unknown Constraints</span><b>{estimate.unknownQuantities.length.toLocaleString()}</b></div>
@@ -599,7 +845,10 @@ export default function TransparentEstimateExplorer({
             type="number"
             min="1"
             value={controls.targetDurationDays}
-            onChange={(event) => onTargetDurationChange(Math.max(1, Number(event.currentTarget.value) || 1))}
+            onChange={(event) => {
+              noteLocalEdit("Customer Duration", ["Duration", "Crew requirements", "Project management", "Margin"]);
+              onTargetDurationChange(Math.max(1, Number(event.currentTarget.value) || 1));
+            }}
           />
         </label>
         {PRODUCTION_CONTROLS.map((control) => (
@@ -610,7 +859,10 @@ export default function TransparentEstimateExplorer({
               min="0"
               value={fieldValue(controls.production[control.key])}
               placeholder="Synthesis pending"
-              onChange={(event) => onProductionChange(control.key, numberFromInput(event.currentTarget.value))}
+              onChange={(event) => {
+                noteLocalEdit(control.label, affectedSectionsForConstraint(`production.${control.key}`));
+                onProductionChange(control.key, numberFromInput(event.currentTarget.value));
+              }}
             />
             <small>{control.unit}</small>
           </label>
@@ -622,7 +874,10 @@ export default function TransparentEstimateExplorer({
               type="number"
               min="0"
               value={controls.financial[control.key]}
-              onChange={(event) => onFinancialChange(control.key, Math.max(0, Number(event.currentTarget.value) || 0))}
+              onChange={(event) => {
+                noteLocalEdit(control.label, control.key === "monthlyOmPerRouteMile" ? ["MRC", "Layer 1 lifecycle", "Financial summary"] : ["Financial model", "Sell price", "Margin"]);
+                onFinancialChange(control.key, Math.max(0, Number(event.currentTarget.value) || 0));
+              }}
             />
             <small>{control.unit}</small>
           </label>
@@ -638,8 +893,14 @@ export default function TransparentEstimateExplorer({
         <div><span>Unknowns</span><b>{estimate.unknownQuantities.length.toLocaleString()}</b></div>
       </div>
 
+      <CalibrationPanel estimate={estimate} impact={lastImpact} />
+      <CommercialReadinessPanel estimate={estimate} />
+      <CivilMixStatusPanel estimate={estimate} onCivilMixModeChange={(mode) => {
+        noteLocalEdit("Civil Mix Mode", ["Civil mix", "Labor", "Schedule", "Margin"]);
+        onCivilMixModeChange(mode);
+      }} />
       <AuthorityTransparencySummary estimate={estimate} />
-      <AuthorityControls estimate={estimate} onConstraintChange={onConstraintChange} />
+      <AuthorityControls estimate={estimate} onConstraintChange={onConstraintChange} onEditStart={noteLocalEdit} />
 
       <div className="transparent-estimate-versions">
         {versionComparisons.map((version) => (
