@@ -164,6 +164,19 @@
   filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.65));
 }
 
+.dal-map-kernel-segment-handle {
+  paint-order: stroke;
+}
+
+.dal-map-kernel-corridor-handle {
+  paint-order: stroke;
+}
+
+.dal-map-kernel-corridor-preview {
+  filter: drop-shadow(0 0 5px rgba(34, 197, 94, 0.65));
+  pointer-events: none;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -365,6 +378,144 @@ textarea {
   border-radius: 6px;
   padding: 8px 10px;
   font-size: 13px;
+}
+
+.dal-metrics.compact span {
+  font-size: 12px;
+  padding: 7px 9px;
+}
+
+.dal-callout,
+.dal-note,
+.dal-empty {
+  border: 1px solid #18344e;
+  border-radius: 6px;
+  color: #b7c9dc;
+  font-size: 13px;
+  padding: 10px;
+}
+
+.dal-callout {
+  background: #071827;
+}
+
+.dal-note {
+  background: rgba(8, 24, 39, 0.76);
+}
+
+.dal-empty {
+  background: #06111f;
+  display: grid;
+  min-height: 90px;
+  place-items: center;
+}
+
+.dal-route-list,
+.dal-diagnostic-list {
+  display: grid;
+  gap: 8px;
+}
+
+.dal-route-row {
+  align-items: center;
+  background: #071827;
+  border: 1px solid #18344e;
+  border-radius: 6px;
+  color: #d8f4ff;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+  padding: 9px;
+  text-align: left;
+}
+
+.dal-route-row.active {
+  border-color: #5eead4;
+  box-shadow: 0 0 0 1px rgba(94, 234, 212, 0.22);
+}
+
+.dal-route-row small {
+  color: #9fbed8;
+  display: block;
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+}
+
+.dal-diagnostic-row {
+  background: #071827;
+  border: 1px solid #18344e;
+  border-left-width: 4px;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: auto 1fr;
+  padding: 9px;
+}
+
+.dal-diagnostic-row small {
+  color: #b7c9dc;
+  grid-column: 1 / -1;
+}
+
+.dal-diagnostic-row.info {
+  border-left-color: #60a5fa;
+}
+
+.dal-diagnostic-row.warning {
+  border-left-color: #f59e0b;
+}
+
+.dal-diagnostic-row.error {
+  border-left-color: #fb7185;
+}
+
+.dal-map-lite {
+  border: 1px solid #18344e;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #06111f;
+}
+
+.dal-map-lite svg {
+  display: block;
+  width: 100%;
+  min-height: 240px;
+}
+
+.dal-map-lite rect {
+  fill: #06111f;
+}
+
+.dal-map-lite circle {
+  fill: #fbbf24;
+  stroke: #111827;
+  stroke-width: 1.5;
+}
+
+.dal-map-caption {
+  border-top: 1px solid #18344e;
+  color: #a9d9f7;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.dal-lineage {
+  display: grid;
+  gap: 8px;
+}
+
+.dal-lineage div {
+  background: #071827;
+  border: 1px solid #18344e;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  padding: 9px;
+}
+
+.dal-lineage span,
+.dal-lineage small {
+  color: #b7c9dc;
 }
 
 .dal-pre {
@@ -1179,6 +1330,76 @@ textarea {
   white-space: nowrap;
 }
 
+.commercial-financial-authority-summary,
+.commercial-area-heading {
+  background: rgba(7, 24, 39, 0.9);
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.commercial-area-heading {
+  margin-top: 12px;
+}
+
+.commercial-area-heading h3 {
+  margin: 0;
+}
+
+.commercial-area-heading span,
+.commercial-financial-authority-summary .dal-panel-title-row span {
+  color: #9fbed8;
+  font-size: 12px;
+}
+
+.commercial-financial-groups {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.commercial-financial-groups > div {
+  background: rgba(15, 23, 42, 0.58);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.commercial-financial-groups b {
+  color: #f8fbff;
+}
+
+.commercial-financial-groups span {
+  color: #b7c9dc;
+  font-size: 12px;
+}
+
+.commercial-financial-warning-list {
+  display: grid;
+  gap: 6px;
+}
+
+.commercial-financial-warning-list span {
+  background: rgba(74, 52, 16, 0.72);
+  border: 1px solid rgba(245, 158, 11, 0.36);
+  border-radius: 6px;
+  color: #fde68a;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.commercial-map-error {
+  background: rgba(127, 29, 29, 0.75);
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  color: #fee2e2;
+  margin-bottom: 8px;
+}
+
 .commercial-disclosure-panel details {
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 8px;
@@ -1577,7 +1798,7 @@ textarea {
   border-radius: 8px;
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   padding: 8px;
   position: sticky;
   top: 0;
@@ -1716,7 +1937,7 @@ textarea {
 .transparent-authority-summary {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
 .transparent-authority-summary div {
@@ -1781,7 +2002,7 @@ textarea {
   border-radius: 6px;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(220px, 1.15fr) minmax(132px, 0.72fr) minmax(110px, 0.55fr) minmax(104px, 0.45fr) minmax(120px, 0.55fr) minmax(300px, 1.18fr);
+  grid-template-columns: minmax(220px, 1.15fr) minmax(132px, 0.6fr) minmax(150px, 0.75fr) minmax(104px, 0.45fr) minmax(120px, 0.55fr) minmax(280px, 1.15fr);
   min-width: 0;
   padding: 8px;
 }
@@ -1817,13 +2038,273 @@ textarea {
 }
 
 .transparent-authority-actions {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
 }
 
-.transparent-authority-actions button {
+.transparent-authority-actions button,
+.transparent-authority-status {
   min-height: 34px;
   padding: 6px 7px;
   white-space: normal;
+}
+
+.transparent-authority-status {
+  align-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 6px;
+  display: flex;
+  font-size: 12px;
+  font-weight: 800;
+  justify-content: center;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.transparent-authority-status.pass {
+  background: rgba(20, 83, 45, 0.52);
+  border-color: rgba(34, 197, 94, 0.34);
+  color: #bbf7d0;
+}
+
+.transparent-authority-status.warning {
+  background: rgba(74, 52, 16, 0.6);
+  border-color: rgba(245, 158, 11, 0.34);
+  color: #fde68a;
+}
+
+.transparent-civil-total.pass {
+  color: #86efac;
+}
+
+.transparent-civil-total.warning {
+  color: #fde68a;
+}
+
+.ila-planning-panel {
+  background: rgba(2, 6, 23, 0.42);
+  border: 1px solid rgba(20, 184, 166, 0.26);
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.ila-planning-header {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
+}
+
+.ila-planning-header h4 {
+  color: #e5f1ff;
+  font-size: 14px;
+  margin: 0;
+}
+
+.ila-planning-header span,
+.ila-planning-controls span,
+.ila-selected-card span,
+.ila-recommendation-card span {
+  color: #9fbed8;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1.15;
+  text-transform: uppercase;
+}
+
+.ila-planning-header-metrics {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.ila-planning-header-metrics div,
+.ila-selected-card,
+.ila-recommendation-card {
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.ila-planning-header-metrics b,
+.ila-selected-card b,
+.ila-recommendation-card b {
+  color: #e5f1ff;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.ila-planning-controls {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+}
+
+.ila-planning-controls label {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 6px;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 7px;
+}
+
+.ila-planning-controls input,
+.ila-planning-controls select,
+.ila-station-table input,
+.ila-station-table select {
+  background: rgba(2, 6, 23, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 6px;
+  color: #e5f1ff;
+  font: inherit;
+  min-height: 32px;
+  min-width: 0;
+  padding: 6px 7px;
+  width: 100%;
+}
+
+.ila-planning-controls small,
+.ila-selected-card small,
+.ila-recommendation-card small {
+  color: #9fbed8;
+  font-size: 12px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.ila-toggle-control button {
+  background: rgba(51, 65, 85, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: #dbeafe;
+  min-height: 32px;
+}
+
+.ila-toggle-control button.active {
+  background: rgba(20, 83, 45, 0.72);
+  border-color: rgba(34, 197, 94, 0.42);
+  color: #bbf7d0;
+}
+
+.ila-action-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ila-action-row button {
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+.ila-route-graph {
+  background: rgba(15, 23, 42, 0.54);
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  border-radius: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ila-route-graph svg {
+  display: block;
+  height: 190px;
+  touch-action: none;
+  width: 100%;
+}
+
+.ila-route-line {
+  stroke: rgba(148, 163, 184, 0.42);
+  stroke-linecap: round;
+  stroke-width: 8;
+}
+
+.ila-span-line {
+  stroke: rgba(20, 184, 166, 0.82);
+  stroke-linecap: round;
+  stroke-width: 5;
+}
+
+.ila-span-line.warning {
+  stroke: rgba(245, 158, 11, 0.86);
+}
+
+.ila-span-label {
+  fill: #9fbed8;
+  font-size: 21px;
+  pointer-events: none;
+}
+
+.ila-station-marker {
+  cursor: pointer;
+}
+
+.ila-station-marker.movable {
+  cursor: ew-resize;
+}
+
+.ila-station-marker circle {
+  fill: #38bdf8;
+  stroke: rgba(219, 234, 254, 0.92);
+  stroke-width: 3;
+}
+
+.ila-station-marker.selected circle {
+  fill: #22c55e;
+  stroke: #bbf7d0;
+}
+
+.ila-station-marker text {
+  fill: #e5f1ff;
+  font-size: 23px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.ila-planning-grid {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(220px, 0.65fr);
+}
+
+.ila-station-table tr.selected td {
+  background: rgba(20, 83, 45, 0.32);
+}
+
+.ila-station-table td b,
+.ila-station-table td small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ila-side-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ila-recommendation-card.warning {
+  border-color: rgba(245, 158, 11, 0.36);
+}
+
+.ila-recommendation-card > div {
+  display: grid;
+  gap: 5px 8px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.ila-optical-table {
+  margin-top: 0;
 }
 
 .transparent-estimate-summary,
@@ -2061,6 +2542,177 @@ textarea {
   margin-bottom: 10px;
 }
 
+.route-engineering-baseline-panel {
+  border-color: rgba(56, 189, 248, 0.36);
+}
+
+.engineering-mode-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.engineering-mode-controls span {
+  color: #9fbed8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.sales-engineering-summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.sales-corridor-candidates-panel {
+  border-color: rgba(34, 197, 94, 0.36);
+}
+
+.sales-corridor-candidate-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(180px, 1fr));
+}
+
+.sales-corridor-candidate-card {
+  background: rgba(7, 24, 39, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.sales-corridor-candidate-card.selected {
+  border-color: rgba(245, 158, 11, 0.76);
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.24);
+}
+
+.sales-corridor-candidate-card.current {
+  border-color: rgba(34, 197, 94, 0.72);
+}
+
+.sales-corridor-candidate-title {
+  align-items: start;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.sales-corridor-candidate-title h4 {
+  color: #eff6ff;
+  font-size: 14px;
+  margin: 0 0 4px;
+}
+
+.sales-corridor-candidate-title span {
+  color: #9fbed8;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.sales-corridor-candidate-metrics {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sales-corridor-candidate-metrics div {
+  background: rgba(15, 23, 42, 0.46);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 6px;
+  min-width: 0;
+  padding: 7px;
+}
+
+.sales-corridor-candidate-metrics span {
+  color: #9fbed8;
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.sales-corridor-candidate-metrics b {
+  color: #f8fbff;
+  display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.sales-corridor-candidate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sales-corridor-candidate-actions button {
+  font-size: 11px;
+  padding: 7px 8px;
+}
+
+.route-engineering-collapsible {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.route-engineering-collapsible summary {
+  color: #e2e8f0;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.route-engineering-collapsible[open] summary {
+  margin-bottom: 10px;
+}
+
+.route-engineering-edit-reason {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 240px) minmax(220px, 1fr) auto;
+}
+
+.route-engineering-edit-reason label {
+  display: grid;
+  gap: 5px;
+}
+
+.route-engineering-layer-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.route-engineering-layer-grid label {
+  align-items: center;
+  background: rgba(7, 24, 39, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto 1fr;
+  padding: 8px;
+}
+
+.route-engineering-layer-grid input {
+  width: auto;
+}
+
+.route-engineering-delta-table .dal-table {
+  min-width: 720px;
+}
+
+.route-engineering-segment-table .dal-table,
+.route-engineering-segment-state-table .dal-table,
+.route-engineering-version-table .dal-table {
+  min-width: 1280px;
+}
+
 @media (max-width: 960px) {
   .commercial-compact-header,
   .commercial-orchestrator-shell {
@@ -2068,6 +2720,7 @@ textarea {
   }
 
   .commercial-compact-header-grid,
+  .commercial-financial-groups,
   .commercial-health-strip,
   .transparent-estimate-pinned-summary,
   .transparent-estimate-controls,
@@ -2076,8 +2729,15 @@ textarea {
   .transparent-estimate-metrics,
   .transparent-estimate-versions,
   .transparent-readiness-grid,
-  .transparent-opportunity-grid {
+  .transparent-opportunity-grid,
+  .ila-planning-header-metrics,
+  .ila-planning-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ila-planning-header,
+  .ila-planning-grid {
+    grid-template-columns: 1fr;
   }
 
   .transparent-authority-row {
@@ -2113,10 +2773,31 @@ textarea {
   .bid-route-review-panel .dal-leaflet-map {
     min-height: 650px !important;
   }
+
+  .route-engineering-layer-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .route-engineering-edit-reason {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-engineering-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sales-corridor-candidate-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .engineering-mode-controls {
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 640px) {
   .commercial-compact-header-grid,
+  .commercial-financial-groups,
   .commercial-health-strip,
   .transparent-estimate-pinned-summary,
   .transparent-estimate-controls,
@@ -2125,13 +2806,23 @@ textarea {
   .transparent-estimate-metrics,
   .transparent-estimate-versions,
   .transparent-readiness-grid,
-  .transparent-opportunity-grid {
+  .transparent-opportunity-grid,
+  .ila-planning-header-metrics,
+  .ila-planning-controls {
     grid-template-columns: 1fr;
   }
 
   .transparent-calibration-heading {
     align-items: stretch;
     display: grid;
+  }
+
+  .sales-engineering-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-corridor-candidate-grid {
+    grid-template-columns: 1fr;
   }
 
   .transparent-authority-row,
@@ -2148,6 +2839,10 @@ textarea {
   }
 
   .commercial-import-adapter {
+    grid-template-columns: 1fr;
+  }
+
+  .route-engineering-layer-grid {
     grid-template-columns: 1fr;
   }
 }

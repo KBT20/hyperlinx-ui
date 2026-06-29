@@ -26,16 +26,26 @@ import {
   type ResolvedLocationSource,
 } from "../../commercial/OpportunityScoutEngine";
 import { resolveCommercialAttachment, type AttachmentResolution } from "../../commercial/CommercialAttachmentEngine";
-import { buildCommercialCorridorDraft, type CommercialCorridorDraft, type CommercialDraftType } from "../../commercial/CommercialCorridorDraftEngine";
+import {
+  buildCommercialCorridorDraft,
+  buildCommercialCorridorDraftFromImportedRoute,
+  type CommercialCorridorDraft,
+  type CommercialDraftType,
+} from "../../commercial/CommercialCorridorDraftEngine";
 import { routeCommercialCorridorWithOsrm, type CommercialRouteRequest, type CommercialRouteResult } from "../../commercial/CommercialOsrmRoutingEngine";
 import {
   DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS,
   type TransparentEstimateControls,
   type TransparentEstimateFinancialControls,
+  type TransparentEstimateHumanAuditEntry,
   type TransparentEstimateProductionControls,
   type TransparentUnknownQuantity,
 } from "../../commercial/TransparentEstimatingEngine";
-import type { ConstraintValue } from "../../commercial/ConstraintAuthority";
+import type { IlaPlanningControls } from "../../commercial/IlaPlanningEngine";
+import { authorityModeConfidence, type ConstraintValue, type ConstraintAuthorityMode } from "../../commercial/ConstraintAuthority";
+import { useDALState } from "../../dal/DALState";
+import { attachPricedDraftToImportedRoute, markImportedRoutePromoted } from "../../translate/CustomerDesignImportEngine";
+import type { CustomerDesignImport, ImportedCustomerRoute } from "../../translate/CustomerDesignImport";
 import { googleHeliumBidPlanFixture, googleHeliumRfpOpportunity } from "../../rfp/fixtures/googleHeliumRfpFixtures";
 import { buildGoogleBidPackagePreview } from "../../rfp/GoogleBidPackagePreview";
 import { buildGoogleRfpBidPlanWithOsrm, rebuildGoogleRfpBidPlanFromRoutePlans } from "../../rfp/GoogleRfpResponseEngine";
@@ -55,8 +65,9 @@ import GoogleBidRouteReviewPanel from "./googleRfp/GoogleBidRouteReviewPanel";
 import GoogleBidSupportingInformationPanel from "./googleRfp/GoogleBidSupportingInformationPanel";
 import GoogleBidVendorResponsePreviewPanel from "./googleRfp/GoogleBidVendorResponsePreviewPanel";
 import TransparentEstimateExplorer from "./googleRfp/TransparentEstimateExplorer";
-import ProposedNetworkMapPanel, { type ProposedNetworkSelection } from "./proposednetwork/ProposedNetworkMapPanel";
+import ProposedNetworkMapPanel, { type CommercialIlaMapStation, type ProposedNetworkSelection } from "./proposednetwork/ProposedNetworkMapPanel";
 import type { ProposedGraph } from "../../proposedGraph/ProposedGraph";
+import type { DALCoordinate } from "../../types/dal";
 
 type CommercialWorkspaceView =
   | "account"
@@ -94,6 +105,7 @@ type CustomerReviewStatus = "NOT_STARTED" | "IN_REVIEW" | "CUSTOMER_DRAFT" | "AC
 type CommercialNetworkCategory = "CUSTOMER_INVENTORY" | "CUSTOMER_PROPOSED" | "COMMERCIAL_DRAFT" | "CUSTOMER_DRAFT" | "ACCEPTED_PROPOSAL" | "IMPORTED" | "FUTURE_GIS";
 type InventoryImportSource = "KMZ" | "KML" | "CSV" | "XLSX" | "GeoJSON" | "GIS_API" | "MANUAL" | "LIVE_SESSION";
 type CommercialDesignMode = "EXTEND_EXISTING_NETWORK" | "NEW_INDEPENDENT_GRAPH" | "CUSTOMER_PROPOSAL_REVIEW";
+type CommercialOpportunityStatus = "SAVED" | "RECENT" | "ARCHIVED";
 type OpportunityWorkflowState =
   | "IDLE"
   | "SELECTING_START_MODE"
@@ -232,6 +244,28 @@ interface AcceptedProposal {
   noServiceOrderCreation: true;
 }
 
+interface CommercialOpportunityRecord {
+  opportunityId: string;
+  accountId: string;
+  name: string;
+  status: CommercialOpportunityStatus;
+  createdAt: string;
+  updatedAt: string;
+  selectedImportId?: string;
+  selectedRouteId?: string;
+  selectedScopeId: string;
+  activeView: CommercialWorkspaceView;
+  commercialDraftType: CommercialDraftType | null;
+  liveSession: LiveCommercialSession | null;
+  commercialDraftSnapshot?: CommercialCorridorDraft | null;
+  selectedCustomerDesignLabel?: string;
+  importedDraftRouteId?: string;
+  snapshotCount: number;
+  note: string;
+  noScopeVersionCreation: true;
+  noInventoryMutation: true;
+}
+
 const COMMERCIAL_WORKFLOW: Array<{ id: CommercialWorkspaceView; label: string; summary: string }> = [
   { id: "account", label: "CRM Account", summary: "Customer, contacts, and opportunity context" },
   { id: "engagement", label: "Engagement", summary: "Opportunity record, documents, reviews, and attachments" },
@@ -338,6 +372,7 @@ const COMMERCIAL_ACCOUNTS: CommercialAccountFixture[] = [
 ];
 
 const LIVE_COMMERCIAL_SESSION_STORAGE_KEY = "hyperlinx:commercial-planning:live-commercial-session:v1";
+const COMMERCIAL_OPPORTUNITY_STORAGE_KEY = "hyperlinx:commercial-planning:opportunities:v1";
 
 const ENRICHMENT_OPTIONS = [
   "Geology",
@@ -381,6 +416,41 @@ const CIVIL_MIX_CONSTRAINT_KEYS = [
   "civil.directionalBoreRockPercent",
   "civil.openTrenchPercent",
 ] as const;
+
+const ESTIMATE_AUTHOR = "Ryan";
+
+function isHumanWorkflowAuthority(mode: ConstraintAuthorityMode) {
+  return mode === "PENDING_HUMAN" || mode === "HUMAN_APPROVED" || mode === "HUMAN" || mode === "APPROVED";
+}
+
+function isApprovedHumanAuthority(mode: ConstraintAuthorityMode) {
+  return mode === "HUMAN_APPROVED" || mode === "APPROVED";
+}
+
+function auditValue(value: ConstraintValue["value"]) {
+  if (value === null || value === undefined) return "UNKNOWN";
+  return String(value);
+}
+
+function valuesMatch(left: ConstraintValue["value"], right: ConstraintValue["value"]) {
+  return auditValue(left) === auditValue(right);
+}
+
+function humanAuditEntry(previous: ConstraintValue, next: ConstraintValue, reason?: string): TransparentEstimateHumanAuditEntry {
+  const timestamp = new Date().toISOString();
+  return {
+    auditId: `estimate-human-${timestamp}-${next.key}-${Math.random().toString(36).slice(2, 8)}`,
+    constraintKey: next.key,
+    label: next.label,
+    previousValue: auditValue(previous.value),
+    newValue: auditValue(next.value),
+    previousAuthority: previous.authorityMode,
+    newAuthority: next.authorityMode,
+    user: ESTIMATE_AUTHOR,
+    timestamp,
+    reason: reason?.trim() || undefined,
+  };
+}
 
 const NETWORK_CATEGORY_LABELS: Record<CommercialNetworkCategory, string> = {
   CUSTOMER_INVENTORY: "Existing Networks",
@@ -838,17 +908,6 @@ const COMMERCIAL_NETWORKS: CommercialNetworkRecord[] = [
   },
 ];
 
-function loadAutosavedLiveCommercialSession(): LiveCommercialSession | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(LIVE_COMMERCIAL_SESSION_STORAGE_KEY);
-    return raw ? JSON.parse(raw) as LiveCommercialSession : null;
-  } catch (error) {
-    console.warn("Unable to load autosaved Commercial Planning session", error);
-    return null;
-  }
-}
-
 function autosaveLiveCommercialSession(session: LiveCommercialSession | null) {
   if (typeof window === "undefined") return;
   try {
@@ -856,6 +915,28 @@ function autosaveLiveCommercialSession(session: LiveCommercialSession | null) {
     else window.localStorage.setItem(LIVE_COMMERCIAL_SESSION_STORAGE_KEY, JSON.stringify(session));
   } catch (error) {
     console.warn("Unable to autosave Commercial Planning session", error);
+  }
+}
+
+function loadCommercialOpportunities(): CommercialOpportunityRecord[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(COMMERCIAL_OPPORTUNITY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as CommercialOpportunityRecord[];
+    return Array.isArray(parsed) ? parsed.filter((record) => record && record.opportunityId && record.accountId) : [];
+  } catch (error) {
+    console.warn("Unable to load Commercial Planning opportunities", error);
+    return [];
+  }
+}
+
+function saveCommercialOpportunities(records: CommercialOpportunityRecord[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(COMMERCIAL_OPPORTUNITY_STORAGE_KEY, JSON.stringify(records));
+  } catch (error) {
+    console.warn("Unable to save Commercial Planning opportunities", error);
   }
 }
 
@@ -997,6 +1078,195 @@ function formatRouteMiles(value: number | null) {
   return value === null ? "Pending parse" : Number(value.toFixed(2)).toLocaleString();
 }
 
+function geometryForImportedRoute(route: ImportedCustomerRoute | null | undefined): DALCoordinate[] {
+  if (!route) return [];
+  return route.dalGeometry?.length
+    ? route.dalGeometry
+    : (route.geometry ?? []).map((coordinate) => [coordinate.longitude, coordinate.latitude] as DALCoordinate);
+}
+
+function commercialDraftRouteIdForImportedRoute(routeId: string) {
+  return `COMMERCIAL-DRAFT-${routeId}`.replace(/[^a-zA-Z0-9-]/g, "-");
+}
+
+function defaultTransparentEstimateControls(): TransparentEstimateControls {
+  return {
+    ...DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS,
+    production: { ...DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.production },
+    financial: { ...DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.financial },
+    ilaPlanning: {
+      ...DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.ilaPlanning,
+      stationOverrides: { ...(DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.ilaPlanning.stationOverrides ?? {}) },
+    },
+    constraints: {},
+    algorithmConstraints: {},
+    humanAuditTrail: [],
+  };
+}
+
+function buildImportedCustomerDesignGraph(importRecord: CustomerDesignImport, route: ImportedCustomerRoute, draft: CommercialCorridorDraft | null): ProposedGraph | null {
+  const graphId = `PROPOSED-GRAPH-${importRecord.designId}-${route.routeId}`;
+  const geometry = geometryForImportedRoute(route);
+  if (geometry.length < 2) return null;
+  const first = geometry[0];
+  const last = geometry.at(-1) ?? first;
+  const routeFeet = route.routeFeet || Math.round(route.routeMiles * 5280);
+  const routeMiles = route.routeMiles || routeFeet / 5280;
+  const generatedAt = new Date().toISOString();
+  const nodes = [
+    {
+      id: `${graphId}:A`,
+      type: "A_SITE" as const,
+      name: `${route.name} A`,
+      lng: first[0],
+      lat: first[1],
+      stationLabel: "A Site",
+      estimatedCost: 0,
+      estimatedConstructionType: "UNKNOWN" as const,
+      status: "CUSTOMER_REVIEW" as const,
+      comments: ["Imported customer design endpoint. Engineering validation required."],
+      confidence: route.confidence,
+      readiness: "READY_FOR_PROPOSAL" as const,
+      metadata: { designId: importRecord.designId, importId: importRecord.importId, routeId: route.routeId },
+      readOnly: true as const,
+    },
+    {
+      id: `${graphId}:Z`,
+      type: "Z_SITE" as const,
+      name: `${route.name} Z`,
+      lng: last[0],
+      lat: last[1],
+      stationLabel: "Z Site",
+      estimatedCost: 0,
+      estimatedConstructionType: "UNKNOWN" as const,
+      status: "CUSTOMER_REVIEW" as const,
+      comments: ["Imported customer design endpoint. Engineering validation required."],
+      confidence: route.confidence,
+      readiness: "READY_FOR_PROPOSAL" as const,
+      metadata: { designId: importRecord.designId, importId: importRecord.importId, routeId: route.routeId },
+      readOnly: true as const,
+    },
+  ];
+  const routeStatistics = {
+    totalRouteLengthFeet: routeFeet,
+    totalRouteLengthMiles: routeMiles,
+    fiberFeet: routeFeet,
+    ductFeet: routeFeet,
+    estimatedStationCount: Math.max(2, Math.ceil(routeFeet / 1000) + 1),
+    estimatedVaultCount: draft?.vaultCount ?? 0,
+    estimatedRegenCount: draft?.regenCount ?? 0,
+    estimatedHighwayCrossings: 0,
+    estimatedRailroadCrossings: 0,
+    estimatedWaterCrossings: 0,
+    estimatedUrbanSegments: 0,
+    estimatedRuralSegments: Math.max(1, draft?.routeSegments.length ?? 1),
+    estimatedConstructionCost: draft?.financialAuthority.constructionCost ?? 0,
+    confidenceScore: route.confidence,
+    estimatedOnly: true as const,
+  };
+  return {
+    proposedGraphId: graphId,
+    proposalId: `CUSTOMER-DESIGN-PROPOSAL-${importRecord.designId}`,
+    customerId: importRecord.accountId,
+    customerName: importRecord.customerName,
+    opportunityId: importRecord.designId,
+    opportunityName: route.name,
+    routeRequestId: importRecord.importId,
+    sourceDesignLaunchId: importRecord.designId,
+    designDoctrineId: "CUSTOMER_DESIGN_IMPORT",
+    routeCandidateId: `ROUTE-CANDIDATE-${route.routeId}`,
+    networkType: "LONG_HAUL",
+    networkClass: "LONG_HAUL",
+    topology: "LINEAR",
+    protection: "LINEAR",
+    protectionClass: "NONE",
+    primaryProduct: "DUCT_PLUS_FIBER",
+    nodes,
+    edges: [
+      {
+        id: `${graphId}:CUSTOMER-BASELINE`,
+        segmentId: `${route.routeId}:CUSTOMER-BASELINE`,
+        from: nodes[0].id,
+        to: nodes[1].id,
+        estimatedDistance: routeFeet,
+        estimatedFiberFeet: routeFeet,
+        estimatedDuctFeet: routeFeet,
+        estimatedCost: draft?.financialAuthority.constructionCost,
+        constructionType: "UNKNOWN",
+        crossings: [],
+        confidence: route.confidence,
+        comments: ["Commercial Planning is estimating against imported customer geometry. OSRM is not regenerated unless explicitly requested."],
+        engineeringNotes: ["Commercial Baseline preserves customer import geometry."],
+        coordinates: geometry,
+        metadata: { designId: importRecord.designId, importId: importRecord.importId, routeId: route.routeId, commercialBaseline: true },
+        readOnly: true,
+      },
+    ],
+    statistics: {
+      totalMiles: routeMiles,
+      fiberFeet: routeFeet,
+      ductFeet: routeFeet,
+      estimatedStationCount: routeStatistics.estimatedStationCount,
+      estimatedVaults: draft?.vaultCount ?? 0,
+      estimatedRegenSites: draft?.regenCount ?? 0,
+      estimatedCabinets: 0,
+      estimatedCrossings: 0,
+      estimatedHighwayCrossings: 0,
+      estimatedRailroadCrossings: 0,
+      estimatedWaterCrossings: 0,
+      estimatedUrbanSegments: 0,
+      estimatedRuralSegments: routeStatistics.estimatedRuralSegments,
+      estimatedConstructionCost: draft?.financialAuthority.constructionCost ?? 0,
+      confidenceScore: route.confidence,
+      routeCandidateDerived: false,
+      estimatedOnly: true,
+    },
+    routeStatistics,
+    routeCandidate: {
+      routeCandidateId: `ROUTE-CANDIDATE-${route.routeId}`,
+      sourceDesignLaunchId: importRecord.designId,
+      designDoctrineId: "CUSTOMER_DESIGN_IMPORT",
+      networkClass: "LONG_HAUL",
+      topology: "LINEAR",
+      protectionClass: "NONE",
+      geometry,
+      nodes: [],
+      segments: [],
+      constraints: [],
+      engineeringConstraintCandidates: [],
+      statistics: routeStatistics,
+      estimatedConstructionProfile: "CUSTOMER_IMPORTED",
+      estimatedMaterialProfile: "CUSTOMER_IMPORTED",
+      estimatedFacilityProfile: "CUSTOMER_IMPORTED",
+      generatedAt,
+      diagnostics: [],
+      salesEstimate: true,
+      engineeringCertificationRequired: true,
+      noScopeVersionCreation: true,
+      noInventoryMutation: true,
+      noPersistence: true,
+    } as ProposedGraph["routeCandidate"],
+    engineeringConstraintCandidates: [],
+    readiness: "READY_FOR_PROPOSAL",
+    diagnostics: [],
+    generatedAt,
+    metadata: {
+      designId: importRecord.designId,
+      importId: importRecord.importId,
+      routeId: route.routeId,
+      commercialBaselineSource: "IMPORTED_CUSTOMER_DESIGN",
+      noOsrmRegeneration: true,
+    },
+    readOnly: true,
+    noEngineering: true,
+    salesEstimate: true,
+    engineeringCertificationRequired: true,
+    noScopeVersionCreation: true,
+    noInventoryMutation: true,
+    noPersistence: true,
+  };
+}
+
 function customerDraftToNetworkRecord(draft: CustomerDraftRecord, account: CommercialAccountFixture): CommercialNetworkRecord {
   return {
     networkId: draft.customerDraftId,
@@ -1070,6 +1340,9 @@ function buildCommercialMapLayers(args: {
   layerStates: Record<string, NetworkLayerState>;
   customerReviewStatus: CustomerReviewStatus;
   salesDraftActive: boolean;
+  importedDesignActive: boolean;
+  importedDesignLabel?: string;
+  importedDesignRouteMiles?: number;
   customerDraftActive: boolean;
   acceptedProposal: AcceptedProposal | null;
 }): CommercialMapLayer[] {
@@ -1165,6 +1438,24 @@ function buildCommercialMapLayers(args: {
   });
 
   const salesDraftNetwork = args.networks.find((network) => network.networkCategory === "COMMERCIAL_DRAFT" && resolveNetworkLayerState(network, args.layerStates).activeReference);
+  layers.push({
+    id: "customer-design:active-imported-baseline",
+    label: args.importedDesignLabel ?? "Customer Design",
+    domain: "CUSTOMER_PROPOSED_NETWORK",
+    accountId: args.account.accountId,
+    authority: "Customer",
+    owner: args.account.name,
+    visibility: mapVisibility(args.importedDesignActive),
+    lockState: "LOCKED",
+    renderState: args.importedDesignActive ? "ACTIVE" : "INACTIVE",
+    zIndex: commercialMapZIndex("CUSTOMER_PROPOSED_NETWORK", "ROUTES"),
+    source: args.importedDesignActive ? "Customer Design Library" : "No imported design selected",
+    refreshMode: "SESSION_FROZEN",
+    featureScope: "ROUTES",
+    featureCount: args.importedDesignActive ? 1 : 0,
+    routeMiles: args.importedDesignRouteMiles,
+  });
+
   layers.push({
     id: "sales-commercial-draft:active-corridor",
     label: salesDraftNetwork?.name ?? "Sales Commercial Draft",
@@ -1584,7 +1875,7 @@ function CommercialWorkingSetPanel({
         <div><span>Customer Inventory</span><b>{customerInventoryCount.toLocaleString()} active</b></div>
         <div><span>Sales Draft</span><b>{salesDraftActive ? "Active" : "Hidden"}</b></div>
         <div><span>Customer Draft</span><b>{customerDraftActive ? "Loaded" : "Hidden"}</b></div>
-        <div><span>Shared Review</span><b>{sharedReviewActive ? "Active" : "Hidden"}</b></div>
+        <div><span>Customer Review</span><b>{sharedReviewActive ? "Active" : "Hidden"}</b></div>
         <div><span>Accepted Proposal</span><b>{acceptedProposalActive ? "Available" : "Hidden"}</b></div>
       </div>
       <div className="dal-actions">
@@ -1592,7 +1883,7 @@ function CommercialWorkingSetPanel({
         <button type="button" onClick={onUploadSalesDraft}>Upload KMZ/KML/CSV</button>
         <button type="button" onClick={onLoadSavedProposal}>Load Saved Proposal</button>
         <button type="button" onClick={onLoadCustomerDraft}>Load Customer Draft</button>
-        <button type="button" onClick={onStartSharedReview}>Start Shared Review</button>
+        <button type="button" onClick={onStartSharedReview}>Start Customer Review</button>
       </div>
       <div className="dal-status">
         Startup working set is Customer Inventory only. Each button adds a domain without mutating Customer Inventory or creating ScopeVersion authority.
@@ -2107,7 +2398,7 @@ function SegmentValueAnalysisPanel({ pricingSummary }: { pricingSummary: Selecte
         <summary>Segment Value Analysis - Collapsed - {pricingSummary.scope.label}</summary>
         <div className="teralinx-summary-grid">
           <div><span>Construction Cost</span><b>{money(reconciliation.ospCost)}</b></div>
-          <div><span>Revenue Potential</span><b>{money(reconciliation.sellPriceIru)}</b></div>
+          <div><span>NRC Revenue</span><b>{money(reconciliation.nrcRevenue)}</b></div>
           <div><span>Risk</span><b>Pending selected enrichment</b></div>
           <div><span>Capacity</span><b>Customer product driven</b></div>
           <div><span>Latency</span><b>Route geometry dependent</b></div>
@@ -2154,16 +2445,24 @@ function EmptyAccountProposal({ account }: { account: CommercialAccountFixture }
 }
 
 export default function GoogleRfpWorkspace() {
+  const {
+    activateRouteEngineeringFromCommercialDraft,
+    customerDesignImports,
+    selectedCustomerDesignImportId,
+    setSelectedCustomerDesignImportId,
+    selectedCustomerDesignRouteId,
+    setSelectedCustomerDesignRouteId,
+    upsertCustomerDesignImport,
+    setSelectedCommercialCorridorDraft,
+    selectedRouteEngineeringDraft,
+    setSelectedRouteEngineeringDraft,
+    setSelectedRouteEngineeringActivation,
+  } = useDALState();
   const [bidPlan, setBidPlan] = useState(googleHeliumBidPlanFixture);
   const defaultAssumptionState = useMemo(() => createDefaultBudgetAssumptionState(), []);
   const [assumptionStates, setAssumptionStates] = useState<BudgetAssumptionState[]>([defaultAssumptionState]);
   const [selectedAssumptionStateId, setSelectedAssumptionStateId] = useState(defaultAssumptionState.stateId);
-  const [transparentEstimateControls, setTransparentEstimateControls] = useState<TransparentEstimateControls>(() => ({
-    ...DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS,
-    production: { ...DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.production },
-    financial: { ...DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.financial },
-    constraints: {},
-  }));
+  const [transparentEstimateControls, setTransparentEstimateControls] = useState<TransparentEstimateControls>(() => defaultTransparentEstimateControls());
   const [transparentEstimateRecalculatedAt, setTransparentEstimateRecalculatedAt] = useState<string | null>(null);
   const [liveCommercialSession, setLiveCommercialSession] = useState<LiveCommercialSession | null>(null);
   const [selectedScopeId, setSelectedScopeId] = useState<string>(() => googleHeliumBidPlanFixture.routePlans[0]?.routeRequirement.routeRequirementId ?? "COMBINED_AWARD");
@@ -2178,6 +2477,11 @@ export default function GoogleRfpWorkspace() {
   const [activeView, setActiveView] = useState<CommercialWorkspaceView>("networks");
   const [activeDesignMode, setActiveDesignMode] = useState<CommercialDesignMode>("EXTEND_EXISTING_NETWORK");
   const [commercialDraftType, setCommercialDraftType] = useState<CommercialDraftType | null>(null);
+  const [importedCommercialDraft, setImportedCommercialDraft] = useState<CommercialCorridorDraft | null>(null);
+  const [loadedCommercialDraftSnapshot, setLoadedCommercialDraftSnapshot] = useState<CommercialCorridorDraft | null>(null);
+  const [commercialOpportunities, setCommercialOpportunities] = useState<CommercialOpportunityRecord[]>(() => loadCommercialOpportunities());
+  const [activeCommercialOpportunityId, setActiveCommercialOpportunityId] = useState("");
+  const [opportunityNotice, setOpportunityNotice] = useState("No opportunity loaded. New Opportunity starts with Customer Twin only.");
   const [opportunityWorkflowState, setOpportunityWorkflowState] = useState<OpportunityWorkflowState>("IDLE");
   const [opportunityScoutMode, setOpportunityScoutMode] = useState<OpportunityScoutMode>("CLICK_SITE");
   const [opportunityScoutAddress, setOpportunityScoutAddress] = useState("");
@@ -2291,6 +2595,82 @@ export default function GoogleRfpWorkspace() {
     [commercialBidPlan.routePlans, selectedScope],
   );
   const selectedAssumptionState = assumptionStates.find((state) => state.stateId === selectedAssumptionStateId) ?? assumptionStates[0];
+  const accountCustomerDesignImports = useMemo(
+    () => customerDesignImports.filter((record) => record.accountId === selectedAccount.accountId),
+    [customerDesignImports, selectedAccount.accountId],
+  );
+  const accountImportedCustomerRoutes = useMemo(
+    () => accountCustomerDesignImports.flatMap((record) => record.routes.map((route) => ({ importRecord: record, route }))),
+    [accountCustomerDesignImports],
+  );
+  const accountCommercialOpportunities = useMemo(
+    () => commercialOpportunities.filter((record) => record.accountId === selectedAccount.accountId),
+    [commercialOpportunities, selectedAccount.accountId],
+  );
+  const recentCommercialOpportunities = useMemo(
+    () => [...accountCommercialOpportunities]
+      .filter((record) => record.status !== "ARCHIVED")
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, 6),
+    [accountCommercialOpportunities],
+  );
+  const savedCommercialOpportunities = useMemo(
+    () => [...accountCommercialOpportunities]
+      .filter((record) => record.status === "SAVED" || record.status === "RECENT")
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    [accountCommercialOpportunities],
+  );
+  const archivedCommercialOpportunities = useMemo(
+    () => [...accountCommercialOpportunities]
+      .filter((record) => record.status === "ARCHIVED")
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    [accountCommercialOpportunities],
+  );
+  const activeCommercialOpportunity = accountCommercialOpportunities.find((record) => record.opportunityId === activeCommercialOpportunityId) ?? null;
+  const selectedImportedCustomerDesignEntry = useMemo(
+    () => {
+      if (!selectedCustomerDesignImportId || !selectedCustomerDesignRouteId) return null;
+      return accountImportedCustomerRoutes.find((entry) => (
+        entry.importRecord.importId === selectedCustomerDesignImportId &&
+        entry.route.routeId === selectedCustomerDesignRouteId
+      )) ?? null;
+    },
+    [accountImportedCustomerRoutes, selectedCustomerDesignImportId, selectedCustomerDesignRouteId],
+  );
+  const selectedImportedCustomerDesignImport = selectedImportedCustomerDesignEntry?.importRecord ?? null;
+  const selectedImportedCustomerRoute = selectedImportedCustomerDesignEntry?.route ?? null;
+  const storedSelectedImportedCommercialDraft =
+    selectedImportedCustomerRoute?.pricedDraft ??
+    (selectedImportedCustomerRoute && importedCommercialDraft?.routeId === commercialDraftRouteIdForImportedRoute(selectedImportedCustomerRoute.routeId) ? importedCommercialDraft : null);
+  const selectedImportedCommercialDraft = useMemo(() => {
+    if (!storedSelectedImportedCommercialDraft || !selectedImportedCustomerDesignImport || !selectedImportedCustomerRoute) return storedSelectedImportedCommercialDraft;
+    return buildCommercialCorridorDraftFromImportedRoute({
+      importRecord: selectedImportedCustomerDesignImport,
+      importedRoute: selectedImportedCustomerRoute,
+      assumptionState: selectedAssumptionState,
+      estimateControls: transparentEstimateControls,
+    }) ?? storedSelectedImportedCommercialDraft;
+  }, [
+    selectedAssumptionState,
+    selectedImportedCustomerDesignImport,
+    selectedImportedCustomerRoute,
+    storedSelectedImportedCommercialDraft,
+    transparentEstimateControls,
+  ]);
+  const selectedImportedCustomerRouteGeometry = useMemo(
+    () => geometryForImportedRoute(selectedImportedCustomerRoute),
+    [selectedImportedCustomerRoute],
+  );
+  const importedCustomerGeometryLoaded = selectedImportedCustomerRouteGeometry.length > 1;
+  const importedCustomerGeometryError = selectedImportedCustomerDesignImport && selectedImportedCustomerRoute && !importedCustomerGeometryLoaded
+    ? `Imported route geometry not loaded for active designId ${selectedImportedCustomerDesignImport.designId}`
+    : "";
+  const importedCustomerDesignGraph = useMemo(
+    () => selectedImportedCustomerDesignImport && selectedImportedCustomerRoute
+      ? buildImportedCustomerDesignGraph(selectedImportedCustomerDesignImport, selectedImportedCustomerRoute, selectedImportedCommercialDraft ?? null)
+      : null,
+    [selectedImportedCustomerDesignImport, selectedImportedCustomerRoute, selectedImportedCommercialDraft],
+  );
   const scopedBidPlan = useMemo(() => ({
     ...commercialBidPlan,
     routePlans: selectedRoutePlans,
@@ -2446,6 +2826,27 @@ export default function GoogleRfpWorkspace() {
     commercialCorridorDraft?.transparentEstimate.commercialReadiness.score,
     commercialCorridorDraft?.transparentEstimate.controls.targetDurationDays,
   ]);
+  useEffect(() => {
+    if (!selectedImportedCommercialDraft) return;
+    setTransparentEstimateRecalculatedAt(new Date().toISOString());
+  }, [
+    selectedImportedCommercialDraft?.routeId,
+    selectedImportedCommercialDraft?.transparentEstimate.totalKnownCost,
+    selectedImportedCommercialDraft?.transparentEstimate.sellPrice,
+    selectedImportedCommercialDraft?.transparentEstimate.mrc,
+    selectedImportedCommercialDraft?.transparentEstimate.confidence.score,
+    selectedImportedCommercialDraft?.transparentEstimate.commercialReadiness.score,
+    selectedImportedCommercialDraft?.transparentEstimate.controls.targetDurationDays,
+  ]);
+  useEffect(() => {
+    if (!selectedImportedCustomerRoute?.pricedDraft) return;
+    setImportedCommercialDraft(selectedImportedCustomerRoute.pricedDraft);
+    setSelectedCommercialCorridorDraft(selectedImportedCustomerRoute.pricedDraft);
+  }, [
+    selectedImportedCustomerRoute?.routeId,
+    selectedImportedCustomerRoute?.pricedDraft,
+    setSelectedCommercialCorridorDraft,
+  ]);
   const commercialDraftValidation = useMemo(() => {
     if (!commercialDraftType) return [];
     if (commercialDraftType === "NEW_GRAPH_CORRIDOR") {
@@ -2489,25 +2890,36 @@ export default function GoogleRfpWorkspace() {
         role: "Z" as const,
       } : null,
     ].filter((point): point is { id: string; label: string; coordinate: [number, number]; role: "A" | "Z" } => Boolean(point));
-    if (!opportunityScoutCandidate && !azPoints.length) return undefined;
+    const corridorGeometry = selectedImportedCommercialDraft
+      ? undefined
+      : loadedCommercialDraftSnapshot
+        ? loadedCommercialDraftSnapshot.geometry
+      : commercialRouteResult?.status === "ROUTED"
+        ? (commercialCorridorDraft?.geometry ?? opportunityScoutQuickQuote?.geometry)
+        : undefined;
+    if (!opportunityScoutCandidate && !azPoints.length && !corridorGeometry?.length) return undefined;
     return {
       draftType: commercialDraftType ?? undefined,
       candidateCoordinate: commercialDraftType === "EXISTING_GRAPH_EXTENSION" ? opportunityScoutCandidate?.coordinate : undefined,
       candidateLabel: opportunityScoutCandidate?.label,
       azPoints,
-      corridorGeometry: commercialRouteResult?.status === "ROUTED" ? (commercialCorridorDraft?.geometry ?? opportunityScoutQuickQuote?.geometry) : undefined,
+      corridorGeometry,
       attachmentCandidates: commercialDraftType === "EXISTING_GRAPH_EXTENSION" ? opportunityAttachmentResolution?.alternatives.map((attachment, index) => ({
         id: attachment.id,
         label: index === 0 ? "Recommended attachment" : "Attachment option",
         coordinate: [attachment.projectedLongitude, attachment.projectedLatitude] as [number, number],
         selected: selectedAttachmentCandidate?.id === attachment.id,
       })) : undefined,
-      quickQuoteLabel: commercialCorridorDraft
-        ? `${formatRouteMiles(commercialCorridorDraft.routeMiles)} mi / ${money(commercialCorridorDraft.totalCost)} corridor`
+      quickQuoteLabel: selectedImportedCommercialDraft
+        ? `${formatRouteMiles(selectedImportedCommercialDraft.routeMiles)} mi / ${money(selectedImportedCommercialDraft.financialAuthority.constructionCost)} imported baseline`
+        : loadedCommercialDraftSnapshot
+        ? `${formatRouteMiles(loadedCommercialDraftSnapshot.routeMiles)} mi / ${money(loadedCommercialDraftSnapshot.financialAuthority.constructionCost)} saved draft`
+        : commercialCorridorDraft
+        ? `${formatRouteMiles(commercialCorridorDraft.routeMiles)} mi / ${money(commercialCorridorDraft.financialAuthority.constructionCost)} corridor`
         : opportunityScoutQuickQuote ? `${formatRouteMiles(opportunityScoutQuickQuote.routeMiles)} mi / ${money(opportunityScoutQuickQuote.budgetCost)} lateral` : undefined,
       confidence: opportunityScoutQuickQuote?.confidence,
     };
-  }, [azDestinationLocation, azOriginLocation, commercialCorridorDraft, commercialDraftType, commercialRouteResult?.status, opportunityAttachmentResolution, opportunityScoutCandidate, opportunityScoutQuickQuote, selectedAttachmentCandidate?.id]);
+  }, [azDestinationLocation, azOriginLocation, commercialCorridorDraft, commercialDraftType, commercialRouteResult?.status, loadedCommercialDraftSnapshot, opportunityAttachmentResolution, opportunityScoutCandidate, opportunityScoutQuickQuote, selectedAttachmentCandidate?.id, selectedImportedCommercialDraft]);
   const accountCustomerReviewStatus: CustomerReviewStatus = googleFixtureIsActive ? customerReviewStatus : "NOT_STARTED";
   const commercialMapLayers = useMemo(() => buildCommercialMapLayers({
     account: selectedAccount,
@@ -2515,7 +2927,10 @@ export default function GoogleRfpWorkspace() {
     networks: accountNetworkInventory,
     layerStates: networkLayerStates,
     customerReviewStatus: accountCustomerReviewStatus,
-    salesDraftActive: activeCommercialDraftNetworks.length > 0,
+    salesDraftActive: !selectedImportedCustomerRoute && (activeCommercialDraftNetworks.length > 0 || Boolean(loadedCommercialDraftSnapshot)),
+    importedDesignActive: Boolean(selectedImportedCustomerRoute && importedCustomerGeometryLoaded),
+    importedDesignLabel: selectedImportedCustomerRoute?.name,
+    importedDesignRouteMiles: selectedImportedCustomerRoute?.routeMiles,
     customerDraftActive: accountCustomerDrafts.length > 0,
     acceptedProposal: accountAcceptedProposal,
   }), [
@@ -2525,7 +2940,10 @@ export default function GoogleRfpWorkspace() {
     accountCustomerReviewStatus,
     accountNetworkInventory,
     activeCommercialDraftNetworks.length,
+    importedCustomerGeometryLoaded,
+    loadedCommercialDraftSnapshot,
     networkLayerStates,
+    selectedImportedCustomerRoute,
     selectedAccount,
   ]);
   const excludedInventoryAccountNames = useMemo(
@@ -2564,6 +2982,10 @@ export default function GoogleRfpWorkspace() {
   useEffect(() => {
     if (liveCommercialSession) autosaveLiveCommercialSession(liveCommercialSession);
   }, [liveCommercialSession]);
+
+  useEffect(() => {
+    saveCommercialOpportunities(commercialOpportunities);
+  }, [commercialOpportunities]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2658,8 +3080,32 @@ export default function GoogleRfpWorkspace() {
     }));
   }
 
+  function updateTransparentIlaPlanning(next: IlaPlanningControls) {
+    setTransparentEstimateControls((prev) => ({
+      ...prev,
+      ilaPlanning: {
+        ...next,
+        stationOverrides: { ...(next.stationOverrides ?? {}) },
+      },
+    }));
+  }
+
+  function selectTransparentIlaStation(stationId: string) {
+    setTransparentEstimateControls((prev) => ({
+      ...prev,
+      ilaPlanning: {
+        ...prev.ilaPlanning,
+        selectedStationId: stationId,
+        stationOverrides: { ...(prev.ilaPlanning.stationOverrides ?? {}) },
+      },
+    }));
+  }
+
   function transparentConstraintTemplate(key: string, prev: TransparentEstimateControls, fallback?: ConstraintValue): ConstraintValue {
-    const estimateConstraint = commercialCorridorDraft?.transparentEstimate.constraintValues[key];
+    const estimateConstraint =
+      commercialCorridorDraft?.transparentEstimate.constraintValues[key] ??
+      selectedImportedCommercialDraft?.transparentEstimate.constraintValues[key] ??
+      loadedCommercialDraftSnapshot?.transparentEstimate.constraintValues[key];
     const existing = prev.constraints?.[key];
     if (existing) return existing;
     if (estimateConstraint) return estimateConstraint;
@@ -2677,10 +3123,25 @@ export default function GoogleRfpWorkspace() {
     };
   }
 
+  function algorithmConstraintTemplate(key: string, prev: TransparentEstimateControls, previous?: ConstraintValue): ConstraintValue | undefined {
+    const stored = prev.algorithmConstraints?.[key];
+    if (stored) return stored;
+    if (previous && !isHumanWorkflowAuthority(previous.authorityMode)) return previous;
+    const estimateConstraint =
+      commercialCorridorDraft?.transparentEstimate.constraintValues[key] ??
+      selectedImportedCommercialDraft?.transparentEstimate.constraintValues[key] ??
+      loadedCommercialDraftSnapshot?.transparentEstimate.constraintValues[key];
+    if (estimateConstraint && !isHumanWorkflowAuthority(estimateConstraint.authorityMode)) return estimateConstraint;
+    return undefined;
+  }
+
   function baseCivilMixValue(key: string, prev: TransparentEstimateControls) {
     const existing = prev.constraints?.[key]?.value;
     if (typeof existing === "number") return existing;
-    const estimateValue = commercialCorridorDraft?.transparentEstimate.constraintValues[key]?.value;
+    const estimateValue =
+      commercialCorridorDraft?.transparentEstimate.constraintValues[key]?.value ??
+      selectedImportedCommercialDraft?.transparentEstimate.constraintValues[key]?.value ??
+      loadedCommercialDraftSnapshot?.transparentEstimate.constraintValues[key]?.value;
     if (typeof estimateValue === "number") return estimateValue;
     if (key === "civil.plowPercent") return selectedAssumptionState.civilMix.plowPercent;
     if (key === "civil.directionalBoreDirtPercent") return selectedAssumptionState.civilMix.hddPercent;
@@ -2698,29 +3159,40 @@ export default function GoogleRfpWorkspace() {
       };
     }
     const remainingKeys = CIVIL_MIX_CONSTRAINT_KEYS.filter((key) => key !== changed.key);
-    const remainingTarget = Math.max(0, 100 - changedValue);
-    const currentRemainingTotal = remainingKeys.reduce((total, key) => total + baseCivilMixValue(key, prev), 0);
+    const fixedKeys = remainingKeys.filter((key) => isApprovedHumanAuthority(transparentConstraintTemplate(key, prev).authorityMode));
+    const adjustableKeys = remainingKeys.filter((key) => !fixedKeys.includes(key));
+    const fixedTotal = fixedKeys.reduce((total, key) => total + baseCivilMixValue(key, prev), 0);
+    const remainingTarget = Math.max(0, 100 - changedValue - fixedTotal);
+    const currentRemainingTotal = adjustableKeys.reduce((total, key) => total + baseCivilMixValue(key, prev), 0);
     let allocated = 0;
     const nextConstraints: Record<string, ConstraintValue> = {
       ...(prev.constraints ?? {}),
       [changed.key]: { ...changed, value: changedValue },
     };
-    remainingKeys.forEach((key, index) => {
+    fixedKeys.forEach((key) => {
+      const template = transparentConstraintTemplate(key, prev);
+      nextConstraints[key] = {
+        ...template,
+        value: baseCivilMixValue(key, prev),
+        lastUpdated: new Date().toISOString(),
+      };
+    });
+    adjustableKeys.forEach((key, index) => {
       const template = transparentConstraintTemplate(key, prev);
       const rawValue = currentRemainingTotal > 0
         ? (baseCivilMixValue(key, prev) / currentRemainingTotal) * remainingTarget
-        : remainingTarget / remainingKeys.length;
+        : remainingTarget / Math.max(1, adjustableKeys.length);
       const remainingAllocation = Math.max(0, remainingTarget - allocated);
-      const balancedValue = index === remainingKeys.length - 1 ? roundTwo(remainingAllocation) : Math.min(roundTwo(rawValue), remainingAllocation);
+      const balancedValue = index === adjustableKeys.length - 1 ? roundTwo(remainingAllocation) : Math.min(roundTwo(rawValue), remainingAllocation);
       allocated += balancedValue;
       nextConstraints[key] = {
         ...template,
         key,
         value: balancedValue,
-        authorityMode: template.authorityMode === "APPROVED" ? "APPROVED" : "ALGORITHM",
-        confidence: template.authorityMode === "APPROVED" ? template.confidence : 62,
-        source: template.authorityMode === "APPROVED" ? template.source : "Civil mix auto-balance",
-        sourceDetail: "Locked mode redistributed the remaining route percentage to keep civil mix at 100%.",
+        authorityMode: "ALGORITHM",
+        confidence: authorityModeConfidence("ALGORITHM"),
+        source: "Civil mix auto-balance",
+        sourceDetail: "Automatic mode redistributed the remaining route percentage to keep civil mix at 100%.",
         lastUpdated: new Date().toISOString(),
       };
     });
@@ -2733,7 +3205,7 @@ export default function GoogleRfpWorkspace() {
 
   function updateTransparentCivilMixMode(mode: TransparentEstimateControls["civilMixMode"]) {
     setTransparentEstimateControls((prev) => {
-      if (mode !== "LOCKED") return { ...prev, civilMixMode: mode };
+      if (mode !== "AUTOMATIC") return { ...prev, civilMixMode: mode };
       const driverKey = CIVIL_MIX_CONSTRAINT_KEYS.reduce((largestKey, key) => (
         baseCivilMixValue(key, prev) > baseCivilMixValue(largestKey, prev) ? key : largestKey
       ), CIVIL_MIX_CONSTRAINT_KEYS[0]);
@@ -2742,7 +3214,7 @@ export default function GoogleRfpWorkspace() {
         ...prev,
         civilMixMode: mode,
         constraints: rebalanceCivilMixConstraints(
-          { ...prev, civilMixMode: "LOCKED" },
+          { ...prev, civilMixMode: "AUTOMATIC" },
           {
             ...driverTemplate,
             value: baseCivilMixValue(driverKey, prev),
@@ -2755,17 +3227,48 @@ export default function GoogleRfpWorkspace() {
 
   function updateTransparentConstraint(next: ConstraintValue) {
     setTransparentEstimateControls((prev) => {
-      const productionKey = TRANSPARENT_CONSTRAINT_PRODUCTION_MAP[next.key];
-      const numericValue = typeof next.value === "number" ? Math.max(0, next.value) : null;
-      const constraints = CIVIL_MIX_CONSTRAINT_KEYS.includes(next.key as (typeof CIVIL_MIX_CONSTRAINT_KEYS)[number])
-        ? rebalanceCivilMixConstraints(prev, next)
+      const previous = transparentConstraintTemplate(next.key, prev);
+      const algorithmBaseline = algorithmConstraintTemplate(next.key, prev, previous);
+      const restoringAlgorithm = next.authorityMode === "ALGORITHM" && Boolean(algorithmBaseline);
+      const resolvedNext: ConstraintValue = restoringAlgorithm && algorithmBaseline
+        ? {
+            ...algorithmBaseline,
+            authorityMode: "ALGORITHM",
+            confidence: authorityModeConfidence("ALGORITHM"),
+            approvedBy: undefined,
+            approvedAt: undefined,
+            notes: next.notes,
+            lastUpdated: new Date().toISOString(),
+          }
+        : {
+            ...next,
+            lastUpdated: next.lastUpdated ?? new Date().toISOString(),
+          };
+      const productionKey = TRANSPARENT_CONSTRAINT_PRODUCTION_MAP[resolvedNext.key];
+      const numericValue = typeof resolvedNext.value === "number" ? Math.max(0, resolvedNext.value) : null;
+      const constraints = CIVIL_MIX_CONSTRAINT_KEYS.includes(resolvedNext.key as (typeof CIVIL_MIX_CONSTRAINT_KEYS)[number])
+        ? rebalanceCivilMixConstraints(prev, resolvedNext)
         : {
             ...(prev.constraints ?? {}),
-            [next.key]: {
-              ...next,
-              lastUpdated: next.lastUpdated ?? new Date().toISOString(),
+            [resolvedNext.key]: {
+              ...resolvedNext,
+              lastUpdated: resolvedNext.lastUpdated ?? new Date().toISOString(),
             },
           };
+      const algorithmConstraints = algorithmBaseline
+        ? {
+            ...(prev.algorithmConstraints ?? {}),
+            [resolvedNext.key]: algorithmBaseline,
+          }
+        : prev.algorithmConstraints;
+      const changedValue = !valuesMatch(previous.value, resolvedNext.value);
+      const changedAuthority = previous.authorityMode !== resolvedNext.authorityMode;
+      const changedReason = (previous.notes ?? "") !== (resolvedNext.notes ?? "");
+      const appendAudit = (changedValue || changedAuthority || changedReason) && (
+        restoringAlgorithm ||
+        isHumanWorkflowAuthority(previous.authorityMode) ||
+        isHumanWorkflowAuthority(resolvedNext.authorityMode)
+      );
       return {
         ...prev,
         production: productionKey
@@ -2774,13 +3277,20 @@ export default function GoogleRfpWorkspace() {
               [productionKey]: numericValue === null ? null : Math.round(numericValue),
             }
           : prev.production,
-        financial: next.key === "financial.omCostPerRouteMile"
+        financial: resolvedNext.key === "financial.omCostPerRouteMile"
           ? {
               ...prev.financial,
               monthlyOmPerRouteMile: numericValue === null ? 0 : Number((numericValue / 12).toFixed(2)),
             }
           : prev.financial,
         constraints,
+        algorithmConstraints,
+        humanAuditTrail: appendAudit
+          ? [
+              ...(prev.humanAuditTrail ?? []),
+              humanAuditEntry(previous, resolvedNext, resolvedNext.notes),
+            ]
+          : prev.humanAuditTrail,
       };
     });
   }
@@ -2856,6 +3366,189 @@ export default function GoogleRfpWorkspace() {
     setPendingImportSource(null);
     setPendingImportFileName("");
     setPendingImportDisposition("REFERENCE_ONLY");
+    setActiveCommercialOpportunityId("");
+    setOpportunityNotice("No opportunity loaded. New Opportunity starts with Customer Twin only.");
+  }
+
+  function clearCommercialDraftMapLayers() {
+    setNetworkLayerStates((prev) => {
+      const next = { ...prev };
+      accountNetworkInventory
+        .filter((network) => network.networkCategory === "COMMERCIAL_DRAFT")
+        .forEach((network) => {
+          next[network.networkId] = {
+            ...(prev[network.networkId] ?? defaultNetworkLayerState(network)),
+            visible: false,
+            activeReference: false,
+            locked: false,
+          };
+        });
+      return next;
+    });
+  }
+
+  function resetCommercialOpportunityWorkingState(options: { preserveActiveOpportunity?: boolean } = {}) {
+    resetOpportunityInputState();
+    setLiveCommercialSession(null);
+    setCommercialRecalculationPending(false);
+    setImportedCommercialDraft(null);
+    setLoadedCommercialDraftSnapshot(null);
+    setSelectedCommercialCorridorDraft(null);
+    setSelectedCustomerDesignImportId("");
+    setSelectedCustomerDesignRouteId("");
+    setSelectedRouteEngineeringActivation(null);
+    setSelectedRouteEngineeringDraft(null);
+    setInventoryMapSelection(null);
+    setAcceptedProposal(null);
+    setCustomerReviewStatus("NOT_STARTED");
+    setActiveDesignMode("EXTEND_EXISTING_NETWORK");
+    setActiveView("networks");
+    setOpportunityWorkflowState("IDLE");
+    setNewOpportunityDialogOpen(false);
+    setSelectedScopeId(googleHeliumBidPlanFixture.routePlans[0]?.routeRequirement.routeRequirementId ?? "COMBINED_AWARD");
+    setTransparentEstimateControls(defaultTransparentEstimateControls());
+    setTransparentEstimateRecalculatedAt(null);
+    clearCommercialDraftMapLayers();
+    if (!options.preserveActiveOpportunity) setActiveCommercialOpportunityId("");
+  }
+
+  function buildCommercialOpportunityRecord(status: CommercialOpportunityStatus, options: { duplicate?: boolean } = {}): CommercialOpportunityRecord {
+    const timestamp = new Date().toISOString();
+    const existing = options.duplicate ? null : activeCommercialOpportunity;
+    const selectedCustomerDesignLabel = selectedImportedCustomerDesignImport && selectedImportedCustomerRoute
+      ? `${selectedImportedCustomerDesignImport.sourceFileName} / ${selectedImportedCustomerRoute.name}`
+      : undefined;
+    return {
+      opportunityId: existing?.opportunityId ?? `COMMERCIAL-OPPORTUNITY-${selectedAccount.accountId}-${Date.now()}`,
+      accountId: selectedAccount.accountId,
+      name: existing?.name ?? selectedCustomerDesignLabel ?? `${selectedAccount.name} Opportunity ${accountCommercialOpportunities.length + 1}`,
+      status,
+      createdAt: existing?.createdAt ?? timestamp,
+      updatedAt: timestamp,
+      selectedImportId: selectedImportedCustomerDesignImport?.importId,
+      selectedRouteId: selectedImportedCustomerRoute?.routeId,
+      selectedScopeId: selectedScope.scopeId,
+      activeView,
+      commercialDraftType,
+      liveSession: activeLiveSession,
+      commercialDraftSnapshot: selectedImportedCommercialDraft ?? commercialCorridorDraft ?? loadedCommercialDraftSnapshot,
+      selectedCustomerDesignLabel,
+      importedDraftRouteId: selectedImportedCommercialDraft?.routeId,
+      snapshotCount: accountSnapshots.length,
+      note: selectedCustomerDesignLabel
+        ? "Opportunity attaches a Customer Design Library route intentionally. No ScopeVersion authority created."
+        : "Opportunity saved from Commercial Planning working state. No ScopeVersion authority created.",
+      noScopeVersionCreation: true,
+      noInventoryMutation: true,
+    };
+  }
+
+  function upsertCommercialOpportunity(record: CommercialOpportunityRecord) {
+    setCommercialOpportunities((prev) => {
+      const withoutCurrent = prev.filter((candidate) => candidate.opportunityId !== record.opportunityId);
+      return [record, ...withoutCurrent];
+    });
+    setActiveCommercialOpportunityId(record.opportunityId);
+    setOpportunityNotice(`${record.name} saved.`);
+  }
+
+  function handleNewCommercialOpportunity() {
+    resetCommercialOpportunityWorkingState();
+    setOpportunityNotice("New Opportunity started. Customer Twin is visible; no design or draft is loaded.");
+    setNewOpportunityDialogOpen(true);
+    setOpportunityWorkflowState("SELECTING_START_MODE");
+  }
+
+  function handleSaveCommercialOpportunity() {
+    upsertCommercialOpportunity(buildCommercialOpportunityRecord("SAVED"));
+  }
+
+  function handleSaveAsCommercialOpportunity() {
+    upsertCommercialOpportunity(buildCommercialOpportunityRecord("SAVED", { duplicate: true }));
+  }
+
+  function handleArchiveCommercialOpportunity() {
+    if (!activeCommercialOpportunity) return;
+    const archived = {
+      ...activeCommercialOpportunity,
+      status: "ARCHIVED" as const,
+      updatedAt: new Date().toISOString(),
+    };
+    upsertCommercialOpportunity(archived);
+    resetCommercialOpportunityWorkingState();
+    setOpportunityNotice(`${archived.name} archived. Customer Twin remains visible.`);
+  }
+
+  function handleCloseCommercialOpportunity() {
+    resetCommercialOpportunityWorkingState();
+    setOpportunityNotice("Opportunity closed. Customer Twin is visible; saved libraries remain available.");
+  }
+
+  function handleOpenCustomerDesignFromLibrary(importId: string, routeId: string) {
+    resetCommercialOpportunityWorkingState({ preserveActiveOpportunity: true });
+    const entry = accountImportedCustomerRoutes.find((item) => item.importRecord.importId === importId && item.route.routeId === routeId);
+    if (!entry) {
+      setOpportunityNotice("Customer Design Library record was not found for this account.");
+      return;
+    }
+    setSelectedCustomerDesignImportId(importId);
+    setSelectedCustomerDesignRouteId(routeId);
+    setCommercialDraftType("NEW_GRAPH_CORRIDOR");
+    setActiveDesignMode("CUSTOMER_PROPOSAL_REVIEW");
+    setActiveView("proposal");
+    setOpportunityWorkflowState(entry.route.pricedDraft ? "COMMERCIAL_DRAFT_ACTIVE" : "IDLE");
+    if (entry.route.pricedDraft) {
+      setImportedCommercialDraft(entry.route.pricedDraft);
+      setSelectedCommercialCorridorDraft(entry.route.pricedDraft);
+    }
+    setOpportunityNotice(`Customer Design loaded: ${entry.importRecord.designId} / ${entry.route.name}.`);
+  }
+
+  function handleOpenCommercialOpportunity(opportunityId: string) {
+    const record = accountCommercialOpportunities.find((candidate) => candidate.opportunityId === opportunityId);
+    if (!record) return;
+    resetCommercialOpportunityWorkingState({ preserveActiveOpportunity: true });
+    setActiveCommercialOpportunityId(record.opportunityId);
+    if (record.liveSession) setLiveCommercialSession(record.liveSession);
+    if (record.selectedImportId && record.selectedRouteId) handleOpenCustomerDesignFromLibrary(record.selectedImportId, record.selectedRouteId);
+    else if (record.commercialDraftSnapshot) {
+      setLoadedCommercialDraftSnapshot(record.commercialDraftSnapshot);
+      setSelectedCommercialCorridorDraft(record.commercialDraftSnapshot);
+      setOpportunityWorkflowState("COMMERCIAL_DRAFT_ACTIVE");
+      activateSalesDraftWorkingSet();
+    }
+    setSelectedScopeId(record.selectedScopeId);
+    setActiveView(record.activeView);
+    setCommercialDraftType(record.commercialDraftType);
+    setCommercialOpportunities((prev) => prev.map((candidate) => (
+      candidate.opportunityId === record.opportunityId
+        ? { ...candidate, status: candidate.status === "ARCHIVED" ? "ARCHIVED" : "RECENT", updatedAt: new Date().toISOString() }
+        : candidate
+    )));
+    setActiveCommercialOpportunityId(record.opportunityId);
+    setOpportunityNotice(`${record.name} opened intentionally.`);
+  }
+
+  function handleOpportunityLibrarySelect(value: string) {
+    if (!value) return;
+    const [kind, firstId, secondId] = value.split("::");
+    if (kind === "opportunity") {
+      handleOpenCommercialOpportunity(firstId);
+      return;
+    }
+    if (kind === "customer-design" && secondId) {
+      setActiveCommercialOpportunityId("");
+      handleOpenCustomerDesignFromLibrary(firstId, secondId);
+      return;
+    }
+    if (kind === "engineering" && selectedRouteEngineeringDraft) {
+      const revision = selectedRouteEngineeringDraft.revisions.find((candidate) => candidate.revisionId === firstId);
+      if (!revision) return;
+      setSelectedRouteEngineeringDraft({ ...selectedRouteEngineeringDraft, currentRevisionId: revision.revisionId });
+      setSelectedRouteEngineeringActivation(null);
+      setActiveView("handoff");
+      setOpportunityNotice(`${revision.revisionName} selected from Engineering Revisions.`);
+    }
   }
 
   function activateSalesDraftWorkingSet() {
@@ -2883,12 +3576,12 @@ export default function GoogleRfpWorkspace() {
   }
 
   function handleLoadSavedProposal() {
-    const saved = loadAutosavedLiveCommercialSession();
-    if (saved && saved.accountId === selectedAccount.accountId) {
-      setLiveCommercialSession(saved);
-      setSelectedScopeId(saved.activePricingScopeId);
+    const saved = recentCommercialOpportunities[0] ?? savedCommercialOpportunities[0] ?? null;
+    if (!saved) {
+      setOpportunityNotice("No saved Commercial Planning opportunity is available for this account.");
+      return;
     }
-    activateSalesDraftWorkingSet();
+    handleOpenCommercialOpportunity(saved.opportunityId);
     setNewOpportunityDialogOpen(false);
   }
 
@@ -2938,12 +3631,6 @@ export default function GoogleRfpWorkspace() {
     setPendingImportSource(null);
     setPendingImportFileName("");
     setPendingImportDisposition("REFERENCE_ONLY");
-  }
-
-  function openNewOpportunityDialog() {
-    resetOpportunityInputState();
-    setNewOpportunityDialogOpen(true);
-    setOpportunityWorkflowState("SELECTING_START_MODE");
   }
 
   function closeNewOpportunityDialog() {
@@ -3410,6 +4097,89 @@ export default function GoogleRfpWorkspace() {
     setProposalSnapshots((prev) => [snapshot, ...prev]);
   }
 
+  function handleSelectImportedCustomerRoute(value: string) {
+    if (!value) {
+      setSelectedCustomerDesignImportId("");
+      setSelectedCustomerDesignRouteId("");
+      setImportedCommercialDraft(null);
+      setLoadedCommercialDraftSnapshot(null);
+      setSelectedCommercialCorridorDraft(null);
+      setOpportunityNotice("Customer Design detached. Customer Twin remains visible.");
+      return;
+    }
+    const [importId, routeId] = value.split("::");
+    handleOpenCustomerDesignFromLibrary(importId, routeId);
+  }
+
+  function handlePriceImportedCustomerRoute() {
+    if (!selectedImportedCustomerDesignImport || !selectedImportedCustomerRoute) return null;
+    const draft = buildCommercialCorridorDraftFromImportedRoute({
+      importRecord: selectedImportedCustomerDesignImport,
+      importedRoute: selectedImportedCustomerRoute,
+      assumptionState: selectedAssumptionState,
+      estimateControls: transparentEstimateControls,
+    });
+    if (!draft) return null;
+    const updated = attachPricedDraftToImportedRoute(selectedImportedCustomerDesignImport, selectedImportedCustomerRoute.routeId, draft);
+    upsertCustomerDesignImport(updated);
+    setSelectedCustomerDesignImportId(updated.importId);
+    setSelectedCustomerDesignRouteId(selectedImportedCustomerRoute.routeId);
+    setImportedCommercialDraft(draft);
+    setSelectedCommercialCorridorDraft(draft);
+    setTransparentEstimateRecalculatedAt(new Date().toISOString());
+    return { record: updated, draft };
+  }
+
+  function handleMakeImportedCommercialDraft() {
+    const priced = selectedImportedCommercialDraft
+      ? { record: selectedImportedCustomerDesignImport, draft: selectedImportedCommercialDraft }
+      : handlePriceImportedCustomerRoute();
+    if (!priced?.record || !priced.draft || !selectedImportedCustomerRoute) return;
+    const promoted = markImportedRoutePromoted(priced.record, selectedImportedCustomerRoute.routeId, "ROUTE_PROMOTED_TO_COMMERCIAL_DRAFT");
+    upsertCustomerDesignImport(promoted);
+    setCommercialDraftType("NEW_GRAPH_CORRIDOR");
+    setImportedCommercialDraft(priced.draft);
+    setSelectedCommercialCorridorDraft(priced.draft);
+    setActiveView("proposal");
+  }
+
+  function handleCompareImportedCustomerRoute() {
+    handleMakeImportedCommercialDraft();
+    setActiveView("analysis");
+  }
+
+  function handleOpenImportedCustomerRouteInEngineering() {
+    const priced = selectedImportedCommercialDraft
+      ? { record: selectedImportedCustomerDesignImport, draft: selectedImportedCommercialDraft }
+      : handlePriceImportedCustomerRoute();
+    if (!priced?.record || !priced.draft || !selectedImportedCustomerRoute) return;
+    const promoted = markImportedRoutePromoted(priced.record, selectedImportedCustomerRoute.routeId, "ROUTE_OPENED_IN_ENGINEERING");
+    upsertCustomerDesignImport(promoted);
+    setImportedCommercialDraft(priced.draft);
+    setSelectedCommercialCorridorDraft(priced.draft);
+    activateRouteEngineeringFromCommercialDraft({
+      commercialDraft: priced.draft,
+      accountId: selectedAccount.accountId,
+      accountName: selectedAccount.name,
+      opportunityId: selectedScope.scopeId,
+      createdBy: "Ryan",
+      activationReason: "Imported customer design opened from Commercial Planning as immutable Engineering baseline.",
+    });
+  }
+
+  function handleEnterEngineeringMode() {
+    if (!commercialCorridorDraft) return;
+    activateSalesDraftWorkingSet();
+    activateRouteEngineeringFromCommercialDraft({
+      commercialDraft: commercialCorridorDraft,
+      accountId: selectedAccount.accountId,
+      accountName: selectedAccount.name,
+      opportunityId: selectedScope.scopeId,
+      createdBy: "Ryan",
+      activationReason: "Commercial Planning entered Engineering Mode from a valid Commercial Draft.",
+    });
+  }
+
   function handleDiscardLiveProposalDraft() {
     setCommercialRecalculationPending(false);
     setLiveCommercialSession(null);
@@ -3519,13 +4289,21 @@ export default function GoogleRfpWorkspace() {
   }
 
   const compactOwner = accountAcceptedProposal ? "Engineering" : activeLiveSession?.currentOwner ?? "Sales";
-  const currentDraftLabel = activeCommercialDraftNetworks.length
+  const currentDraftLabel = selectedImportedCustomerRoute
+    ? `Customer Design / ${selectedImportedCustomerRoute.name}`
+    : activeCommercialDraftNetworks.length
     ? draftTypeLabel(commercialDraftType)
+    : loadedCommercialDraftSnapshot
+    ? `Saved Commercial Draft / ${loadedCommercialDraftSnapshot.routeId}`
     : commercialDraftType
       ? `${draftTypeLabel(commercialDraftType)} / Not activated`
       : "No draft";
-  const estimateConfidenceLabel = commercialCorridorDraft
+  const estimateConfidenceLabel = selectedImportedCommercialDraft
+    ? `${percentage(selectedImportedCommercialDraft.transparentEstimate.confidence.score)} ${selectedImportedCommercialDraft.transparentEstimate.confidence.level}`
+    : commercialCorridorDraft
     ? `${percentage(commercialCorridorDraft.transparentEstimate.confidence.score)} ${commercialCorridorDraft.transparentEstimate.confidence.level}`
+    : loadedCommercialDraftSnapshot
+    ? `${percentage(loadedCommercialDraftSnapshot.transparentEstimate.confidence.score)} ${loadedCommercialDraftSnapshot.transparentEstimate.confidence.level}`
     : opportunityScoutQuickQuote
       ? percentage(opportunityScoutQuickQuote.confidence)
       : "Pending";
@@ -3534,12 +4312,14 @@ export default function GoogleRfpWorkspace() {
     : opportunityScoutSiteDecision
       ? percentage(opportunityScoutSiteDecision.commercialConfidence)
       : "Pending";
-  const engineeringConfidenceLabel = commercialRouteResult?.status === "ROUTED"
+  const engineeringConfidenceLabel = selectedImportedCustomerRoute
+    ? "Imported baseline known"
+    : commercialRouteResult?.status === "ROUTED"
     ? "Route geometry known"
     : commercialRouteResult?.status === "FAILED"
       ? "Route failed"
       : "Pending";
-  const unknownConstraintCount = commercialCorridorDraft?.unknownQuantities.length ?? (opportunityScoutQuickQuote?.crossings ?? 0);
+  const unknownConstraintCount = selectedImportedCommercialDraft?.unknownQuantities.length ?? commercialCorridorDraft?.unknownQuantities.length ?? loadedCommercialDraftSnapshot?.unknownQuantities.length ?? (opportunityScoutQuickQuote?.crossings ?? 0);
   const osrmStatusLabel = commercialRoutingStatus === "ROUTING"
     ? "ROUTING"
     : commercialRouteResult?.status ?? verificationStatus;
@@ -3551,21 +4331,25 @@ export default function GoogleRfpWorkspace() {
         ? "Customer Requested"
         : accountAcceptedProposal
           ? "Proposal Ready"
-          : commercialCorridorDraft || opportunityScoutQuickQuote
+        : selectedImportedCommercialDraft || commercialCorridorDraft || loadedCommercialDraftSnapshot || opportunityScoutQuickQuote
             ? "Current"
             : "Not Started";
   const proposalStatusLabel = accountAcceptedProposal
     ? "Proposal Ready"
     : accountCustomerReviewStatus === "IN_REVIEW"
       ? "Commercial Review"
+      : selectedImportedCommercialDraft
+        ? "Commercial Draft"
       : activeCommercialDraftNetworks.length
         ? "Commercial Draft"
         : "Not Started";
-  const draftVersionLabel = activeCommercialDraftNetworks.length || commercialCorridorDraft || opportunityScoutQuickQuote
+  const draftVersionLabel = activeCommercialDraftNetworks.length || selectedImportedCommercialDraft || commercialCorridorDraft || loadedCommercialDraftSnapshot || opportunityScoutQuickQuote
     ? `v${accountSnapshots.length + 1}`
     : "n/a";
   const lastRecalculatedAt = transparentEstimateRecalculatedAt ?? activeLiveSession?.lastRecalculatedAt ?? null;
   const unsavedChanges = Boolean(activeLiveSession?.dirty || (commercialCorridorDraft && !opportunityScoutCandidate?.lockedIntoCommercialDraft));
+  const activeFinancialDraft = selectedImportedCommercialDraft ?? commercialCorridorDraft ?? loadedCommercialDraftSnapshot;
+  const activeFinancialAuthority = activeFinancialDraft?.financialAuthority ?? null;
 
   return (
     <section className="dal-workspace wide">
@@ -3579,7 +4363,7 @@ export default function GoogleRfpWorkspace() {
         </div>
         <div className="commercial-compact-header-grid" aria-label="Commercial workspace status">
           <div><span>Customer</span><b>{selectedAccount.name}</b></div>
-          <div><span>Opportunity</span><b>{selectedAccount.commercialEngagements[0]}</b></div>
+          <div><span>Current Opportunity</span><b>{activeCommercialOpportunity?.name ?? "No opportunity loaded"}</b></div>
           <div><span>Current Draft</span><b>{currentDraftLabel}</b></div>
           <div><span>Review State</span><b>{accountCustomerReviewStatus.replaceAll("_", " ")}</b></div>
           <div><span>Owner</span><b>{compactOwner}</b></div>
@@ -3589,6 +4373,69 @@ export default function GoogleRfpWorkspace() {
           <div><span>Proposal Status</span><b>{proposalStatusLabel}</b></div>
         </div>
         <div className="commercial-compact-actions">
+          <button className="dal-button primary" type="button" onClick={handleNewCommercialOpportunity}>
+            New
+          </button>
+          <select value="" onChange={(event) => handleOpportunityLibrarySelect(event.currentTarget.value)} aria-label="Open opportunity or library item">
+            <option value="">Open...</option>
+            {recentCommercialOpportunities.length ? (
+              <optgroup label="Recent">
+                {recentCommercialOpportunities.map((record) => (
+                  <option key={`recent-${record.opportunityId}`} value={`opportunity::${record.opportunityId}`}>
+                    {record.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {savedCommercialOpportunities.length ? (
+              <optgroup label="Saved">
+                {savedCommercialOpportunities.map((record) => (
+                  <option key={`saved-${record.opportunityId}`} value={`opportunity::${record.opportunityId}`}>
+                    {record.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {archivedCommercialOpportunities.length ? (
+              <optgroup label="Archived">
+                {archivedCommercialOpportunities.map((record) => (
+                  <option key={`archived-${record.opportunityId}`} value={`opportunity::${record.opportunityId}`}>
+                    {record.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {accountImportedCustomerRoutes.length ? (
+              <optgroup label="Customer Designs">
+                {accountImportedCustomerRoutes.map((entry) => (
+                  <option key={`design-${entry.importRecord.importId}-${entry.route.routeId}`} value={`customer-design::${entry.importRecord.importId}::${entry.route.routeId}`}>
+                    {entry.importRecord.designId} / {entry.route.name}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {selectedRouteEngineeringDraft?.revisions.length ? (
+              <optgroup label="Engineering Revisions">
+                {selectedRouteEngineeringDraft.revisions.map((revision) => (
+                  <option key={`engineering-${revision.revisionId}`} value={`engineering::${revision.revisionId}`}>
+                    {revision.revisionName}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+          </select>
+          <button className="dal-button secondary" type="button" onClick={handleSaveCommercialOpportunity}>
+            Save
+          </button>
+          <button className="dal-button secondary" type="button" onClick={handleSaveAsCommercialOpportunity}>
+            Save As
+          </button>
+          <button className="dal-button secondary" type="button" onClick={handleArchiveCommercialOpportunity} disabled={!activeCommercialOpportunity}>
+            Archive
+          </button>
+          <button className="dal-button secondary" type="button" onClick={handleCloseCommercialOpportunity}>
+            Close
+          </button>
           <select value={selectedAccountId} onChange={(event) => selectAccount(event.currentTarget.value)} aria-label="Account selector">
             {COMMERCIAL_ACCOUNTS.map((account) => (
               <option key={account.accountId} value={account.accountId}>{account.name}</option>
@@ -3603,6 +4450,8 @@ export default function GoogleRfpWorkspace() {
           </button>
         </div>
       </div>
+
+      <div className="dal-status commercial-opportunity-notice">{opportunityNotice}</div>
 
       <CommercialStatusBar
         account={selectedAccount}
@@ -3620,6 +4469,52 @@ export default function GoogleRfpWorkspace() {
         lastRecalculatedAt={lastRecalculatedAt}
         unsavedChanges={unsavedChanges}
       />
+
+      {activeFinancialDraft && activeFinancialAuthority ? (
+        <section className="commercial-financial-authority-summary">
+          <div className="dal-panel-title-row">
+            <div>
+              <h3>Executive Financial Summary</h3>
+              <span>{selectedImportedCustomerRoute ? `Customer Design ${selectedImportedCustomerDesignImport?.designId}` : "Commercial Draft"} / {activeFinancialDraft.routeId}</span>
+            </div>
+            <span className="dal-badge warning">Budgetary Authority</span>
+          </div>
+          <div className="commercial-financial-groups">
+            <div>
+              <b>Construction Economics</b>
+              <span>Construction Cost: {money(activeFinancialAuthority.constructionCost)}</span>
+              <span>Cost/Mile: {money(activeFinancialAuthority.costPerMile)}</span>
+              <span>Cost/Foot: ${activeFinancialAuthority.costPerFoot.toLocaleString()}</span>
+              <span>Unknowns: {activeFinancialDraft.unknownQuantities.length.toLocaleString()}</span>
+            </div>
+            <div>
+              <b>Commercial Revenue</b>
+              <span>Sell Price: {money(activeFinancialAuthority.sellPrice)}</span>
+              <span>NRC Revenue: {money(activeFinancialAuthority.nrcRevenue)}</span>
+              <span>MRC Revenue: {money(activeFinancialAuthority.mrcRevenue)}</span>
+              <span>Revenue/Mile: {money(activeFinancialAuthority.revenuePerMile)}</span>
+              <span>Revenue/Foot: ${activeFinancialAuthority.revenuePerFoot.toLocaleString()}</span>
+            </div>
+            <div>
+              <b>Lifecycle Value</b>
+              <span>Gross Margin: {money(activeFinancialAuthority.grossMarginDollars)}</span>
+              <span>Margin %: {percentage(activeFinancialAuthority.grossMarginPercent)}</span>
+              <span>Margin/Mile: {money(activeFinancialAuthority.marginPerMile)}</span>
+              <span>Lifecycle Revenue: {money(activeFinancialAuthority.lifecycleRevenue)}</span>
+              <span>Commercial Readiness: {percentage(activeFinancialDraft.transparentEstimate.commercialReadiness.score)}</span>
+            </div>
+          </div>
+          {activeFinancialAuthority.validationWarnings.length ? (
+            <div className="commercial-financial-warning-list">
+              {activeFinancialAuthority.validationWarnings.map((warning) => (
+                <span key={warning}>{warning}</span>
+              ))}
+            </div>
+          ) : (
+            <div className="dal-status">Financial sanity validation passed. Revenue is not calculated as Cost + Sell Price.</div>
+          )}
+        </section>
+      ) : null}
 
       {newOpportunityDialogOpen ? (
         <section className="commercial-command-dialog" aria-label="New opportunity command">
@@ -3642,13 +4537,18 @@ export default function GoogleRfpWorkspace() {
         </section>
       ) : null}
 
+      <div className="commercial-area-heading">
+        <h3>Commercial Planning</h3>
+        <span>Executive summary, map, imported design, commercial draft, proposal actions, and customer review.</span>
+      </div>
+
       <section className="commercial-orchestrator-shell" aria-label="Commercial Planning domain orchestrator">
         <aside className="commercial-orchestrator-nav">
           <div className="commercial-orchestrator-heading">
             <b>{selectedAccount.name}</b>
             <span>{accountCustomerTwin?.customerTwinId ?? customerInventoryLoadStatus}</span>
           </div>
-          <button type="button" className="primary" onClick={openNewOpportunityDialog}>New Opportunity</button>
+          <button type="button" className="primary" onClick={handleNewCommercialOpportunity}>New Opportunity</button>
           <div className="commercial-stage-list">
             {[
               ["networks", "Customer Twin", accountRenderableCustomerTwin.routes.length ? "Loaded" : customerInventoryLoadStatus],
@@ -3694,13 +4594,28 @@ export default function GoogleRfpWorkspace() {
         </aside>
 
         <main className="commercial-orchestrator-map">
+          {importedCustomerGeometryError ? (
+            <div className="dal-status commercial-map-error">{importedCustomerGeometryError}</div>
+          ) : null}
           <ProposedNetworkMapPanel
-            graph={activeCommercialDraftNetworks.length ? (inventoryReferenceGraph ?? COMMERCIAL_BASELINE_GRAPH) : COMMERCIAL_BASELINE_GRAPH}
+            graph={importedCustomerDesignGraph ?? (activeCommercialDraftNetworks.length || loadedCommercialDraftSnapshot ? (inventoryReferenceGraph ?? COMMERCIAL_BASELINE_GRAPH) : COMMERCIAL_BASELINE_GRAPH)}
             selected={inventoryMapSelection}
             onSelect={setInventoryMapSelection}
             customerTwinState={accountRenderableCustomerTwin}
             commercialMapLayers={commercialMapLayers}
             commercialOpportunityOverlay={commercialOpportunityOverlay}
+            commercialIlaStations={(activeFinancialDraft?.transparentEstimate.ilaPlan.stationObjects ?? []).map((station): CommercialIlaMapStation => ({
+              stationId: station.stationId,
+              label: station.label,
+              station: station.station,
+              milepost: station.milepost,
+              gps: station.gps,
+              coordinate: station.coordinate,
+              facilityType: station.facilityType,
+              totalCost: station.totalCost,
+            }))}
+            selectedCommercialIlaStationId={transparentEstimateControls.ilaPlanning.selectedStationId}
+            onCommercialIlaStationSelect={selectTransparentIlaStation}
             mapMinHeight={800}
             mapTitle="Unified Commercial Map"
             mapBadgeLabel={opportunityWorkflowState === "AWAITING_MAP_CLICK" ? "Extension site placement" : azMapPlacementSlot ? `${azMapPlacementSlot} corridor point placement` : commercialDraftType ? draftTypeLabel(commercialDraftType) : "Customer Twin baseline"}
@@ -3921,6 +4836,59 @@ export default function GoogleRfpWorkspace() {
               <small>{commercialRouteResult.diagnostics[0]}</small>
             </div>
           ) : null}
+          {accountImportedCustomerRoutes.length ? (
+            <div className="commercial-inspector-card">
+              <b>Customer Design Imports</b>
+              <select
+                value={selectedImportedCustomerDesignImport && selectedImportedCustomerRoute ? `${selectedImportedCustomerDesignImport.importId}::${selectedImportedCustomerRoute.routeId}` : ""}
+                onChange={(event) => handleSelectImportedCustomerRoute(event.currentTarget.value)}
+              >
+                <option value="">Select customer design...</option>
+                {accountImportedCustomerRoutes.map((entry) => (
+                  <option key={`${entry.importRecord.importId}-${entry.route.routeId}`} value={`${entry.importRecord.importId}::${entry.route.routeId}`}>
+                    {entry.importRecord.sourceFileName} / {entry.route.name}
+                  </option>
+                ))}
+              </select>
+              {selectedImportedCustomerRoute ? (
+                <>
+                  <span>DesignID: {selectedImportedCustomerDesignImport?.designId}</span>
+                  <span>{selectedImportedCustomerRoute.designState.replaceAll("_", " ")} / {formatRouteMiles(selectedImportedCustomerRoute.routeMiles)} mi</span>
+                  <span>{selectedImportedCustomerRoute.folderPath.join(" / ") || "Root folder"}</span>
+                  <span>Library: {selectedImportedCustomerDesignImport?.libraryPath.join(" / ")}</span>
+                  {selectedImportedCommercialDraft ? (
+                    <>
+                      <span>{money(selectedImportedCommercialDraft.financialAuthority.constructionCost)} cost / {money(selectedImportedCommercialDraft.financialAuthority.sellPrice)} sell / GM {percentage(selectedImportedCommercialDraft.financialAuthority.grossMarginPercent)}</span>
+                      <span>Cost/mi {money(selectedImportedCommercialDraft.financialAuthority.costPerMile)} / Cost/ft ${selectedImportedCommercialDraft.financialAuthority.costPerFoot.toLocaleString()}</span>
+                      <span>Revenue/mi {money(selectedImportedCommercialDraft.financialAuthority.revenuePerMile)} / Revenue/ft ${selectedImportedCommercialDraft.financialAuthority.revenuePerFoot.toLocaleString()}</span>
+                      <span>Margin/mi {money(selectedImportedCommercialDraft.financialAuthority.marginPerMile)} / Lifecycle {money(selectedImportedCommercialDraft.financialAuthority.lifecycleRevenue)}</span>
+                      {(selectedImportedCommercialDraft.financialValidationWarnings ?? []).map((warning) => (
+                        <small key={warning}>Warning: {warning}</small>
+                      ))}
+                    </>
+                  ) : (
+                    <small>Imported route has not been priced in this workspace.</small>
+                  )}
+                  <button type="button" onClick={handlePriceImportedCustomerRoute} disabled={!selectedImportedCustomerRoute.pricingEligible}>
+                    Price Imported Route
+                  </button>
+                  <button type="button" onClick={handleMakeImportedCommercialDraft} disabled={!selectedImportedCustomerRoute.pricingEligible}>
+                    Make Commercial Draft
+                  </button>
+                  <button type="button" onClick={handleCompareImportedCustomerRoute} disabled={!selectedImportedCustomerRoute.pricingEligible}>
+                    Compare
+                  </button>
+                  <button type="button" onClick={handleOpenImportedCustomerRouteInEngineering} disabled={!selectedImportedCustomerRoute.pricingEligible}>
+                    Open In Engineering
+                  </button>
+                  {selectedImportedCustomerDesignImport?.lineage.slice(0, 4).map((event) => (
+                    <small key={event.lineageEventId}>{event.stage}: {event.relatedId ?? selectedImportedCustomerDesignImport.designId}</small>
+                  ))}
+                  <small>No ScopeVersion, CertifiedRoute, or production inventory mutation is created from this imported design.</small>
+                </>
+              ) : null}
+            </div>
+          ) : null}
           {commercialCorridorDraft ? (
             <>
               <div className="commercial-inspector-card">
@@ -3939,8 +4907,13 @@ export default function GoogleRfpWorkspace() {
               </div>
               <div className="commercial-inspector-card">
                 <b>Proposal Actions</b>
-                <span>{money(commercialCorridorDraft.totalCost)} cost / {money(commercialCorridorDraft.sellPrice)} sell / GM {percentage(commercialCorridorDraft.grossMarginPercent)}</span>
+                <span>{money(commercialCorridorDraft.financialAuthority.constructionCost)} cost / {money(commercialCorridorDraft.financialAuthority.sellPrice)} sell / GM {percentage(commercialCorridorDraft.financialAuthority.grossMarginPercent)}</span>
+                <span>Revenue/mi {money(commercialCorridorDraft.financialAuthority.revenuePerMile)} / Margin/mi {money(commercialCorridorDraft.financialAuthority.marginPerMile)}</span>
+                {(commercialCorridorDraft.financialValidationWarnings ?? []).map((warning) => (
+                  <small key={warning}>Warning: {warning}</small>
+                ))}
                 <button type="button" onClick={handleLockScoutCandidate} disabled={opportunityScoutCandidate?.lockedIntoCommercialDraft}>Activate Corridor Draft</button>
+                <button type="button" onClick={handleEnterEngineeringMode}>Enter Engineering Mode</button>
                 <button type="button" onClick={handleSaveCommercialDraftSnapshot}>Save Snapshot</button>
               </div>
             </>
@@ -3973,7 +4946,7 @@ export default function GoogleRfpWorkspace() {
               {commercialDraftType === "NEW_GRAPH_CORRIDOR" && commercialCorridorDraft ? (
                 <>
                   <span>{formatRouteMiles(commercialCorridorDraft.routeMiles)} mi corridor / {commercialCorridorDraft.routeSegments.length.toLocaleString()} segments</span>
-                  <span>{money(commercialCorridorDraft.totalCost)} cost / {money(commercialCorridorDraft.iruSellPrice)} IRU sell</span>
+                  <span>{money(commercialCorridorDraft.financialAuthority.constructionCost)} cost / {money(commercialCorridorDraft.financialAuthority.sellPrice)} sell</span>
                   <span>{commercialCorridorDraft.ilaCount.toLocaleString()} ILA sites / {commercialCorridorDraft.transparentEstimate.auditTrail.length.toLocaleString()} audit entries</span>
                 </>
               ) : opportunityScoutQuickQuote ? (
@@ -3985,6 +4958,9 @@ export default function GoogleRfpWorkspace() {
                 <span>{money(selectedPricingSummary.reconciliation.budgetCost)} budget / {money(selectedPricingSummary.reconciliation.sellPriceIru)} sell</span>
               )}
               <button type="button" onClick={() => setActiveView("proposal")}>Open Proposal Builder</button>
+              {commercialCorridorDraft ? (
+                <button type="button" onClick={handleEnterEngineeringMode}>Enter Engineering Mode</button>
+              ) : null}
               <button type="button" onClick={handleSaveCommercialDraftSnapshot} disabled={!commercialCorridorDraft && !opportunityScoutQuickQuote && !activeLiveSession?.dirty}>Save Snapshot</button>
             </div>
           ) : null}
@@ -3993,7 +4969,7 @@ export default function GoogleRfpWorkspace() {
               <b>Customer Review</b>
               <span>{accountCustomerReviewStatus.replaceAll("_", " ")}</span>
               <button type="button" onClick={() => handleBeginImportOpportunity("KMZ")}>Stage KMZ Draft</button>
-              <button type="button" onClick={handleStartSharedReview}>Start Shared Review</button>
+              <button type="button" onClick={handleStartSharedReview}>Start Customer Review</button>
               <button type="button" onClick={handleAcceptProposal} disabled={!activeCommercialDraftNetworks.length}>Accept Proposal</button>
             </div>
           ) : null}
@@ -4002,30 +4978,32 @@ export default function GoogleRfpWorkspace() {
               <b>Engineering Handoff</b>
               <span>{accountAcceptedProposal.acceptedProposalId}</span>
               <small>Engineering owns the next step. Sales still creates no ScopeVersion.</small>
+              <button type="button" onClick={handleEnterEngineeringMode} disabled={!commercialCorridorDraft}>Enter Engineering Mode</button>
             </div>
           ) : null}
         </aside>
       </section>
 
-      {commercialCorridorDraft ? (
+      {activeFinancialDraft ? (
         <section className="commercial-estimate-authoring-section" aria-label="Commercial estimate authoring">
           <div className="dal-panel-title-row">
             <div>
-              <h3>Commercial Estimate Authoring</h3>
-              <span>Proposal packages consume this Commercial Draft state.</span>
+              <h3>Estimate Detail</h3>
+              <span>{selectedImportedCustomerRoute ? `${selectedImportedCustomerRoute.name} uses the imported-route pricing authority.` : "Civil mix, production, financial model, authority controls, audit, and calibration."}</span>
             </div>
             <span className="dal-badge warning">{estimateStatusLabel}</span>
           </div>
           <TransparentEstimateExplorer
-            estimate={commercialCorridorDraft.transparentEstimate}
+            estimate={activeFinancialDraft.transparentEstimate}
             controls={transparentEstimateControls}
             lastRecalculatedAt={lastRecalculatedAt}
-            vendorPreview={commercialCorridorDraft.vendorResponsePreview}
+            vendorPreview={activeFinancialDraft.vendorResponsePreview}
             onTargetDurationChange={updateTransparentEstimateDuration}
             onProductionChange={updateTransparentProduction}
             onFinancialChange={updateTransparentFinancial}
             onConstraintChange={updateTransparentConstraint}
             onCivilMixModeChange={updateTransparentCivilMixMode}
+            onIlaPlanningChange={updateTransparentIlaPlanning}
           />
         </section>
       ) : null}

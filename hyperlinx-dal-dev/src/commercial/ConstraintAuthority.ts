@@ -1,6 +1,8 @@
 export type ConstraintAuthorityMode =
   | "UNKNOWN"
   | "ALGORITHM"
+  | "PENDING_HUMAN"
+  | "HUMAN_APPROVED"
   | "HUMAN"
   | "API"
   | "SYNTHESIS"
@@ -25,7 +27,9 @@ export interface ConstraintValue<T = number | string | boolean> {
 }
 
 export function authorityModeConfidence(mode: ConstraintAuthorityMode) {
+  if (mode === "HUMAN_APPROVED") return 96;
   if (mode === "APPROVED") return 96;
+  if (mode === "PENDING_HUMAN") return 78;
   if (mode === "HUMAN") return 88;
   if (mode === "API") return 84;
   if (mode === "ALGORITHM") return 62;
@@ -34,7 +38,9 @@ export function authorityModeConfidence(mode: ConstraintAuthorityMode) {
 }
 
 export function authorityModeRank(mode: ConstraintAuthorityMode) {
+  if (mode === "HUMAN_APPROVED") return 6;
   if (mode === "APPROVED") return 6;
+  if (mode === "PENDING_HUMAN") return 5;
   if (mode === "HUMAN") return 5;
   if (mode === "API") return 4;
   if (mode === "SYNTHESIS") return 3;

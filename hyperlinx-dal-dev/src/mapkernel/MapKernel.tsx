@@ -82,6 +82,17 @@ type PanDragState = {
   moved: boolean;
 };
 
+type SegmentDragState = {
+  pointerCoordinate: [number, number];
+  originalGeometry: [number, number][];
+};
+
+type CorridorDragState = SegmentDragState & {
+  previewGeometry: [number, number][];
+  dropCoordinate: [number, number];
+  moved: boolean;
+};
+
 const BASE_LAYERS: Record<MapKernelBaseLayer, { label: string; sources: TileSource[] }> = {
   street: {
     label: "Street",
@@ -136,8 +147,18 @@ export type MapKernelEditableRoute = {
   geometry: [number, number][];
   enabled?: boolean;
   selectedVertexIndex?: number | null;
+  selectedSegmentIndex?: number | null;
+  showVertexHandles?: boolean;
+  showSegmentHandles?: boolean;
+  showCorridorHandle?: boolean;
   onGeometryChange?: (geometry: [number, number][]) => void;
   onVertexSelect?: (index: number | null) => void;
+  onSegmentSelect?: (index: number | null) => void;
+  onSegmentMove?: (segmentIndex: number, geometry: [number, number][]) => void;
+  onCorridorMove?: (geometry: [number, number][]) => void;
+  onCorridorPreview?: (geometry: [number, number][], waypoint: [number, number]) => void;
+  onCorridorDrop?: (waypoint: [number, number], previewGeometry: [number, number][]) => void;
+  onCorridorCancel?: () => void;
 };
 
 function project(bounds: MapBounds, coordinate: [number, number]) {
@@ -305,6 +326,10 @@ export default function MapKernel({
   const [selection, setSelectionState] = useState<MapSelection | null>(null);
   const [viewportRequest, requestViewport] = useState<MapViewportRequest | null>(null);
   const [draggingVertexIndex, setDraggingVertexIndex] = useState<number | null>(null);
+  const [draggingSegmentIndex, setDraggingSegmentIndex] = useState<number | null>(null);
+  const [draggingCorridor, setDraggingCorridor] = useState(false);
+  const [segmentDrag, setSegmentDrag] = useState<SegmentDragState | null>(null);
+  const [corridorDrag, setCorridorDrag] = useState<CorridorDragState | null>(null);
   const [mode, setMode] = useState<MapKernelMode>(persistedViewState?.mode ?? initialMode);
   const [baseLayer, setBaseLayer] = useState<MapKernelBaseLayer>(persistedViewState?.baseLayer ?? initialBaseLayer);
   const [geoSize, setGeoSize] = useState({ width: SVG_WIDTH, height });
@@ -319,7 +344,7 @@ export default function MapKernel({
   const panDragRef = useRef<PanDragState | null>(null);
   const suppressNextSelectionRef = useRef(false);
   const autoFitInitializedRef = useRef(Boolean(persistedViewState));
-  const routeEditLocked = Boolean(editableRoute?.enabled && draggingVertexIndex !== null);
+  const routeEditLocked = Boolean(editableRoute?.enabled && (draggingVertexIndex !== null || draggingSegmentIndex !== null || draggingCorridor));
   const primitives = useMemo(
     () => renderMapKernelPrimitives(specs, { layerVisibility, stationDensityFeet, showStationLabels }),
     [layerVisibility, showStationLabels, specs, stationDensityFeet]
@@ -488,7 +513,7 @@ export default function MapKernel({
   }
 
   function beginMapPan(event: PointerEvent<SVGSVGElement>) {
-    if (draggingVertexIndex !== null) return;
+    if (draggingVertexIndex !== null || draggingSegmentIndex !== null || draggingCorridor) return;
     if (event.button !== 0 && event.button !== 1) return;
     panDragRef.current = {
       pointerId: event.pointerId,
@@ -561,25 +586,119 @@ export default function MapKernel({
     });
   }
 
-  function updateEditableVertex(event: MouseEvent<SVGSVGElement>) {
-    if (!editableRoute?.enabled || draggingVertexIndex === null || !editableRoute.onGeometryChange || !svgRef.current) return;
+  function coordinateFromClientPoint(clientX: number, clientY: number): [number, number] | null {
+    if (!svgRef.current) return null;
     const rect = svgRef.current.getBoundingClientRect();
     const targetWidth = mode === "geographic" ? geoSize.width : SVG_WIDTH;
     const targetHeight = mode === "geographic" ? geoSize.height : SVG_HEIGHT;
-    const x = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * targetWidth;
-    const y = ((event.clientY - rect.top) / Math.max(rect.height, 1)) * targetHeight;
-    const nextCoordinate =
-      mode === "geographic"
-        ? worldToLonLat(
-            {
-              x: geoCenterWorld.x - geoSize.width / 2 + x,
-              y: geoCenterWorld.y - geoSize.height / 2 + y,
-            },
-            geoView.zoom
-          )
-        : unproject(bounds, x, y);
+    const x = ((clientX - rect.left) / Math.max(rect.width, 1)) * targetWidth;
+    const y = ((clientY - rect.top) / Math.max(rect.height, 1)) * targetHeight;
+    if (mode === "geographic") {
+      return worldToLonLat(
+        {
+          x: geoCenterWorld.x - geoSize.width / 2 + x,
+          y: geoCenterWorld.y - geoSize.height / 2 + y,
+        },
+        geoView.zoom
+      );
+    }
+    return unproject(bounds, x, y);
+  }
+
+  function updateEditableVertex(event: MouseEvent<SVGSVGElement>) {
+    if (!editableRoute?.enabled) return;
+    if (draggingCorridor && corridorDrag) {
+      const nextCoordinate = coordinateFromClientPoint(event.clientX, event.clientY);
+      if (!nextCoordinate) return;
+      const delta: [number, number] = [
+        nextCoordinate[0] - corridorDrag.pointerCoordinate[0],
+        nextCoordinate[1] - corridorDrag.pointerCoordinate[1],
+      ];
+      const lastIndex = corridorDrag.originalGeometry.length - 1;
+      const next = corridorDrag.originalGeometry.map((coordinate, index) => (
+        index > 0 && index < lastIndex
+          ? [coordinate[0] + delta[0], coordinate[1] + delta[1]] as [number, number]
+          : coordinate
+      ));
+      setCorridorDrag({
+        ...corridorDrag,
+        previewGeometry: next,
+        dropCoordinate: nextCoordinate,
+        moved: true,
+      });
+      editableRoute.onCorridorPreview?.(next, nextCoordinate);
+      if (!editableRoute.onCorridorDrop && !editableRoute.onCorridorPreview) editableRoute.onCorridorMove?.(next);
+      return;
+    }
+    if (draggingSegmentIndex !== null && segmentDrag && editableRoute.onSegmentMove) {
+      const nextCoordinate = coordinateFromClientPoint(event.clientX, event.clientY);
+      if (!nextCoordinate) return;
+      const delta: [number, number] = [
+        nextCoordinate[0] - segmentDrag.pointerCoordinate[0],
+        nextCoordinate[1] - segmentDrag.pointerCoordinate[1],
+      ];
+      const next = segmentDrag.originalGeometry.map((coordinate, index) => (
+        index === draggingSegmentIndex || index === draggingSegmentIndex + 1
+          ? [coordinate[0] + delta[0], coordinate[1] + delta[1]] as [number, number]
+          : coordinate
+      ));
+      editableRoute.onSegmentMove(draggingSegmentIndex, next);
+      return;
+    }
+    if (draggingVertexIndex === null || !editableRoute.onGeometryChange) return;
+    const nextCoordinate = coordinateFromClientPoint(event.clientX, event.clientY);
+    if (!nextCoordinate) return;
     const next = editableRoute.geometry.map((coordinate, index) => (index === draggingVertexIndex ? nextCoordinate : coordinate));
     editableRoute.onGeometryChange(next);
+  }
+
+  function endEditableRouteDrag(commitCorridor = true) {
+    const completedCorridorDrag = draggingCorridor ? corridorDrag : null;
+    if (completedCorridorDrag?.moved) {
+      if (commitCorridor && editableRoute?.onCorridorDrop) {
+        editableRoute.onCorridorDrop(completedCorridorDrag.dropCoordinate, completedCorridorDrag.previewGeometry);
+      } else {
+        editableRoute?.onCorridorCancel?.();
+      }
+    }
+    setDraggingVertexIndex(null);
+    setDraggingSegmentIndex(null);
+    setDraggingCorridor(false);
+    setSegmentDrag(null);
+    setCorridorDrag(null);
+  }
+
+  function beginSegmentDrag(event: PointerEvent<SVGCircleElement> | MouseEvent<SVGCircleElement>, segmentIndex: number) {
+    if (editableRoute?.enabled === false || !editableRoute?.geometry.length) return;
+    const pointerCoordinate = coordinateFromClientPoint(event.clientX, event.clientY);
+    if (!pointerCoordinate) return;
+    event.stopPropagation();
+    setDraggingVertexIndex(null);
+    setDraggingSegmentIndex(segmentIndex);
+    setSegmentDrag({
+      pointerCoordinate,
+      originalGeometry: editableRoute.geometry.map((coordinate) => [coordinate[0], coordinate[1]] as [number, number]),
+    });
+    editableRoute.onSegmentSelect?.(segmentIndex);
+  }
+
+  function beginCorridorDrag(event: PointerEvent<SVGCircleElement> | MouseEvent<SVGCircleElement>) {
+    if (editableRoute?.enabled === false || !editableRoute?.geometry.length) return;
+    const pointerCoordinate = coordinateFromClientPoint(event.clientX, event.clientY);
+    if (!pointerCoordinate) return;
+    event.stopPropagation();
+    setDraggingVertexIndex(null);
+    setDraggingSegmentIndex(null);
+    setDraggingCorridor(true);
+    setCorridorDrag({
+      pointerCoordinate,
+      originalGeometry: editableRoute.geometry.map((coordinate) => [coordinate[0], coordinate[1]] as [number, number]),
+      previewGeometry: editableRoute.geometry.map((coordinate) => [coordinate[0], coordinate[1]] as [number, number]),
+      dropCoordinate: pointerCoordinate,
+      moved: false,
+    });
+    editableRoute.onVertexSelect?.(null);
+    editableRoute.onSegmentSelect?.(null);
   }
 
   function pointFor(coordinate: [number, number]) {
@@ -602,9 +721,26 @@ export default function MapKernel({
       .join(" ");
   }
 
+  function corridorHandleCoordinate(coordinates: [number, number][]): [number, number] | null {
+    if (!coordinates.length) return null;
+    if (coordinates.length === 1) return coordinates[0];
+    const interior = coordinates.slice(1, -1);
+    const source = interior.length ? interior : coordinates;
+    const total = source.reduce(
+      (sum, coordinate) => ({ lon: sum.lon + coordinate[0], lat: sum.lat + coordinate[1] }),
+      { lon: 0, lat: 0 }
+    );
+    return [total.lon / source.length, total.lat / source.length];
+  }
+
   function renderEditableRoute() {
     if (!editableRoute?.geometry.length) return null;
     const selectedIndex = editableRoute.selectedVertexIndex ?? draggingVertexIndex;
+    const selectedSegmentIndex = editableRoute.selectedSegmentIndex ?? draggingSegmentIndex;
+    const showVertexHandles = editableRoute.showVertexHandles !== false;
+    const showSegmentHandles = editableRoute.showSegmentHandles !== false;
+    const corridorCoordinate = editableRoute.showCorridorHandle ? corridorHandleCoordinate(editableRoute.geometry) : null;
+    const corridorPreviewGeometry = draggingCorridor && corridorDrag?.moved ? corridorDrag.previewGeometry : null;
     return (
       <g key={`editable-route:${editableRoute.routeId}`} className="dal-map-kernel-editable-route">
         <polyline
@@ -615,7 +751,75 @@ export default function MapKernel({
           strokeDasharray="8 5"
           opacity={0.95}
         />
-        {editableRoute.geometry.map((coordinate, index) => {
+        {corridorPreviewGeometry ? (
+          <polyline
+            points={linePointsFor(corridorPreviewGeometry)}
+            className="dal-map-kernel-corridor-preview"
+            fill="none"
+            stroke="#22c55e"
+            strokeWidth={5}
+            strokeDasharray="12 8"
+            opacity={0.78}
+          />
+        ) : null}
+        {corridorCoordinate ? (() => {
+          const point = pointFor(corridorDrag?.moved ? corridorDrag.dropCoordinate : corridorCoordinate);
+          return (
+            <circle
+              key={`${editableRoute.routeId}:corridor-handle`}
+              className="dal-map-kernel-corridor-handle"
+              cx={point.x}
+              cy={point.y}
+              r={draggingCorridor ? 13 : 11}
+              fill={draggingCorridor ? "#22c55e" : "#dcfce7"}
+              stroke="#166534"
+              strokeWidth={4}
+              opacity={editableRoute.enabled === false ? 0.55 : 1}
+              style={{ cursor: editableRoute.enabled === false ? "default" : "move" }}
+              onPointerDown={beginCorridorDrag}
+              onMouseDown={beginCorridorDrag}
+              onClick={(event) => {
+                event.stopPropagation();
+                editableRoute.onVertexSelect?.(null);
+                editableRoute.onSegmentSelect?.(null);
+              }}
+            >
+              <title>Corridor-level drag handle</title>
+            </circle>
+          );
+        })() : null}
+        {showSegmentHandles ? editableRoute.geometry.slice(0, -1).map((coordinate, index) => {
+          const nextCoordinate = editableRoute.geometry[index + 1];
+          const midpointCoordinate: [number, number] = [
+            (coordinate[0] + nextCoordinate[0]) / 2,
+            (coordinate[1] + nextCoordinate[1]) / 2,
+          ];
+          const point = pointFor(midpointCoordinate);
+          const selected = selectedSegmentIndex === index;
+          return (
+            <circle
+              key={`${editableRoute.routeId}:segment:${index}`}
+              className="dal-map-kernel-segment-handle"
+              cx={point.x}
+              cy={point.y}
+              r={selected ? 9 : 7}
+              fill={selected ? "#f59e0b" : "#fef3c7"}
+              stroke="#92400e"
+              strokeWidth={3}
+              opacity={editableRoute.enabled === false ? 0.5 : 1}
+              style={{ cursor: editableRoute.enabled === false ? "default" : "move" }}
+              onPointerDown={(event) => beginSegmentDrag(event, index)}
+              onMouseDown={(event) => beginSegmentDrag(event, index)}
+              onClick={(event) => {
+                event.stopPropagation();
+                editableRoute.onSegmentSelect?.(index);
+              }}
+            >
+              <title>{`Route segment ${index + 1}`}</title>
+            </circle>
+          );
+        }) : null}
+        {showVertexHandles ? editableRoute.geometry.map((coordinate, index) => {
           const point = pointFor(coordinate);
           const selected = selectedIndex === index;
           return (
@@ -649,7 +853,7 @@ export default function MapKernel({
               <title>{`Route vertex ${index + 1}`}</title>
             </circle>
           );
-        })}
+        }) : null}
       </g>
     );
   }
@@ -789,8 +993,8 @@ export default function MapKernel({
         role="img"
         aria-label="Hyperlinx topology truth map"
         onMouseMove={updateEditableVertex}
-        onMouseUp={() => setDraggingVertexIndex(null)}
-        onMouseLeave={() => setDraggingVertexIndex(null)}
+        onMouseUp={() => endEditableRouteDrag(true)}
+        onMouseLeave={() => endEditableRouteDrag(false)}
       >
         <rect x="0" y="0" width={SVG_WIDTH} height={SVG_HEIGHT} fill="#f8fafc" />
         {primitives.map(renderPrimitive)}
@@ -815,15 +1019,19 @@ export default function MapKernel({
           aria-label="Hyperlinx geographic engineering map"
           onPointerDown={beginMapPan}
           onPointerMove={updateMapPan}
-          onPointerUp={(event) => endMapPan(event)}
-          onPointerCancel={(event) => endMapPan(event)}
+          onPointerUp={(event) => {
+            endMapPan(event);
+            endEditableRouteDrag(true);
+          }}
+          onPointerCancel={(event) => {
+            endMapPan(event);
+            endEditableRouteDrag(false);
+          }}
           onWheel={handleGeographicWheel}
           onMouseMove={updateEditableVertex}
-          onMouseUp={() => {
-            setDraggingVertexIndex(null);
-          }}
+          onMouseUp={() => endEditableRouteDrag(true)}
           onMouseLeave={() => {
-            setDraggingVertexIndex(null);
+            endEditableRouteDrag(false);
             endMapPan();
           }}
         >

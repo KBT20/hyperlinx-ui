@@ -121,6 +121,17 @@ export type CommercialMapOpportunityOverlay = {
   confidence?: number;
 };
 
+export type CommercialIlaMapStation = {
+  stationId: string;
+  label: string;
+  station: string;
+  milepost: number;
+  gps: string;
+  coordinate: DALCoordinate;
+  facilityType: string;
+  totalCost: number;
+};
+
 const MIN_ZOOM = 4;
 const MAX_ZOOM = 19;
 
@@ -288,11 +299,14 @@ export default function ProposedNetworkMapPanel({
   customerTwinState,
   commercialMapLayers = [],
   commercialOpportunityOverlay,
+  commercialIlaStations = [],
+  selectedCommercialIlaStationId,
   mapMinHeight = 560,
   mapTitle = "Proposed Network Map",
   mapBadgeLabel,
   onMapCoordinateClick,
   onCommercialLayerVisibilityToggle,
+  onCommercialIlaStationSelect,
 }: {
   graph: ProposedGraph;
   selected: ProposedNetworkSelection;
@@ -302,11 +316,14 @@ export default function ProposedNetworkMapPanel({
   customerTwinState?: CustomerTwinRenderableState | null;
   commercialMapLayers?: CommercialMapLayer[];
   commercialOpportunityOverlay?: CommercialMapOpportunityOverlay;
+  commercialIlaStations?: CommercialIlaMapStation[];
+  selectedCommercialIlaStationId?: string | null;
   mapMinHeight?: number;
   mapTitle?: string;
   mapBadgeLabel?: string;
   onMapCoordinateClick?: (coordinate: DALCoordinate) => void;
   onCommercialLayerVisibilityToggle?: (networkId: string) => void;
+  onCommercialIlaStationSelect?: (stationId: string) => void;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const fittedRouteRef = useRef<string | null>(null);
@@ -345,7 +362,8 @@ export default function ProposedNetworkMapPanel({
     [customerTwinLayers, hasCommercialTwinLayerRegistry, visibleCustomerInventoryObjectLayerIds],
   );
   const salesDraftVisible = visibleLayerIds.has("sales-commercial-draft:active-corridor");
-  const graphFeatureRenderingVisible = !salesMode || salesDraftVisible;
+  const importedDesignVisible = visibleLayerIds.has("customer-design:active-imported-baseline");
+  const graphFeatureRenderingVisible = !salesMode || salesDraftVisible || importedDesignVisible;
   const inventoryCoordinates = useMemo(
     () => routeVisibleCustomerTwinLayers.flatMap((layer) => [
       ...layer.routes.flatMap((route) => route.coordinates),
@@ -381,8 +399,9 @@ export default function ProposedNetworkMapPanel({
       ...(commercialOpportunityOverlay?.azPoints?.map((point) => point.coordinate) ?? []),
       ...(commercialOpportunityOverlay?.attachmentCandidates?.map((attachment) => attachment.coordinate) ?? []),
       ...(commercialOpportunityOverlay?.corridorGeometry ?? []),
+      ...commercialIlaStations.map((station) => station.coordinate),
     ],
-    [commercialOpportunityOverlay?.attachmentCandidates, commercialOpportunityOverlay?.azPoints, commercialOpportunityOverlay?.candidateCoordinate, commercialOpportunityOverlay?.corridorGeometry, compare, graph, graphFeatureRenderingVisible, inventoryCoordinates],
+    [commercialIlaStations, commercialOpportunityOverlay?.attachmentCandidates, commercialOpportunityOverlay?.azPoints, commercialOpportunityOverlay?.candidateCoordinate, commercialOpportunityOverlay?.corridorGeometry, compare, graph, graphFeatureRenderingVisible, inventoryCoordinates],
   );
   const [view, setView] = useState<ViewState>(() => ({
     center: centerFromCoordinates(coordinates, [-97.7431, 30.2672]),
@@ -660,6 +679,8 @@ export default function ProposedNetworkMapPanel({
   }
 
   const centerlinePath = graph.centerlineRoute?.geometry ?? [];
+  const graphEdgePath = graph.edges.flatMap((edge) => edge.coordinates);
+  const importedBaselinePath = centerlinePath.length > 1 ? centerlinePath : graphEdgePath;
   const originalPath = redline?.originalGeometry?.length ? redline.originalGeometry : centerlinePath;
   const secondaryCenterlinePath = compare?.secondaryGraph.centerlineRoute?.geometry ?? [];
   const sharedCenterlinePath = compare?.sharedCoordinates ?? [];
@@ -717,6 +738,8 @@ export default function ProposedNetworkMapPanel({
     ? inventoryCoordinates
     : centerlinePath.length > 1
       ? centerlinePath
+      : importedDesignVisible && importedBaselinePath.length > 1
+        ? importedBaselinePath
       : coordinates;
   const opportunityOverlayPoint = commercialOpportunityOverlay?.candidateCoordinate ? project(commercialOpportunityOverlay.candidateCoordinate) : null;
   const opportunityAzPoints = commercialOpportunityOverlay?.azPoints ?? [];
@@ -1010,6 +1033,28 @@ export default function ProposedNetworkMapPanel({
               </g>
             );
           })}
+          {commercialIlaStations.map((station) => {
+            const projected = project(station.coordinate);
+            const selectedIla = station.stationId === selectedCommercialIlaStationId;
+            return (
+              <g
+                key={station.stationId}
+                className="commercial-ila-map-station"
+                transform={`translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onCommercialIlaStationSelect?.(station.stationId);
+                }}
+              >
+                <circle r={selectedIla ? 12 : 8} fill={selectedIla ? "#dcfce7" : "#e0f2fe"} stroke={selectedIla ? "#16a34a" : "#0284c7"} strokeWidth={selectedIla ? 3 : 2} opacity={0.96} />
+                <path d="M -4 -4 L 4 -4 L 4 4 L -4 4 Z" fill={selectedIla ? "#22c55e" : "#38bdf8"} />
+                <text x={14} y={-7} fill="#0f172a" fontSize={11} fontWeight="900">{station.label}</text>
+                <text x={14} y={8} fill="#334155" fontSize={10} fontWeight="700">{station.station} / {station.facilityType}</text>
+                <title>{`${station.gps} / Milepost ${station.milepost} / $${Math.round(station.totalCost).toLocaleString()}`}</title>
+              </g>
+            );
+          })}
           {salesMode && salesDraftVisible && redline?.mode === "COMPARE" && originalPath.length > 1 && (
             <path
               d={pathData(originalPath, project)}
@@ -1037,6 +1082,19 @@ export default function ProposedNetworkMapPanel({
                 event.stopPropagation();
                 startSalesCorridorDrag(event);
               }}
+            />
+          )}
+          {salesMode && importedDesignVisible && !salesDraftVisible && importedBaselinePath.length > 1 && (
+            <path
+              d={pathData(importedBaselinePath, project)}
+              className="proposed-network-centerline"
+              stroke="#2563eb"
+              strokeWidth={7}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={0.92}
+              pointerEvents="none"
             />
           )}
           {!salesMode && layers.route && secondaryCenterlinePath.length > 1 && (

@@ -1,7 +1,11 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { listCustomerDesignImports, normalizeCustomerDesignImport, saveCustomerDesignImport } from "../api/customerDesignLibrary";
 import type { InventoryGraph, InventoryGraphMetadata, PrismOpportunity, ScopeVersion } from "../types/dal";
 import type { CandidateSite } from "../types/candidateSite";
+import type { CommercialCorridorDraft } from "../commercial/CommercialCorridorDraftEngine";
+import type { CustomerDesignImport } from "../translate/CustomerDesignImport";
 import type { DesignLaunchResult } from "../design/DesignLaunchResult";
+import type { RouteEngineeringDraft } from "../engineering/RouteEngineeringDraft";
 import type { GraphExtension } from "../types/graphExtension";
 import type { NetworkAffinity } from "../types/networkAffinity";
 import type { OpportunitySeed } from "../types/portfolio";
@@ -31,6 +35,18 @@ export type DALWorkspace =
   | "ops";
 
 export type DALInventorySummary = InventoryGraphMetadata;
+
+export type RouteEngineeringActivationRequest = {
+  requestId: string;
+  commercialDraft: CommercialCorridorDraft;
+  accountId?: string;
+  accountName?: string;
+  opportunityId?: string;
+  createdBy?: string;
+  createdAt: string;
+  sourceWorkspace: "COMMERCIAL_PLANNING";
+  activationReason: string;
+};
 
 type DALState = {
   workspace: DALWorkspace;
@@ -67,6 +83,28 @@ type DALState = {
   setSelectedDesignLaunchResult: (result: DesignLaunchResult | null) => void;
   selectedProposedGraph: ProposedGraph | null;
   setSelectedProposedGraph: (proposedGraph: ProposedGraph | null) => void;
+  selectedCommercialCorridorDraft: CommercialCorridorDraft | null;
+  setSelectedCommercialCorridorDraft: (draft: CommercialCorridorDraft | null) => void;
+  customerDesignImports: CustomerDesignImport[];
+  customerDesignLibraryLoaded: boolean;
+  selectedCustomerDesignImportId: string;
+  setSelectedCustomerDesignImportId: (importId: string) => void;
+  selectedCustomerDesignRouteId: string;
+  setSelectedCustomerDesignRouteId: (routeId: string) => void;
+  selectedCustomerDesignImport: CustomerDesignImport | null;
+  upsertCustomerDesignImport: (record: CustomerDesignImport) => void;
+  selectedRouteEngineeringActivation: RouteEngineeringActivationRequest | null;
+  setSelectedRouteEngineeringActivation: (activation: RouteEngineeringActivationRequest | null) => void;
+  selectedRouteEngineeringDraft: RouteEngineeringDraft | null;
+  setSelectedRouteEngineeringDraft: (draft: RouteEngineeringDraft | null) => void;
+  activateRouteEngineeringFromCommercialDraft: (args: {
+    commercialDraft: CommercialCorridorDraft;
+    accountId?: string;
+    accountName?: string;
+    opportunityId?: string;
+    createdBy?: string;
+    activationReason?: string;
+  }) => RouteEngineeringActivationRequest;
   inventorySummaries: DALInventorySummary[];
   upsertInventorySummary: (summary: DALInventorySummary) => void;
 };
@@ -91,10 +129,78 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
   const [selectedNetworkAffinity, setSelectedNetworkAffinity] = useState<NetworkAffinity | null>(null);
   const [selectedDesignLaunchResult, setSelectedDesignLaunchResult] = useState<DesignLaunchResult | null>(null);
   const [selectedProposedGraph, setSelectedProposedGraph] = useState<ProposedGraph | null>(null);
+  const [selectedCommercialCorridorDraft, setSelectedCommercialCorridorDraft] = useState<CommercialCorridorDraft | null>(null);
+  const [customerDesignImports, setCustomerDesignImports] = useState<CustomerDesignImport[]>([]);
+  const [customerDesignLibraryLoaded, setCustomerDesignLibraryLoaded] = useState(false);
+  const [selectedCustomerDesignImportId, setSelectedCustomerDesignImportId] = useState("");
+  const [selectedCustomerDesignRouteId, setSelectedCustomerDesignRouteId] = useState("");
+  const [selectedRouteEngineeringActivation, setSelectedRouteEngineeringActivation] = useState<RouteEngineeringActivationRequest | null>(null);
+  const [selectedRouteEngineeringDraft, setSelectedRouteEngineeringDraft] = useState<RouteEngineeringDraft | null>(null);
   const [inventorySummaries, setInventorySummaries] = useState<DALInventorySummary[]>([]);
+
+  const activateRouteEngineeringFromCommercialDraft = useCallback((args: {
+    commercialDraft: CommercialCorridorDraft;
+    accountId?: string;
+    accountName?: string;
+    opportunityId?: string;
+    createdBy?: string;
+    activationReason?: string;
+  }) => {
+    const request: RouteEngineeringActivationRequest = {
+      requestId: `ROUTE-ENGINEERING-ACTIVATION-${args.commercialDraft.routeId}-${Date.now()}`,
+      commercialDraft: args.commercialDraft,
+      accountId: args.accountId,
+      accountName: args.accountName,
+      opportunityId: args.opportunityId,
+      createdBy: args.createdBy,
+      createdAt: new Date().toISOString(),
+      sourceWorkspace: "COMMERCIAL_PLANNING",
+      activationReason: args.activationReason ?? "Commercial Draft handed to Route Engineering.",
+    };
+    setSelectedCommercialCorridorDraft(args.commercialDraft);
+    setSelectedRouteEngineeringActivation(request);
+    setWorkspace("routeEngineering");
+    return request;
+  }, []);
 
   function upsertInventorySummary(summary: DALInventorySummary) {
     setInventorySummaries((prev) => [summary, ...prev.filter((item) => item.inventoryId !== summary.inventoryId)]);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    listCustomerDesignImports()
+      .then((records) => {
+        if (cancelled) return;
+        setCustomerDesignImports(records);
+        setCustomerDesignLibraryLoaded(true);
+        if (!selectedCustomerDesignImportId && records[0]) {
+          setSelectedCustomerDesignImportId(records[0].importId);
+          setSelectedCustomerDesignRouteId(records[0].activeRouteId ?? records[0].routes[0]?.routeId ?? "");
+        }
+      })
+      .catch((error) => {
+        console.warn("Customer Design Library load failed", error instanceof Error ? error.message : String(error));
+        if (!cancelled) setCustomerDesignLibraryLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedCustomerDesignImport = useMemo(
+    () => customerDesignImports.find((record) => record.importId === selectedCustomerDesignImportId) ?? null,
+    [customerDesignImports, selectedCustomerDesignImportId],
+  );
+
+  function upsertCustomerDesignImport(record: CustomerDesignImport) {
+    const normalized = normalizeCustomerDesignImport(record);
+    setCustomerDesignImports((prev) => [normalized, ...prev.filter((item) => item.importId !== normalized.importId)]);
+    setSelectedCustomerDesignImportId(normalized.importId);
+    setSelectedCustomerDesignRouteId(normalized.activeRouteId ?? normalized.routes[0]?.routeId ?? "");
+    void saveCustomerDesignImport(normalized).catch((error) => {
+      console.warn("Customer Design Library save failed", error instanceof Error ? error.message : String(error));
+    });
   }
 
   const value = useMemo(
@@ -133,6 +239,21 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
       setSelectedDesignLaunchResult,
       selectedProposedGraph,
       setSelectedProposedGraph,
+      selectedCommercialCorridorDraft,
+      setSelectedCommercialCorridorDraft,
+      customerDesignImports,
+      customerDesignLibraryLoaded,
+      selectedCustomerDesignImportId,
+      setSelectedCustomerDesignImportId,
+      selectedCustomerDesignRouteId,
+      setSelectedCustomerDesignRouteId,
+      selectedCustomerDesignImport,
+      upsertCustomerDesignImport,
+      selectedRouteEngineeringActivation,
+      setSelectedRouteEngineeringActivation,
+      selectedRouteEngineeringDraft,
+      setSelectedRouteEngineeringDraft,
+      activateRouteEngineeringFromCommercialDraft,
       inventorySummaries,
       upsertInventorySummary,
     }),
@@ -154,6 +275,15 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
       selectedNetworkAffinity,
       selectedDesignLaunchResult,
       selectedProposedGraph,
+      selectedCommercialCorridorDraft,
+      customerDesignImports,
+      customerDesignLibraryLoaded,
+      selectedCustomerDesignImportId,
+      selectedCustomerDesignRouteId,
+      selectedCustomerDesignImport,
+      selectedRouteEngineeringActivation,
+      selectedRouteEngineeringDraft,
+      activateRouteEngineeringFromCommercialDraft,
       inventorySummaries,
     ]
   );

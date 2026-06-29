@@ -1,6 +1,8 @@
 import type { BudgetAssumptionState } from "./BudgetAssumptionState";
+import { buildCommercialFinancialAuthority, type CommercialFinancialAuthority } from "./CommercialFinancialAuthority";
 import type { CommercialRouteResult } from "./CommercialOsrmRoutingEngine";
 import type { OpportunityScoutCandidate } from "./OpportunityScoutEngine";
+import type { CustomerDesignImport, ImportedCustomerRoute } from "../translate/CustomerDesignImport";
 import {
   buildTransparentCorridorEstimate,
   type TransparentCorridorEstimate,
@@ -76,12 +78,22 @@ export interface CommercialCorridorDraft {
   ilaRegenLineItems: CommercialCorridorLineItem[];
   constructionCost: number;
   totalCost: number;
+  financialAuthority: CommercialFinancialAuthority;
+  grossMarginDollars: number;
+  nrcRevenue: number;
+  mrcRevenue: number;
+  lifecycleRevenue: number;
   costPerMile: number;
   costPerFoot: number;
+  revenuePerMile: number;
+  revenuePerFoot: number;
+  marginPerMile: number;
+  sellPerFoot: number;
   sellPrice: number;
   nrc: number;
   iruSellPrice: number;
   grossMarginPercent: number;
+  financialValidationWarnings: string[];
   vendorResponsePreview: string[];
   supportingInformation: string[];
   diagnostics: string[];
@@ -189,8 +201,11 @@ export function buildCommercialCorridorDraft(args: {
   const routeSegments = buildSegments(args.candidate.candidateId, routeMiles, routeFeet, routeFeet, weightedCivilCostPerFoot);
   const aLabel = labelForEndpoint(args.candidate, "A");
   const zLabel = labelForEndpoint(args.candidate, "Z");
+  const routeId = args.routeResult.routeId ?? `${args.candidate.candidateId}-OSRM-CORRIDOR`;
   const transparentEstimate = buildTransparentCorridorEstimate({
     estimateId: `${args.candidate.candidateId}-TRANSPARENT-ESTIMATE`,
+    routeId,
+    scopeVersionLineage: `Commercial Draft / ${routeId}`,
     aLabel,
     zLabel,
     geometry,
@@ -222,6 +237,13 @@ export function buildCommercialCorridorDraft(args: {
   const totalCost = transparentEstimate.totalKnownCost;
   const sellPrice = transparentEstimate.sellPrice;
   const grossMarginPercent = transparentEstimate.grossMarginPercent;
+  const financialAuthority = buildCommercialFinancialAuthority({
+    constructionCost: totalCost,
+    sellPrice,
+    routeMiles,
+    routeFeet,
+    transparentEstimate,
+  });
   const highwayCrossings = transparentEstimate.unknownQuantities.find((item) => item.unknownId === "DOT-CROSSINGS") ?? transparentEstimate.unknownQuantities[0]!;
   const railCrossings = transparentEstimate.unknownQuantities.find((item) => item.unknownId === "RAILROAD-CROSSINGS") ?? transparentEstimate.unknownQuantities[0]!;
   const waterCrossings = transparentEstimate.unknownQuantities.find((item) => item.unknownId === "WATER-CROSSINGS") ?? transparentEstimate.unknownQuantities[0]!;
@@ -229,7 +251,7 @@ export function buildCommercialCorridorDraft(args: {
   return {
     draftType: "NEW_GRAPH_CORRIDOR",
     candidateId: args.candidate.candidateId,
-    routeId: args.routeResult.routeId ?? `${args.candidate.candidateId}-OSRM-CORRIDOR`,
+    routeId,
     aLabel,
     zLabel,
     geometry,
@@ -262,14 +284,24 @@ export function buildCommercialCorridorDraft(args: {
     materials,
     ospLineItems,
     ilaRegenLineItems,
-    constructionCost,
+    constructionCost: financialAuthority.constructionCost,
     totalCost,
-    costPerMile: money(totalCost / Math.max(routeMiles, 0.01)),
-    costPerFoot: round(totalCost / Math.max(routeFeet, 1), 2),
+    financialAuthority,
+    grossMarginDollars: financialAuthority.grossMarginDollars,
+    nrcRevenue: financialAuthority.nrcRevenue,
+    mrcRevenue: financialAuthority.mrcRevenue,
+    lifecycleRevenue: financialAuthority.lifecycleRevenue,
+    costPerMile: financialAuthority.costPerMile,
+    costPerFoot: financialAuthority.costPerFoot,
+    revenuePerMile: financialAuthority.revenuePerMile,
+    revenuePerFoot: financialAuthority.revenuePerFoot,
+    marginPerMile: financialAuthority.marginPerMile,
+    sellPerFoot: financialAuthority.sellPerFoot,
     sellPrice,
     nrc: sellPrice,
     iruSellPrice: sellPrice,
     grossMarginPercent,
+    financialValidationWarnings: financialAuthority.validationWarnings,
     vendorResponsePreview: [
       `A/Z corridor: ${aLabel} to ${zLabel}`,
       `${routeMiles.toLocaleString()} route miles with ${routeSegments.length.toLocaleString()} commercial segments.`,
@@ -290,6 +322,162 @@ export function buildCommercialCorridorDraft(args: {
       "New Graph corridor built from A/Z OSRM geometry.",
       "Attachment engine was not invoked for this corridor draft.",
       ...args.routeResult.diagnostics,
+    ],
+    noScopeVersionCreation: true,
+    noInventoryMutation: true,
+  };
+}
+
+export function buildCommercialCorridorDraftFromImportedRoute(args: {
+  importRecord: CustomerDesignImport;
+  importedRoute: ImportedCustomerRoute;
+  assumptionState: BudgetAssumptionState;
+  estimateControls?: TransparentEstimateControls;
+}): CommercialCorridorDraft | null {
+  if (!args.importedRoute.pricingEligible) return null;
+  const geometry = args.importedRoute.dalGeometry?.length
+    ? args.importedRoute.dalGeometry
+    : (args.importedRoute.geometry ?? []).map((coordinate) => [coordinate.longitude, coordinate.latitude] as DALCoordinate);
+  if (geometry.length < 2) return null;
+
+  const routeMiles = round(args.importedRoute.routeMiles || args.importedRoute.routeFeet / 5280, 2);
+  const routeFeet = Math.round(args.importedRoute.routeFeet || routeMiles * 5280);
+  if (!routeMiles || !routeFeet) return null;
+
+  const candidateId = `IMPORTED-${args.importRecord.importId}-${args.importedRoute.routeId}`.replace(/[^a-zA-Z0-9-]/g, "-");
+  const routeId = `COMMERCIAL-DRAFT-${args.importedRoute.routeId}`.replace(/[^a-zA-Z0-9-]/g, "-");
+  const constructionMix = args.assumptionState.civilMix;
+  const weightedCivilCostPerFoot =
+    (constructionMix.plowPercent / 100) * 5 +
+    (constructionMix.hddPercent / 100) * 11 +
+    (constructionMix.openCutPercent / 100) * 38;
+  const routeSegments = buildSegments(candidateId, routeMiles, routeFeet, routeFeet, weightedCivilCostPerFoot);
+  const aLabel = `${args.importedRoute.name} A`;
+  const zLabel = `${args.importedRoute.name} Z`;
+  const transparentEstimate = buildTransparentCorridorEstimate({
+    estimateId: `${routeId}-TRANSPARENT-ESTIMATE`,
+    routeId,
+    scopeVersionLineage: `Customer Design Import / ${args.importRecord.designId}`,
+    aLabel,
+    zLabel,
+    geometry,
+    routeMiles,
+    routeFeet,
+    segmentCount: routeSegments.length,
+    assumptionState: args.assumptionState,
+    controls: args.estimateControls,
+  });
+  const quantities = transparentEstimate.physicalQuantities;
+  const bom = transparentEstimate.materialLineItems.map((item) => lineItemFromEstimate("BOM", item));
+  const labor = transparentEstimate.laborLineItems.filter((item) => (item.extendedCost.value ?? 0) > 0).map((item) => lineItemFromEstimate("LABOR", item));
+  const materials = transparentEstimate.materialLineItems.map((item) => lineItemFromEstimate("MATERIAL", item));
+  const ospLineItems = transparentEstimate.ospLineItems.map((item) => lineItemFromEstimate("OSP", item));
+  const ilaRegenLineItems = [
+    lineItem(
+      "ILA_REGEN",
+      `${candidateId}-ILA-FACILITIES`,
+      "Hyperlinx-managed ILA facilities",
+      transparentEstimate.ilaFacilities.length,
+      "EA",
+      transparentEstimate.ilaFacilities[0]?.total.value ?? 0,
+    ),
+  ];
+  ilaRegenLineItems[0].source = "Transparent Estimating Engine";
+  ilaRegenLineItems[0].workbook = transparentEstimate.ilaFacilities[0]?.workbook;
+  ilaRegenLineItems[0].formula = "Bookend ILA sites + intermediate regen ILA sites x selected workbook facility profile.";
+  const constructionCost = transparentEstimate.financialModel.constructionCost.value ?? 0;
+  const totalCost = transparentEstimate.totalKnownCost;
+  const sellPrice = transparentEstimate.sellPrice;
+  const grossMarginPercent = transparentEstimate.grossMarginPercent;
+  const financialAuthority = buildCommercialFinancialAuthority({
+    constructionCost: totalCost,
+    sellPrice,
+    routeMiles,
+    routeFeet,
+    transparentEstimate,
+  });
+  const highwayCrossings = transparentEstimate.unknownQuantities.find((item) => item.unknownId === "DOT-CROSSINGS") ?? transparentEstimate.unknownQuantities[0]!;
+  const railCrossings = transparentEstimate.unknownQuantities.find((item) => item.unknownId === "RAILROAD-CROSSINGS") ?? transparentEstimate.unknownQuantities[0]!;
+  const waterCrossings = transparentEstimate.unknownQuantities.find((item) => item.unknownId === "WATER-CROSSINGS") ?? transparentEstimate.unknownQuantities[0]!;
+
+  return {
+    draftType: "NEW_GRAPH_CORRIDOR",
+    candidateId,
+    routeId,
+    aLabel,
+    zLabel,
+    geometry,
+    routeMiles,
+    routeFeet,
+    routeSegments,
+    stationCount: quantities.stationCount,
+    stationIntervalFeet: quantities.stationSpacingFeet,
+    regenCount: quantities.regenCount,
+    ilaCount: quantities.ilaCount,
+    spliceCaseCount: quantities.spliceCaseCount,
+    vaultCount: quantities.vaultCount,
+    handholeCount: quantities.handholeCount,
+    fiberFeet: quantities.purchasedFiberFeet,
+    ductFeet: quantities.conduitFeet,
+    highwayCrossings,
+    railCrossings,
+    waterCrossings,
+    unknownQuantities: transparentEstimate.unknownQuantities,
+    constructionMix: {
+      hddPercent: transparentEstimate.civilMix.directionalBoreDirtPercent + transparentEstimate.civilMix.directionalBoreRockPercent,
+      plowPercent: transparentEstimate.civilMix.plowPercent,
+      openCutPercent: transparentEstimate.civilMix.openTrenchPercent,
+      label: `${transparentEstimate.civilMix.plowPercent}% plow / ${transparentEstimate.civilMix.directionalBoreDirtPercent}% dirt bore / ${transparentEstimate.civilMix.directionalBoreRockPercent}% rock bore / ${transparentEstimate.civilMix.openTrenchPercent}% open trench`,
+    },
+    ilaFacilities: transparentEstimate.ilaFacilities,
+    transparentEstimate,
+    bom,
+    labor,
+    materials,
+    ospLineItems,
+    ilaRegenLineItems,
+    constructionCost: financialAuthority.constructionCost,
+    totalCost,
+    financialAuthority,
+    grossMarginDollars: financialAuthority.grossMarginDollars,
+    nrcRevenue: financialAuthority.nrcRevenue,
+    mrcRevenue: financialAuthority.mrcRevenue,
+    lifecycleRevenue: financialAuthority.lifecycleRevenue,
+    costPerMile: financialAuthority.costPerMile,
+    costPerFoot: financialAuthority.costPerFoot,
+    revenuePerMile: financialAuthority.revenuePerMile,
+    revenuePerFoot: financialAuthority.revenuePerFoot,
+    marginPerMile: financialAuthority.marginPerMile,
+    sellPerFoot: financialAuthority.sellPerFoot,
+    sellPrice,
+    nrc: sellPrice,
+    iruSellPrice: sellPrice,
+    grossMarginPercent,
+    financialValidationWarnings: financialAuthority.validationWarnings,
+    vendorResponsePreview: [
+      `Imported customer design: ${args.importRecord.customerName} / ${args.importedRoute.name}`,
+      `${routeMiles.toLocaleString()} route miles from ${args.importRecord.sourceType} ${args.importRecord.sourceFileName}.`,
+      `${quantities.ilaCount.toLocaleString()} Hyperlinx-managed ILA sites, ${quantities.spliceCaseCount.toLocaleString()} splice cases, ${quantities.vaultCount.toLocaleString()} vaults, ${quantities.handholeCount.toLocaleString()} handholes.`,
+      `Budget ${money(totalCost).toLocaleString()} / Sell ${sellPrice.toLocaleString()} / GM ${grossMarginPercent}%.`,
+      `Cost/mi ${money(totalCost / Math.max(routeMiles, 0.01)).toLocaleString()} / Cost/ft ${round(totalCost / Math.max(routeFeet, 1), 2).toLocaleString()}.`,
+      `Revenue/mi ${money(sellPrice / Math.max(routeMiles, 0.01)).toLocaleString()} / Margin/mi ${money((sellPrice - totalCost) / Math.max(routeMiles, 0.01)).toLocaleString()}.`,
+      `Estimate confidence ${transparentEstimate.confidence.score}% (${transparentEstimate.confidence.level}); imported customer geometry remains non-authoritative until Engineering validates it.`,
+    ],
+    supportingInformation: [
+      "Imported customer route is treated as customer design evidence, not production inventory.",
+      "Commercial pricing uses the Transparent Estimating Engine with the selected commercial assumptions.",
+      "Opening this route in Engineering creates an immutable customer baseline for review.",
+      "No ScopeVersion, CertifiedRoute, or Customer Twin mutation is created by pricing this imported route.",
+      `Source folder: ${args.importedRoute.folderPath.join(" / ") || "Root"}.`,
+      `Source style: ${args.importedRoute.sourceStyle ?? "None supplied"}.`,
+      `Source description: ${args.importedRoute.sourceDescription ?? "None supplied"}.`,
+    ],
+    diagnostics: [
+      "Commercial Draft built from imported customer design geometry.",
+      "Imported customer geometry is immutable in Engineering until promoted through governed review.",
+      "Attachment engine was not invoked for this imported route draft.",
+      `Customer design state: ${args.importedRoute.designState}.`,
+      `Import authority mode: ${args.importedRoute.provenance.authorityMode}.`,
     ],
     noScopeVersionCreation: true,
     noInventoryMutation: true,

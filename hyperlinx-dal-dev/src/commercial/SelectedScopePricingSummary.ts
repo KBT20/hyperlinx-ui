@@ -28,15 +28,25 @@ export interface SelectedScopePricingReconciliation {
   markupPointsPercent: number;
   markupPointsAmount: number;
   sellPriceIru: number;
+  grossMarginDollars: number;
+  grossMarginPercent: number;
+  nrcRevenue: number;
+  mrcRevenue: number;
+  lifecycleRevenue: number;
   routeMiles: number;
   routeFeet: number;
   costPerMile: number;
+  revenuePerMile: number;
+  marginPerMile: number;
   sellPricePerMile: number;
   costPerFoot: number;
+  revenuePerFoot: number;
   sellPricePerFoot: number;
+  sellPerFoot: number;
   budgetCostReconciles: boolean;
   sellPriceReconciles: boolean;
   combinedAwardAdjustmentStatus: string;
+  financialValidationWarnings: string[];
 }
 
 export interface SelectedScopePricingSummary {
@@ -89,6 +99,19 @@ export function createSelectedScopePricingSummary(args: {
   const routeFeet = args.routes.reduce((total, route) => total + route.takeoff.routeFeet, 0);
   const routeMiles = args.routes.reduce((total, route) => total + route.takeoff.routeMiles, 0);
   const splicing = pricing.fiberSummary.materialSummary.splicing;
+  const grossMarginDollars = sellPriceIru - budgetCost;
+  const grossMarginPercent = sellPriceIru > 0 ? Number(((grossMarginDollars / sellPriceIru) * 100).toFixed(1)) : 0;
+  const financialValidationWarnings = [
+    perUnit(budgetCost, routeMiles) > 750000 || perUnit(budgetCost, routeMiles) < 20000
+      ? `Cost/Mile ${perUnit(budgetCost, routeMiles).toLocaleString()} is outside configured range 20,000-750,000.`
+      : "",
+    grossMarginPercent < 8 || grossMarginPercent > 65
+      ? `Gross Margin ${grossMarginPercent}% is outside target range 8-65%.`
+      : "",
+    sellPriceIru === budgetCost + sellPriceIru
+      ? "Revenue is inconsistent: NRC Revenue must never equal Budget Cost + Sell Price."
+      : "",
+  ].filter(Boolean);
 
   return {
     summaryId: `SELECTED-PRICING-${args.scope.scopeId}`,
@@ -104,15 +127,25 @@ export function createSelectedScopePricingSummary(args: {
       markupPointsPercent: pricing.fiberSummary.costPlus.markup.points,
       markupPointsAmount,
       sellPriceIru,
+      grossMarginDollars,
+      grossMarginPercent,
+      nrcRevenue: sellPriceIru,
+      mrcRevenue: 0,
+      lifecycleRevenue: sellPriceIru,
       routeMiles,
       routeFeet,
       costPerMile: perUnit(budgetCost, routeMiles),
+      revenuePerMile: perUnit(sellPriceIru, routeMiles),
+      marginPerMile: perUnit(grossMarginDollars, routeMiles),
       sellPricePerMile: perUnit(sellPriceIru, routeMiles),
       costPerFoot: perUnit(budgetCost, routeFeet),
+      revenuePerFoot: perUnit(sellPriceIru, routeFeet),
       sellPricePerFoot: perUnit(sellPriceIru, routeFeet),
+      sellPerFoot: perUnit(sellPriceIru, routeFeet),
       budgetCostReconciles: budgetCost === rounded(pricing.fiberSummary.totalOspCost + pricing.fiberSummary.totalIlaRegenCost + otherExplicitCostTotal),
       sellPriceReconciles: sellPriceIru === rounded(budgetCost + markupPointsAmount + sellPriceAdjustments),
       combinedAwardAdjustmentStatus: explicitAdjustments.length ? "Combined-award adjustments explicitly applied." : "No combined-award adjustment applied",
+      financialValidationWarnings,
     },
     diagnostics: [
       `[SELECTED_SCOPE_PRICING_CREATED] scopeId=${args.scope.scopeId}`,

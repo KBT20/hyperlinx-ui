@@ -1,7 +1,21 @@
 import JSZip from "jszip";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { saveInventoryGraph } from "../api/dalClient";
+import { createDefaultBudgetAssumptionState } from "../commercial/BudgetAssumptionState";
+import {
+  buildCommercialCorridorDraftFromImportedRoute,
+  type CommercialCorridorDraft,
+} from "../commercial/CommercialCorridorDraftEngine";
 import { useDALState } from "../dal/DALState";
+import type { CustomerDesignImport, ImportedCustomerRoute, ImportedCustomerRouteState } from "../translate/CustomerDesignImport";
+import {
+  attachPricedDraftToImportedRoute,
+  attachInventoryGraphToCustomerDesignImport,
+  markImportedRoutePromoted,
+  parseCustomerDesignFile,
+  stageCustomerDesignImport,
+  updateImportedRouteState,
+} from "../translate/CustomerDesignImportEngine";
 import type { DALCoordinate, InventoryEdge, InventoryGraph, InventoryNode, InventoryRoute, InventoryStation, ValidationStatus } from "../types/dal";
 
 type SourceType = "CSV" | "KML" | "KMZ" | "GeoJSON";
@@ -62,6 +76,18 @@ function baseName(fileName: string) {
 
 function fmt(n: number | undefined) {
   return Number(n || 0).toLocaleString();
+}
+
+function money(value: number | undefined) {
+  return `$${Math.round(value || 0).toLocaleString()}`;
+}
+
+function formatMiles(value: number | undefined) {
+  return `${Number(value || 0).toFixed(2)} mi`;
+}
+
+function formatFeet(value: number | undefined) {
+  return `${Math.round(value || 0).toLocaleString()} ft`;
 }
 
 function parseNumber(value: unknown) {
@@ -533,6 +559,76 @@ function buildInventoryGraph(parseResult: ParseResult): BuiltGraph {
   };
 }
 
+function parseResultFromCustomerDesignImport(record: CustomerDesignImport): ParseResult {
+  return {
+    sourceType: record.sourceType === "API" ? "GeoJSON" : record.sourceType,
+    sourceFile: record.sourceFileName,
+    sourceRoutes: record.routes.map((route) => ({
+      routeId: route.routeId,
+      name: route.name,
+      coordinates: route.dalGeometry,
+    })),
+    issues: record.diagnostics
+      .filter((diagnostic) => diagnostic.severity !== "INFO")
+      .map((diagnostic) => ({
+        check: diagnostic.severity === "ERROR" ? "Invalid geometry" : "Unsupported source structure",
+        message: diagnostic.message,
+      })),
+  };
+}
+
+function CustomerDesignPreviewMap({
+  record,
+  selectedRoute,
+}: {
+  record: CustomerDesignImport;
+  selectedRoute: ImportedCustomerRoute | null;
+}) {
+  const points = selectedRoute?.dalGeometry ?? [];
+  const objectPoints = record.objects.map((object) => [object.longitude, object.latitude] as DALCoordinate);
+  const allPoints = [...points, ...objectPoints];
+  if (allPoints.length === 0) {
+    return <div className="dal-empty">No geometry available for preview.</div>;
+  }
+
+  const minLon = Math.min(...allPoints.map((point) => point[0]));
+  const maxLon = Math.max(...allPoints.map((point) => point[0]));
+  const minLat = Math.min(...allPoints.map((point) => point[1]));
+  const maxLat = Math.max(...allPoints.map((point) => point[1]));
+  const lonSpan = Math.max(maxLon - minLon, 0.0001);
+  const latSpan = Math.max(maxLat - minLat, 0.0001);
+  const width = 760;
+  const height = 280;
+  const pad = 24;
+  const project = (point: DALCoordinate) => {
+    const x = pad + ((point[0] - minLon) / lonSpan) * (width - pad * 2);
+    const y = height - pad - ((point[1] - minLat) / latSpan) * (height - pad * 2);
+    return [x, y] as const;
+  };
+  const routePath = points.map((point) => project(point).join(",")).join(" ");
+
+  return (
+    <div className="dal-map-lite">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Imported customer design preview">
+        <rect x="0" y="0" width={width} height={height} rx="8" />
+        {routePath && <polyline points={routePath} fill="none" stroke="#2563eb" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />}
+        {record.objects.map((object) => {
+          const [x, y] = project([object.longitude, object.latitude]);
+          return (
+            <g key={object.objectId}>
+              <circle cx={x} cy={y} r="5" />
+              <title>{`${object.name} (${object.objectType})`}</title>
+            </g>
+          );
+        })}
+      </svg>
+      <div className="dal-map-caption">
+        {selectedRoute ? `${selectedRoute.name} - ${formatMiles(selectedRoute.routeMiles)} customer geometry` : "Object-only preview"}
+      </div>
+    </div>
+  );
+}
+
 function ValidationPanel({ graph }: { graph: BuiltGraph | null }) {
   if (!graph) {
     return (
@@ -564,10 +660,25 @@ function ValidationPanel({ graph }: { graph: BuiltGraph | null }) {
 }
 
 export default function TranslateWorkspace() {
-  const { setWorkspace, setSelectedInventoryId, setSelectedGraph, upsertInventorySummary } = useDALState();
+  const {
+    setWorkspace,
+    setSelectedInventoryId,
+    setSelectedGraph,
+    upsertInventorySummary,
+    upsertCustomerDesignImport,
+    selectedCustomerDesignImport,
+    customerDesignImports,
+    customerDesignLibraryLoaded,
+    setSelectedCustomerDesignImportId,
+    setSelectedCustomerDesignRouteId,
+    setSelectedCommercialCorridorDraft,
+    activateRouteEngineeringFromCommercialDraft,
+  } = useDALState();
   const [graph, setGraph] = useState<BuiltGraph | null>(null);
   const [status, setStatus] = useState("Translate workspace ready.");
   const [saving, setSaving] = useState(false);
+  const [customerImport, setCustomerImport] = useState<CustomerDesignImport | null>(null);
+  const [selectedRouteId, setSelectedRouteId] = useState("");
 
   const metrics = useMemo(() => {
     const payload = graph?.payload;
@@ -580,15 +691,64 @@ export default function TranslateWorkspace() {
     };
   }, [graph]);
 
+  const selectedImportedRoute = useMemo(() => {
+    if (!customerImport) return null;
+    return customerImport.routes.find((route) => route.routeId === selectedRouteId) ?? customerImport.routes[0] ?? null;
+  }, [customerImport, selectedRouteId]);
+
+  const importMetrics = useMemo(() => {
+    const diagnostics = customerImport?.diagnostics ?? [];
+    const totalRouteMiles = customerImport?.routes.reduce((total, route) => total + route.routeMiles, 0) ?? 0;
+    return {
+      totalRouteMiles,
+      warnings: diagnostics.filter((diagnostic) => diagnostic.severity === "WARNING").length,
+      errors: diagnostics.filter((diagnostic) => diagnostic.severity === "ERROR").length,
+      pricedRoutes: customerImport?.routes.filter((route) => route.pricedDraft).length ?? 0,
+    };
+  }, [customerImport]);
+
+  useEffect(() => {
+    if (!customerDesignLibraryLoaded || !selectedCustomerDesignImport) return;
+    setCustomerImport(selectedCustomerDesignImport);
+    setSelectedRouteId(selectedCustomerDesignImport.activeRouteId ?? selectedCustomerDesignImport.routes[0]?.routeId ?? "");
+    if (selectedCustomerDesignImport.inventoryGraph) {
+      setGraph({
+        payload: selectedCustomerDesignImport.inventoryGraph,
+        validationRows: selectedCustomerDesignImport.inventoryGraph.validation.issues.map((issue) => ({
+          check: issue.check as ValidationCheck,
+          result: issue.status,
+          count: issue.count,
+          message: issue.message,
+        })),
+        validationStatus: selectedCustomerDesignImport.inventoryGraph.validation.status,
+      });
+      setStatus(`Restored ${selectedCustomerDesignImport.sourceFileName} from Customer Design Library.`);
+    }
+  }, [customerDesignLibraryLoaded, selectedCustomerDesignImport]);
+
   async function handleUpload(file: File) {
     try {
       setStatus(`Parsing ${file.name}...`);
-      const parsed = await parseUpload(file);
+      const imported = await parseCustomerDesignFile({
+        file,
+        accountId: "google",
+        customerName: "Google",
+        uploadedBy: "Ryan",
+      });
+      const parsed = parseResultFromCustomerDesignImport(imported);
       const built = buildInventoryGraph(parsed);
+      const importedWithGraph = attachInventoryGraphToCustomerDesignImport(imported, built.payload);
+      setCustomerImport(importedWithGraph);
+      setSelectedRouteId(importedWithGraph.routes[0]?.routeId ?? "");
+      setSelectedCustomerDesignImportId(importedWithGraph.importId);
+      setSelectedCustomerDesignRouteId(importedWithGraph.routes[0]?.routeId ?? "");
       setGraph(built);
-      setStatus(`Built ${built.payload.metadata.name}: ${fmt(built.payload.nodes.length)} nodes / ${fmt(built.payload.edges.length)} edges.`);
+      setStatus(
+        `Parsed ${importedWithGraph.sourceFileName}: ${fmt(importedWithGraph.routes.length)} route(s), ${fmt(importedWithGraph.objects.length)} object(s), ${fmt(importedWithGraph.diagnostics.length)} diagnostic(s).`,
+      );
     } catch (err: any) {
       setGraph(null);
+      setCustomerImport(null);
       setStatus(`Translate failed: ${err?.message ?? String(err)}`);
     }
   }
@@ -619,21 +779,112 @@ export default function TranslateWorkspace() {
     setWorkspace("graphViewer");
   }
 
+  function setRouteState(designState: ImportedCustomerRouteState) {
+    if (!customerImport || !selectedImportedRoute) return;
+    const updated = updateImportedRouteState(customerImport, selectedImportedRoute.routeId, designState);
+    setCustomerImport(updated);
+    upsertCustomerDesignImport(updated);
+    setStatus(`${selectedImportedRoute.name} marked ${designState}.`);
+  }
+
+  function stageImport(record = customerImport) {
+    if (!record) return null;
+    const activeRouteId = selectedImportedRoute?.routeId ?? selectedRouteId ?? record.activeRouteId ?? record.routes[0]?.routeId ?? "";
+    const activeRoute = record.routes.find((route) => route.routeId === activeRouteId) ?? record.routes[0];
+    const recordWithActiveRoute = {
+      ...record,
+      activeRouteId,
+      previewGeometry: activeRoute?.dalGeometry?.length ? activeRoute.dalGeometry : record.previewGeometry,
+    };
+    const recordWithGraph = graph && !recordWithActiveRoute.inventoryGraph ? attachInventoryGraphToCustomerDesignImport(recordWithActiveRoute, graph.payload) : recordWithActiveRoute;
+    const staged = recordWithGraph.status === "STAGED" || recordWithGraph.status === "PRICED" ? recordWithGraph : stageCustomerDesignImport(recordWithGraph);
+    setCustomerImport(staged);
+    upsertCustomerDesignImport(staged);
+    setSelectedCustomerDesignImportId(staged.importId);
+    setSelectedCustomerDesignRouteId(activeRouteId);
+    setStatus(`${staged.sourceFileName} staged as non-authoritative customer design evidence.`);
+    return staged;
+  }
+
+  function priceRoute(record: CustomerDesignImport, route: ImportedCustomerRoute) {
+    const draft = buildCommercialCorridorDraftFromImportedRoute({
+      importRecord: record,
+      importedRoute: route,
+      assumptionState: createDefaultBudgetAssumptionState(),
+    });
+    if (!draft) {
+      setStatus(`${route.name} is not pricing eligible. Mark it as proposed or draft before pricing.`);
+      return null;
+    }
+    const updated = attachPricedDraftToImportedRoute(record, route.routeId, draft);
+    setCustomerImport(updated);
+    upsertCustomerDesignImport(updated);
+    setSelectedCustomerDesignImportId(updated.importId);
+    setSelectedCustomerDesignRouteId(route.routeId);
+    setSelectedCommercialCorridorDraft(draft);
+    setStatus(`${route.name} priced by Transparent Estimating Engine.`);
+    return { record: updated, draft };
+  }
+
+  function priceSelectedRoute() {
+    if (!customerImport || !selectedImportedRoute) return null;
+    const staged = stageImport(customerImport);
+    if (!staged) return null;
+    const stagedRoute = staged.routes.find((route) => route.routeId === selectedImportedRoute.routeId) ?? selectedImportedRoute;
+    return priceRoute(staged, stagedRoute);
+  }
+
+  function sendToCommercialPlanning() {
+    if (!customerImport || !selectedImportedRoute) return;
+    const priced = selectedImportedRoute.pricedDraft
+      ? { record: customerImport, draft: selectedImportedRoute.pricedDraft as CommercialCorridorDraft }
+      : priceSelectedRoute();
+    if (!priced) return;
+    const promoted = markImportedRoutePromoted(priced.record, selectedImportedRoute.routeId, "ROUTE_PROMOTED_TO_COMMERCIAL_DRAFT");
+    setCustomerImport(promoted);
+    upsertCustomerDesignImport(promoted);
+    setSelectedCustomerDesignImportId(promoted.importId);
+    setSelectedCustomerDesignRouteId(selectedImportedRoute.routeId);
+    setSelectedCommercialCorridorDraft(priced.draft);
+    setStatus(`${selectedImportedRoute.name} sent to Commercial Planning as a draft candidate.`);
+    setWorkspace("googleRfp");
+  }
+
+  function openInEngineering() {
+    if (!customerImport || !selectedImportedRoute) return;
+    const priced = selectedImportedRoute.pricedDraft
+      ? { record: customerImport, draft: selectedImportedRoute.pricedDraft as CommercialCorridorDraft }
+      : priceSelectedRoute();
+    if (!priced) return;
+    const promoted = markImportedRoutePromoted(priced.record, selectedImportedRoute.routeId, "ROUTE_OPENED_IN_ENGINEERING");
+    setCustomerImport(promoted);
+    upsertCustomerDesignImport(promoted);
+    setSelectedCustomerDesignImportId(promoted.importId);
+    setSelectedCustomerDesignRouteId(selectedImportedRoute.routeId);
+    activateRouteEngineeringFromCommercialDraft({
+      commercialDraft: priced.draft,
+      accountId: promoted.accountId,
+      accountName: promoted.customerName,
+      createdBy: "Ryan",
+      activationReason: "Imported customer design opened as immutable customer baseline.",
+    });
+  }
+
   return (
     <section className="dal-workspace">
       <div className="dal-workspace-header">
         <div>
-          <h2>DAL Translate</h2>
-          <p>Carrier source files normalize into inventory graph payloads for DAL validation and persistence.</p>
+          <h2>DAL Translate 2.0</h2>
+          <p>Customer design files ingest into staged, priced, non-authoritative route evidence.</p>
         </div>
       </div>
 
       <div className="dal-grid">
         <div className="dal-panel">
-          <h3>Upload</h3>
+          <h3>Customer Design Upload</h3>
           <input
             type="file"
-            accept=".csv,.kml,.kmz,.geojson,.json,application/json,text/csv"
+            accept=".csv,.kml,.kmz,text/csv"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
               if (file) void handleUpload(file);
@@ -641,15 +892,257 @@ export default function TranslateWorkspace() {
             }}
           />
           <div className="dal-status">{status}</div>
+          <div className="dal-callout">
+            KMZ, KML, and CSV imports preserve folder/source provenance and remain customer evidence until explicitly promoted through Commercial Planning or Engineering.
+          </div>
         </div>
 
-        <ValidationPanel graph={graph} />
+        <div className="dal-panel">
+          <h3>Parse Status</h3>
+          {customerImport ? (
+            <div className="dal-metrics compact">
+              <span>Status: {customerImport.status}</span>
+              <span>Source: {customerImport.sourceType}</span>
+              <span>Routes: {fmt(customerImport.routes.length)}</span>
+              <span>Objects: {fmt(customerImport.objects.length)}</span>
+              <span>Folders: {fmt(customerImport.folders.length)}</span>
+              <span>Miles: {importMetrics.totalRouteMiles.toFixed(2)}</span>
+              <span>Warnings: {fmt(importMetrics.warnings)}</span>
+              <span>Errors: {fmt(importMetrics.errors)}</span>
+            </div>
+          ) : (
+            <div className="dal-status">No customer design import loaded.</div>
+          )}
+        </div>
       </div>
+
+      <div className="dal-panel">
+        <div className="dal-panel-title-row">
+          <h3>Customer Design Library</h3>
+          <span className="dal-badge pass">{customerDesignLibraryLoaded ? `${fmt(customerDesignImports.length)} design(s)` : "Loading"}</span>
+        </div>
+        {customerDesignImports.length ? (
+          <div className="dal-route-list">
+            {customerDesignImports.map((record) => (
+              <button
+                type="button"
+                className={`dal-route-row ${record.importId === customerImport?.importId ? "active" : ""}`}
+                key={record.importId}
+                onClick={() => {
+                  setCustomerImport(record);
+                  setSelectedRouteId(record.activeRouteId ?? record.routes[0]?.routeId ?? "");
+                  setSelectedCustomerDesignImportId(record.importId);
+                  setSelectedCustomerDesignRouteId(record.activeRouteId ?? record.routes[0]?.routeId ?? "");
+                  if (record.inventoryGraph) {
+                    setGraph({
+                      payload: record.inventoryGraph,
+                      validationRows: record.inventoryGraph.validation.issues.map((issue) => ({
+                        check: issue.check as ValidationCheck,
+                        result: issue.status,
+                        count: issue.count,
+                        message: issue.message,
+                      })),
+                      validationStatus: record.inventoryGraph.validation.status,
+                    });
+                  }
+                }}
+              >
+                <span>
+                  <b>{record.libraryPath.join(" / ")}</b>
+                  <small>{record.designId}</small>
+                </span>
+                <span>{record.status}</span>
+                <span>{fmt(record.routes.length)} route(s)</span>
+                <span>{fmt(record.lineage.length)} lineage</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="dal-empty">No staged customer designs persisted yet.</div>
+        )}
+      </div>
+
+      {customerImport && (
+        <div className="dal-grid">
+          <div className="dal-panel">
+            <div className="dal-panel-title-row">
+              <h3>Imported Routes</h3>
+              <button type="button" onClick={() => stageImport()}>
+                Stage Import
+              </button>
+            </div>
+            <div className="dal-route-list">
+              {customerImport.routes.map((route) => (
+                <button
+                  type="button"
+                  className={`dal-route-row ${route.routeId === selectedImportedRoute?.routeId ? "active" : ""}`}
+                  key={route.routeId}
+                  onClick={() => {
+                    const updated = {
+                      ...customerImport,
+                      activeRouteId: route.routeId,
+                      previewGeometry: route.dalGeometry?.length ? route.dalGeometry : customerImport.previewGeometry,
+                    };
+                    setCustomerImport(updated);
+                    setSelectedRouteId(route.routeId);
+                    setSelectedCustomerDesignImportId(customerImport.importId);
+                    setSelectedCustomerDesignRouteId(route.routeId);
+                    if (["STAGED", "PRICED", "PROMOTED_TO_COMMERCIAL_DRAFT", "OPENED_IN_ENGINEERING"].includes(customerImport.status)) {
+                      upsertCustomerDesignImport(updated);
+                    }
+                  }}
+                >
+                  <span>
+                    <b>{route.name}</b>
+                    <small>{route.folderPath.join(" / ") || "Root"}</small>
+                  </span>
+                  <span>{formatMiles(route.routeMiles)}</span>
+                  <span>{route.designState}</span>
+                  <span>{route.pricedDraft ? "Priced" : route.pricingEligible ? "Eligible" : "No price"}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="dal-panel">
+            <h3>Selected Route</h3>
+            {selectedImportedRoute ? (
+              <>
+                <div className="dal-metrics compact">
+                  <span>DesignID: {customerImport.designId}</span>
+                  <span>Name: {selectedImportedRoute.name}</span>
+                  <span>State: {selectedImportedRoute.designState}</span>
+                  <span>Confidence: {selectedImportedRoute.confidence}%</span>
+                  <span>Miles: {formatMiles(selectedImportedRoute.routeMiles)}</span>
+                  <span>Feet: {formatFeet(selectedImportedRoute.routeFeet)}</span>
+                  <span>Folder: {selectedImportedRoute.folderPath.join(" / ") || "Root"}</span>
+                </div>
+                <div className="dal-actions">
+                  <button type="button" onClick={() => setRouteState("CUSTOMER_PROPOSED")}>
+                    Mark Proposed
+                  </button>
+                  <button type="button" onClick={() => setRouteState("CUSTOMER_DRAFT")}>
+                    Mark Draft
+                  </button>
+                  <button type="button" onClick={() => setRouteState("CUSTOMER_EXISTING")}>
+                    Mark Existing
+                  </button>
+                </div>
+                <CustomerDesignPreviewMap record={customerImport} selectedRoute={selectedImportedRoute} />
+              </>
+            ) : (
+              <div className="dal-empty">No route selected.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {customerImport && (
+        <div className="dal-grid">
+          <div className="dal-panel">
+            <h3>Customer Objects</h3>
+            {customerImport.objects.length ? (
+              <div className="dal-table-wrap">
+                <table className="dal-table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Type</th>
+                      <th>Folder</th>
+                      <th>Nearest Route</th>
+                      <th>Station</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customerImport.objects.slice(0, 50).map((object) => (
+                      <tr key={object.objectId}>
+                        <td>{object.name}</td>
+                        <td>{object.objectType}</td>
+                        <td>{object.folderPath.join(" / ") || "Root"}</td>
+                        <td>{object.nearestRouteId ?? "Unmatched"}</td>
+                        <td>{object.nearestStationFeet ? formatFeet(object.nearestStationFeet) : "n/a"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="dal-empty">No customer objects parsed.</div>
+            )}
+          </div>
+
+          <div className="dal-panel">
+            <h3>Diagnostics</h3>
+            {customerImport.diagnostics.length ? (
+              <div className="dal-diagnostic-list">
+                {customerImport.diagnostics.slice(0, 20).map((diagnostic) => (
+                  <div className={`dal-diagnostic-row ${diagnostic.severity.toLowerCase()}`} key={diagnostic.diagnosticId}>
+                    <b>{diagnostic.severity}</b>
+                    <span>{diagnostic.code}</span>
+                    <small>{diagnostic.message}</small>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="dal-status">No diagnostics.</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {customerImport && selectedImportedRoute && (
+        <div className="dal-panel">
+          <div className="dal-panel-title-row">
+            <h3>Pricing And Handoff</h3>
+            <div className="dal-actions">
+              <button type="button" disabled={!selectedImportedRoute.pricingEligible} onClick={priceSelectedRoute}>
+                Price Imported Route
+              </button>
+              <button type="button" disabled={!selectedImportedRoute.pricingEligible} onClick={sendToCommercialPlanning}>
+                Send To Commercial Planning
+              </button>
+              <button type="button" disabled={!selectedImportedRoute.pricingEligible} onClick={openInEngineering}>
+                Open In Engineering
+              </button>
+            </div>
+          </div>
+          {selectedImportedRoute.pricedDraft ? (
+            <div className="dal-metrics compact">
+              <span>Cost: {money(selectedImportedRoute.pricedDraft.totalCost)}</span>
+              <span>Sell: {money(selectedImportedRoute.pricedDraft.sellPrice)}</span>
+              <span>Margin: {selectedImportedRoute.pricedDraft.grossMarginPercent}%</span>
+              <span>Cost/Mile: {money(selectedImportedRoute.pricedDraft.costPerMile)}</span>
+              <span>Cost/Foot: ${selectedImportedRoute.pricedDraft.costPerFoot.toLocaleString()}</span>
+              <span>Revenue/Mile: {money(selectedImportedRoute.pricedDraft.revenuePerMile)}</span>
+              <span>Margin/Mile: {money(selectedImportedRoute.pricedDraft.marginPerMile)}</span>
+              <span>Commercial Readiness: {selectedImportedRoute.pricedDraft.transparentEstimate.commercialReadiness.score}%</span>
+            </div>
+          ) : (
+            <div className="dal-callout">
+              Pricing is available for proposed and draft customer routes. Customer-existing routes remain reference evidence unless their state is changed.
+            </div>
+          )}
+          <div className="dal-note">
+            Handoff actions do not create ScopeVersions, CertifiedRoutes, or production inventory. Engineering receives an immutable customer baseline for review.
+          </div>
+          <div className="dal-lineage">
+            {customerImport.lineage.map((event) => (
+              <div key={event.lineageEventId}>
+                <b>{event.stage}</b>
+                <span>{event.label}</span>
+                <small>{new Date(event.createdAt).toLocaleString()} / {event.relatedId ?? customerImport.designId}</small>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <ValidationPanel graph={graph} />
 
       {graph && (
         <div className="dal-panel">
           <div className="dal-panel-title-row">
-            <h3>{graph.payload.metadata.name}</h3>
+            <h3>Inventory Graph Preview: {graph.payload.metadata.name}</h3>
             <div className="dal-actions">
               <button type="button" onClick={openGraphViewer}>
                 Open Graph Viewer

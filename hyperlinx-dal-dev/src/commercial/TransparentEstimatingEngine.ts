@@ -7,6 +7,15 @@ import {
   type ConstraintValue,
 } from "./ConstraintAuthority";
 import { ESTIMATOR_DEFAULTS } from "./EstimatorDefaults";
+import {
+  DEFAULT_ILA_PLANNING_CONTROLS,
+  buildIlaPlanningResult,
+  buildIlaFacilityProfiles,
+  normalizeIlaPlanningControls,
+  type IlaFacilityProfileId,
+  type IlaPlanningControls,
+  type IlaPlanningResult,
+} from "./IlaPlanningEngine";
 import type { DALCoordinate } from "../types/dal";
 
 export type TransparentEstimateValueStatus =
@@ -51,7 +60,7 @@ export type TransparentEstimateLineCategory =
   | "OPTICAL"
   | "UNKNOWN";
 
-export type TransparentCivilMixMode = "LOCKED" | "MANUAL";
+export type TransparentCivilMixMode = "AUTOMATIC" | "MANUAL";
 export type TransparentEstimateStatus =
   | "CURRENT"
   | "MODIFIED"
@@ -122,14 +131,29 @@ export interface TransparentUnknownQuantity {
 
 export interface TransparentIlaFacility {
   facilityId: string;
+  graphNodeId: string;
+  stationType: "START_BOOKEND" | "INTERMEDIATE" | "END_BOOKEND";
+  station: string;
+  ordinal: number;
   location: string;
   gps: string;
   milepost: number;
+  routeId: string;
+  scopeVersionLineage: string;
+  facilityProfileId: IlaFacilityProfileId;
   facilityType: string;
   power: string;
   generator: string;
   hvac: string;
   racks: number;
+  buildingProfile: string;
+  costProfile: string;
+  spanFromPreviousMiles: number;
+  spanLossDb: number;
+  remainingBudgetDb: number;
+  recommendedRegen: boolean;
+  coordinate: DALCoordinate;
+  canMove: boolean;
   grounding: string;
   civil: string;
   fiberTermination: string;
@@ -166,7 +190,10 @@ export interface TransparentEstimateControls {
   civilMixMode: TransparentCivilMixMode;
   production: TransparentEstimateProductionControls;
   financial: TransparentEstimateFinancialControls;
+  ilaPlanning: IlaPlanningControls;
   constraints?: Record<string, ConstraintValue>;
+  algorithmConstraints?: Record<string, ConstraintValue>;
+  humanAuditTrail?: TransparentEstimateHumanAuditEntry[];
 }
 
 export interface TransparentPhysicalQuantities {
@@ -297,6 +324,19 @@ export interface TransparentEstimateAuditEntry {
   calculated: boolean;
 }
 
+export interface TransparentEstimateHumanAuditEntry {
+  auditId: string;
+  constraintKey: string;
+  label: string;
+  previousValue: string;
+  newValue: string;
+  previousAuthority: ConstraintAuthorityMode;
+  newAuthority: ConstraintAuthorityMode;
+  user: string;
+  timestamp: string;
+  reason?: string;
+}
+
 export interface TransparentCorridorEstimate {
   estimateId: string;
   controls: TransparentEstimateControls;
@@ -307,6 +347,7 @@ export interface TransparentCorridorEstimate {
   equipmentLineItems: TransparentEstimateLineItem[];
   ospLineItems: TransparentEstimateLineItem[];
   ilaFacilities: TransparentIlaFacility[];
+  ilaPlan: IlaPlanningResult;
   unknownQuantities: TransparentUnknownQuantity[];
   constraintValues: Record<string, ConstraintValue>;
   civilMix: TransparentCivilMixSummary;
@@ -319,6 +360,7 @@ export interface TransparentCorridorEstimate {
   confidence: TransparentEstimateConfidence;
   financialModel: TransparentFinancialModel;
   auditTrail: TransparentEstimateAuditEntry[];
+  humanAuditTrail: TransparentEstimateHumanAuditEntry[];
   totalKnownCost: number;
   sellPrice: number;
   nrc: number;
@@ -330,7 +372,7 @@ export interface TransparentCorridorEstimate {
 
 export const DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS: TransparentEstimateControls = {
   targetDurationDays: 120,
-  civilMixMode: "LOCKED",
+  civilMixMode: "AUTOMATIC",
   production: {
     directionalBoreDirtFeetPerDay: 600,
     directionalBoreRockFeetPerDay: 300,
@@ -349,6 +391,10 @@ export const DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS: TransparentEstimateControls 
     markupPercent: ESTIMATOR_DEFAULTS.commercial.defaultMarkupPoints,
     monthlyOmPerRouteMile: 1200 / 12,
   },
+  ilaPlanning: { ...DEFAULT_ILA_PLANNING_CONTROLS },
+  constraints: {},
+  algorithmConstraints: {},
+  humanAuditTrail: [],
 };
 
 const CONTINGENCY_CATEGORIES = [
@@ -418,21 +464,6 @@ const WORKBOOK_RATES = {
   stationSpacingFeet: 5000,
 };
 
-const ILA_36_RACK_COSTS = [
-  { label: "Land acquisition", category: "civil", cost: 55500 },
-  { label: "Quality / material testing", category: "civil", cost: 14000 },
-  { label: "Permits fees / insurance", category: "permit", cost: 55000 },
-  { label: "Site work", category: "civil", cost: 130100 },
-  { label: "Foundation", category: "civil", cost: 20000 },
-  { label: "Prefabricated building", category: "equipment", cost: 575000 },
-  { label: "Electrical", category: "equipment", cost: 253000 },
-  { label: "Security / access control", category: "equipment", cost: 7500 },
-  { label: "Landscaping", category: "civil", cost: 2500 },
-  { label: "Fire suppression system", category: "equipment", cost: 7500 },
-  { label: "Finalization", category: "civil", cost: 1500 },
-  { label: "Telecom fit-out", category: "equipment", cost: 751000 },
-] as const;
-
 function money(value: number) {
   return Math.round(value);
 }
@@ -446,10 +477,14 @@ function clampPositive(value: number, fallback: number) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+function normalizeCivilMixMode(mode?: string): TransparentCivilMixMode {
+  return mode === "MANUAL" ? "MANUAL" : "AUTOMATIC";
+}
+
 function cloneControls(controls?: TransparentEstimateControls): TransparentEstimateControls {
   return {
     targetDurationDays: clampPositive(controls?.targetDurationDays ?? DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.targetDurationDays, DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.targetDurationDays),
-    civilMixMode: controls?.civilMixMode ?? DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.civilMixMode,
+    civilMixMode: normalizeCivilMixMode(controls?.civilMixMode),
     production: {
       ...DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.production,
       ...(controls?.production ?? {}),
@@ -458,7 +493,10 @@ function cloneControls(controls?: TransparentEstimateControls): TransparentEstim
       ...DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.financial,
       ...(controls?.financial ?? {}),
     },
+    ilaPlanning: normalizeIlaPlanningControls(controls?.ilaPlanning),
     constraints: { ...(controls?.constraints ?? {}) },
+    algorithmConstraints: { ...(controls?.algorithmConstraints ?? {}) },
+    humanAuditTrail: [...(controls?.humanAuditTrail ?? [])],
   };
 }
 
@@ -470,6 +508,8 @@ function buildConstraintValues(assumptionState: BudgetAssumptionState, controls:
   const annualOmTotal = controls.financial.monthlyOmPerRouteMile * 12;
   const defaultOmTotal = OM_LIFECYCLE_COMPONENTS.reduce((total, component) => total + component.annualPerRouteMile, 0);
   const omScale = defaultOmTotal > 0 ? annualOmTotal / defaultOmTotal : 1;
+  const defaultIlaProfile = buildIlaFacilityProfiles(controls.ilaPlanning.customFacilityCost)
+    .find((profile) => profile.profileId === controls.ilaPlanning.defaultFacilityProfileId);
   const base: ConstraintValue[] = [
     constraint<number>({
       key: "civil.plowPercent",
@@ -910,11 +950,12 @@ function buildConstraintValues(assumptionState: BudgetAssumptionState, controls:
     }),
     constraint<number>({
       key: "ila.facilityCost",
-      label: "36-rack ILA facility cost",
-      value: ILA_36_RACK_COSTS.reduce((total, item) => total + item.cost, 0),
+      label: "Default ILA facility profile cost",
+      value: defaultIlaProfile?.totalCost ?? 0,
       unit: "$/site",
       authorityMode: "ALGORITHM",
-      source: DOBSON_ILA_WORKBOOK,
+      source: defaultIlaProfile?.workbook ?? DOBSON_ILA_WORKBOOK,
+      sourceDetail: "Derived from selected ILA facility profile line items.",
       affectsCost: true,
       affectsSchedule: true,
       affectsConfidence: true,
@@ -995,8 +1036,8 @@ function authorityFor(values: Record<string, ConstraintValue>, key: string): Con
 
 function confidenceImpactForAuthority(authority: ConstraintValue, unknownImpact: number) {
   if (!authority.affectsConfidence) return 0;
-  if (authority.authorityMode === "APPROVED") return 0;
-  if (authority.authorityMode === "HUMAN" || authority.authorityMode === "API") return Math.max(1, Math.round(unknownImpact * 0.25));
+  if (authority.authorityMode === "HUMAN_APPROVED" || authority.authorityMode === "APPROVED") return 0;
+  if (authority.authorityMode === "PENDING_HUMAN" || authority.authorityMode === "HUMAN" || authority.authorityMode === "API") return Math.max(1, Math.round(unknownImpact * 0.25));
   if (authority.authorityMode === "ALGORITHM" || authority.authorityMode === "SYNTHESIS") return Math.max(2, Math.round(unknownImpact * 0.5));
   return unknownImpact;
 }
@@ -1297,61 +1338,62 @@ function unknownLine(sectionId: TransparentEstimateSectionId, id: string, descri
   };
 }
 
-function geometryPointAt(geometry: DALCoordinate[], ratio: number): DALCoordinate {
-  if (!geometry.length) return [0, 0];
-  const index = Math.max(0, Math.min(geometry.length - 1, Math.round((geometry.length - 1) * ratio)));
-  return geometry[index];
-}
-
-function buildIlaFacilities(args: {
-  estimateId: string;
-  geometry: DALCoordinate[];
-  routeMiles: number;
-  regenCount: number;
-  aLabel: string;
-  zLabel: string;
-  facilityCost: number;
-}): TransparentIlaFacility[] {
-  const siteCost = args.facilityCost;
-  const facilityCount = args.regenCount + 2;
-  return Array.from({ length: facilityCount }, (_, index) => {
-    const ratio = facilityCount === 1 ? 0 : index / (facilityCount - 1);
-    const coordinate = geometryPointAt(args.geometry, ratio);
-    const isA = index === 0;
-    const isZ = index === facilityCount - 1;
-    const label = isA ? `${args.aLabel} bookend ILA` : isZ ? `${args.zLabel} bookend ILA` : `Intermediate ILA ${index}`;
-    const milepost = round(args.routeMiles * ratio, 2);
-    return {
-      facilityId: `${args.estimateId}-ILA-${String(index + 1).padStart(2, "0")}`,
-      location: label,
-      gps: `${coordinate[1]?.toFixed(6) ?? "0.000000"}, ${coordinate[0]?.toFixed(6) ?? "0.000000"}`,
-      milepost,
-      facilityType: "Hyperlinx-managed 36-rack double-wide ILA",
-      power: "Electrical service and generator included in workbook profile",
-      generator: "300KW generator from ILA cost structure",
-      hvac: "Wall-pack HVAC included in ILA cost structure",
-      racks: 36,
-      grounding: "Included in telecom fit-out profile",
-      civil: "Land, site work, foundation, building, fencing, finalization",
-      fiberTermination: "Telecom fit-out includes racks, fiber guide, FDU, splice enclosure, labor",
-      equipment: "Power, generator, ATS, HVAC, security, fire suppression, telecom fit-out",
-      constructionCost: currencyValue({
-        value: siteCost,
-        formula: "Sum of 36-rack ILA cost categories from workbook structure.",
-        source: "ILA Detail",
-        workbook: PER_ILA_COST_WORKBOOK,
-      }),
-      materialCost: pendingValue("UNKNOWN", "ILA workbook does not split every category into material-only cost.", "Human estimator must split workbook total into material buckets before material-only reporting."),
-      laborCost: pendingValue("UNKNOWN", "ILA workbook does not split every category into labor-only cost.", "Human estimator must split workbook total into labor buckets before labor-only reporting."),
-      total: currencyValue({
-        value: siteCost,
-        formula: "Land + testing + permits + site work + foundation + building + electrical + telecom fit-out.",
-        source: "ILA Detail",
-        workbook: DOBSON_ILA_WORKBOOK,
-      }),
-      workbook: `${PER_ILA_COST_WORKBOOK}; ${DOBSON_ILA_WORKBOOK}; ${ILA_LOCATION_WORKBOOK}`,
-    };
-  });
+function buildTransparentIlaFacilities(ilaPlan: IlaPlanningResult): TransparentIlaFacility[] {
+  return ilaPlan.stationObjects.map((station) => ({
+    facilityId: station.stationId,
+    graphNodeId: station.graphNodeId,
+    stationType: station.stationType,
+    station: station.station,
+    ordinal: station.ordinal,
+    location: station.label,
+    gps: station.gps,
+    milepost: station.milepost,
+    routeId: station.routeId,
+    scopeVersionLineage: station.scopeVersionLineage,
+    facilityProfileId: station.facilityProfileId,
+    facilityType: station.facilityType,
+    power: station.powerProfile,
+    generator: station.generatorProfile,
+    hvac: station.hvacProfile,
+    racks: station.facilityProfile.rackCount,
+    buildingProfile: station.facilityProfile.buildingProfile,
+    costProfile: station.costProfile,
+    spanFromPreviousMiles: station.segmentFromPreviousMiles,
+    spanLossDb: station.spanLossDb,
+    remainingBudgetDb: station.remainingBudgetDb,
+    recommendedRegen: station.recommendedRegen,
+    coordinate: station.coordinate,
+    canMove: station.canMove,
+    grounding: "Workbook grounding and site electrical profile",
+    civil: station.facilityProfile.civilProfile,
+    fiberTermination: "Station-driven telecom fit-out, fiber guide, FDU, splice enclosure, and commissioning profile",
+    equipment: station.facilityProfile.equipmentProfile,
+    constructionCost: currencyValue({
+      value: station.facilityProfile.civilCost + station.facilityProfile.equipmentCost,
+      formula: "Facility civil/site profile + equipment profile line items.",
+      source: "ILA Planning Engine",
+      workbook: station.facilityProfile.workbook,
+    }),
+    materialCost: currencyValue({
+      value: station.facilityProfile.materialCost,
+      formula: "Material cost derived from selected facility profile telecom fit-out line items.",
+      source: "ILA Planning Engine",
+      workbook: station.facilityProfile.workbook,
+    }),
+    laborCost: currencyValue({
+      value: station.facilityProfile.laborCost,
+      formula: "Labor cost derived from selected facility profile survey, installation, testing, and commissioning line items.",
+      source: "ILA Planning Engine",
+      workbook: station.facilityProfile.workbook,
+    }),
+    total: currencyValue({
+      value: station.totalCost,
+      formula: "Facility profile line-item total. No static site total is used.",
+      source: "ILA Planning Engine",
+      workbook: station.facilityProfile.workbook,
+    }),
+    workbook: `${station.facilityProfile.workbook}; ${ILA_LOCATION_WORKBOOK}`,
+  }));
 }
 
 function confidenceLevel(score: number): TransparentEstimateConfidence["level"] {
@@ -1459,6 +1501,8 @@ function auditEntries(
 
 export function buildTransparentCorridorEstimate(args: {
   estimateId: string;
+  routeId?: string;
+  scopeVersionLineage?: string;
   aLabel: string;
   zLabel: string;
   geometry: DALCoordinate[];
@@ -1505,12 +1549,21 @@ export function buildTransparentCorridorEstimate(args: {
   const handholeLaborEach = constraintNumber(constraintValues, "material.handholeLaborEach", WORKBOOK_RATES.handholeLaborEach);
   const handholeMaterialEach = constraintNumber(constraintValues, "material.handholeMaterialEach", WORKBOOK_RATES.handholeMaterialEach);
   const spliceCaseEach = constraintNumber(constraintValues, "material.spliceCaseEach", WORKBOOK_RATES.spliceCaseEach);
-  const ilaFacilityCost = constraintNumber(constraintValues, "ila.facilityCost", ILA_36_RACK_COSTS.reduce((total, item) => total + item.cost, 0));
   const stationCount = Math.max(2, Math.ceil(routeFeet / WORKBOOK_RATES.stationSpacingFeet) + 1);
   const vaultCount = Math.max(2, Math.ceil(routeMiles / 8));
   const handholeCount = Math.max(4, Math.ceil(routeFeet / WORKBOOK_RATES.handholeSpacingFeet));
-  const regenCount = Math.max(0, Math.ceil(routeMiles / WORKBOOK_RATES.regenSpacingMiles) - 1);
-  const ilaCount = regenCount + 2;
+  const ilaPlan = buildIlaPlanningResult({
+    estimateId: args.estimateId,
+    routeId: args.routeId,
+    scopeVersionLineage: args.scopeVersionLineage,
+    aLabel: args.aLabel,
+    zLabel: args.zLabel,
+    geometry: args.geometry,
+    routeMiles,
+    controls: controls.ilaPlanning,
+  });
+  const ilaCount = ilaPlan.stationObjects.length;
+  const regenCount = ilaPlan.stationObjects.filter((station) => station.stationType === "INTERMEDIATE").length;
   const routeFiberFeet = routeFeet;
   const slackStorageFeet = vaultCount * args.assumptionState.slack.vaultSlackFeet + handholeCount * args.assumptionState.slack.handholeSlackFeet;
   const fiberBeforeWaste = routeFiberFeet + slackStorageFeet;
@@ -1733,27 +1786,19 @@ export function buildTransparentCorridorEstimate(args: {
     : null;
   const allMaterialLines = futurePathLine ? [...materialLines, futurePathLine] : materialLines;
 
-  const ilaFacilities = buildIlaFacilities({
-    estimateId: args.estimateId,
-    geometry: args.geometry,
-    routeMiles,
-    regenCount,
-    aLabel: args.aLabel,
-    zLabel: args.zLabel,
-    facilityCost: ilaFacilityCost,
-  });
-  const ilaTotal = ilaFacilities.reduce((total, facility) => total + (facility.total.value ?? 0), 0);
+  const ilaFacilities = buildTransparentIlaFacilities(ilaPlan);
+  const ilaTotal = ilaPlan.totalCost;
   const ilaLine = totalLine(
     "ILA_FACILITIES",
     "ILA",
-    `${args.estimateId}:ILA:36-RACK`,
-    "Hyperlinx-managed ILA facilities",
+    `${args.estimateId}:ILA:STATION-PLAN`,
+    "Station-based ILA facilities",
     ilaTotal,
-    "ILA Detail",
-    "Bookend ILA sites + intermediate regen ILA sites x 36-rack workbook cost.",
+    "ILA Planning Engine",
+    "Sum of station-object facility profile costs derived from workbook line items.",
     authorityFor(constraintValues, "ila.assumptions"),
   );
-  ilaLine.workbook = `${PER_ILA_COST_WORKBOOK}; ${DOBSON_ILA_WORKBOOK}`;
+  ilaLine.workbook = `${PER_ILA_COST_WORKBOOK}; ${DOBSON_ILA_WORKBOOK}; ${ILA_LOCATION_WORKBOOK}`;
 
   const engineeringLine = laborLine({
     lineItemId: `${args.estimateId}:PERMIT:ENGINEERING`,
@@ -1927,7 +1972,7 @@ export function buildTransparentCorridorEstimate(args: {
     permits: pendingValue("UNKNOWN", "Permit jurisdiction review", "Permit quantities and jurisdiction fees require human review; no cost adder applied."),
     equipment: currencyValue({
       value: equipmentCost,
-      formula: "Sum of ILA facility workbook totals.",
+      formula: "Sum of station-object ILA facility profile totals.",
       source: "Financial Engine",
       workbook: PER_ILA_COST_WORKBOOK,
     }),
@@ -2067,33 +2112,34 @@ export function buildTransparentCorridorEstimate(args: {
   const opticalEngineeringPreview: TransparentOpticalEngineeringPreview = {
     routeLengthMiles: routeMiles,
     routeLengthKm: round(routeMiles * 1.609344, 2),
-    attenuationDb: round(routeMiles * 1.609344 * 0.25, 2),
-    approximateSpliceLossDb: round(spliceCaseCount * 0.05, 2),
-    connectorLossDb: 1,
-    estimatedEndToEndLossDb: round((routeMiles * 1.609344 * 0.25) + (spliceCaseCount * 0.05) + 1, 2),
-    estimatedSpanLengthMiles: round(routeMiles / Math.max(1, regenCount + 1), 2),
-    estimatedIlaSpacingMiles: WORKBOOK_RATES.regenSpacingMiles,
+    attenuationDb: round(Math.max(0, ...ilaPlan.spans.map((span) => span.attenuationLossDb)), 2),
+    approximateSpliceLossDb: round(Math.max(0, ...ilaPlan.spans.map((span) => span.spliceLossDb)), 2),
+    connectorLossDb: round(Math.max(0, ...ilaPlan.spans.map((span) => span.connectorLossDb)), 2),
+    estimatedEndToEndLossDb: ilaPlan.maxSpanLossDb,
+    estimatedSpanLengthMiles: ilaPlan.averageSpanMiles,
+    estimatedIlaSpacingMiles: ilaPlan.maxSpanMiles,
     preliminaryEngineeringEstimate: true,
   };
   const opticalMetrics: TransparentEstimateMetric[] = [
     { metricId: "OPTICAL-ROUTE-LENGTH", label: "Route length", value: numericValue({ value: opticalEngineeringPreview.routeLengthMiles, formula: "Commercial corridor route miles.", source: "Preliminary optical estimate", suffix: " mi" }) },
-    { metricId: "OPTICAL-ATTENUATION", label: "Estimated attenuation", value: numericValue({ value: opticalEngineeringPreview.attenuationDb, formula: "Route km x 0.25 dB/km preliminary assumption.", source: "Preliminary optical estimate", suffix: " dB" }) },
-    { metricId: "OPTICAL-SPLICE-LOSS", label: "Approximate splice loss", value: numericValue({ value: opticalEngineeringPreview.approximateSpliceLossDb, formula: "Splice case count x 0.05 dB.", source: "Preliminary optical estimate", suffix: " dB" }) },
-    { metricId: "OPTICAL-CONNECTOR-LOSS", label: "Connector loss", value: numericValue({ value: opticalEngineeringPreview.connectorLossDb, formula: "Two connector allowance at 0.5 dB each.", source: "Preliminary optical estimate", suffix: " dB" }) },
-    { metricId: "OPTICAL-END-TO-END", label: "End-to-end loss", value: numericValue({ value: opticalEngineeringPreview.estimatedEndToEndLossDb, formula: "Attenuation + splice loss + connector allowance.", source: "Preliminary optical estimate", suffix: " dB" }) },
-    { metricId: "OPTICAL-SPAN", label: "Estimated span length", value: numericValue({ value: opticalEngineeringPreview.estimatedSpanLengthMiles, formula: "Route miles / span count.", source: "Preliminary optical estimate", suffix: " mi" }) },
-    { metricId: "OPTICAL-ILA-SPACING", label: "Estimated ILA spacing", value: numericValue({ value: opticalEngineeringPreview.estimatedIlaSpacingMiles, formula: "Current commercial regen spacing assumption.", source: "Preliminary optical estimate", suffix: " mi" }) },
+    { metricId: "OPTICAL-ATTENUATION", label: "Max span attenuation", value: numericValue({ value: opticalEngineeringPreview.attenuationDb, formula: "Station span miles x attenuation dB/km.", source: "ILA Planning Engine", suffix: " dB" }) },
+    { metricId: "OPTICAL-SPLICE-LOSS", label: "Span splice loss", value: numericValue({ value: opticalEngineeringPreview.approximateSpliceLossDb, formula: "Station-driven splice loss allowance per span.", source: "ILA Planning Engine", suffix: " dB" }) },
+    { metricId: "OPTICAL-CONNECTOR-LOSS", label: "Span connector loss", value: numericValue({ value: opticalEngineeringPreview.connectorLossDb, formula: "Station-driven connector loss allowance per span.", source: "ILA Planning Engine", suffix: " dB" }) },
+    { metricId: "OPTICAL-END-TO-END", label: "Max span loss", value: numericValue({ value: opticalEngineeringPreview.estimatedEndToEndLossDb, formula: "Max station span attenuation + connector + splice loss.", source: "ILA Planning Engine", suffix: " dB" }) },
+    { metricId: "OPTICAL-SPAN", label: "Average span length", value: numericValue({ value: opticalEngineeringPreview.estimatedSpanLengthMiles, formula: "Station-object span average.", source: "ILA Planning Engine", suffix: " mi" }) },
+    { metricId: "OPTICAL-ILA-SPACING", label: "Max span length", value: numericValue({ value: opticalEngineeringPreview.estimatedIlaSpacingMiles, formula: "Max station-object span length.", source: "ILA Planning Engine", suffix: " mi" }) },
   ];
 
   const unknownAuthorityCount = Object.values(constraintValues).filter((constraintValue) => constraintValue.affectsConfidence && constraintValue.authorityMode === "UNKNOWN").length;
-  const approvedAuthorityCount = Object.values(constraintValues).filter((constraintValue) => constraintValue.authorityMode === "APPROVED").length;
-  const humanAuthorityCount = Object.values(constraintValues).filter((constraintValue) => constraintValue.authorityMode === "HUMAN" || constraintValue.authorityMode === "API").length;
+  const approvedAuthorityCount = Object.values(constraintValues).filter((constraintValue) => constraintValue.authorityMode === "HUMAN_APPROVED" || constraintValue.authorityMode === "APPROVED").length;
+  const humanAuthorityCount = Object.values(constraintValues).filter((constraintValue) => constraintValue.authorityMode === "PENDING_HUMAN" || constraintValue.authorityMode === "HUMAN" || constraintValue.authorityMode === "API").length;
+  const financialApproved = financialAuthority.authorityMode === "HUMAN_APPROVED" || financialAuthority.authorityMode === "APPROVED";
   const readinessDrivers: TransparentCommercialReadiness["drivers"] = [
     { label: "Geometry", status: args.geometry.length > 1 ? "Ready" : "Blocked", impact: args.geometry.length > 1 ? 0 : 30, reason: args.geometry.length > 1 ? "Route geometry is present." : "Route geometry is missing." },
     { label: "Estimate", status: constructionCost > 0 ? "Ready" : "Blocked", impact: constructionCost > 0 ? 0 : 25, reason: constructionCost > 0 ? "Known construction cost is calculated." : "Known construction cost is not available." },
     { label: "Unknown Constraints", status: unknownAuthorityCount <= 3 ? "Ready" : "Review", impact: Math.min(20, unknownAuthorityCount * 2), reason: `${unknownAuthorityCount} authority-aware constraints remain unknown.` },
     { label: "Human Review", status: humanAuthorityCount + approvedAuthorityCount > 0 ? "Ready" : "Review", impact: humanAuthorityCount + approvedAuthorityCount > 0 ? 0 : 8, reason: humanAuthorityCount + approvedAuthorityCount > 0 ? "At least one estimator-supplied or approved assumption exists." : "No human or approved estimate calibration has been captured." },
-    { label: "Financial Review", status: financialAuthority.authorityMode === "APPROVED" ? "Ready" : "Review", impact: financialAuthority.authorityMode === "APPROVED" ? 0 : 8, reason: `Financial assumptions are ${financialAuthority.authorityMode}.` },
+    { label: "Financial Review", status: financialApproved ? "Ready" : "Review", impact: financialApproved ? 0 : 8, reason: `Financial assumptions are ${financialAuthority.authorityMode}.` },
     { label: "Proposal Completeness", status: sellPrice > 0 && mrc >= 0 ? "Ready" : "Review", impact: sellPrice > 0 && mrc >= 0 ? 0 : 10, reason: "NRC/MRC preview and proposal summary values are present." },
     { label: "Customer Decisions", status: "Review", impact: 6, reason: "Customer decisions remain outside the estimator until proposal review." },
   ];
@@ -2133,14 +2179,14 @@ export function buildTransparentCorridorEstimate(args: {
 
   const sections = [
     buildSection("EXECUTIVE_SUMMARY", "Executive Summary", "Known cost, price, duration, and confidence.", [
-      totalLine("EXECUTIVE_SUMMARY", "FINANCIAL", `${args.estimateId}:SUMMARY:CONSTRUCTION`, "Construction cost", constructionCost, "Executive Summary", financialModel.constructionCost.formula, financialAuthority),
+      totalLine("EXECUTIVE_SUMMARY", "FINANCIAL", `${args.estimateId}:SUMMARY:CONSTRUCTION`, "Known cost", costBeforeMarkup, "Executive Summary", "Direct construction cost + contingency + overhead.", financialAuthority),
       totalLine("EXECUTIVE_SUMMARY", "FINANCIAL", `${args.estimateId}:SUMMARY:SELL`, "Sell price", sellPrice, "Executive Summary", financialModel.sellPrice.formula, financialAuthority),
     ], [...financialMetrics, ...confidenceMetrics, ...readinessMetrics]),
     buildSection("CORRIDOR", "Corridor", "Physical corridor quantities derived from routed geometry.", [], corridorMetrics),
     buildSection("FIBER", "Fiber", "Fiber footage, slack, waste, and terminations.", [], fiberMetrics),
     buildSection("OPTICAL_ENGINEERING_PREVIEW", "Optical Engineering Preview", "Preliminary Layer 1 optical metrics for future engineering workflows.", [], opticalMetrics),
     buildSection("OSP_CONSTRUCTION", "OSP Construction", "Civil production and construction line items.", ospLines),
-    buildSection("ILA_FACILITIES", "ILA Facilities", "Bookend and intermediate Hyperlinx-managed ILA sites.", [ilaLine]),
+    buildSection("ILA_FACILITIES", "ILA Facilities", "Station-based bookend and intermediate Hyperlinx-managed ILA sites.", [ilaLine]),
     buildSection("MATERIALS", "Materials", "Workbook-derived OSP materials.", allMaterialLines),
     buildSection("LABOR", "Labor", "Production, schedule, crew, and labor cost detail.", laborWithPm),
     buildSection("EQUIPMENT", "Equipment", "Equipment is currently represented inside ILA facility workbook totals.", [
@@ -2167,9 +2213,10 @@ export function buildTransparentCorridorEstimate(args: {
     buildSection("ASSUMPTIONS", "Assumptions", "Editable production and financial assumptions.", [], assumptionMetrics),
     buildSection("ESTIMATE_CONFIDENCE", "Estimate Confidence", "Confidence changes independently from construction cost.", unknownLines, confidenceMetrics),
   ];
+  const humanAuditTrail = controls.humanAuditTrail ?? [];
   const auditTrail = auditEntries(sections, financialModel, unknownQuantities, financialAuthority, omAuthority);
   sections.push(buildSection("ESTIMATE_AUDIT", "Estimate Audit", "Every displayed total exposes value, formula, source, workbook, override, and calculation status.", [], [
-    { metricId: "AUDIT-COUNT", label: "Audit entries", value: numericValue({ value: auditTrail.length, formula: "Count of generated audit entries.", source: "Estimate Audit" }) },
+    { metricId: "AUDIT-COUNT", label: "Audit entries", value: numericValue({ value: auditTrail.length + humanAuditTrail.length, formula: "Count of generated audit entries and append-only human changes.", source: "Estimate Audit" }) },
   ]));
 
   return {
@@ -2182,6 +2229,7 @@ export function buildTransparentCorridorEstimate(args: {
     equipmentLineItems: sections.find((section) => section.sectionId === "EQUIPMENT")?.lineItems ?? [],
     ospLineItems: ospLines,
     ilaFacilities,
+    ilaPlan,
     unknownQuantities,
     constraintValues,
     civilMix,
@@ -2194,6 +2242,7 @@ export function buildTransparentCorridorEstimate(args: {
     confidence,
     financialModel,
     auditTrail,
+    humanAuditTrail,
     totalKnownCost: money(constructionCost + contingency + overhead),
     sellPrice: money(sellPrice),
     nrc: money(sellPrice),

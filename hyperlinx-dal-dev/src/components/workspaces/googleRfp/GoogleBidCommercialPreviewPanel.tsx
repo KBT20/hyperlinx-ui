@@ -26,7 +26,6 @@ export default function GoogleBidCommercialPreviewPanel({
 }) {
   const reconciliation = pricingSummary.reconciliation;
   const assumptionState = pricingSummary.assumptionState;
-  const grossMargin = reconciliation.sellPriceIru - reconciliation.budgetCost;
 
   return (
     <section className="dal-panel bid-commercial-planning-panel">
@@ -81,15 +80,22 @@ export default function GoogleBidCommercialPreviewPanel({
             <div><span>Route Miles</span><b>{miles(reconciliation.routeMiles)}</b></div>
             <div><span>Budget Cost</span><b>{money(reconciliation.budgetCost)}</b></div>
             <div><span>Sell Price</span><b>{money(reconciliation.sellPriceIru)}</b></div>
+            <div><span>NRC Revenue</span><b>{money(reconciliation.nrcRevenue)}</b></div>
+            <div><span>MRC Revenue</span><b>{money(reconciliation.mrcRevenue)}</b></div>
             <div><span>Markup / Points</span><b>{reconciliation.markupPointsPercent}%</b></div>
-            <div><span>Gross Margin</span><b>{money(grossMargin)}</b></div>
+            <div><span>Gross Margin</span><b>{money(reconciliation.grossMarginDollars)}</b></div>
+            <div><span>Margin %</span><b>{reconciliation.grossMarginPercent}%</b></div>
             <div><span>Cost / Mile</span><b>{money(reconciliation.costPerMile)}</b></div>
-            <div><span>Sell / Mile</span><b>{money(reconciliation.sellPricePerMile)}</b></div>
+            <div><span>Revenue / Mile</span><b>{money(reconciliation.revenuePerMile)}</b></div>
             <div><span>Cost / Foot</span><b>{money(reconciliation.costPerFoot)}</b></div>
-            <div><span>Sell / Foot</span><b>{money(reconciliation.sellPricePerFoot)}</b></div>
+            <div><span>Sell / Foot</span><b>{money(reconciliation.sellPerFoot)}</b></div>
+            <div><span>Revenue / Foot</span><b>{money(reconciliation.revenuePerFoot)}</b></div>
             <div><span>OSP Cost</span><b>{money(reconciliation.ospCost)}</b></div>
             <div><span>ILA Cost</span><b>{money(reconciliation.ilaRegenCost)}</b></div>
           </div>
+          {reconciliation.financialValidationWarnings.length ? (
+            <div className="dal-status">{reconciliation.financialValidationWarnings.join(" ")}</div>
+          ) : null}
         </div>
       </div>
     </section>
