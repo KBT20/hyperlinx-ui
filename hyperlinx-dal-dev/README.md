@@ -15,35 +15,37 @@ This is a separate DAL development UI and runtime. It is intentionally isolated 
 
 Copy or edit `hyperlinx-dal-dev/.env`:
 
-Remote DAL mode:
+Production single-origin mode:
 
 ```env
-VITE_DAL_API=http://67.213.118.179:3001
-VITE_DAL_BASELINE_API=http://67.213.118.179:3001
-VITE_DAL_BASELINE_GRAPH_API=http://67.213.118.179:3001
-VITE_DAL_INVENTORY_GRAPH_API=http://67.213.118.179:3001
+VITE_DAL_API=
+VITE_DAL_BASELINE_API=
+VITE_DAL_BASELINE_GRAPH_API=
+VITE_DAL_INVENTORY_GRAPH_API=
 VITE_DAL_REASONING_PRIMARY_API=http://72.46.85.137:8000
 VITE_DAL_REASONING_PRIMARY_MODEL=mistralai/Mistral-7B-Instruct-v0.2
 VITE_DAL_REASONING_SECONDARY_API=
 VITE_DAL_REASONING_FALLBACK_API=
-VITE_DAL_APP_NAME=HYPERLINX DAL DEVELOPMENT
+VITE_DAL_APP_NAME=Teralinx Infrastructure Operating Platform
 ```
 
-Local mode:
+Blank DAL API values mean the browser calls `/api/*` on the same origin that served the UI. This is the required production mode for `https://app.teralinx.net`.
+
+Local development uses the same browser URL shape. Run the runtime on port `3001`, run Vite on port `5174`, and let Vite proxy `/api/*` to the runtime without compiling an API host into the browser:
 
 ```env
-VITE_DAL_API=http://127.0.0.1:3001
-VITE_DAL_BASELINE_API=http://127.0.0.1:3001
-VITE_DAL_BASELINE_GRAPH_API=http://127.0.0.1:3001
-VITE_DAL_INVENTORY_GRAPH_API=http://127.0.0.1:3001
+VITE_DAL_API=
+VITE_DAL_BASELINE_API=
+VITE_DAL_BASELINE_GRAPH_API=
+VITE_DAL_INVENTORY_GRAPH_API=
 VITE_DAL_REASONING_PRIMARY_API=http://127.0.0.1:8000
 VITE_DAL_REASONING_PRIMARY_MODEL=Local OpenAI-Compatible Reasoning
 VITE_DAL_REASONING_SECONDARY_API=
 VITE_DAL_REASONING_FALLBACK_API=
-VITE_DAL_APP_NAME=HYPERLINX DAL DEVELOPMENT
+VITE_DAL_APP_NAME=Teralinx Infrastructure Operating Platform
 ```
 
-DAL runtime truth-layer API targets come from these environment values. Reasoning is a separate fabric and is resolved through primary, secondary, fallback, or `VITE_DAL_REASONING_ENDPOINTS` registry configuration.
+DAL runtime truth-layer API calls are same-origin browser requests. Reasoning is a separate fabric and is resolved through primary, secondary, fallback, or `VITE_DAL_REASONING_ENDPOINTS` registry configuration. When the app is served from `server/index.js`, the runtime API and UI share one origin and no browser CORS path is required.
 
 Reasoning registry JSON example:
 
@@ -60,6 +62,8 @@ npm run dev
 
 Default development UI: `http://<dal-ui-host>:5174`
 
+Vite is development-only. Browser code still calls relative `/api/*` URLs; the dev server proxy forwards those requests to the local runtime.
+
 ## Build
 
 ```bash
@@ -68,6 +72,34 @@ npm run build
 ```
 
 Output: `hyperlinx-dal-dev/dist-dal`
+
+## Production Runtime
+
+The DAL runtime is the single production entry point. It serves:
+
+```text
+/api/*      Runtime APIs
+/health     Runtime health
+/           React build from dist-dal
+/*          SPA fallback to dist-dal/index.html
+```
+
+Production startup:
+
+```bash
+cd hyperlinx-dal-dev
+npm run build
+npm run start
+```
+
+PM2 startup:
+
+```bash
+cd hyperlinx-dal-dev
+pm2 start ecosystem.config.cjs
+```
+
+Cloudflare Tunnel should target `http://localhost:3001`. Do not point production traffic at Vite dev or Vite preview ports.
 
 ## Translate V1
 
@@ -96,7 +128,7 @@ GET /api/inventory-graphs/:inventoryId
 
 ## Deploy To DAL1
 
-Build `dist-dal` and deploy that directory to the DAL1 web host. DAL1 API targets should come from DAL environment variables, not Chicago constants.
+Build `dist-dal` and run `server/index.js` as the DAL runtime. Production must not serve the UI from `vite preview` or a standalone static server, because browser requests to `/api/*` must reach the same runtime that serves the application.
 
 ## Promotion Rule
 

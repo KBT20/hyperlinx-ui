@@ -1,12 +1,12 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { errorResponse, handleOptions, jsonResponse, nowIso } from "./_shared.js";
+import { PROJECT_ROOT, errorResponse, handleOptions, jsonResponse, nowIso } from "./_shared.js";
 
 const serverStartedAt = nowIso();
 
 async function readPackageVersion() {
   try {
-    const pkg = JSON.parse(await readFile(path.join(process.cwd(), "package.json"), "utf8"));
+    const pkg = JSON.parse(await readFile(path.join(PROJECT_ROOT, "package.json"), "utf8"));
     return String(pkg.version ?? "0.0.0-alpha");
   } catch {
     return "0.0.0-alpha";
@@ -16,7 +16,7 @@ async function readPackageVersion() {
 async function readGitCommit() {
   const envCommit = process.env.GIT_COMMIT ?? process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.RENDER_GIT_COMMIT;
   if (envCommit) return envCommit.slice(0, 12);
-  const gitRoots = [path.join(process.cwd(), ".git"), path.join(process.cwd(), "..", ".git")];
+  const gitRoots = [path.join(PROJECT_ROOT, ".git"), path.join(PROJECT_ROOT, "..", ".git")];
   for (const gitRoot of gitRoots) {
     try {
       const head = (await readFile(path.join(gitRoot, "HEAD"), "utf8")).trim();

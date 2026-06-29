@@ -1,10 +1,15 @@
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+export const ROUTES_DIR = path.dirname(fileURLToPath(import.meta.url));
+export const SERVER_ROOT = path.resolve(ROUTES_DIR, "..");
+export const PROJECT_ROOT = path.resolve(SERVER_ROOT, "..");
 
 export const PORT = Number(process.env.DAL_PORT ?? process.env.PORT ?? 3001);
 export const DATA_ROOT = process.env.DAL_DATA_ROOT
   ? path.resolve(process.env.DAL_DATA_ROOT)
-  : path.join(process.cwd(), "server", "data");
+  : path.join(SERVER_ROOT, "data");
 
 export const DIRS = {
   scopeVersions: path.join(DATA_ROOT, "scopeversions"),

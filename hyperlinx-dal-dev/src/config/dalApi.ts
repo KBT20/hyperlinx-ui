@@ -5,28 +5,23 @@ function cleanApiBase(value: string | undefined) {
   return resolved ? resolved.replace(/\/+$/, "") : "";
 }
 
-function runtimeApiBase(port: number) {
-  if (typeof window === "undefined" || !window.location?.hostname) return "";
-  return `${window.location.protocol}//${window.location.hostname}:${port}`;
-}
-
-function resolveApiBase(keys: string[], fallback: string) {
+function resolveExternalApiBase(keys: string[]) {
   for (const key of keys) {
     const value = cleanApiBase(env[key]);
     if (value) return value;
   }
-  return fallback;
+  return "";
 }
 
-export const DAL_API = resolveApiBase(["VITE_DAL_API"], runtimeApiBase(3001));
-export const DAL_BASELINE_API = resolveApiBase(["VITE_DAL_BASELINE_API", "VITE_DAL_BASELINE_GRAPH_API"], DAL_API);
-export const DAL_BASELINE_GRAPH_API = DAL_BASELINE_API;
-export const DAL_INVENTORY_GRAPH_API = resolveApiBase(["VITE_DAL_INVENTORY_GRAPH_API"], DAL_BASELINE_API);
+export const DAL_API = "";
+export const DAL_BASELINE_API = "";
+export const DAL_BASELINE_GRAPH_API = "";
+export const DAL_INVENTORY_GRAPH_API = "";
 export const DAL_REASONING_ENDPOINTS = env.VITE_DAL_REASONING_ENDPOINTS?.trim() || "";
-export const DAL_REASONING_PRIMARY_API = resolveApiBase(["VITE_DAL_REASONING_PRIMARY_API"], "");
-export const DAL_REASONING_SECONDARY_API = resolveApiBase(["VITE_DAL_REASONING_SECONDARY_API"], "");
-export const DAL_REASONING_FALLBACK_API = resolveApiBase(["VITE_DAL_REASONING_FALLBACK_API"], "");
-export const DAL_REASONING_LEGACY_API = resolveApiBase(["VITE_DAL_REASONING_API"], "");
+export const DAL_REASONING_PRIMARY_API = resolveExternalApiBase(["VITE_DAL_REASONING_PRIMARY_API"]);
+export const DAL_REASONING_SECONDARY_API = resolveExternalApiBase(["VITE_DAL_REASONING_SECONDARY_API"]);
+export const DAL_REASONING_FALLBACK_API = resolveExternalApiBase(["VITE_DAL_REASONING_FALLBACK_API"]);
+export const DAL_REASONING_LEGACY_API = resolveExternalApiBase(["VITE_DAL_REASONING_API"]);
 export const DAL_REASONING_PRIMARY_MODEL = env.VITE_DAL_REASONING_PRIMARY_MODEL?.trim() || "unknown";
 export const DAL_REASONING_SECONDARY_MODEL = env.VITE_DAL_REASONING_SECONDARY_MODEL?.trim() || "unknown";
 export const DAL_REASONING_FALLBACK_MODEL = env.VITE_DAL_REASONING_FALLBACK_MODEL?.trim() || "unknown";

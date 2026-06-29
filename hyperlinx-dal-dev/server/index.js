@@ -1,7 +1,7 @@
 import http from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { DATA_ROOT, DIRS, PORT, errorResponse, handleOptions, jsonResponse } from "./routes/_shared.js";
+import { DATA_ROOT, DIRS, PORT, PROJECT_ROOT, errorResponse, handleOptions, jsonResponse } from "./routes/_shared.js";
 import { handleActivity } from "./routes/activity.js";
 import { handleAuth } from "./routes/auth.js";
 import { handleCandidateSites } from "./routes/candidate-sites.js";
@@ -46,7 +46,9 @@ const routes = [
   handleTwinState,
 ];
 
-const STATIC_ROOT = path.join(process.cwd(), "dist-dal");
+const STATIC_ROOT = process.env.DAL_STATIC_ROOT
+  ? path.resolve(process.env.DAL_STATIC_ROOT)
+  : path.join(PROJECT_ROOT, "dist-dal");
 const CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -56,13 +58,19 @@ const CONTENT_TYPES = {
   ".json": "application/json; charset=utf-8",
 };
 
+function isInsideStaticRoot(resolvedPath) {
+  const relative = path.relative(STATIC_ROOT, resolvedPath);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 async function serveStaticApp(req, res, pathname) {
   if (req.method !== "GET" && req.method !== "HEAD") return false;
-  if (pathname.startsWith("/api/") || pathname === "/health") return false;
+  if (pathname === "/api" || pathname.startsWith("/api/") || pathname === "/health") return false;
   const requestedPath = pathname === "/" ? "/index.html" : pathname;
   const resolvedPath = path.resolve(STATIC_ROOT, `.${decodeURIComponent(requestedPath)}`);
-  if (!resolvedPath.startsWith(STATIC_ROOT)) return false;
-  const candidates = [resolvedPath, path.join(STATIC_ROOT, "index.html")];
+  if (!isInsideStaticRoot(resolvedPath)) return false;
+  const hasFileExtension = Boolean(path.extname(requestedPath));
+  const candidates = hasFileExtension ? [resolvedPath] : [resolvedPath, path.join(STATIC_ROOT, "index.html")];
   for (const candidate of candidates) {
     try {
       const body = await readFile(candidate);

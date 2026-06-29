@@ -8,6 +8,12 @@ export default defineConfig({
   server: {
     host: process.env.VITE_DAL_DEV_HOST || "0.0.0.0",
     port: 5174,
+    proxy: {
+      "/api": {
+        target: process.env.VITE_DAL_DEV_API_PROXY || "http://127.0.0.1:3001",
+        changeOrigin: true,
+      },
+    },
   },
   preview: {
     host: process.env.VITE_DAL_PREVIEW_HOST || "0.0.0.0",
