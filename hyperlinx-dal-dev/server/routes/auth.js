@@ -78,6 +78,18 @@ function tokenFor(user) {
   return Buffer.from(payload).toString("base64url");
 }
 
+function userFromBearerToken(req) {
+  const authorization = String(req.headers.authorization ?? "");
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(match[1], "base64url").toString("utf8"));
+    return ALPHA_USERS.find((user) => user.userId === payload.sub && user.username === payload.username) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function handleAuth(req, res, pathname) {
   if (!pathname.startsWith("/api/auth")) return false;
   if (handleOptions(req, res)) return true;
@@ -96,6 +108,29 @@ export async function handleAuth(req, res, pathname) {
       token: tokenFor(user),
       user: publicUser(user),
       authenticatedAt: nowIso(),
+      provider: "TERALINX_ALPHA_INTERNAL",
+    });
+    return true;
+  }
+
+  if (normalizedPath === "/api/auth/logout" && req.method === "POST") {
+    jsonResponse(res, 200, {
+      ok: true,
+      loggedOutAt: nowIso(),
+      provider: "TERALINX_ALPHA_INTERNAL",
+    });
+    return true;
+  }
+
+  if (normalizedPath === "/api/auth/me" && req.method === "GET") {
+    const user = userFromBearerToken(req);
+    if (!user) {
+      errorResponse(res, 401, "Authentication token is missing or invalid.");
+      return true;
+    }
+    jsonResponse(res, 200, {
+      authenticated: true,
+      user: publicUser(user),
       provider: "TERALINX_ALPHA_INTERNAL",
     });
     return true;

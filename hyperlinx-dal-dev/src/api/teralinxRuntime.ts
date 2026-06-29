@@ -39,10 +39,12 @@ export type TeralinxAuthSession = {
 };
 
 export type TeralinxRuntimeInfo = {
+  application: string;
   applicationName: string;
   applicationTitle: string;
   organization: "Teralinx";
   workspaceOwner: "Teralinx";
+  version: string;
   runtimeVersion: string;
   gitCommit: string;
   buildDate: string;

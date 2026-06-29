@@ -41,15 +41,19 @@ export async function handleRuntime(req, res, pathname) {
     const runtimeVersion = await readPackageVersion();
     const gitCommit = await readGitCommit();
     const buildDate = process.env.BUILD_DATE ?? process.env.VITE_BUILD_DATE ?? serverStartedAt;
+    const application = "Teralinx Infrastructure Operating Platform";
+    const environment = process.env.DAL_ENV ?? "Alpha";
     jsonResponse(res, 200, {
-      applicationName: "Teralinx Infrastructure Operating Platform",
-      applicationTitle: "Teralinx Infrastructure Operating Platform",
+      application,
+      applicationName: application,
+      applicationTitle: application,
       organization: "Teralinx",
       workspaceOwner: "Teralinx",
+      version: runtimeVersion,
       runtimeVersion,
       gitCommit,
       buildDate,
-      environment: process.env.DAL_ENV ?? process.env.NODE_ENV ?? "alpha",
+      environment,
       runtimeStatus: "CONNECTED",
       status: "CONNECTED",
       serverStartedAt,
