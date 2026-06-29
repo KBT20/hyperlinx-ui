@@ -43,6 +43,7 @@ export type ImportAuditEventType =
   | "ROUTE_PROMOTED_TO_COMMERCIAL_DRAFT"
   | "ROUTE_OPENED_IN_ENGINEERING"
   | "ROUTE_COMPARED"
+  | "RUNTIME_COMMITTED"
   | "HUMAN_STATE_OVERRIDE";
 
 export type CustomerDesignLineageStage =
@@ -188,6 +189,13 @@ export interface CustomerDesignImport {
   inventoryGraphId?: string;
   graphId?: string;
   inventoryGraph?: InventoryGraph;
+  runtimeCommitId?: string;
+  runtimeInventoryId?: string;
+  runtimeEvidenceIds?: string[];
+  runtimeObjectIds?: string[];
+  runtimeRelationshipIds?: string[];
+  runtimeValidationReportIds?: string[];
+  runtimeCommittedAt?: string;
   validation?: InventoryGraph["validation"];
   previewGeometry: DALCoordinate[];
   layerVisibility: CustomerDesignLayerVisibility;

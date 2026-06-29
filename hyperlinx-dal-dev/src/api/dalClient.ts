@@ -11,7 +11,6 @@ import {
 import { listServerBaselineGraphMetadata, loadServerBaselineGraph } from "./inventoryRecovery";
 import {
   createScopeVersion as createScopeVersionRecord,
-  ensureInventoryScopeVersion,
   appendScopeVersionClosure as appendScopeVersionClosureRecord,
   listScopeVersions as listScopeVersionRecords,
   loadScopeVersion as loadScopeVersionRecord,
@@ -268,12 +267,8 @@ export async function listInventoryGraphs() {
     });
   const remote = await tryRemote<any>(apiUrl("/api/inventory-graphs", DAL_INVENTORY_GRAPH_API));
   const remoteItems = remote ? unwrapList<any>(remote, ["inventoryGraphs", "graphs"]).map(normalizeGraphMetadata) : [];
-  const localItems = (await readCollection<InventoryGraph>("inventoryGraphs")).map((item) => ({
-    ...item.metadata,
-    localFallback: true,
-  })) as InventoryGraphMetadata[];
   const byId = new Map<string, InventoryGraphMetadata>();
-  [...localItems, ...remoteItems, ...baselineItems].forEach((item) => byId.set(item.inventoryId, item));
+  [...remoteItems, ...baselineItems].forEach((item) => byId.set(item.inventoryId, item));
   return Array.from(byId.values()).sort((a, b) => String(b.createdDate).localeCompare(String(a.createdDate)));
 }
 
@@ -285,9 +280,7 @@ export async function loadInventoryGraph(inventoryId: string) {
   if (baseline) return normalizeInventoryGraph({ ...baseline, metadata: { ...baseline.metadata, localFallback: false, serverBacked: true } });
   const remote = await tryRemote<any>(apiUrl(`/api/inventory-graphs/${encodeURIComponent(inventoryId)}`, DAL_INVENTORY_GRAPH_API));
   if (remote) return normalizeInventoryGraph(remote?.inventoryGraph ?? remote?.graph ?? remote?.data ?? remote);
-  const local = await findRecord<InventoryGraph>("inventoryGraphs", inventoryId);
-  if (!local) throw new Error(`Inventory graph not found: ${inventoryId}`);
-  return normalizeInventoryGraph({ ...local, metadata: { ...local.metadata, localFallback: true } });
+  throw new Error(`Runtime inventory graph not found: ${inventoryId}`);
 }
 
 export async function saveInventoryGraph(payload: InventoryGraph) {
@@ -307,27 +300,9 @@ export async function saveInventoryGraph(payload: InventoryGraph) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payloadWithTelemetry),
   });
-  const graph = normalizeInventoryGraph(remote?.inventoryGraph ?? remote?.graph ?? remote?.data ?? remote ?? { ...payloadWithTelemetry, metadata: { ...payloadWithTelemetry.metadata, localFallback: true } });
-  const inventoryScopeVersion = await ensureInventoryScopeVersion(graph).catch((err) => {
-    console.warn("DAL INVENTORY SCOPEVERSION PERSISTENCE WARNING", graph.inventoryId, err instanceof Error ? err.message : String(err));
-    return null;
-  });
-  if (inventoryScopeVersion) {
-    graph.scopeVersionId = inventoryScopeVersion.scopeVersionId;
-    graph.metadata = {
-      ...graph.metadata,
-      scopeVersionId: inventoryScopeVersion.scopeVersionId,
-      certificationState: inventoryScopeVersion.certificationState,
-    };
-  }
-  if (!remote) {
-    await writeRecord("inventoryGraphs", graph);
-  }
+  if (!remote) throw new Error("Runtime inventory graph API is unavailable. Customer inventory was not saved to browser storage.");
+  const graph = normalizeInventoryGraph(remote?.inventoryGraph ?? remote?.graph ?? remote?.data ?? remote);
   return graph.metadata;
-}
-
-export async function deleteLocalInventoryGraph(inventoryId: string) {
-  await deleteRecord("inventoryGraphs", inventoryId);
 }
 
 export async function listCandidateSites() {

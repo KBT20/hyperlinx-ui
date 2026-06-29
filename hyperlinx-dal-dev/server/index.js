@@ -19,6 +19,7 @@ import { handleMarketplaceQuotes } from "./routes/marketplace-quotes.js";
 import { handleOpportunitySeeds } from "./routes/opportunity-seeds.js";
 import { handleProposalDrafts } from "./routes/proposal-drafts.js";
 import { handleRuntime } from "./routes/runtime.js";
+import { handleRuntimeFoundation } from "./routes/runtime-foundation.js";
 import { handleScopeVersions } from "./routes/scopeversions.js";
 import { handleTwinState } from "./routes/twin-state.js";
 
@@ -33,6 +34,7 @@ const routes = [
   handleCommercialOpportunities,
   handleEngineeringDrafts,
   handleProposalDrafts,
+  handleRuntimeFoundation,
   handleCandidateSites,
   handleOpportunitySeeds,
   handleInventoryGraphs,
@@ -92,6 +94,15 @@ const server = http.createServer(async (req, res) => {
         routes: {
           auth: true,
           runtime: true,
+          evidence: true,
+          runtimeInventories: true,
+          runtimeObjects: true,
+          runtimeRelationships: true,
+          runtimeValidation: true,
+          runtimeHistory: true,
+          runtimeSearch: true,
+          runtimeConnectors: true,
+          translationCommits: true,
           activity: true,
           customerDesignImports: true,
           commercialOpportunities: true,

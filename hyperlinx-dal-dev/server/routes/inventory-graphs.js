@@ -1,4 +1,4 @@
-import { DIRS, errorResponse, handleOptions, jsonResponse, listRecords, loadRecord, routeMatch, sortedByUpdated } from "./_shared.js";
+import { DIRS, errorResponse, handleOptions, jsonResponse, listRecords, loadRecord, persistRecord, readRequestJson, routeMatch, sortedByUpdated } from "./_shared.js";
 
 function metadataFromGraph(graph = {}) {
   const metadata = graph.metadata ?? graph;
@@ -40,7 +40,18 @@ export async function handleInventoryGraphs(req, res, pathname) {
   }
 
   if (match.base && req.method === "POST") {
-    errorResponse(res, 501, "Large inventory graph uploads are intentionally disabled for /api/inventory-graphs in this phase. Use /api/baseline-graphs chunk persistence.");
+    const body = await readRequestJson(req);
+    const graph = body.inventoryGraph ?? body.graph ?? body.data ?? body;
+    const metadata = metadataFromGraph(graph);
+    const saved = await persistRecord(DIRS.inventoryGraphs, metadata.inventoryId, {
+      ...graph,
+      inventoryId: metadata.inventoryId,
+      graphId: metadata.graphId,
+      metadata,
+      createdAt: graph.createdAt ?? metadata.createdDate,
+      updatedAt: graph.updatedAt ?? metadata.updatedAt ?? metadata.createdDate,
+    });
+    jsonResponse(res, 201, { inventoryGraph: saved, graph: saved, metadata: metadataFromGraph(saved) });
     return true;
   }
 

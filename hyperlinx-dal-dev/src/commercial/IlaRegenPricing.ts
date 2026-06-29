@@ -15,7 +15,7 @@ export interface IlaRegenLineItem {
   unit: "EACH" | "ALLOWANCE";
   unitCost: number;
   extendedCost: number;
-  source: "DOBSON_REFERENCE_WORKBOOK";
+  source: "DOBSON_REFERENCE_WORKBOOK" | "PROPOSAL_PROFILE_CATALOG";
   referenceDerived: true;
   developmentSeed: true;
   productionApproved: false;

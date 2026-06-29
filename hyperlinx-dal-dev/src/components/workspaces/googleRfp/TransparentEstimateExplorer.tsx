@@ -13,6 +13,7 @@ import type {
   IlaPlacementMethod,
   IlaPlanningControls,
 } from "../../../commercial/IlaPlanningEngine";
+import { normalizeIlaFacilityProfileId } from "../../../commercial/IlaPlanningEngine";
 import {
   authorityModeConfidence,
   authorityModeCostIncluded,
@@ -137,9 +138,9 @@ const CIVIL_MIX_KEYS = new Set([
 
 const LIFECYCLE_MONTHS = 36;
 const ILA_PROFILE_IDS: IlaFacilityProfileId[] = [
-  "ILA_36_RACK_DOUBLE_WIDE",
-  "ILA_72_RACK_COMPOUND",
-  "ILA_144_RACK_COMPOUND",
+  "ILA_18_RACK",
+  "ILA_27_RACK",
+  "ILA_36_RACK",
   "ILA_CUSTOM",
 ];
 const ILA_PLACEMENT_METHODS: Array<{ value: IlaPlacementMethod; label: string }> = [
@@ -300,8 +301,24 @@ function roundTwo(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function facilityClassMixLabel(stations: TransparentCorridorEstimate["ilaPlan"]["stationObjects"]) {
+  if (!stations.length) return "None";
+  const counts = new Map<string, number>();
+  stations.forEach((station) => {
+    const label = station.facilityProfile.displayName || station.facilityProfile.facilityClass;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  });
+  return Array.from(counts.entries()).map(([label, count]) => `${count} ${label}`).join(" / ");
+}
+
+function opticalRecommendation(plan: TransparentCorridorEstimate["ilaPlan"]) {
+  if (plan.spans.some((span) => span.recommendedRegen)) return "Additional regeneration recommended";
+  if (plan.recommendation.requiresApproval) return plan.recommendation.reason;
+  return "Current station plan clears optical budget";
+}
+
 function ilaProfileIdFromValue(value: string): IlaFacilityProfileId {
-  return ILA_PROFILE_IDS.includes(value as IlaFacilityProfileId) ? value as IlaFacilityProfileId : "ILA_36_RACK_DOUBLE_WIDE";
+  return normalizeIlaFacilityProfileId(value);
 }
 
 function ilaPlacementMethodFromValue(value: string): IlaPlacementMethod {
@@ -687,9 +704,15 @@ function IlaPlanningPanel({
   const routeMiles = Math.max(plan.routeMiles, 0.01);
   const profileOptions = plan.availableProfiles;
   const costPerMile = plan.totalCost / routeMiles;
+  const facilityCapital = plan.stationObjects.reduce((total, station) => total + station.facilityProfile.totalCapital, 0);
+  const facilityClassMix = facilityClassMixLabel(plan.stationObjects);
+  const bookendCount = plan.stationObjects.filter((station) => station.stationType !== "INTERMEDIATE").length;
+  const intermediateCount = intermediateStations.length;
+  const proposalStatus = plan.spans.some((span) => span.recommendedRegen) ? "Review recommended" : "Proposal ready";
+  const customProfileActive = controls.defaultFacilityProfileId === "ILA_CUSTOM" || selectedStation?.facilityProfileId === "ILA_CUSTOM";
 
   function updatePlanning(patch: Partial<IlaPlanningControls>, label: string) {
-    onEditStart?.(label, ["ILA facilities", "Optical engineering", "Equipment", "Financial model", "Margin"]);
+    onEditStart?.(label, ["ILA facilities", "Optical placement", "Proposal pricing", "Financial model", "Margin"]);
     onIlaPlanningChange({
       ...controls,
       ...patch,
@@ -791,6 +814,8 @@ function IlaPlanningPanel({
           <div><span>Cost/Mile</span><b>{money(costPerMile)}</b></div>
           <div><span>Max Span</span><b>{plan.maxSpanMiles.toLocaleString()} mi</b></div>
           <div><span>Max Loss</span><b>{plan.maxSpanLossDb.toLocaleString()} dB</b></div>
+          <div><span>Facility Class Mix</span><b>{facilityClassMix}</b></div>
+          <div><span>Facility Capital</span><b>{money(facilityCapital)}</b></div>
         </div>
       </div>
 
@@ -861,7 +886,7 @@ function IlaPlanningPanel({
           />
         </label>
         <label>
-          <span>Default Facility</span>
+          <span>Default Facility Class</span>
           <select
             value={controls.defaultFacilityProfileId}
             onChange={(event) => updatePlanning({ defaultFacilityProfileId: ilaProfileIdFromValue(event.currentTarget.value) }, "Default ILA facility profile")}
@@ -871,16 +896,74 @@ function IlaPlanningPanel({
             ))}
           </select>
         </label>
-        <label>
-          <span>Custom Profile Cost</span>
+      </div>
+
+      {customProfileActive ? (
+        <div className="ila-custom-profile-controls">
+          <label>
+            <span>Custom Display Name</span>
+            <input
+              value={controls.customFacilityDisplayName}
+              onChange={(event) => updatePlanning({ customFacilityDisplayName: event.currentTarget.value }, "Custom ILA display name")}
+            />
+          </label>
+          <label>
+            <span>Custom Product Description</span>
+            <textarea
+              value={controls.customFacilityDescription}
+              onChange={(event) => updatePlanning({ customFacilityDescription: event.currentTarget.value }, "Custom ILA product description")}
+            />
+          </label>
+          <label>
+            <span>Building Capital</span>
+            <input
+              type="number"
+              min="0"
+              value={controls.customBuildingCapital}
+              onChange={(event) => {
+                const building = Math.max(0, Math.round(Number(event.currentTarget.value) || 0));
+                updatePlanning({
+                  customBuildingCapital: building,
+                  customTotalCapital: building + controls.customTelecomCapital,
+                  customFacilityCost: building + controls.customTelecomCapital,
+                }, "Custom ILA building capital");
+              }}
+            />
+          </label>
+          <label>
+            <span>Telecom Capital</span>
+            <input
+              type="number"
+              min="0"
+              value={controls.customTelecomCapital}
+              onChange={(event) => {
+                const telecom = Math.max(0, Math.round(Number(event.currentTarget.value) || 0));
+                updatePlanning({
+                  customTelecomCapital: telecom,
+                  customTotalCapital: controls.customBuildingCapital + telecom,
+                  customFacilityCost: controls.customBuildingCapital + telecom,
+                }, "Custom ILA telecom capital");
+              }}
+            />
+          </label>
+          <label>
+            <span>Total Capital</span>
           <input
             type="number"
             min="0"
-            value={controls.customFacilityCost}
-            onChange={(event) => updatePlanning({ customFacilityCost: Math.max(0, Math.round(Number(event.currentTarget.value) || 0)) }, "Custom ILA facility cost")}
+              value={controls.customTotalCapital}
+              onChange={(event) => {
+                const total = Math.max(0, Math.round(Number(event.currentTarget.value) || 0));
+                updatePlanning({
+                  customTotalCapital: total,
+                  customFacilityCost: total,
+                }, "Custom ILA total capital");
+              }}
           />
         </label>
-      </div>
+          <span className="transparent-authority-status warning">Custom is a manual proposal override.</span>
+        </div>
+      ) : null}
 
       <div className="ila-action-row">
         <button type="button" onClick={addIntermediateStation}>Add Intermediate</button>
@@ -937,7 +1020,7 @@ function IlaPlanningPanel({
                 <circle r={selected ? 13 : 10} />
                 <text x="0" y="-22" textAnchor="middle">{station.stationType === "INTERMEDIATE" ? `ILA ${station.ordinal}` : station.stationType === "START_BOOKEND" ? "Start" : "End"}</text>
                 <text x="0" y="34" textAnchor="middle">{roundOne(station.milepost)} mi</text>
-                <title>{`${station.label} / ${station.gps} / ${station.facilityType} / ${money(station.totalCost)}`}</title>
+                <title>{`${station.label} / ${station.gps} / ${station.facilityProfile.displayName} / ${money(station.facilityProfile.totalCapital)}`}</title>
               </g>
             );
           })}
@@ -953,12 +1036,9 @@ function IlaPlanningPanel({
                 <th>Station</th>
                 <th>GPS</th>
                 <th>Milepost</th>
-                <th>Facility Type</th>
-                <th>Power</th>
-                <th>HVAC</th>
-                <th>Generator</th>
-                <th>Racks</th>
-                <th>Total Cost</th>
+                <th>Facility Class</th>
+                <th>Product Description</th>
+                <th>Facility Capital</th>
               </tr>
             </thead>
             <tbody>
@@ -1007,11 +1087,14 @@ function IlaPlanningPanel({
                       ))}
                     </select>
                   </td>
-                  <td>{station.powerProfile}</td>
-                  <td>{station.hvacProfile}</td>
-                  <td>{station.generatorProfile}</td>
-                  <td>{station.rackProfile}</td>
-                  <td>{money(station.totalCost)}</td>
+                  <td>{station.facilityProfile.commercialDescription}</td>
+                  <td>
+                    <b>{money(station.facilityProfile.totalCapital)}</b>
+                    <small>Building {money(station.facilityProfile.buildingCapital)}</small>
+                    <small>Telecom {money(station.facilityProfile.telecomCapital)}</small>
+                    {station.facilityProfile.netCapital ? <small>Net {money(station.facilityProfile.netCapital)}</small> : null}
+                    {station.facilityProfile.isCustomOverride ? <small>Manual override</small> : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1022,11 +1105,34 @@ function IlaPlanningPanel({
           <div className="ila-selected-card">
             <span>Selected Station</span>
             <b>{selectedStation?.label ?? "None"}</b>
-            <small>{selectedStation ? `${selectedStation.station} / ${selectedStation.gps}` : "No station selected"}</small>
-            <small>{selectedStation ? `${selectedStation.facilityType} / ${money(selectedStation.totalCost)}` : ""}</small>
+            {selectedStation ? (
+              <div className="ila-selected-detail">
+                <span>Station</span><b>{selectedStation.station}</b>
+                <span>Milepost</span><b>{selectedStation.milepost.toLocaleString()} mi</b>
+                <span>GPS</span><b>{selectedStation.gps}</b>
+                <span>Facility Class</span><b>{selectedStation.facilityProfile.displayName}</b>
+                <span>Product Description</span><small>{selectedStation.facilityProfile.commercialDescription}</small>
+                <span>Building Capital</span><b>{money(selectedStation.facilityProfile.buildingCapital)}</b>
+                <span>Telecom Capital</span><b>{money(selectedStation.facilityProfile.telecomCapital)}</b>
+                <span>Facility Total</span><b>{money(selectedStation.facilityProfile.totalCapital)}</b>
+                {selectedStation.facilityProfile.netCapital ? (
+                  <>
+                    <span>Net Capital</span><b>{moneyPrecise(selectedStation.facilityProfile.netCapital)}</b>
+                  </>
+                ) : null}
+                <span>Optical Margin</span><b>{selectedStation.remainingBudgetDb.toLocaleString()} dB</b>
+                {selectedStation.facilityProfile.isCustomOverride ? (
+                  <>
+                    <span>Override</span><b>Manual proposal override</b>
+                  </>
+                ) : null}
+              </div>
+            ) : (
+              <small>No station selected</small>
+            )}
           </div>
           <div className={`ila-recommendation-card ${plan.recommendation.requiresApproval ? "warning" : ""}`}>
-            <span>Engineering Recommendation</span>
+            <span>Optical Recommendation</span>
             <b>{plan.recommendedIntermediateIlas.toLocaleString()} intermediate ILAs</b>
             <small>{plan.recommendation.reason}</small>
             <div>
@@ -1069,6 +1175,49 @@ function IlaPlanningPanel({
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="ila-proposal-summary">
+        <div>
+          <span>Route Length</span>
+          <b>{plan.routeMiles.toLocaleString()} mi</b>
+        </div>
+        <div>
+          <span>Total Stations</span>
+          <b>{plan.stationObjects.length.toLocaleString()}</b>
+        </div>
+        <div>
+          <span>Bookend Facilities</span>
+          <b>{bookendCount.toLocaleString()}</b>
+        </div>
+        <div>
+          <span>Intermediate ILAs</span>
+          <b>{intermediateCount.toLocaleString()}</b>
+        </div>
+        <div>
+          <span>Facility Class Mix</span>
+          <b>{facilityClassMix}</b>
+        </div>
+        <div>
+          <span>Total Facility Capital</span>
+          <b>{money(facilityCapital)}</b>
+        </div>
+        <div>
+          <span>Route Total</span>
+          <b>{money(plan.totalCost)}</b>
+        </div>
+        <div>
+          <span>Cost/Mile</span>
+          <b>{money(costPerMile)}</b>
+        </div>
+        <div>
+          <span>Optical Recommendation</span>
+          <b>{opticalRecommendation(plan)}</b>
+        </div>
+        <div>
+          <span>Proposal Status</span>
+          <b>{proposalStatus}</b>
+        </div>
       </div>
     </section>
   );

@@ -1,4 +1,5 @@
-import JSZip from "jszip";
+import { listRuntimeInventories, listRuntimeObjects } from "../api/runtimeFoundation";
+import type { RuntimeInventoryRecord, RuntimeObjectRecord, RuntimeObjectType } from "../runtime/RuntimeObjectModel";
 import type { DALCoordinate } from "../types/dal";
 
 export type CustomerInventoryFeatureType =
@@ -194,29 +195,6 @@ interface CustomerInventoryAsset {
   visibleByDefault: boolean;
   useAsDiversityConstraintByDefault: boolean;
 }
-
-const GOOGLE_CUSTOMER_INVENTORY_ASSETS: CustomerInventoryAsset[] = [
-  {
-    layerId: "INV-GOOGLE-HIU-SUMMARY-20260603",
-    accountId: "google",
-    networkName: "HIU Summary 06-03-2026",
-    sourceAssetName: "HIU-Summary-06-03-2026.kmz",
-    sourceUrl: "/customer-inventory/google/HIU-Summary-06-03-2026.kmz",
-    authorityState: "EXISTING_NETWORK",
-    visibleByDefault: true,
-    useAsDiversityConstraintByDefault: false,
-  },
-  {
-    layerId: "INV-GOOGLE-MUS-20240716",
-    accountId: "google",
-    networkName: "MUS 07162024",
-    sourceAssetName: "MUS 07162024.kmz",
-    sourceUrl: "/customer-inventory/google/MUS%2007162024.kmz",
-    authorityState: "EXISTING_NETWORK",
-    visibleByDefault: true,
-    useAsDiversityConstraintByDefault: true,
-  },
-];
 
 const EARTH_RADIUS_MILES = 3958.7613;
 const MAX_RENDER_COORDINATES_PER_LINE = 96;
@@ -479,40 +457,29 @@ function parseKmlInventory(args: {
 }
 
 async function loadKmzInventoryLayer(asset: CustomerInventoryAsset): Promise<CustomerInventoryLayer> {
-  try {
-    const response = await fetch(asset.sourceUrl);
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.arrayBuffer();
-    const zip = await JSZip.loadAsync(data);
-    const kmlEntry = Object.values(zip.files).find((entry) => !entry.dir && entry.name.toLowerCase().endsWith(".kml"));
-    if (!kmlEntry) throw new Error("KMZ archive did not contain a KML file.");
-    const kmlText = await kmlEntry.async("text");
-    return parseKmlInventory({ asset, kmlText, kmlEntryName: kmlEntry.name });
-  } catch (error) {
-    return {
-      layerId: asset.layerId,
-      accountId: asset.accountId,
-      networkName: asset.networkName,
-      sourceAssetName: asset.sourceAssetName,
-      sourceUrl: asset.sourceUrl,
-      source: "KMZ",
-      parsedStatus: "ERROR",
-      authority: "Customer Inventory",
-      authorityState: asset.authorityState,
-      locked: true,
-      visibleByDefault: asset.visibleByDefault,
-      useAsDiversityConstraintByDefault: asset.useAsDiversityConstraintByDefault,
-      routeMiles: 0,
-      objectCount: 0,
-      routeLineCount: 0,
-      stationCount: 0,
-      featureCount: 0,
-      lastUpdated: new Date().toISOString(),
-      lines: [],
-      points: [],
-      diagnostics: [`KMZ parse failed: ${error instanceof Error ? error.message : String(error)}`],
-    };
-  }
+  return {
+    layerId: asset.layerId,
+    accountId: asset.accountId,
+    networkName: asset.networkName,
+    sourceAssetName: asset.sourceAssetName,
+    sourceUrl: asset.sourceUrl,
+    source: "KMZ",
+    parsedStatus: "ERROR",
+    authority: "Customer Inventory",
+    authorityState: asset.authorityState,
+    locked: true,
+    visibleByDefault: asset.visibleByDefault,
+    useAsDiversityConstraintByDefault: asset.useAsDiversityConstraintByDefault,
+    routeMiles: 0,
+    objectCount: 0,
+    routeLineCount: 0,
+    stationCount: 0,
+    featureCount: 0,
+    lastUpdated: new Date().toISOString(),
+    lines: [],
+    points: [],
+    diagnostics: ["Static customer inventory loading is disabled. Commit customer evidence through the shared runtime instead."],
+  };
 }
 
 function distanceScore(a: DALCoordinate, b: DALCoordinate) {
@@ -706,36 +673,163 @@ function emptyCustomerNetworkGraph(accountId: string, loadedAt: string, inventor
   });
 }
 
+function accountKey(value: unknown) {
+  return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function runtimeInventoryMatchesAccount(inventory: RuntimeInventoryRecord, accountId: string) {
+  const target = accountKey(accountId);
+  const candidates = [
+    inventory.owner,
+    inventory.metadata?.accountId,
+    inventory.metadata?.customerName,
+    inventory.metadata?.customerId,
+  ];
+  return inventory.inventoryType === "CUSTOMER" && candidates.some((candidate) => accountKey(candidate) === target);
+}
+
+function isCoordinate(value: unknown): value is DALCoordinate {
+  return Array.isArray(value) && value.length >= 2 && Number.isFinite(Number(value[0])) && Number.isFinite(Number(value[1]));
+}
+
+function runtimeLineCoordinates(object: RuntimeObjectRecord) {
+  if (object.geometry?.type !== "LineString" || !Array.isArray(object.geometry.coordinates)) return [];
+  return (object.geometry.coordinates as unknown[]).filter(isCoordinate).map(roundCoordinate);
+}
+
+function runtimePointCoordinate(object: RuntimeObjectRecord): DALCoordinate | null {
+  if (isCoordinate(object.coordinates)) return roundCoordinate(object.coordinates);
+  if (object.geometry?.type === "Point" && isCoordinate(object.geometry.coordinates)) return roundCoordinate(object.geometry.coordinates);
+  return null;
+}
+
+function customerFeatureType(objectType: RuntimeObjectType): CustomerInventoryFeatureType {
+  if (objectType === "POP") return "POP";
+  if (objectType === "ILA") return "REGENERATION_SITE";
+  if (objectType === "HANDHOLE") return "HANDHOLE";
+  if (objectType === "DATA_CENTER") return "CUSTOMER_FACILITY";
+  if (objectType === "CUSTOMER_SITE") return "CUSTOMER_FACILITY";
+  if (objectType === "CROSSING") return "UNKNOWN_PLACEMARK";
+  return "UNKNOWN_PLACEMARK";
+}
+
+function layerFromRuntimeInventory(
+  accountId: string,
+  inventory: RuntimeInventoryRecord,
+  objects: RuntimeObjectRecord[],
+): CustomerInventoryLayer {
+  const sourceName = String(inventory.metadata?.sourceFileName ?? inventory.name ?? inventory.inventoryId);
+  const routeObjects = objects.filter((object) => object.objectType === "ROUTE" && runtimeLineCoordinates(object).length > 1);
+  const segmentObjects = objects.filter((object) => object.objectType === "SEGMENT" && runtimeLineCoordinates(object).length > 1);
+  const lineObjects = routeObjects.length ? routeObjects : segmentObjects;
+  const lines: CustomerInventoryLine[] = lineObjects.map((object) => {
+    const coordinates = runtimeLineCoordinates(object);
+    return {
+      lineId: object.runtimeId,
+      accountId,
+      layerId: inventory.inventoryId,
+      name: object.name,
+      coordinates,
+      detailedCoordinates: coordinates,
+      originalCoordinateCount: coordinates.length,
+      routeMiles: Number((object.routeMiles ?? routeMiles(coordinates)).toFixed(2)),
+      authorityState: "EXISTING_NETWORK",
+      sourceKmz: sourceName,
+    };
+  });
+  const points: CustomerInventoryPoint[] = objects
+    .filter((object) => object.objectType !== "ROUTE" && object.objectType !== "SEGMENT" && object.objectType !== "POLYGON")
+    .map((object) => ({ object, coordinate: runtimePointCoordinate(object) }))
+    .filter((item): item is { object: RuntimeObjectRecord; coordinate: DALCoordinate } => Boolean(item.coordinate))
+    .map(({ object, coordinate }) => ({
+      pointId: object.runtimeId,
+      accountId,
+      layerId: inventory.inventoryId,
+      name: object.name,
+      coordinate,
+      featureType: customerFeatureType(object.objectType),
+      sourceKmz: sourceName,
+      confidence: String(object.metadata?.confidence ?? "runtime"),
+      authorityState: "EXISTING_NETWORK",
+      nearestRouteId: object.routeId,
+    }));
+
+  return {
+    layerId: inventory.inventoryId,
+    accountId,
+    networkName: inventory.name,
+    sourceAssetName: sourceName,
+    sourceUrl: `/api/runtime/inventories/${encodeURIComponent(inventory.inventoryId)}`,
+    source: "GIS_API",
+    parsedStatus: "PARSED",
+    authority: "Customer Inventory",
+    authorityState: "EXISTING_NETWORK",
+    locked: true,
+    visibleByDefault: true,
+    useAsDiversityConstraintByDefault: false,
+    routeMiles: Number(lines.reduce((sum, line) => sum + line.routeMiles, 0).toFixed(2)),
+    objectCount: points.length,
+    routeLineCount: lines.length,
+    stationCount: 0,
+    featureCount: lines.length + points.length,
+    lastUpdated: inventory.updatedAt,
+    lines,
+    points,
+    diagnostics: [
+      `Loaded runtime customer inventory ${inventory.inventoryId}.`,
+      `Runtime objects: ${objects.length.toLocaleString()}; route lines: ${lines.length.toLocaleString()}; points: ${points.length.toLocaleString()}.`,
+    ],
+  };
+}
+
 export async function loadCustomerInventoryForAccount(accountId: string): Promise<CustomerInventoryLoadResult> {
-  const assets = accountId === "google" ? GOOGLE_CUSTOMER_INVENTORY_ASSETS : [];
   const loadedAt = new Date().toISOString();
   const inventorySessionVersion = `INV-${loadedAt.replace(/[-:.TZ]/g, "").slice(0, 14)}`;
-  if (!assets.length) {
-    const graph = emptyCustomerNetworkGraph(accountId, loadedAt, inventorySessionVersion);
+  try {
+    const [inventories, runtimeObjects] = await Promise.all([listRuntimeInventories(), listRuntimeObjects()]);
+    const accountInventories = inventories.filter((inventory) => runtimeInventoryMatchesAccount(inventory, accountId));
+    const objectById = new Map(runtimeObjects.map((object) => [object.runtimeId, object]));
+    const layers = accountInventories.map((inventory) => {
+      const objects = inventory.objectIds.map((objectId) => objectById.get(objectId)).filter((object): object is RuntimeObjectRecord => Boolean(object));
+      return layerFromRuntimeInventory(accountId, inventory, objects);
+    }).filter((layer) => layer.routeLineCount || layer.objectCount);
+
+    if (!layers.length) {
+      const graph = emptyCustomerNetworkGraph(accountId, loadedAt, inventorySessionVersion);
+      return {
+        accountId,
+        status: "PARSED",
+        loadedAt,
+        inventorySessionVersion,
+        layers: [],
+        graph,
+        diagnostics: [`No runtime customer inventory committed for account ${accountId}.`],
+      };
+    }
+
+    const graph = buildCustomerNetworkGraph({ accountId, layers, status: "PARSED", loadedAt, inventorySessionVersion });
+    const diagnostics = layers.flatMap((layer) => layer.diagnostics);
+    diagnostics.push(`Built runtime-backed account-scoped Customer Network Graph ${graph.graphId}.`);
+    diagnostics.push(`Graph summary: ${graph.summary.routeCount.toLocaleString()} routes, ${graph.summary.objectCount.toLocaleString()} objects, ${graph.summary.stationCount.toLocaleString()} stations.`);
     return {
       accountId,
       status: "PARSED",
       loadedAt,
       inventorySessionVersion,
+      layers: graph.layers,
+      graph,
+      diagnostics,
+    };
+  } catch (error) {
+    const graph = emptyCustomerNetworkGraph(accountId, loadedAt, inventorySessionVersion);
+    return {
+      accountId,
+      status: "ERROR",
+      loadedAt,
+      inventorySessionVersion,
       layers: [],
       graph,
-      diagnostics: [`No parsed customer inventory assets configured for account ${accountId}.`],
+      diagnostics: [`Runtime customer inventory load failed for account ${accountId}: ${error instanceof Error ? error.message : String(error)}`],
     };
   }
-
-  const layers = await Promise.all(assets.map(loadKmzInventoryLayer));
-  const status = layers.some((layer) => layer.parsedStatus === "ERROR") ? "ERROR" : "PARSED";
-  const graph = buildCustomerNetworkGraph({ accountId, layers, status, loadedAt, inventorySessionVersion });
-  const diagnostics = layers.flatMap((layer) => layer.diagnostics);
-  diagnostics.push(`Built frozen account-scoped Customer Network Graph ${graph.graphId}.`);
-  diagnostics.push(`Graph summary: ${graph.summary.routeCount.toLocaleString()} routes, ${graph.summary.objectCount.toLocaleString()} objects, ${graph.summary.stationCount.toLocaleString()} stations.`);
-  return {
-    accountId,
-    status,
-    loadedAt,
-    inventorySessionVersion,
-    layers: graph.layers,
-    graph,
-    diagnostics,
-  };
 }

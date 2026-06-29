@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import { useEffect, useMemo, useState } from "react";
 import { saveInventoryGraph } from "../api/dalClient";
+import { commitRuntimeTranslation } from "../api/runtimeFoundation";
 import { createDefaultBudgetAssumptionState } from "../commercial/BudgetAssumptionState";
 import {
   buildCommercialCorridorDraftFromImportedRoute,
@@ -16,6 +17,9 @@ import {
   stageCustomerDesignImport,
   updateImportedRouteState,
 } from "../translate/CustomerDesignImportEngine";
+import { useTeralinxAuth } from "../identity/TeralinxAuth";
+import { buildRuntimeCommitFromCustomerDesign } from "../runtime/RuntimeObjectModel";
+import { runUniversalTranslationPipeline, type UniversalTranslationAdapter } from "../runtime/UniversalTranslatorFramework";
 import type { DALCoordinate, InventoryEdge, InventoryGraph, InventoryNode, InventoryRoute, InventoryStation, ValidationStatus } from "../types/dal";
 
 type SourceType = "CSV" | "KML" | "KMZ" | "GeoJSON";
@@ -660,6 +664,7 @@ function ValidationPanel({ graph }: { graph: BuiltGraph | null }) {
 }
 
 export default function TranslateWorkspace() {
+  const { session, recordActivity } = useTeralinxAuth();
   const {
     setWorkspace,
     setSelectedInventoryId,
@@ -677,6 +682,8 @@ export default function TranslateWorkspace() {
   const [graph, setGraph] = useState<BuiltGraph | null>(null);
   const [status, setStatus] = useState("Translate workspace ready.");
   const [saving, setSaving] = useState(false);
+  const [runtimeCommitting, setRuntimeCommitting] = useState(false);
+  const [runtimeCommitStatus, setRuntimeCommitStatus] = useState("");
   const [customerImport, setCustomerImport] = useState<CustomerDesignImport | null>(null);
   const [selectedRouteId, setSelectedRouteId] = useState("");
 
@@ -733,7 +740,7 @@ export default function TranslateWorkspace() {
         file,
         accountId: "google",
         customerName: "Google",
-        uploadedBy: "Ryan",
+        uploadedBy: session?.user.name ?? "Ryan",
       });
       const parsed = parseResultFromCustomerDesignImport(imported);
       const built = buildInventoryGraph(parsed);
@@ -804,6 +811,85 @@ export default function TranslateWorkspace() {
     setSelectedCustomerDesignRouteId(activeRouteId);
     setStatus(`${staged.sourceFileName} staged as non-authoritative customer design evidence.`);
     return staged;
+  }
+
+  async function commitCurrentImport(record = customerImport) {
+    const staged = record?.status === "STAGED" || record?.status === "PRICED" ? record : stageImport(record);
+    if (!staged) return null;
+
+    try {
+      setRuntimeCommitting(true);
+      setRuntimeCommitStatus("Preparing runtime commit...");
+      const graphPayload = graph?.payload ?? staged.inventoryGraph ?? null;
+      const adapter: UniversalTranslationAdapter<CustomerDesignImport> = {
+        adapterId: "customer-design-import-adapter",
+        domain: "CUSTOMER_INVENTORY",
+        sourceTypes: ["KMZ", "KML", "CSV", "API"],
+        normalize: (input, context) => buildRuntimeCommitFromCustomerDesign(input, graphPayload, context.actor),
+      };
+      const pipeline = await runUniversalTranslationPipeline(adapter, staged, {
+        actor: session?.user.name ?? staged.uploadedBy ?? "Teralinx",
+        domain: "CUSTOMER_INVENTORY",
+        commitToRuntime: true,
+        evidence: {
+          sourceType: staged.sourceType,
+          sourceName: staged.sourceFileName,
+          sourceSystem: "Translate",
+          collectedAt: staged.uploadedAt,
+          submittedBy: staged.uploadedBy,
+          customerName: staged.customerName,
+          accountId: staged.accountId,
+        },
+      });
+      if (!pipeline.canCommit) {
+        throw new Error("Runtime validation failed. Commit was not sent.");
+      }
+      const response = await commitRuntimeTranslation(pipeline.commit);
+      const committedAt = response.commit.committedAt ?? new Date().toISOString();
+      const committed: CustomerDesignImport = {
+        ...staged,
+        runtimeCommitId: response.commit.commitId,
+        runtimeInventoryId: response.commit.inventoryIds[0],
+        runtimeEvidenceIds: response.commit.evidenceIds,
+        runtimeObjectIds: response.commit.runtimeObjectIds,
+        runtimeRelationshipIds: response.commit.relationshipIds,
+        runtimeValidationReportIds: response.commit.validationReportIds,
+        runtimeCommittedAt: committedAt,
+        auditEvents: [
+          ...staged.auditEvents,
+          {
+            eventId: `CUSTOMER-DESIGN-AUDIT-RUNTIME-${staged.importId}-${Date.now()}`,
+            eventType: "RUNTIME_COMMITTED",
+            message: `${staged.sourceFileName} committed to the shared runtime object layer.`,
+            createdAt: committedAt,
+            actor: session?.user.name ?? staged.uploadedBy ?? "Teralinx",
+          },
+        ],
+      };
+      setCustomerImport(committed);
+      upsertCustomerDesignImport(committed);
+      setRuntimeCommitStatus(
+        `Runtime committed: ${response.counts.evidence.toLocaleString()} evidence, ${response.counts.runtimeObjects.toLocaleString()} objects, ${response.counts.relationships.toLocaleString()} relationships.`,
+      );
+      setStatus(`${staged.sourceFileName} committed to Runtime Object Layer.`);
+      void recordActivity({
+        action: "committed translation to runtime",
+        objectType: "Runtime Translation Commit",
+        objectId: response.commit.commitId,
+        objectName: staged.sourceFileName,
+        revision: "Runtime Object Layer",
+        customerId: staged.accountId,
+        details: `${response.counts.runtimeObjects} runtime objects and ${response.counts.relationships} relationships persisted from customer evidence.`,
+      });
+      return response;
+    } catch (err: any) {
+      const message = err?.message ?? String(err);
+      setRuntimeCommitStatus(`Runtime commit failed: ${message}`);
+      setStatus(`Runtime commit failed: ${message}`);
+      return null;
+    } finally {
+      setRuntimeCommitting(false);
+    }
   }
 
   function priceRoute(record: CustomerDesignImport, route: ImportedCustomerRoute) {
@@ -967,10 +1053,16 @@ export default function TranslateWorkspace() {
           <div className="dal-panel">
             <div className="dal-panel-title-row">
               <h3>Imported Routes</h3>
-              <button type="button" onClick={() => stageImport()}>
-                Stage Import
-              </button>
+              <div className="dal-actions">
+                <button type="button" onClick={() => stageImport()}>
+                  Stage Import
+                </button>
+                <button type="button" disabled={runtimeCommitting} onClick={() => void commitCurrentImport()}>
+                  {runtimeCommitting ? "Committing..." : "Commit to Runtime"}
+                </button>
+              </div>
             </div>
+            {runtimeCommitStatus && <div className="dal-status">{runtimeCommitStatus}</div>}
             <div className="dal-route-list">
               {customerImport.routes.map((route) => (
                 <button
@@ -1016,6 +1108,8 @@ export default function TranslateWorkspace() {
                   <span>Miles: {formatMiles(selectedImportedRoute.routeMiles)}</span>
                   <span>Feet: {formatFeet(selectedImportedRoute.routeFeet)}</span>
                   <span>Folder: {selectedImportedRoute.folderPath.join(" / ") || "Root"}</span>
+                  <span>Runtime Commit: {customerImport.runtimeCommitId ?? "Not committed"}</span>
+                  <span>Runtime Inventory: {customerImport.runtimeInventoryId ?? "Not committed"}</span>
                 </div>
                 <div className="dal-actions">
                   <button type="button" onClick={() => setRouteState("CUSTOMER_PROPOSED")}>

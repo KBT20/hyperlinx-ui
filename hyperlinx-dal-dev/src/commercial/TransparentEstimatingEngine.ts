@@ -141,6 +141,16 @@ export interface TransparentIlaFacility {
   routeId: string;
   scopeVersionLineage: string;
   facilityProfileId: IlaFacilityProfileId;
+  facilityClass: string;
+  productDescription: string;
+  commercialDescription: string;
+  buildingCapital: number;
+  telecomCapital: number;
+  facilityTotal: number;
+  netCapital?: number;
+  discountPercentage?: number;
+  proposalNotes?: string;
+  customOverride: boolean;
   facilityType: string;
   power: string;
   generator: string;
@@ -439,8 +449,7 @@ const LAYER_1_RECURRING_OPPORTUNITIES: TransparentLayer1RecurringOpportunity[] =
 const MASTER_OSP_WORKBOOK = "Google Fiber Project - 20251121.xlsx / Master OSP Build Metrics";
 const FIBER_SUMMARY_WORKBOOK = "Google Fiber Project - 20251121.xlsx / Fiber Summary";
 const ILA_LOCATION_WORKBOOK = "Google Fiber Project - 20251121.xlsx / ILA Locations";
-const PER_ILA_COST_WORKBOOK = "Google Fiber Project - 20251121.xlsx / Per ILA Cost";
-const DOBSON_ILA_WORKBOOK = "Dobson ILA Cost Summary 27 vs 36 Racks.xlsx / 27 vs 36 ILA Rack Costs";
+const ILA_PROFILE_CATALOG_SOURCE = "ILA Facility Profile Catalog / Proposal Capital";
 
 const WORKBOOK_RATES = {
   plowLaborPerFoot: 5,
@@ -508,7 +517,7 @@ function buildConstraintValues(assumptionState: BudgetAssumptionState, controls:
   const annualOmTotal = controls.financial.monthlyOmPerRouteMile * 12;
   const defaultOmTotal = OM_LIFECYCLE_COMPONENTS.reduce((total, component) => total + component.annualPerRouteMile, 0);
   const omScale = defaultOmTotal > 0 ? annualOmTotal / defaultOmTotal : 1;
-  const defaultIlaProfile = buildIlaFacilityProfiles(controls.ilaPlanning.customFacilityCost)
+  const defaultIlaProfile = buildIlaFacilityProfiles(controls.ilaPlanning)
     .find((profile) => profile.profileId === controls.ilaPlanning.defaultFacilityProfileId);
   const base: ConstraintValue[] = [
     constraint<number>({
@@ -954,8 +963,8 @@ function buildConstraintValues(assumptionState: BudgetAssumptionState, controls:
       value: defaultIlaProfile?.totalCost ?? 0,
       unit: "$/site",
       authorityMode: "ALGORITHM",
-      source: defaultIlaProfile?.workbook ?? DOBSON_ILA_WORKBOOK,
-      sourceDetail: "Derived from selected ILA facility profile line items.",
+      source: defaultIlaProfile?.workbook ?? ILA_PROFILE_CATALOG_SOURCE,
+      sourceDetail: "Derived from selected commercial ILA facility profile.",
       affectsCost: true,
       affectsSchedule: true,
       affectsConfidence: true,
@@ -963,9 +972,9 @@ function buildConstraintValues(assumptionState: BudgetAssumptionState, controls:
     constraint<string>({
       key: "ila.assumptions",
       label: "ILA assumptions",
-      value: "36-rack Hyperlinx-managed ILA workbook profile",
+      value: `${defaultIlaProfile?.displayName ?? "36 Rack"} commercial facility profile`,
       authorityMode: "ALGORITHM",
-      source: PER_ILA_COST_WORKBOOK,
+      source: ILA_PROFILE_CATALOG_SOURCE,
       affectsCost: true,
       affectsSchedule: true,
       affectsConfidence: true,
@@ -1351,6 +1360,16 @@ function buildTransparentIlaFacilities(ilaPlan: IlaPlanningResult): TransparentI
     routeId: station.routeId,
     scopeVersionLineage: station.scopeVersionLineage,
     facilityProfileId: station.facilityProfileId,
+    facilityClass: station.facilityProfile.facilityClass,
+    productDescription: station.facilityProfile.commercialDescription,
+    commercialDescription: station.facilityProfile.commercialDescription,
+    buildingCapital: station.facilityProfile.buildingCapital,
+    telecomCapital: station.facilityProfile.telecomCapital,
+    facilityTotal: station.facilityProfile.totalCapital,
+    netCapital: station.facilityProfile.netCapital,
+    discountPercentage: station.facilityProfile.discountPercentage,
+    proposalNotes: station.facilityProfile.proposalNotes,
+    customOverride: Boolean(station.facilityProfile.isCustomOverride),
     facilityType: station.facilityType,
     power: station.powerProfile,
     generator: station.generatorProfile,
@@ -1795,10 +1814,10 @@ export function buildTransparentCorridorEstimate(args: {
     "Station-based ILA facilities",
     ilaTotal,
     "ILA Planning Engine",
-    "Sum of station-object facility profile costs derived from workbook line items.",
+    "Sum of station-object commercial facility profile capital.",
     authorityFor(constraintValues, "ila.assumptions"),
   );
-  ilaLine.workbook = `${PER_ILA_COST_WORKBOOK}; ${DOBSON_ILA_WORKBOOK}; ${ILA_LOCATION_WORKBOOK}`;
+  ilaLine.workbook = `${ILA_PROFILE_CATALOG_SOURCE}; ${ILA_LOCATION_WORKBOOK}`;
 
   const engineeringLine = laborLine({
     lineItemId: `${args.estimateId}:PERMIT:ENGINEERING`,
@@ -1972,9 +1991,9 @@ export function buildTransparentCorridorEstimate(args: {
     permits: pendingValue("UNKNOWN", "Permit jurisdiction review", "Permit quantities and jurisdiction fees require human review; no cost adder applied."),
     equipment: currencyValue({
       value: equipmentCost,
-      formula: "Sum of station-object ILA facility profile totals.",
+      formula: "Sum of station-object ILA commercial facility capital.",
       source: "Financial Engine",
-      workbook: PER_ILA_COST_WORKBOOK,
+      workbook: ILA_PROFILE_CATALOG_SOURCE,
     }),
     labor: currencyValue({
       value: laborCost,

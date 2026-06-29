@@ -22,6 +22,14 @@ export const DIRS = {
   engineeringDrafts: path.join(DATA_ROOT, "engineering-drafts"),
   proposalDrafts: path.join(DATA_ROOT, "proposal-drafts"),
   activity: path.join(DATA_ROOT, "activity"),
+  runtimeEvidence: path.join(DATA_ROOT, "runtime-evidence"),
+  runtimeInventories: path.join(DATA_ROOT, "runtime-inventories"),
+  runtimeObjects: path.join(DATA_ROOT, "runtime-objects"),
+  runtimeRelationships: path.join(DATA_ROOT, "runtime-relationships"),
+  runtimeValidation: path.join(DATA_ROOT, "runtime-validation"),
+  runtimeHistory: path.join(DATA_ROOT, "runtime-history"),
+  runtimeConnectors: path.join(DATA_ROOT, "runtime-connectors"),
+  translationCommits: path.join(DATA_ROOT, "translation-commits"),
 };
 
 export function corsHeaders() {

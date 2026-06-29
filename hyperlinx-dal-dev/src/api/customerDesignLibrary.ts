@@ -68,6 +68,10 @@ export function normalizeCustomerDesignImport(record: CustomerDesignImport): Cus
     polygons,
     folders,
     activeRouteId,
+    runtimeEvidenceIds: record.runtimeEvidenceIds ?? [],
+    runtimeObjectIds: record.runtimeObjectIds ?? [],
+    runtimeRelationshipIds: record.runtimeRelationshipIds ?? [],
+    runtimeValidationReportIds: record.runtimeValidationReportIds ?? [],
     previewGeometry: record.previewGeometry?.length ? record.previewGeometry : activeRoute?.dalGeometry ?? [],
     layerVisibility: {
       ...DEFAULT_LAYER_VISIBILITY,

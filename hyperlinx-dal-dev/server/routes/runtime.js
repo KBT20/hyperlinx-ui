@@ -64,6 +64,12 @@ export async function handleRuntime(req, res, pathname) {
         engineeringLibrary: true,
         proposalLibrary: true,
         activityHistory: true,
+        evidenceRegistry: true,
+        runtimeInventoryLibrary: true,
+        runtimeObjectLibrary: true,
+        relationshipGraph: true,
+        validationPipeline: true,
+        connectorRegistry: true,
       },
     });
     return true;

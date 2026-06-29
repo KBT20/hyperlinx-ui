@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { DAL_INVENTORY_GRAPH_API } from "../config/dalApi";
-import { deleteLocalInventoryGraph, listInventoryGraphs, loadInventoryGraph } from "../api/dalClient";
+import { listInventoryGraphs, loadInventoryGraph } from "../api/dalClient";
 import { useDALState } from "../dal/DALState";
 import type { InventoryGraph, InventoryGraphMetadata } from "../types/dal";
 
@@ -32,7 +32,6 @@ export default function DALInventoryWorkspace() {
 
   const items = useMemo(() => mergeInventoryRecords(remoteItems, inventorySummaries), [remoteItems, inventorySummaries]);
   const selectedMetadata = selected?.metadata ?? items.find((item) => item.inventoryId === selectedInventoryId);
-  const isLocalFallback = Boolean((selectedMetadata as any)?.localFallback);
 
   useEffect(() => {
     console.log("DAL INVENTORY WORKSPACE LOADED");
@@ -76,16 +75,6 @@ export default function DALInventoryWorkspace() {
     }
   }
 
-  async function deleteSelectedLocalGraph() {
-    if (!selectedInventoryId || !isLocalFallback) return;
-    await deleteLocalInventoryGraph(selectedInventoryId);
-    setSelected(null);
-    setSelectedGraph(null);
-    setSelectedInventoryId("");
-    await refreshInventory();
-    setStatus("Deleted local fallback inventory graph.");
-  }
-
   function openGraphViewer() {
     if (selected) setSelectedGraph(selected);
     setWorkspace("graphViewer");
@@ -101,7 +90,7 @@ export default function DALInventoryWorkspace() {
       <div className="dal-workspace-header">
         <div>
           <h2>DAL Inventory Graphs</h2>
-          <p>Saved carrier inventory graphs, DAL fallback records, and graph handoff into Viewer and Prism.</p>
+          <p>Runtime inventory graphs and graph handoff into Viewer and Prism.</p>
         </div>
         <button type="button" onClick={() => void refreshInventory()}>
           Refresh
@@ -147,9 +136,6 @@ export default function DALInventoryWorkspace() {
             <button type="button" disabled={!selected} onClick={sendToPrism}>
               Send To Prism
             </button>
-            <button type="button" disabled={!isLocalFallback} onClick={() => void deleteSelectedLocalGraph()}>
-              Delete Local
-            </button>
           </div>
           {selected && (
             <pre className="dal-pre">
@@ -172,4 +158,3 @@ export default function DALInventoryWorkspace() {
     </section>
   );
 }
-

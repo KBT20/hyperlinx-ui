@@ -1,13 +1,13 @@
 import type { DALCoordinate } from "../types/dal";
-import { GOOGLE_DOBSON_REFERENCE_PRICING_PROFILE } from "./fixtures/googleDobsonReferencePricingProfile";
 import type { IlaRegenLineItem } from "./IlaRegenPricing";
 
 export type IlaPlacementMethod = "MAX_SPAN" | "MAX_OPTICAL_LOSS" | "MAX_ATTENUATION" | "INTERMEDIATE_COUNT";
 export type IlaFacilityProfileId =
-  | "ILA_36_RACK_DOUBLE_WIDE"
-  | "ILA_72_RACK_COMPOUND"
-  | "ILA_144_RACK_COMPOUND"
+  | "ILA_18_RACK"
+  | "ILA_27_RACK"
+  | "ILA_36_RACK"
   | "ILA_CUSTOM";
+export type IlaFacilityClass = "18 Rack" | "27 Rack" | "36 Rack" | "Custom";
 
 export interface IlaStationOverride {
   milepost?: number;
@@ -27,12 +27,27 @@ export interface IlaPlanningControls {
   spliceLossDb: number;
   opticalBudgetDb: number;
   customFacilityCost: number;
+  customFacilityDisplayName: string;
+  customFacilityDescription: string;
+  customBuildingCapital: number;
+  customTelecomCapital: number;
+  customTotalCapital: number;
   selectedStationId?: string | null;
   stationOverrides?: Record<string, IlaStationOverride>;
 }
 
 export interface IlaFacilityCostProfile {
   profileId: IlaFacilityProfileId;
+  facilityClass: IlaFacilityClass;
+  displayName: string;
+  commercialDescription: string;
+  buildingCapital: number;
+  telecomCapital: number;
+  totalCapital: number;
+  discountPercentage?: number;
+  netCapital?: number;
+  proposalNotes?: string;
+  isCustomOverride?: boolean;
   label: string;
   facilityType: string;
   rackCount: number;
@@ -135,8 +150,56 @@ export interface IlaPlanningResult {
 }
 
 const EARTH_RADIUS_MILES = 3958.7613;
-const DOBSON_ILA_WORKBOOK = "Dobson ILA Cost Summary 27 vs 36 Racks.xlsx / 27 vs 36 ILA Rack Costs";
-const PER_ILA_COST_WORKBOOK = "Google Fiber Project - 20251121.xlsx / Per ILA Cost";
+const PROPOSAL_PROFILE_SOURCE = "ILA Facility Profile Catalog / Proposal Capital";
+
+export type IlaFacilityProfileCatalogEntry = {
+  profileId: IlaFacilityProfileId;
+  facilityClass: IlaFacilityClass;
+  displayName: string;
+  commercialDescription: string;
+  buildingCapital: number;
+  telecomCapital: number;
+  totalCapital: number;
+  discountPercentage?: number;
+  netCapital?: number;
+  proposalNotes?: string;
+};
+
+export const ILA_FACILITY_PROFILE_CATALOG: IlaFacilityProfileCatalogEntry[] = [
+  {
+    profileId: "ILA_18_RACK",
+    facilityClass: "18 Rack",
+    displayName: "18 Rack",
+    buildingCapital: 724100,
+    telecomCapital: 375500,
+    totalCapital: 1099600,
+    discountPercentage: 7,
+    netCapital: 1022628,
+    commercialDescription: "Compact regeneration facility for rural, regional, and lower-density transport corridors. Optimized for reduced capital deployment while preserving expansion capability.",
+  },
+  {
+    profileId: "ILA_27_RACK",
+    facilityClass: "27 Rack",
+    displayName: "27 Rack",
+    buildingCapital: 1121600,
+    telecomCapital: 563250,
+    totalCapital: 1684850,
+    discountPercentage: 7,
+    netCapital: 1566910.5,
+    commercialDescription: "Regional backbone regeneration facility with expanded optical and equipment capacity. Suitable for carrier aggregation, regional transport, and moderate hyperscaler growth.",
+  },
+  {
+    profileId: "ILA_36_RACK",
+    facilityClass: "36 Rack",
+    displayName: "36 Rack",
+    buildingCapital: 1121600,
+    telecomCapital: 751000,
+    totalCapital: 1872600,
+    discountPercentage: 7,
+    netCapital: 1741518,
+    commercialDescription: "High-capacity regeneration facility for hyperscaler, AI infrastructure, and long-haul backbone corridors. Designed for maximum capacity, growth, and transport interconnection.",
+  },
+];
 
 export const DEFAULT_ILA_PLANNING_CONTROLS: IlaPlanningControls = {
   useBookendIlas: true,
@@ -145,12 +208,17 @@ export const DEFAULT_ILA_PLANNING_CONTROLS: IlaPlanningControls = {
   maxOpticalLossDb: 13.5,
   maxAttenuationDb: 11.25,
   desiredIntermediateIlas: 0,
-  defaultFacilityProfileId: "ILA_36_RACK_DOUBLE_WIDE",
+  defaultFacilityProfileId: "ILA_36_RACK",
   attenuationDbPerKm: 0.25,
   connectorLossDb: 1,
   spliceLossDb: 0.05,
   opticalBudgetDb: 24,
   customFacilityCost: 1872600,
+  customFacilityDisplayName: "Custom",
+  customFacilityDescription: "Manual proposal override facility profile. Commercial capital and description require review before customer presentation.",
+  customBuildingCapital: 1121600,
+  customTelecomCapital: 751000,
+  customTotalCapital: 1872600,
   selectedStationId: null,
   stationOverrides: {},
 };
@@ -165,9 +233,19 @@ function clamp(value: number, min: number, max: number) {
 }
 
 export function normalizeIlaPlanningControls(controls?: Partial<IlaPlanningControls>): IlaPlanningControls {
+  const normalizedOverrides = Object.fromEntries(
+    Object.entries(controls?.stationOverrides ?? {}).map(([stationId, override]) => [
+      stationId,
+      {
+        ...override,
+        facilityProfileId: normalizeIlaFacilityProfileId(override.facilityProfileId),
+      },
+    ]),
+  );
   return {
     ...DEFAULT_ILA_PLANNING_CONTROLS,
     ...(controls ?? {}),
+    defaultFacilityProfileId: normalizeIlaFacilityProfileId(controls?.defaultFacilityProfileId),
     desiredIntermediateIlas: Math.max(0, Math.round(controls?.desiredIntermediateIlas ?? DEFAULT_ILA_PLANNING_CONTROLS.desiredIntermediateIlas)),
     maxSpanMiles: Math.max(1, controls?.maxSpanMiles ?? DEFAULT_ILA_PLANNING_CONTROLS.maxSpanMiles),
     maxOpticalLossDb: Math.max(1, controls?.maxOpticalLossDb ?? DEFAULT_ILA_PLANNING_CONTROLS.maxOpticalLossDb),
@@ -177,8 +255,21 @@ export function normalizeIlaPlanningControls(controls?: Partial<IlaPlanningContr
     spliceLossDb: Math.max(0, controls?.spliceLossDb ?? DEFAULT_ILA_PLANNING_CONTROLS.spliceLossDb),
     opticalBudgetDb: Math.max(1, controls?.opticalBudgetDb ?? DEFAULT_ILA_PLANNING_CONTROLS.opticalBudgetDb),
     customFacilityCost: Math.max(0, controls?.customFacilityCost ?? DEFAULT_ILA_PLANNING_CONTROLS.customFacilityCost),
-    stationOverrides: { ...(controls?.stationOverrides ?? {}) },
+    customFacilityDisplayName: controls?.customFacilityDisplayName?.trim() || DEFAULT_ILA_PLANNING_CONTROLS.customFacilityDisplayName,
+    customFacilityDescription: controls?.customFacilityDescription?.trim() || DEFAULT_ILA_PLANNING_CONTROLS.customFacilityDescription,
+    customBuildingCapital: Math.max(0, controls?.customBuildingCapital ?? DEFAULT_ILA_PLANNING_CONTROLS.customBuildingCapital),
+    customTelecomCapital: Math.max(0, controls?.customTelecomCapital ?? DEFAULT_ILA_PLANNING_CONTROLS.customTelecomCapital),
+    customTotalCapital: Math.max(0, controls?.customTotalCapital ?? controls?.customFacilityCost ?? DEFAULT_ILA_PLANNING_CONTROLS.customTotalCapital),
+    stationOverrides: normalizedOverrides,
   };
+}
+
+export function normalizeIlaFacilityProfileId(value?: string | null): IlaFacilityProfileId {
+  if (value === "ILA_18_RACK") return "ILA_18_RACK";
+  if (value === "ILA_27_RACK") return "ILA_27_RACK";
+  if (value === "ILA_36_RACK" || value === "ILA_36_RACK_DOUBLE_WIDE") return "ILA_36_RACK";
+  if (value === "ILA_CUSTOM") return "ILA_CUSTOM";
+  return DEFAULT_ILA_PLANNING_CONTROLS.defaultFacilityProfileId;
 }
 
 function toRadians(value: number) {
@@ -224,133 +315,95 @@ function pointAtMilepost(geometry: DALCoordinate[], measures: number[], milepost
   return geometry.at(-1) ?? geometry[0];
 }
 
-function lineItemWithScale(item: IlaRegenLineItem, profileId: IlaFacilityProfileId, scale: number): IlaRegenLineItem {
-  const unitCost = round(item.unitCost * scale, 0);
+function proposalCapitalLineItem(profileId: IlaFacilityProfileId, category: IlaRegenLineItem["category"], description: string, cost: number): IlaRegenLineItem {
+  const unitCost = Math.round(cost);
   return {
-    ...item,
-    lineItemId: `${profileId}:${item.description.replaceAll(/[^A-Za-z0-9]+/g, "_")}`,
-    unitCost,
-    extendedCost: unitCost * item.quantity,
-  };
-}
-
-function customLineItem(cost: number): IlaRegenLineItem {
-  return {
-    lineItemId: "ILA_CUSTOM:ESTIMATOR_CUSTOM_COST_PROFILE",
-    category: "SITE_CONSTRUCTION",
-    description: "Estimator custom facility profile",
+    lineItemId: `${profileId}:${description.replaceAll(/[^A-Za-z0-9]+/g, "_").toUpperCase()}`,
+    category,
+    description,
     quantity: 1,
-    unit: "ALLOWANCE",
-    unitCost: Math.round(cost),
-    extendedCost: Math.round(cost),
-    source: "DOBSON_REFERENCE_WORKBOOK",
+    unit: "EACH",
+    unitCost,
+    extendedCost: unitCost,
+    source: "PROPOSAL_PROFILE_CATALOG",
     referenceDerived: true,
     developmentSeed: true,
     productionApproved: false,
   };
 }
 
-function lineItemCategoryCost(lineItems: IlaRegenLineItem[], category: IlaRegenLineItem["category"]) {
-  return lineItems.filter((item) => item.category === category).reduce((total, item) => total + item.extendedCost, 0);
+function rackCountForFacilityClass(facilityClass: IlaFacilityClass) {
+  return facilityClass === "18 Rack" ? 18 : facilityClass === "27 Rack" ? 27 : facilityClass === "36 Rack" ? 36 : 0;
 }
 
-function keywordCost(lineItems: IlaRegenLineItem[], keywords: string[]) {
-  return lineItems
-    .filter((item) => keywords.some((keyword) => item.description.toLowerCase().includes(keyword)))
-    .reduce((total, item) => total + item.extendedCost, 0);
-}
-
-function costProfile(args: {
-  profileId: IlaFacilityProfileId;
-  label: string;
-  facilityType: string;
-  rackCount: number;
-  buildingProfile: string;
-  powerProfile: string;
-  hvacProfile: string;
-  generatorProfile: string;
-  lineItems: IlaRegenLineItem[];
-}): IlaFacilityCostProfile {
-  const siteLandCost = lineItemCategoryCost(args.lineItems, "SITE_LAND");
-  const siteConstructionCost = lineItemCategoryCost(args.lineItems, "SITE_CONSTRUCTION");
-  const fitOutCost = lineItemCategoryCost(args.lineItems, "TELECOM_FIT_OUT");
-  const laborCost = keywordCost(args.lineItems, ["labor", "commissioning", "testing", "survey"]);
-  const equipmentCost = keywordCost(args.lineItems, ["generator", "hvac", "rack", "rectifier", "battery", "fdu", "ats", "fiber guide", "splice enclosure", "power"]);
-  const materialCost = Math.max(0, fitOutCost - laborCost);
-  const civilCost = Math.max(0, siteLandCost + siteConstructionCost - equipmentCost);
-  const totalCost = args.lineItems.reduce((total, item) => total + item.extendedCost, 0);
+function profileFromCatalog(entry: IlaFacilityProfileCatalogEntry, custom = false): IlaFacilityCostProfile {
+  const totalCapital = Math.max(0, Math.round(entry.totalCapital));
+  const buildingCapital = Math.max(0, Math.round(entry.buildingCapital));
+  const telecomCapital = Math.max(0, Math.round(entry.telecomCapital));
+  const lineItems = [
+    proposalCapitalLineItem(entry.profileId, "SITE_CONSTRUCTION", "Building capital", buildingCapital),
+    proposalCapitalLineItem(entry.profileId, "TELECOM_FIT_OUT", "Telecom capital", telecomCapital),
+  ];
   return {
-    profileId: args.profileId,
-    label: args.label,
-    facilityType: args.facilityType,
-    rackCount: args.rackCount,
-    buildingProfile: args.buildingProfile,
-    powerProfile: args.powerProfile,
-    hvacProfile: args.hvacProfile,
-    generatorProfile: args.generatorProfile,
-    civilProfile: `${args.buildingProfile} civil/site package`,
-    laborProfile: "Workbook installation, testing, survey, and commissioning labor",
-    equipmentProfile: "Workbook power, generator, HVAC, rack, FDU, battery, and optical equipment",
-    materialProfile: "Workbook telecom fit-out and site material allowances",
-    siteLandCost,
-    civilCost,
-    laborCost,
-    equipmentCost,
-    materialCost,
-    totalCost,
-    workbook: `${DOBSON_ILA_WORKBOOK}; ${PER_ILA_COST_WORKBOOK}`,
-    lineItems: args.lineItems,
+    profileId: entry.profileId,
+    facilityClass: entry.facilityClass,
+    displayName: entry.displayName,
+    commercialDescription: entry.commercialDescription,
+    buildingCapital,
+    telecomCapital,
+    totalCapital,
+    discountPercentage: entry.discountPercentage,
+    netCapital: entry.netCapital,
+    proposalNotes: entry.proposalNotes,
+    isCustomOverride: custom,
+    label: entry.displayName,
+    facilityType: entry.facilityClass,
+    rackCount: rackCountForFacilityClass(entry.facilityClass),
+    buildingProfile: "Proposal facility profile; engineering design details pending after customer acceptance",
+    powerProfile: "Engineering scope after customer acceptance",
+    hvacProfile: "Engineering scope after customer acceptance",
+    generatorProfile: "Engineering scope after customer acceptance",
+    civilProfile: "Proposal building capital allowance",
+    laborProfile: "Proposal capital summary only",
+    equipmentProfile: "Proposal telecom capital allowance",
+    materialProfile: "Proposal capital summary only",
+    siteLandCost: 0,
+    civilCost: buildingCapital,
+    laborCost: 0,
+    equipmentCost: telecomCapital,
+    materialCost: telecomCapital,
+    totalCost: totalCapital,
+    workbook: PROPOSAL_PROFILE_SOURCE,
+    lineItems,
   };
 }
 
-export function buildIlaFacilityProfiles(customFacilityCost = DEFAULT_ILA_PLANNING_CONTROLS.customFacilityCost): IlaFacilityCostProfile[] {
-  const profile36 = GOOGLE_DOBSON_REFERENCE_PRICING_PROFILE.ilaProfiles.find((profile) => profile.profileId === "ILA_36_RACK_DOUBLE_WIDE");
-  const base36 = profile36?.lineItems ?? [];
-  const profile36Cost = costProfile({
-    profileId: "ILA_36_RACK_DOUBLE_WIDE",
-    label: "36 Rack",
-    facilityType: "36 Rack",
-    rackCount: 36,
-    buildingProfile: "Double-wide prefab shelter",
-    powerProfile: "Commercial service, ATS, DC power, battery plant",
-    hvacProfile: "Dual HVAC wall-pack profile",
-    generatorProfile: "300KW generator profile",
-    lineItems: base36.map((item) => lineItemWithScale(item, "ILA_36_RACK_DOUBLE_WIDE", 1)),
-  });
-  const profile72 = costProfile({
-    profileId: "ILA_72_RACK_COMPOUND",
-    label: "72 Rack",
-    facilityType: "72 Rack",
-    rackCount: 72,
-    buildingProfile: "Dual double-wide compound",
-    powerProfile: "Expanded commercial service, dual ATS, larger DC plant",
-    hvacProfile: "Four HVAC wall-pack profile",
-    generatorProfile: "Dual 300KW generator profile",
-    lineItems: base36.map((item) => lineItemWithScale(item, "ILA_72_RACK_COMPOUND", item.category === "TELECOM_FIT_OUT" ? 2 : 1.55)),
-  });
-  const profile144 = costProfile({
-    profileId: "ILA_144_RACK_COMPOUND",
-    label: "144 Rack",
-    facilityType: "144 Rack",
-    rackCount: 144,
-    buildingProfile: "Multi-building ILA compound",
-    powerProfile: "High-capacity commercial service, redundant ATS and DC plant",
-    hvacProfile: "Eight HVAC wall-pack profile",
-    generatorProfile: "Redundant multi-generator profile",
-    lineItems: base36.map((item) => lineItemWithScale(item, "ILA_144_RACK_COMPOUND", item.category === "TELECOM_FIT_OUT" ? 4 : 2.65)),
-  });
-  const custom = costProfile({
+export function buildIlaFacilityProfiles(custom: Partial<Pick<
+  IlaPlanningControls,
+  "customFacilityCost" | "customFacilityDisplayName" | "customFacilityDescription" | "customBuildingCapital" | "customTelecomCapital" | "customTotalCapital"
+>> | number = DEFAULT_ILA_PLANNING_CONTROLS.customFacilityCost): IlaFacilityCostProfile[] {
+  const customControls = typeof custom === "number"
+    ? {
+        ...DEFAULT_ILA_PLANNING_CONTROLS,
+        customFacilityCost: custom,
+        customTotalCapital: custom,
+      }
+    : { ...DEFAULT_ILA_PLANNING_CONTROLS, ...custom };
+  const customTotal = Math.max(0, customControls.customTotalCapital ?? customControls.customFacilityCost ?? customControls.customBuildingCapital + customControls.customTelecomCapital);
+  const customProfile = profileFromCatalog({
     profileId: "ILA_CUSTOM",
-    label: "Custom",
-    facilityType: "Custom",
-    rackCount: 0,
-    buildingProfile: "Estimator-defined custom profile",
-    powerProfile: "Estimator-defined power profile",
-    hvacProfile: "Estimator-defined HVAC profile",
-    generatorProfile: "Estimator-defined generator profile",
-    lineItems: [customLineItem(customFacilityCost)],
-  });
-  return [profile36Cost, profile72, profile144, custom];
+    facilityClass: "Custom",
+    displayName: customControls.customFacilityDisplayName || "Custom",
+    buildingCapital: customControls.customBuildingCapital,
+    telecomCapital: customControls.customTelecomCapital,
+    totalCapital: customTotal,
+    commercialDescription: customControls.customFacilityDescription || DEFAULT_ILA_PLANNING_CONTROLS.customFacilityDescription,
+    proposalNotes: "Manual proposal override. Engineering details remain pending after customer acceptance.",
+  }, true);
+  return [
+    ...ILA_FACILITY_PROFILE_CATALOG.map((entry) => profileFromCatalog(entry)),
+    customProfile,
+  ];
 }
 
 function spanLimitFromControls(controls: IlaPlanningControls) {
@@ -411,7 +464,7 @@ export function buildIlaPlanningResult(args: {
   const measures = routeMeasures(geometry);
   const measuredRouteMiles = measures.at(-1) ?? routeMiles;
   const stationRouteMiles = measuredRouteMiles > 0 ? measuredRouteMiles : routeMiles;
-  const availableProfiles = buildIlaFacilityProfiles(controls.customFacilityCost);
+  const availableProfiles = buildIlaFacilityProfiles(controls);
   const profileById = new Map(availableProfiles.map((profile) => [profile.profileId, profile]));
   const recommendedIntermediateIlas = recommendedIntermediateCount(routeMiles, controls);
   const intermediateCount = controls.placementMethod === "INTERMEDIATE_COUNT"
@@ -432,7 +485,7 @@ export function buildIlaPlanningResult(args: {
       return {
         ...seed,
         milepost: canMove && typeof override?.milepost === "number" ? clamp(override.milepost, 0, routeMiles) : seed.milepost,
-        facilityProfileId: override?.facilityProfileId ?? controls.defaultFacilityProfileId,
+        facilityProfileId: normalizeIlaFacilityProfileId(override?.facilityProfileId ?? controls.defaultFacilityProfileId),
       };
     })
     .sort((a, b) => a.milepost - b.milepost);
