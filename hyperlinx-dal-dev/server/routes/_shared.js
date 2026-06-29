@@ -17,15 +17,30 @@ export const DIRS = {
   certifiedRoutes: path.join(DATA_ROOT, "certified-routes"),
   controlWorkItems: path.join(DATA_ROOT, "control-work-items"),
   fieldClosures: path.join(DATA_ROOT, "field-closures"),
+  customerDesignImports: path.join(DATA_ROOT, "customer-design-imports"),
+  commercialOpportunities: path.join(DATA_ROOT, "commercial-opportunities"),
+  engineeringDrafts: path.join(DATA_ROOT, "engineering-drafts"),
+  proposalDrafts: path.join(DATA_ROOT, "proposal-drafts"),
+  activity: path.join(DATA_ROOT, "activity"),
 };
+
+export function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, X-Requested-With, X-Teralinx-Runtime",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Expose-Headers": "Content-Type, Authorization",
+    "Access-Control-Max-Age": "86400",
+    "Access-Control-Allow-Private-Network": "true",
+    Vary: "Origin, Access-Control-Request-Headers, Access-Control-Request-Method",
+  };
+}
 
 export function jsonResponse(res, statusCode, payload) {
   const body = JSON.stringify(payload ?? {});
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    ...corsHeaders(),
   });
   res.end(body);
 }
@@ -36,7 +51,8 @@ export function errorResponse(res, statusCode, message) {
 
 export function handleOptions(req, res) {
   if (req.method !== "OPTIONS") return false;
-  jsonResponse(res, 200, { ok: true });
+  res.writeHead(204, corsHeaders());
+  res.end();
   return true;
 }
 

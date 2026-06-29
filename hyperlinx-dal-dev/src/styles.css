@@ -265,6 +265,14 @@ textarea {
   font-size: 12px;
   color: #b8d7ee;
   text-align: right;
+  justify-items: end;
+}
+
+.dal-header-signout {
+  width: max-content;
+  padding: 6px 10px;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
 }
 
 .dal-layout {
@@ -299,6 +307,55 @@ textarea {
   min-width: 0;
   padding: 18px;
   overflow: auto;
+}
+
+.teralinx-login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #08111f;
+}
+
+.teralinx-login-panel {
+  width: min(620px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid #1d405a;
+  border-radius: 8px;
+  background: #0b1728;
+}
+
+.teralinx-login-panel h1 {
+  margin: 4px 0 8px;
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+.teralinx-login-panel p {
+  margin: 0;
+  color: #b8d7ee;
+}
+
+.teralinx-login-form {
+  display: grid;
+  gap: 12px;
+}
+
+.teralinx-login-runtime {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #b8d7ee;
+  font-size: 12px;
+}
+
+.teralinx-login-runtime span {
+  padding: 6px 8px;
+  border: 1px solid #22435f;
+  border-radius: 6px;
+  background: #0c1b2d;
 }
 
 .dal-workspace {
@@ -1271,6 +1328,104 @@ textarea {
 
 .commercial-compact-actions select {
   max-width: 150px;
+}
+
+.teralinx-commercial-landing {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  background: #0a1727;
+}
+
+.teralinx-landing-summary {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.teralinx-landing-summary div,
+.teralinx-landing-runtime span {
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.teralinx-landing-summary span,
+.teralinx-landing-runtime span,
+.teralinx-activity-line small,
+.teralinx-landing-columns small {
+  display: block;
+  color: #8fb0cc;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.teralinx-landing-summary b {
+  display: block;
+  overflow: hidden;
+  color: #e5f1ff;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teralinx-landing-controls {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(180px, 0.6fr) minmax(260px, 1fr) minmax(280px, 1.2fr);
+  align-items: end;
+}
+
+.teralinx-landing-runtime {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.teralinx-landing-columns {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.teralinx-landing-columns > div {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+}
+
+.teralinx-landing-columns > div > b {
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.teralinx-landing-columns button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px;
+  text-align: left;
+}
+
+.teralinx-landing-columns button span,
+.teralinx-activity-line {
+  overflow-wrap: anywhere;
+}
+
+.teralinx-activity-line {
+  display: block;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.48);
+  color: #dcecff;
+  font-size: 12px;
 }
 
 .bid-recalculation-panel {
@@ -2720,6 +2875,9 @@ textarea {
   }
 
   .commercial-compact-header-grid,
+  .teralinx-landing-summary,
+  .teralinx-landing-controls,
+  .teralinx-landing-columns,
   .commercial-financial-groups,
   .commercial-health-strip,
   .transparent-estimate-pinned-summary,
@@ -2797,6 +2955,9 @@ textarea {
 
 @media (max-width: 640px) {
   .commercial-compact-header-grid,
+  .teralinx-landing-summary,
+  .teralinx-landing-controls,
+  .teralinx-landing-columns,
   .commercial-financial-groups,
   .commercial-health-strip,
   .transparent-estimate-pinned-summary,

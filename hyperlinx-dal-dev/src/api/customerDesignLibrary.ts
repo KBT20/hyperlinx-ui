@@ -1,4 +1,4 @@
-import { readCollection, writeRecord } from "./dalStorage";
+import { DAL_API } from "../config/dalApi";
 import type { CustomerDesignImport, CustomerDesignLayerVisibility, CustomerDesignLineageEvent } from "../translate/CustomerDesignImport";
 
 const DEFAULT_LAYER_VISIBILITY: CustomerDesignLayerVisibility = {
@@ -82,13 +82,35 @@ export function normalizeCustomerDesignImport(record: CustomerDesignImport): Cus
   };
 }
 
+function apiUrl(path: string) {
+  return `${DAL_API}${path}`;
+}
+
+async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(apiUrl(path), init);
+  const text = await response.text().catch(() => "");
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}${text ? `: ${text}` : ""}`);
+  return (text ? JSON.parse(text) : {}) as T;
+}
+
+function unwrapList<T>(data: any, keys: string[]): T[] {
+  const items = keys.map((key) => data?.[key]).find(Array.isArray) ?? data?.items ?? data?.data ?? data;
+  return Array.isArray(items) ? items : [];
+}
+
 export async function listCustomerDesignImports() {
-  const records = await readCollection<CustomerDesignImport>("customerDesignImports");
+  const data = await requestJson<any>("/api/customer-design-imports");
+  const records = unwrapList<CustomerDesignImport>(data, ["customerDesignImports", "imports"]);
   return records
     .map(normalizeCustomerDesignImport)
     .sort((a, b) => String(b.uploadedAt).localeCompare(String(a.uploadedAt)));
 }
 
 export async function saveCustomerDesignImport(record: CustomerDesignImport) {
-  return writeRecord("customerDesignImports", normalizeCustomerDesignImport(record));
+  const data = await requestJson<any>("/api/customer-design-imports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ customerDesignImport: normalizeCustomerDesignImport(record) }),
+  });
+  return normalizeCustomerDesignImport(data.customerDesignImport ?? data);
 }

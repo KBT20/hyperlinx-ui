@@ -43,7 +43,9 @@ import {
 } from "../../commercial/TransparentEstimatingEngine";
 import type { IlaPlanningControls } from "../../commercial/IlaPlanningEngine";
 import { authorityModeConfidence, type ConstraintValue, type ConstraintAuthorityMode } from "../../commercial/ConstraintAuthority";
+import { listCommercialOpportunities, listProposalDrafts, saveCommercialOpportunity, saveProposalDraft } from "../../api/teralinxRuntime";
 import { useDALState } from "../../dal/DALState";
+import { useTeralinxAuth } from "../../identity/TeralinxAuth";
 import { attachPricedDraftToImportedRoute, markImportedRoutePromoted } from "../../translate/CustomerDesignImportEngine";
 import type { CustomerDesignImport, ImportedCustomerRoute } from "../../translate/CustomerDesignImport";
 import { googleHeliumBidPlanFixture, googleHeliumRfpOpportunity } from "../../rfp/fixtures/googleHeliumRfpFixtures";
@@ -371,9 +373,6 @@ const COMMERCIAL_ACCOUNTS: CommercialAccountFixture[] = [
   },
 ];
 
-const LIVE_COMMERCIAL_SESSION_STORAGE_KEY = "hyperlinx:commercial-planning:live-commercial-session:v1";
-const COMMERCIAL_OPPORTUNITY_STORAGE_KEY = "hyperlinx:commercial-planning:opportunities:v1";
-
 const ENRICHMENT_OPTIONS = [
   "Geology",
   "ERCOT",
@@ -417,7 +416,7 @@ const CIVIL_MIX_CONSTRAINT_KEYS = [
   "civil.openTrenchPercent",
 ] as const;
 
-const ESTIMATE_AUTHOR = "Ryan";
+const ESTIMATE_AUTHOR = "Teralinx";
 
 function isHumanWorkflowAuthority(mode: ConstraintAuthorityMode) {
   return mode === "PENDING_HUMAN" || mode === "HUMAN_APPROVED" || mode === "HUMAN" || mode === "APPROVED";
@@ -436,7 +435,7 @@ function valuesMatch(left: ConstraintValue["value"], right: ConstraintValue["val
   return auditValue(left) === auditValue(right);
 }
 
-function humanAuditEntry(previous: ConstraintValue, next: ConstraintValue, reason?: string): TransparentEstimateHumanAuditEntry {
+function humanAuditEntry(previous: ConstraintValue, next: ConstraintValue, reason?: string, user = ESTIMATE_AUTHOR): TransparentEstimateHumanAuditEntry {
   const timestamp = new Date().toISOString();
   return {
     auditId: `estimate-human-${timestamp}-${next.key}-${Math.random().toString(36).slice(2, 8)}`,
@@ -446,7 +445,7 @@ function humanAuditEntry(previous: ConstraintValue, next: ConstraintValue, reaso
     newValue: auditValue(next.value),
     previousAuthority: previous.authorityMode,
     newAuthority: next.authorityMode,
-    user: ESTIMATE_AUTHOR,
+    user,
     timestamp,
     reason: reason?.trim() || undefined,
   };
@@ -907,38 +906,6 @@ const COMMERCIAL_NETWORKS: CommercialNetworkRecord[] = [
     noInventoryAuthorityMutation: true,
   },
 ];
-
-function autosaveLiveCommercialSession(session: LiveCommercialSession | null) {
-  if (typeof window === "undefined") return;
-  try {
-    if (!session) window.localStorage.removeItem(LIVE_COMMERCIAL_SESSION_STORAGE_KEY);
-    else window.localStorage.setItem(LIVE_COMMERCIAL_SESSION_STORAGE_KEY, JSON.stringify(session));
-  } catch (error) {
-    console.warn("Unable to autosave Commercial Planning session", error);
-  }
-}
-
-function loadCommercialOpportunities(): CommercialOpportunityRecord[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(COMMERCIAL_OPPORTUNITY_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as CommercialOpportunityRecord[];
-    return Array.isArray(parsed) ? parsed.filter((record) => record && record.opportunityId && record.accountId) : [];
-  } catch (error) {
-    console.warn("Unable to load Commercial Planning opportunities", error);
-    return [];
-  }
-}
-
-function saveCommercialOpportunities(records: CommercialOpportunityRecord[]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(COMMERCIAL_OPPORTUNITY_STORAGE_KEY, JSON.stringify(records));
-  } catch (error) {
-    console.warn("Unable to save Commercial Planning opportunities", error);
-  }
-}
 
 function routeLabel(routePlan: GoogleRfpRouteBidPlan) {
   return routePlan.routeRequirement.bidSegmentName.replace("Helium / HIU to ", "Helium -> ");
@@ -2454,10 +2421,13 @@ export default function GoogleRfpWorkspace() {
     setSelectedCustomerDesignRouteId,
     upsertCustomerDesignImport,
     setSelectedCommercialCorridorDraft,
+    engineeringDrafts,
     selectedRouteEngineeringDraft,
     setSelectedRouteEngineeringDraft,
     setSelectedRouteEngineeringActivation,
   } = useDALState();
+  const { session, runtimeInfo, activity, recordActivity, can } = useTeralinxAuth();
+  const currentUserName = session?.user.name ?? "Teralinx";
   const [bidPlan, setBidPlan] = useState(googleHeliumBidPlanFixture);
   const defaultAssumptionState = useMemo(() => createDefaultBudgetAssumptionState(), []);
   const [assumptionStates, setAssumptionStates] = useState<BudgetAssumptionState[]>([defaultAssumptionState]);
@@ -2479,7 +2449,8 @@ export default function GoogleRfpWorkspace() {
   const [commercialDraftType, setCommercialDraftType] = useState<CommercialDraftType | null>(null);
   const [importedCommercialDraft, setImportedCommercialDraft] = useState<CommercialCorridorDraft | null>(null);
   const [loadedCommercialDraftSnapshot, setLoadedCommercialDraftSnapshot] = useState<CommercialCorridorDraft | null>(null);
-  const [commercialOpportunities, setCommercialOpportunities] = useState<CommercialOpportunityRecord[]>(() => loadCommercialOpportunities());
+  const [commercialOpportunities, setCommercialOpportunities] = useState<CommercialOpportunityRecord[]>([]);
+  const [commercialLibraryLoaded, setCommercialLibraryLoaded] = useState(false);
   const [activeCommercialOpportunityId, setActiveCommercialOpportunityId] = useState("");
   const [opportunityNotice, setOpportunityNotice] = useState("No opportunity loaded. New Opportunity starts with Customer Twin only.");
   const [opportunityWorkflowState, setOpportunityWorkflowState] = useState<OpportunityWorkflowState>("IDLE");
@@ -2625,6 +2596,18 @@ export default function GoogleRfpWorkspace() {
       .filter((record) => record.status === "ARCHIVED")
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [accountCommercialOpportunities],
+  );
+  const recentRuntimeActivity = useMemo(
+    () => activity
+      .filter((event) => !event.customerId || event.customerId === selectedAccount.accountId || event.objectType === "Runtime")
+      .slice(0, 6),
+    [activity, selectedAccount.accountId],
+  );
+  const recentEngineeringDrafts = useMemo(
+    () => engineeringDrafts
+      .filter((draft) => (draft.commercialDraft as any)?.accountId === selectedAccount.accountId || (draft.commercialDraft as any)?.accountName === selectedAccount.name)
+      .slice(0, 4),
+    [engineeringDrafts, selectedAccount.accountId, selectedAccount.name],
   );
   const activeCommercialOpportunity = accountCommercialOpportunities.find((record) => record.opportunityId === activeCommercialOpportunityId) ?? null;
   const selectedImportedCustomerDesignEntry = useMemo(
@@ -2980,12 +2963,48 @@ export default function GoogleRfpWorkspace() {
   ]);
 
   useEffect(() => {
-    if (liveCommercialSession) autosaveLiveCommercialSession(liveCommercialSession);
-  }, [liveCommercialSession]);
+    let cancelled = false;
+    setCommercialLibraryLoaded(false);
+    listCommercialOpportunities<CommercialOpportunityRecord>()
+      .then((records) => {
+        if (cancelled) return;
+        setCommercialOpportunities(records.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
+        setCommercialLibraryLoaded(true);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("Opportunity Library load failed", error instanceof Error ? error.message : String(error));
+        setOpportunityNotice(`Opportunity Library unavailable: ${error instanceof Error ? error.message : String(error)}`);
+        setCommercialLibraryLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
-    saveCommercialOpportunities(commercialOpportunities);
-  }, [commercialOpportunities]);
+    let cancelled = false;
+    listProposalDrafts<any>()
+      .then((records) => {
+        if (cancelled) return;
+        const snapshots = records
+          .filter((record) => record?.snapshotId)
+          .sort((a, b) => String(b.timestamp ?? b.createdAt).localeCompare(String(a.timestamp ?? a.createdAt)))
+          .map(({ proposalRecordId: _proposalRecordId, proposalRecordType: _proposalRecordType, organization: _organization, createdAt: _createdAt, updatedAt: _updatedAt, ...snapshot }) => snapshot as LiveProposalSnapshot);
+        const accepted = records
+          .filter((record) => record?.acceptedProposalId)
+          .sort((a, b) => String(b.acceptedAt ?? b.createdAt).localeCompare(String(a.acceptedAt ?? a.createdAt)))
+          .map(({ proposalRecordId: _proposalRecordId, proposalRecordType: _proposalRecordType, organization: _organization, createdAt: _createdAt, updatedAt: _updatedAt, ...proposal }) => proposal as AcceptedProposal);
+        setProposalSnapshots(snapshots);
+        setAcceptedProposal(accepted[0] ?? null);
+      })
+      .catch((error) => {
+        console.warn("Proposal Library load failed", error instanceof Error ? error.message : String(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -3288,7 +3307,7 @@ export default function GoogleRfpWorkspace() {
         humanAuditTrail: appendAudit
           ? [
               ...(prev.humanAuditTrail ?? []),
-              humanAuditEntry(previous, resolvedNext, resolvedNext.notes),
+              humanAuditEntry(previous, resolvedNext, resolvedNext.notes, currentUserName),
             ]
           : prev.humanAuditTrail,
       };
@@ -3450,6 +3469,26 @@ export default function GoogleRfpWorkspace() {
     });
     setActiveCommercialOpportunityId(record.opportunityId);
     setOpportunityNotice(`${record.name} saved.`);
+    const sharedRecord = {
+      ...record,
+      organization: "Teralinx",
+      savedBy: currentUserName,
+    };
+    void saveCommercialOpportunity(sharedRecord).then((saved) => {
+      setCommercialOpportunities((prev) => [saved, ...prev.filter((candidate) => candidate.opportunityId !== saved.opportunityId)]);
+      void recordActivity({
+        action: record.status === "ARCHIVED" ? "archived opportunity" : "saved opportunity",
+        objectType: "Opportunity",
+        objectId: saved.opportunityId,
+        objectName: saved.name,
+        revision: saved.commercialDraftSnapshot?.routeId ?? saved.importedDraftRouteId ?? saved.selectedScopeId,
+        opportunityId: saved.opportunityId,
+        customerId: saved.accountId,
+        details: "Opportunity persisted to the shared Teralinx Opportunity Library.",
+      });
+    }).catch((error) => {
+      setOpportunityNotice(`Opportunity saved locally in session but shared save failed: ${error instanceof Error ? error.message : String(error)}`);
+    });
   }
 
   function handleNewCommercialOpportunity() {
@@ -3520,11 +3559,28 @@ export default function GoogleRfpWorkspace() {
     setSelectedScopeId(record.selectedScopeId);
     setActiveView(record.activeView);
     setCommercialDraftType(record.commercialDraftType);
+    const openedRecord = {
+      ...record,
+      status: record.status === "ARCHIVED" ? "ARCHIVED" as const : "RECENT" as const,
+      updatedAt: new Date().toISOString(),
+    };
     setCommercialOpportunities((prev) => prev.map((candidate) => (
-      candidate.opportunityId === record.opportunityId
-        ? { ...candidate, status: candidate.status === "ARCHIVED" ? "ARCHIVED" : "RECENT", updatedAt: new Date().toISOString() }
-        : candidate
+      candidate.opportunityId === record.opportunityId ? openedRecord : candidate
     )));
+    if (openedRecord.status !== "ARCHIVED") {
+      void saveCommercialOpportunity({ ...openedRecord, lastOpenedBy: currentUserName }).catch((error) => {
+        console.warn("Opportunity Library recent update failed", error instanceof Error ? error.message : String(error));
+      });
+      void recordActivity({
+        action: "opened opportunity",
+        objectType: "Opportunity",
+        objectId: openedRecord.opportunityId,
+        objectName: openedRecord.name,
+        revision: openedRecord.selectedScopeId,
+        opportunityId: openedRecord.opportunityId,
+        customerId: openedRecord.accountId,
+      });
+    }
     setActiveCommercialOpportunityId(record.opportunityId);
     setOpportunityNotice(`${record.name} opened intentionally.`);
   }
@@ -4042,13 +4098,31 @@ export default function GoogleRfpWorkspace() {
       enrichmentSelections: activeLiveSession.enrichmentSelections,
       selectedAssumptionStateId: activeLiveSession.currentCommercialAssumptions,
       selectedScopePricingSummary: summary,
-      author: "Ryan",
+      author: currentUserName,
       note: "Saved from the live commercial proposal draft. No ScopeVersion, inventory, or execution authority created.",
       immutableCommercialRecord: true,
       noScopeVersionCreation: true,
       noInventoryMutation: true,
     };
     setProposalSnapshots((prev) => [snapshot, ...prev]);
+    void saveProposalDraft({
+      ...(snapshot as any),
+      proposalRecordId: snapshot.snapshotId,
+      proposalRecordType: "SNAPSHOT",
+      opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId,
+      organization: "Teralinx",
+    }).then(() => recordActivity({
+      action: "saved proposal snapshot",
+      objectType: "Proposal",
+      objectId: snapshot.snapshotId,
+      objectName: snapshot.name,
+      revision: snapshot.pricingScopeId,
+      opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId,
+      customerId: snapshot.accountId,
+      details: "Proposal snapshot persisted to the shared Teralinx Proposal Library.",
+    })).catch((error) => {
+      console.warn("Proposal Library save failed", error instanceof Error ? error.message : String(error));
+    });
     setLiveCommercialSession((prev) => (
       prev && prev.routeRequirementId === activeLiveSession.routeRequirementId
         ? {
@@ -4088,13 +4162,31 @@ export default function GoogleRfpWorkspace() {
       enrichmentSelections: [],
       selectedAssumptionStateId: selectedAssumptionState.stateId,
       selectedScopePricingSummary: selectedPricingSummary,
-      author: "Ryan",
+      author: currentUserName,
       note: `${draftTypeLabel(commercialDraftType)} snapshot. No ScopeVersion, inventory mutation, or execution authority created.`,
       immutableCommercialRecord: true,
       noScopeVersionCreation: true,
       noInventoryMutation: true,
     };
     setProposalSnapshots((prev) => [snapshot, ...prev]);
+    void saveProposalDraft({
+      ...(snapshot as any),
+      proposalRecordId: snapshot.snapshotId,
+      proposalRecordType: "SNAPSHOT",
+      opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId,
+      organization: "Teralinx",
+    }).then(() => recordActivity({
+      action: "saved proposal snapshot",
+      objectType: "Proposal",
+      objectId: snapshot.snapshotId,
+      objectName: snapshot.name,
+      revision: snapshot.pricingScopeId,
+      opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId,
+      customerId: snapshot.accountId,
+      details: "Commercial Draft snapshot persisted to the shared Teralinx Proposal Library.",
+    })).catch((error) => {
+      console.warn("Proposal Library save failed", error instanceof Error ? error.message : String(error));
+    });
   }
 
   function handleSelectImportedCustomerRoute(value: string) {
@@ -4162,7 +4254,7 @@ export default function GoogleRfpWorkspace() {
       accountId: selectedAccount.accountId,
       accountName: selectedAccount.name,
       opportunityId: selectedScope.scopeId,
-      createdBy: "Ryan",
+      createdBy: currentUserName,
       activationReason: "Imported customer design opened from Commercial Planning as immutable Engineering baseline.",
     });
   }
@@ -4175,7 +4267,7 @@ export default function GoogleRfpWorkspace() {
       accountId: selectedAccount.accountId,
       accountName: selectedAccount.name,
       opportunityId: selectedScope.scopeId,
-      createdBy: "Ryan",
+      createdBy: currentUserName,
       activationReason: "Commercial Planning entered Engineering Mode from a valid Commercial Draft.",
     });
   }
@@ -4259,6 +4351,24 @@ export default function GoogleRfpWorkspace() {
       noServiceOrderCreation: true,
     };
     setAcceptedProposal(accepted);
+    void saveProposalDraft({
+      ...(accepted as any),
+      proposalRecordId: accepted.acceptedProposalId,
+      proposalRecordType: "ACCEPTED_PROPOSAL",
+      opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId,
+      organization: "Teralinx",
+    }).then(() => recordActivity({
+      action: "accepted proposal",
+      objectType: "Proposal",
+      objectId: accepted.acceptedProposalId,
+      objectName: `${accepted.accountName} accepted proposal`,
+      revision: accepted.routeRequirementId,
+      opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId,
+      customerId: accepted.accountId,
+      details: "Accepted proposal persisted to the shared Teralinx Proposal Library. No ScopeVersion or service order created.",
+    })).catch((error) => {
+      console.warn("Accepted proposal shared save failed", error instanceof Error ? error.message : String(error));
+    });
     setCustomerReviewStatus("ACCEPTED");
     setLiveCommercialSession((prev) => (prev && prev.accountId === selectedAccount.accountId
       ? {
@@ -4452,6 +4562,96 @@ export default function GoogleRfpWorkspace() {
       </div>
 
       <div className="dal-status commercial-opportunity-notice">{opportunityNotice}</div>
+
+      <section className="teralinx-commercial-landing" aria-label="Teralinx Commercial Planning landing">
+        <div className="teralinx-landing-summary">
+          <div>
+            <span>Workspace</span>
+            <b>Commercial Planning</b>
+          </div>
+          <div>
+            <span>Customer</span>
+            <b>{selectedAccount.name}</b>
+          </div>
+          <div>
+            <span>Current User</span>
+            <b>{currentUserName} / {session?.user.title ?? "Teralinx"}</b>
+          </div>
+          <div>
+            <span>Runtime Version</span>
+            <b>{runtimeInfo?.runtimeVersion ?? "loading"} / {runtimeInfo?.environment ?? "alpha"}</b>
+          </div>
+          <div>
+            <span>Git Commit</span>
+            <b>{runtimeInfo?.gitCommit ?? "loading"}</b>
+          </div>
+          <div>
+            <span>Build Date</span>
+            <b>{runtimeInfo?.buildDate ? new Date(runtimeInfo.buildDate).toLocaleString() : "loading"}</b>
+          </div>
+        </div>
+        <div className="teralinx-landing-controls">
+          <label>
+            Customer
+            <select value={selectedAccountId} onChange={(event) => selectAccount(event.currentTarget.value)} aria-label="Customer selector">
+              {COMMERCIAL_ACCOUNTS.map((account) => (
+                <option key={account.accountId} value={account.accountId}>{account.name}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Opportunity / Library
+            <select value="" onChange={(event) => handleOpportunityLibrarySelect(event.currentTarget.value)} aria-label="Opportunity selector">
+              <option value="">Select explicitly...</option>
+              {savedCommercialOpportunities.map((record) => (
+                <option key={`landing-opportunity-${record.opportunityId}`} value={`opportunity::${record.opportunityId}`}>
+                  {record.name}
+                </option>
+              ))}
+              {accountImportedCustomerRoutes.map((entry) => (
+                <option key={`landing-design-${entry.importRecord.importId}-${entry.route.routeId}`} value={`customer-design::${entry.importRecord.importId}::${entry.route.routeId}`}>
+                  {entry.importRecord.designId} / {entry.route.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="teralinx-landing-runtime">
+            <span>{commercialLibraryLoaded ? `${accountCommercialOpportunities.length} opportunities` : "Opportunity Library loading"}</span>
+            <span>{accountCustomerDesignImports.length} customer designs</span>
+            <span>{recentEngineeringDrafts.length} engineering revisions</span>
+            <span>{can("runtime.deploy") ? "Runtime deploy authority enabled" : "Runtime deploy authority restricted"}</span>
+          </div>
+        </div>
+        <div className="teralinx-landing-columns">
+          <div>
+            <b>Recent Opportunities</b>
+            {recentCommercialOpportunities.length ? recentCommercialOpportunities.slice(0, 4).map((record) => (
+              <button key={`landing-recent-${record.opportunityId}`} type="button" onClick={() => handleOpenCommercialOpportunity(record.opportunityId)}>
+                <span>{record.name}</span>
+                <small>{new Date(record.updatedAt).toLocaleString()}</small>
+              </button>
+            )) : <span className="dal-status">No saved opportunity is loaded automatically.</span>}
+          </div>
+          <div>
+            <b>Recent Customer Designs</b>
+            {accountImportedCustomerRoutes.length ? accountImportedCustomerRoutes.slice(0, 4).map((entry) => (
+              <button key={`landing-design-open-${entry.importRecord.importId}-${entry.route.routeId}`} type="button" onClick={() => handleOpenCustomerDesignFromLibrary(entry.importRecord.importId, entry.route.routeId)}>
+                <span>{entry.importRecord.designId}</span>
+                <small>{entry.route.name}</small>
+              </button>
+            )) : <span className="dal-status">No Customer Design Library records for this customer.</span>}
+          </div>
+          <div>
+            <b>Recent Activity</b>
+            {recentRuntimeActivity.length ? recentRuntimeActivity.map((event) => (
+              <span key={event.activityId} className="teralinx-activity-line">
+                <strong>{event.userName}</strong> {event.action} {event.objectName ?? event.objectId}
+                <small>{new Date(event.timestamp).toLocaleString()}</small>
+              </span>
+            )) : <span className="dal-status">No shared runtime activity recorded yet.</span>}
+          </div>
+        </div>
+      </section>
 
       <CommercialStatusBar
         account={selectedAccount}

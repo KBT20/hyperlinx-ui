@@ -26,6 +26,7 @@ import TranslateWorkspace from "../workspaces/TranslateWorkspace";
 import TwinWorkspace from "../workspaces/TwinWorkspace";
 import DALNavigation from "./DALNavigation";
 import { DALStateProvider, useDALState } from "./DALState";
+import { TeralinxAuthProvider, useTeralinxAuth } from "../identity/TeralinxAuth";
 
 function DALWorkspaceOutlet() {
   const { workspace } = useDALState();
@@ -230,18 +231,24 @@ function DALReasoningOutlet() {
 
 function DALShell() {
   const reasoningCandidates = getReasoningEndpointCandidates();
+  const { session, runtimeInfo, logout } = useTeralinxAuth();
   return (
     <div className="dal-shell">
       <header className="dal-header">
         <div>
-          <div className="dal-kicker">HYPERLINX DAL DEVELOPMENT</div>
+          <div className="dal-kicker">TERALINX</div>
           <h1>{DAL_APP_NAME}</h1>
         </div>
         <div className="dal-targets">
+          <span>User: {session?.user.name} / {session?.user.title}</span>
+          <span>Organization: {runtimeInfo?.organization ?? "Teralinx"} / Owner: {runtimeInfo?.workspaceOwner ?? "Teralinx"}</span>
+          <span>Runtime Version: {runtimeInfo?.runtimeVersion ?? "loading"} / Commit: {runtimeInfo?.gitCommit ?? "loading"}</span>
+          <span>Build Date: {runtimeInfo?.buildDate ?? "loading"} / Environment: {runtimeInfo?.environment ?? "alpha"}</span>
           <span>DAL API: {DAL_API}</span>
           <span>Baseline Graph API: {DAL_BASELINE_GRAPH_API}</span>
           <span>Inventory API: {DAL_INVENTORY_GRAPH_API}</span>
           <span>Reasoning Fabric: {reasoningCandidates.length ? reasoningCandidates.map(endpointBaseUrl).join(", ") : "not configured"}</span>
+          <button className="dal-header-signout" type="button" onClick={logout}>Sign Out</button>
         </div>
       </header>
       <div className="dal-layout">
@@ -255,10 +262,18 @@ function DALShell() {
   );
 }
 
-export default function DALApp() {
+function TeralinxAuthenticatedRuntime() {
   return (
     <DALStateProvider>
       <DALShell />
     </DALStateProvider>
+  );
+}
+
+export default function DALApp() {
+  return (
+    <TeralinxAuthProvider>
+      <TeralinxAuthenticatedRuntime />
+    </TeralinxAuthProvider>
   );
 }

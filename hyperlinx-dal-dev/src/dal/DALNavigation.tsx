@@ -1,4 +1,6 @@
 import { useDALState, type DALWorkspace } from "./DALState";
+import { useTeralinxAuth } from "../identity/TeralinxAuth";
+import { canAccessWorkspace, workspaceAccessReason } from "../identity/teralinxIdentity";
 
 const items: Array<{ id: DALWorkspace; label: string }> = [
   { id: "googleRfp", label: "Commercial Planning" },
@@ -26,15 +28,19 @@ const items: Array<{ id: DALWorkspace; label: string }> = [
 
 export default function DALNavigation() {
   const { workspace, setWorkspace } = useDALState();
+  const { session } = useTeralinxAuth();
+  const user = session?.user ?? null;
+  const visibleItems = items.filter((item) => canAccessWorkspace(user, item.id));
 
   return (
     <nav className="dal-nav" aria-label="DAL workspaces">
-      {items.map((item) => (
+      {visibleItems.map((item) => (
         <button
           key={item.id}
           className={workspace === item.id ? "dal-nav-item active" : "dal-nav-item"}
           type="button"
           onClick={() => setWorkspace(item.id)}
+          title={workspaceAccessReason(user, item.id)}
         >
           {item.label}
         </button>

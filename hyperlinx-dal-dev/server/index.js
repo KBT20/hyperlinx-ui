@@ -1,22 +1,38 @@
 import http from "node:http";
-import { DATA_ROOT, DIRS, PORT, errorResponse, jsonResponse } from "./routes/_shared.js";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { DATA_ROOT, DIRS, PORT, errorResponse, handleOptions, jsonResponse } from "./routes/_shared.js";
+import { handleActivity } from "./routes/activity.js";
+import { handleAuth } from "./routes/auth.js";
 import { handleCandidateSites } from "./routes/candidate-sites.js";
 import { handleCertifiedRoutes } from "./routes/certified-routes.js";
 import { handleCloseEvents } from "./routes/close-events.js";
+import { handleCommercialOpportunities } from "./routes/commercial-opportunities.js";
 import { handleControlWorkItems } from "./routes/control-work-items.js";
+import { handleCustomerDesignImports } from "./routes/customer-design-imports.js";
+import { handleEngineeringDrafts } from "./routes/engineering-drafts.js";
 import { handleFieldClosures } from "./routes/field-closures.js";
 import { handleGeocode } from "./routes/geocode.js";
 import { handleInventoryGraphs } from "./routes/inventory-graphs.js";
 import { handleIofPackages } from "./routes/iof-packages.js";
 import { handleMarketplaceQuotes } from "./routes/marketplace-quotes.js";
 import { handleOpportunitySeeds } from "./routes/opportunity-seeds.js";
+import { handleProposalDrafts } from "./routes/proposal-drafts.js";
+import { handleRuntime } from "./routes/runtime.js";
 import { handleScopeVersions } from "./routes/scopeversions.js";
 import { handleTwinState } from "./routes/twin-state.js";
 
 const routes = [
+  handleAuth,
+  handleRuntime,
+  handleActivity,
   handleGeocode,
   handleCertifiedRoutes,
   handleScopeVersions,
+  handleCustomerDesignImports,
+  handleCommercialOpportunities,
+  handleEngineeringDrafts,
+  handleProposalDrafts,
   handleCandidateSites,
   handleOpportunitySeeds,
   handleInventoryGraphs,
@@ -28,9 +44,43 @@ const routes = [
   handleTwinState,
 ];
 
+const STATIC_ROOT = path.join(process.cwd(), "dist-dal");
+const CONTENT_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".json": "application/json; charset=utf-8",
+};
+
+async function serveStaticApp(req, res, pathname) {
+  if (req.method !== "GET" && req.method !== "HEAD") return false;
+  if (pathname.startsWith("/api/") || pathname === "/health") return false;
+  const requestedPath = pathname === "/" ? "/index.html" : pathname;
+  const resolvedPath = path.resolve(STATIC_ROOT, `.${decodeURIComponent(requestedPath)}`);
+  if (!resolvedPath.startsWith(STATIC_ROOT)) return false;
+  const candidates = [resolvedPath, path.join(STATIC_ROOT, "index.html")];
+  for (const candidate of candidates) {
+    try {
+      const body = await readFile(candidate);
+      res.writeHead(200, {
+        "Content-Type": CONTENT_TYPES[path.extname(candidate)] ?? "application/octet-stream",
+      });
+      if (req.method !== "HEAD") res.end(body);
+      else res.end();
+      return true;
+    } catch {
+      // Try the next static fallback.
+    }
+  }
+  return false;
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    if (handleOptions(req, res)) return;
     for (const route of routes) {
       if (await route(req, res, url.pathname)) return;
     }
@@ -40,6 +90,13 @@ const server = http.createServer(async (req, res) => {
         service: "hyperlinx-dal-dev",
         dataRoot: DATA_ROOT,
         routes: {
+          auth: true,
+          runtime: true,
+          activity: true,
+          customerDesignImports: true,
+          commercialOpportunities: true,
+          engineeringDrafts: true,
+          proposalDrafts: true,
           scopeVersions: true,
           candidateSites: true,
           opportunitySeeds: true,
@@ -56,6 +113,7 @@ const server = http.createServer(async (req, res) => {
       });
       return;
     }
+    if (await serveStaticApp(req, res, url.pathname)) return;
     errorResponse(res, 404, "Not found");
   } catch (err) {
     errorResponse(res, 500, err instanceof Error ? err.message : String(err));
@@ -63,7 +121,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log("HYPERLINX DAL SERVER READY", {
+  console.log("TERALINX RUNTIME READY", {
     port: PORT,
     dataRoot: DATA_ROOT,
     ...DIRS,

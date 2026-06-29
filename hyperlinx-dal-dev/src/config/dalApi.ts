@@ -33,9 +33,9 @@ export const DAL_REASONING_FALLBACK_MODEL = env.VITE_DAL_REASONING_FALLBACK_MODE
 export const DAL_GEOCODER_PROVIDER = env.VITE_DAL_GEOCODER_PROVIDER?.trim() || "server";
 export const DAL_MAPBOX_GEOCODING_TOKEN = env.VITE_DAL_MAPBOX_GEOCODING_TOKEN?.trim() || "";
 export const DAL_GOOGLE_GEOCODING_KEY = env.VITE_DAL_GOOGLE_GEOCODING_KEY?.trim() || "";
-export const DAL_APP_NAME = env.VITE_DAL_APP_NAME?.trim() || "HYPERLINX DAL DEVELOPMENT";
+export const DAL_APP_NAME = env.VITE_DAL_APP_NAME?.trim() || "Teralinx Infrastructure Operating Platform";
 
-console.log("DAL DEVELOPMENT MODE");
+console.log("TERALINX DAL RUNTIME MODE");
 console.log("DAL API TARGET", DAL_API);
 console.log("DAL BASELINE API TARGET", DAL_BASELINE_API);
 console.log("DAL BASELINE GRAPH API TARGET", DAL_BASELINE_GRAPH_API);

@@ -54,7 +54,7 @@ export const DEFAULT_BUDGET_ASSUMPTION_SET: BudgetAssumptionSet = Object.freeze(
   version: "DEV-2026-06",
   status: "ACTIVE",
   source: "COMMERCIAL_FOUNDATION",
-  createdBy: "Hyperlinx DAL",
+  createdBy: "Teralinx",
   createdDate: "2026-06-26",
   confidence: assumptionSetConfidence(assumptions),
   notes: [

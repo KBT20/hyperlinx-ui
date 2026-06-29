@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { listCustomerDesignImports, normalizeCustomerDesignImport, saveCustomerDesignImport } from "../api/customerDesignLibrary";
+import { listEngineeringDrafts, saveEngineeringDraft } from "../api/teralinxRuntime";
 import type { InventoryGraph, InventoryGraphMetadata, PrismOpportunity, ScopeVersion } from "../types/dal";
 import type { CandidateSite } from "../types/candidateSite";
 import type { CommercialCorridorDraft } from "../commercial/CommercialCorridorDraftEngine";
@@ -10,6 +11,8 @@ import type { GraphExtension } from "../types/graphExtension";
 import type { NetworkAffinity } from "../types/networkAffinity";
 import type { OpportunitySeed } from "../types/portfolio";
 import type { ProposedGraph } from "../proposedGraph/ProposedGraph";
+import { useTeralinxAuth } from "../identity/TeralinxAuth";
+import { canAccessWorkspace } from "../identity/teralinxIdentity";
 
 export type DALWorkspace =
   | "translate"
@@ -95,6 +98,8 @@ type DALState = {
   upsertCustomerDesignImport: (record: CustomerDesignImport) => void;
   selectedRouteEngineeringActivation: RouteEngineeringActivationRequest | null;
   setSelectedRouteEngineeringActivation: (activation: RouteEngineeringActivationRequest | null) => void;
+  engineeringDrafts: RouteEngineeringDraft[];
+  engineeringLibraryLoaded: boolean;
   selectedRouteEngineeringDraft: RouteEngineeringDraft | null;
   setSelectedRouteEngineeringDraft: (draft: RouteEngineeringDraft | null) => void;
   activateRouteEngineeringFromCommercialDraft: (args: {
@@ -112,7 +117,8 @@ type DALState = {
 const DALStateContext = createContext<DALState | null>(null);
 
 export function DALStateProvider({ children }: { children: ReactNode }) {
-  const [workspace, setWorkspace] = useState<DALWorkspace>("googleRfp");
+  const { session, recordActivity } = useTeralinxAuth();
+  const [workspace, setWorkspaceState] = useState<DALWorkspace>("googleRfp");
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
   const [selectedGraph, setSelectedGraph] = useState<InventoryGraph | null>(null);
   const [selectedScopeVersionId, setSelectedScopeVersionId] = useState("");
@@ -135,8 +141,46 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
   const [selectedCustomerDesignImportId, setSelectedCustomerDesignImportId] = useState("");
   const [selectedCustomerDesignRouteId, setSelectedCustomerDesignRouteId] = useState("");
   const [selectedRouteEngineeringActivation, setSelectedRouteEngineeringActivation] = useState<RouteEngineeringActivationRequest | null>(null);
-  const [selectedRouteEngineeringDraft, setSelectedRouteEngineeringDraft] = useState<RouteEngineeringDraft | null>(null);
+  const [engineeringDrafts, setEngineeringDrafts] = useState<RouteEngineeringDraft[]>([]);
+  const [engineeringLibraryLoaded, setEngineeringLibraryLoaded] = useState(false);
+  const [selectedRouteEngineeringDraft, setSelectedRouteEngineeringDraftState] = useState<RouteEngineeringDraft | null>(null);
   const [inventorySummaries, setInventorySummaries] = useState<DALInventorySummary[]>([]);
+
+  const setWorkspace = useCallback((nextWorkspace: DALWorkspace) => {
+    if (canAccessWorkspace(session?.user, nextWorkspace)) {
+      setWorkspaceState(nextWorkspace);
+      return;
+    }
+    setWorkspaceState("googleRfp");
+  }, [session?.user]);
+
+  useEffect(() => {
+    if (!canAccessWorkspace(session?.user, workspace)) setWorkspaceState("googleRfp");
+  }, [session?.user, workspace]);
+
+  const setSelectedRouteEngineeringDraft = useCallback((draft: RouteEngineeringDraft | null) => {
+    setSelectedRouteEngineeringDraftState(draft);
+    if (!draft) return;
+    setEngineeringDrafts((prev) => [draft, ...prev.filter((item) => item.engineeringDraftId !== draft.engineeringDraftId)]);
+    void saveEngineeringDraft({
+      ...draft,
+      organization: "Teralinx",
+      updatedAt: new Date().toISOString(),
+    }).then((saved) => {
+      setEngineeringDrafts((prev) => [saved, ...prev.filter((item) => item.engineeringDraftId !== saved.engineeringDraftId)]);
+      void recordActivity({
+        action: "saved engineering draft",
+        objectType: "Engineering Revision",
+        objectId: saved.engineeringDraftId,
+        objectName: saved.commercialDraft?.routeId ?? saved.commercialRouteId,
+        revision: saved.currentRevisionId,
+        opportunityId: (saved as any).opportunityId,
+        details: "Engineering Draft persisted to the shared Teralinx Engineering Library. No ScopeVersion authority created.",
+      });
+    }).catch((error) => {
+      console.warn("Engineering Library save failed", error instanceof Error ? error.message : String(error));
+    });
+  }, [recordActivity]);
 
   const activateRouteEngineeringFromCommercialDraft = useCallback((args: {
     commercialDraft: CommercialCorridorDraft;
@@ -161,7 +205,7 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
     setSelectedRouteEngineeringActivation(request);
     setWorkspace("routeEngineering");
     return request;
-  }, []);
+  }, [setWorkspace]);
 
   function upsertInventorySummary(summary: DALInventorySummary) {
     setInventorySummaries((prev) => [summary, ...prev.filter((item) => item.inventoryId !== summary.inventoryId)]);
@@ -174,14 +218,27 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setCustomerDesignImports(records);
         setCustomerDesignLibraryLoaded(true);
-        if (!selectedCustomerDesignImportId && records[0]) {
-          setSelectedCustomerDesignImportId(records[0].importId);
-          setSelectedCustomerDesignRouteId(records[0].activeRouteId ?? records[0].routes[0]?.routeId ?? "");
-        }
       })
       .catch((error) => {
         console.warn("Customer Design Library load failed", error instanceof Error ? error.message : String(error));
         if (!cancelled) setCustomerDesignLibraryLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    listEngineeringDrafts<RouteEngineeringDraft>()
+      .then((records) => {
+        if (cancelled) return;
+        setEngineeringDrafts(records.sort((a, b) => String((b as any).updatedAt ?? (b as any).createdAt).localeCompare(String((a as any).updatedAt ?? (a as any).createdAt))));
+        setEngineeringLibraryLoaded(true);
+      })
+      .catch((error) => {
+        console.warn("Engineering Library load failed", error instanceof Error ? error.message : String(error));
+        if (!cancelled) setEngineeringLibraryLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -198,7 +255,20 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
     setCustomerDesignImports((prev) => [normalized, ...prev.filter((item) => item.importId !== normalized.importId)]);
     setSelectedCustomerDesignImportId(normalized.importId);
     setSelectedCustomerDesignRouteId(normalized.activeRouteId ?? normalized.routes[0]?.routeId ?? "");
-    void saveCustomerDesignImport(normalized).catch((error) => {
+    void saveCustomerDesignImport({
+      ...normalized,
+      uploadedBy: normalized.uploadedBy ?? session?.user.name ?? "Teralinx",
+    }).then((saved) => {
+      void recordActivity({
+        action: "saved customer design",
+        objectType: "Customer Design",
+        objectId: saved.designId,
+        objectName: saved.sourceFileName,
+        revision: saved.lineage.at(-1)?.stage,
+        customerId: saved.accountId,
+        details: "Customer Design Library record persisted to the shared Teralinx runtime. No ScopeVersion or inventory mutation.",
+      });
+    }).catch((error) => {
       console.warn("Customer Design Library save failed", error instanceof Error ? error.message : String(error));
     });
   }
@@ -251,6 +321,8 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
       upsertCustomerDesignImport,
       selectedRouteEngineeringActivation,
       setSelectedRouteEngineeringActivation,
+      engineeringDrafts,
+      engineeringLibraryLoaded,
       selectedRouteEngineeringDraft,
       setSelectedRouteEngineeringDraft,
       activateRouteEngineeringFromCommercialDraft,
@@ -259,6 +331,7 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
     }),
     [
       workspace,
+      setWorkspace,
       selectedInventoryId,
       selectedGraph,
       selectedScopeVersionId,
@@ -282,7 +355,10 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
       selectedCustomerDesignRouteId,
       selectedCustomerDesignImport,
       selectedRouteEngineeringActivation,
+      engineeringDrafts,
+      engineeringLibraryLoaded,
       selectedRouteEngineeringDraft,
+      setSelectedRouteEngineeringDraft,
       activateRouteEngineeringFromCommercialDraft,
       inventorySummaries,
     ]

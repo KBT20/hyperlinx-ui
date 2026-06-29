@@ -27,6 +27,7 @@ import type { DALCoordinate, InventoryGraphMetadata, ScopeVersion } from "../typ
 import type { CandidateSite } from "../types/candidateSite";
 import type { OpportunitySeed } from "../types/portfolio";
 import { useDALState } from "../dal/DALState";
+import { useTeralinxAuth } from "../identity/TeralinxAuth";
 import { getAuthoritativeLifecycleState, transitionScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
 import {
   acceptEngineeringRevision,
@@ -404,6 +405,8 @@ function referenceFromRoute(route: CertifiedRoute) {
 }
 
 export default function RouteEngineeringWorkspace() {
+  const { can, session } = useTeralinxAuth();
+  const canApproveScopeVersion = can("scopeversion.authority");
   const {
     selectedInventoryId,
     setSelectedInventoryId,
@@ -1314,6 +1317,10 @@ export default function RouteEngineeringWorkspace() {
   }
 
   async function approveScopeVersionForControl() {
+    if (!canApproveScopeVersion) {
+      setStatus(`ScopeVersion approval blocked: ${session?.user.name ?? "Current user"} does not have Administrator ScopeVersion authority.`);
+      return;
+    }
     if (!approvalScope) {
       setStatus("Select a ScopeVersion to approve for Control.");
       return;
@@ -2195,9 +2202,13 @@ export default function RouteEngineeringWorkspace() {
             <button type="button" onClick={rejectActiveRoute} disabled={!evaluatedRoute}>
               Reject Route
             </button>
-            <button type="button" onClick={() => void approveScopeVersionForControl()} disabled={!approvalScope}>
-              Approve ScopeVersion
-            </button>
+            {canApproveScopeVersion ? (
+              <button type="button" onClick={() => void approveScopeVersionForControl()} disabled={!approvalScope}>
+                Approve ScopeVersion
+              </button>
+            ) : (
+              <span className="dal-status">ScopeVersion authority: Administrator only</span>
+            )}
           </div>
           {evaluatedRoute ? (
             <div className="dal-callout">
