@@ -208,9 +208,16 @@ export type ProposalRuntimeObject = {
 
 export type EngineeringReviewQueueItem = {
   packageId: string;
+  packageName?: string;
   packageReadiness: Record<string, unknown>;
+  packageCompleteness?: number;
+  certificationProgress?: number;
+  packageRevision?: number;
+  workspaceId?: string;
   proposalSummary: Record<string, unknown>;
   commercialConfidence: number;
+  engineeringConfidence?: number;
+  assemblyConfidence?: number;
   engineeringReadiness: string;
   assemblyReport: Record<string, unknown>;
   packageStatus: string;
@@ -230,6 +237,79 @@ export type EngineeringReviewQueueItem = {
   updatedAt: string;
 };
 
+export type IofPackageManifestEntry = {
+  manifestEntryId: string;
+  entryType: string;
+  objectId: string;
+  objectType: string;
+  label: string;
+  runtimeObjectIds: string[];
+  source: string;
+  authority: string;
+  lifecycle: string;
+  duplicated: boolean;
+  metadata: Record<string, unknown>;
+};
+
+export type IofPackageManifest = {
+  manifestId: string;
+  packageId: string;
+  proposalId: string;
+  organizationId?: string;
+  workspaceId?: string;
+  generatedAt: string;
+  modelVersion: string;
+  duplicationPolicy: string;
+  objects: IofPackageManifestEntry[];
+  relationships: IofPackageManifestEntry[];
+  inventory: IofPackageManifestEntry[];
+  geometry: IofPackageManifestEntry[];
+  stations: IofPackageManifestEntry[];
+  structures: IofPackageManifestEntry[];
+  dependencies: IofPackageManifestEntry[];
+  evidence: IofPackageManifestEntry[];
+  documents: IofPackageManifestEntry[];
+  commercialAssumptions: IofPackageManifestEntry[];
+  customerRequests: IofPackageManifestEntry[];
+  engineeringRequirements: IofPackageManifestEntry[];
+  counts: Record<string, number>;
+  summary: Record<string, unknown>;
+};
+
+export type IofPackageDependencyGraph = {
+  graphId: string;
+  packageId: string;
+  generatedAt: string;
+  path: string;
+  nodes: Array<{ id: string; type: string; label: string; metadata?: Record<string, unknown> }>;
+  edges: Array<{ edgeId: string; from: string; to: string; relationship: string; metadata?: Record<string, unknown> }>;
+  summary: Record<string, unknown>;
+};
+
+export type IofPackageValidation = {
+  validationId: string;
+  packageId: string;
+  status: "PASS" | "WARNING" | "FAIL" | string;
+  readinessScore: number;
+  checks: Array<{ key: string; label: string; status: "PASS" | "WARNING" | "FAIL" | string }>;
+  validatedAt: string;
+};
+
+export type IofPackageDifferences = {
+  differenceId: string;
+  packageId: string;
+  proposalId: string;
+  proposalVersion: number | string | null;
+  packageSourceProposalVersion: number | string | null;
+  comparedAt: string;
+  addedObjects: string[];
+  removedObjects: string[];
+  modifiedUnits: string[];
+  geometryChanges: { added: string[]; removed: string[] };
+  relationshipChanges: { added: string[]; removed: string[] };
+  engineeringImpact: string;
+};
+
 export type ProposedIofUnit = {
   unitId: string;
   unitType: string;
@@ -241,6 +321,14 @@ export type ProposedIofUnit = {
   runtimeEvidenceIds: string[];
   geometryReferences: string[];
   dependencyIds: string[];
+  quantity?: number;
+  commercialQuantity?: number;
+  historicalQuantity?: number;
+  marketplaceAdvisory?: string;
+  engineeringQuantity?: number;
+  confidence?: number;
+  commercialConfidence?: number;
+  engineeringDecision?: string;
   engineeringNote?: string;
   engineeringConfidence?: number;
   engineeringRisk?: string;
@@ -254,9 +342,17 @@ export type ProposedIofUnit = {
 export type DraftIofPackageRuntime = {
   packageId: string;
   draftPackageId: string;
+  packageName?: string;
   packageType: string;
   status: string;
   workflowStatus: string;
+  organizationId?: string;
+  workspaceId?: string;
+  ownerId?: string;
+  owner?: string;
+  visibility?: string;
+  authority?: string;
+  lifecycleState?: string;
   proposalId: string;
   customerId: string;
   opportunityId: string;
@@ -270,8 +366,29 @@ export type DraftIofPackageRuntime = {
   packageReadiness: Record<string, unknown>;
   engineeringReadiness: string;
   commercialConfidence: number;
+  engineeringConfidence?: number;
+  assemblyConfidence?: number;
+  packageCompleteness?: number;
+  certificationProgress?: number;
+  packageRevision?: number;
   assemblyReport: Record<string, unknown>;
+  manifest?: IofPackageManifest;
+  dependencyGraph?: IofPackageDependencyGraph;
+  validation?: IofPackageValidation;
+  packageDifferences?: IofPackageDifferences;
   proposedIofUnits: ProposedIofUnit[];
+  route?: unknown[];
+  stations?: unknown[];
+  structures?: unknown[];
+  dependencies?: unknown[];
+  objects?: unknown[];
+  relationships?: unknown[];
+  evidence?: unknown[];
+  proposalDocumentReferences?: string[];
+  customerRequests?: unknown[];
+  commercialNotes?: unknown[];
+  engineeringNotes?: unknown[];
+  engineeringRequirements?: unknown[];
   runtimeObjectIds: string[];
   runtimeRelationshipIds: string[];
   runtimeEvidenceIds: string[];
@@ -636,6 +753,47 @@ export async function openDraftIofPackageForCertification(packageId: string, ses
     headers: authHeaders(session),
   });
   return (data.draftPackage ?? data.iofPackage ?? data) as DraftIofPackageRuntime;
+}
+
+export async function assignDraftIofPackageEngineer(
+  packageId: string,
+  input: { assignedEngineerId?: string; assignedEngineer?: string; engineerId?: string; engineerName?: string } = {},
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/assign-engineer`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return (data.draftPackage ?? data.iofPackage ?? data) as DraftIofPackageRuntime;
+}
+
+export async function getDraftIofPackageManifest(packageId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/manifest`, {
+    headers: authHeaders(session),
+  });
+  return data.manifest as IofPackageManifest;
+}
+
+export async function getDraftIofPackageGraph(packageId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/graph`, {
+    headers: authHeaders(session),
+  });
+  return data.dependencyGraph as IofPackageDependencyGraph;
+}
+
+export async function getDraftIofPackageReadiness(packageId: string, session?: TeralinxAuthSession | null) {
+  return requestJson<{ packageReadiness: Record<string, unknown>; validation: IofPackageValidation; draftPackage: DraftIofPackageRuntime }>(
+    `/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/readiness`,
+    { headers: authHeaders(session) },
+  );
+}
+
+export async function getDraftIofPackageDifferences(packageId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/differences`, {
+    headers: authHeaders(session),
+  });
+  return data.packageDifferences as IofPackageDifferences;
 }
 
 async function engineeringUnitAction(

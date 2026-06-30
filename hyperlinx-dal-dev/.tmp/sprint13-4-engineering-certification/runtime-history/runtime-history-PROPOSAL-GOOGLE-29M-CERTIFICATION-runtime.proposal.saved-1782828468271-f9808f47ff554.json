@@ -1,0 +1,36 @@
+{
+  "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-CERTIFICATION-runtime.proposal.saved-1782828468271-f9808f47ff554",
+  "eventType": "runtime.proposal.saved",
+  "actor": "Ryan",
+  "actorId": "teralinx-user-ryan",
+  "objectType": "Proposal",
+  "objectId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
+  "objectName": "Google Austin 29M Certified Execution Proposal",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "timestamp": "2026-06-30T14:07:48.271Z",
+  "createdAt": "2026-06-30T14:07:48.271Z",
+  "updatedAt": "2026-06-30T14:07:48.271Z",
+  "details": "Proposal saved with owner, workspace, visibility, authority, lifecycle, evidence, and relationship metadata.",
+  "metadata": {
+    "status": "CUSTOMER_APPROVED",
+    "approvalState": "APPROVED",
+    "visibility": "SHARED",
+    "lifecycleState": "APPROVED",
+    "version": 1,
+    "authority": {
+      "owner": "teralinx-user-ryan",
+      "contributors": [],
+      "reviewers": [],
+      "approvers": [],
+      "executives": [],
+      "customerReviewers": [
+        "google-participant-001"
+      ],
+      "salesEngineering": [],
+      "sharedWith": [
+        "google-participant-001"
+      ]
+    }
+  }
+}

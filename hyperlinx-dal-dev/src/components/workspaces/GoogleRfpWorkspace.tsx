@@ -47,6 +47,7 @@ import {
   archiveCommercialOpportunity,
   assembleDraftIofPackageFromProposal,
   approveProposalRuntimeObject,
+  assignDraftIofPackageEngineer,
   assignCommercialOpportunity,
   archiveProposalRuntimeObject,
   certifyDraftIofPackage,
@@ -62,6 +63,7 @@ import {
   openDraftIofPackageForCertification,
   openCommercialOpportunity,
   requestProposalChanges,
+  returnDraftIofPackageToCommercial,
   saveCommercialOpportunity,
   shareCommercialOpportunity,
   saveProposalDraft,
@@ -356,6 +358,37 @@ const RUNTIME_USER_LABELS: Record<string, string> = {
 function runtimeUserLabel(userId: string | undefined) {
   if (!userId) return "Unassigned";
   return RUNTIME_USER_LABELS[userId] ?? userId;
+}
+
+function asDisplayArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null || value === "") return [];
+  return [value];
+}
+
+function displayReference(value: unknown) {
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return String(record.label ?? record.name ?? record.title ?? record.objectId ?? record.id ?? JSON.stringify(record));
+  }
+  return String(value);
+}
+
+function displayReferenceList(value: unknown, limit = 4) {
+  const list = asDisplayArray(value).map(displayReference).filter(Boolean);
+  if (!list.length) return "None";
+  const visible = list.slice(0, limit).join(", ");
+  return list.length > limit ? `${visible}, +${list.length - limit}` : visible;
+}
+
+function manifestCount(packageRecord: DraftIofPackageRuntime | null, key: string) {
+  const manifest = packageRecord?.manifest as Record<string, unknown> | undefined;
+  return asDisplayArray(manifest?.[key]).length;
+}
+
+function packageScore(value: unknown) {
+  const score = Number(value);
+  return Number.isFinite(score) ? `${Math.round(score)}%` : "n/a";
 }
 
 function opportunityAssignedTo(record: CommercialOpportunityRecord) {
@@ -3548,6 +3581,39 @@ export default function GoogleRfpWorkspace() {
     }
   }
 
+  async function handleAssignActiveDraftIofPackageToMe() {
+    if (!activeDraftIofPackage) return;
+    setEngineeringCertificationPending(true);
+    try {
+      const draft = await assignDraftIofPackageEngineer(activeDraftIofPackage.packageId, {
+        assignedEngineerId: currentUserId,
+        assignedEngineer: currentUserName,
+      }, session);
+      setActiveDraftIofPackage(draft);
+      await refreshEngineeringReviewQueue(`${draft.packageId} assigned to ${currentUserName}.`);
+    } catch (error) {
+      setEngineeringCertificationNotice(`Assign engineer failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setEngineeringCertificationPending(false);
+    }
+  }
+
+  async function handleReturnActiveDraftIofToCommercial() {
+    if (!activeDraftIofPackage) return;
+    const reason = window.prompt("Return reason", "Engineering needs Commercial to revise package references.") ?? "";
+    if (!reason.trim()) return;
+    setEngineeringCertificationPending(true);
+    try {
+      const draft = await returnDraftIofPackageToCommercial(activeDraftIofPackage.packageId, { reason }, session);
+      setActiveDraftIofPackage(draft);
+      await refreshEngineeringReviewQueue(`${draft.packageId} returned to Commercial.`);
+    } catch (error) {
+      setEngineeringCertificationNotice(`Return to Commercial failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setEngineeringCertificationPending(false);
+    }
+  }
+
   async function handleCertifyFirstIofUnit() {
     const unit = activeDraftIofPackage?.proposedIofUnits?.find((item) => item.status !== "CERTIFIED");
     if (!activeDraftIofPackage || !unit) return;
@@ -6029,29 +6095,37 @@ export default function GoogleRfpWorkspace() {
         <section className="dal-panel engineering-certification-queue">
           <div className="dal-panel-title-row">
             <div>
-              <h3>Engineering Review Queue</h3>
-              <span>{activeDraftIofPackage?.packageId ?? engineeringCertificationNotice}</span>
+              <h3>IOF Package Assembly</h3>
+              <span>{activeDraftIofPackage?.packageName ?? activeDraftIofPackage?.packageId ?? engineeringCertificationNotice}</span>
             </div>
             <span className={`dal-badge ${activeDraftIofPackage?.status === "CERTIFIED" ? "pass" : activeDraftIofPackage ? "warning" : "fail"}`}>
               {activeDraftIofPackage?.status ?? "No Draft Package"}
             </span>
           </div>
           <div className="teralinx-summary-grid">
-            <div><span>Draft IOF Packages</span><b>{engineeringReviewQueue.length.toLocaleString()}</b></div>
-            <div><span>Package Readiness</span><b>{String((activeDraftIofPackage?.packageReadiness as any)?.status ?? "Not opened")}</b></div>
-            <div><span>Proposal Summary</span><b>{String((activeDraftIofPackage?.proposalSummary as any)?.proposalNumber ?? activeProposalRuntime?.proposalNumber ?? "No proposal")}</b></div>
-            <div><span>Commercial Confidence</span><b>{activeDraftIofPackage ? `${activeDraftIofPackage.commercialConfidence}%` : "n/a"}</b></div>
-            <div><span>Engineering Readiness</span><b>{activeDraftIofPackage?.engineeringReadiness ?? "Not opened"}</b></div>
-            <div><span>Package Status</span><b>{activeDraftIofPackage?.workflowStatus ?? "Waiting"}</b></div>
-            <div><span>Assigned Engineer</span><b>{activeDraftIofPackage?.assignedEngineer || currentUserName}</b></div>
-            <div><span>Priority</span><b>{activeDraftIofPackage?.priority ?? "NORMAL"}</b></div>
-            <div><span>Submission Date</span><b>{activeDraftIofPackage?.submittedAt ? new Date(activeDraftIofPackage.submittedAt).toLocaleString() : "n/a"}</b></div>
+            <div><span>Package Name</span><b>{activeDraftIofPackage?.packageName ?? "No active package"}</b></div>
+            <div><span>Package ID</span><b>{activeDraftIofPackage?.packageId ?? "Not assembled"}</b></div>
+            <div><span>Proposal</span><b>{String((activeDraftIofPackage?.proposalSummary as any)?.proposalNumber ?? activeProposalRuntime?.proposalNumber ?? "No proposal")}</b></div>
             <div><span>Customer</span><b>{activeDraftIofPackage?.customerSummary?.name ? String(activeDraftIofPackage.customerSummary.name) : selectedAccount.name}</b></div>
             <div><span>Opportunity</span><b>{activeDraftIofPackage?.opportunityId ?? activeCommercialOpportunity?.opportunityId ?? "No opportunity"}</b></div>
-            <div><span>Proposed IOF Units</span><b>{activeDraftIofPackage?.proposedIofUnits?.length.toLocaleString() ?? "0"}</b></div>
+            <div><span>Workspace</span><b>{activeDraftIofPackage?.workspaceId ?? currentWorkspaceId}</b></div>
+            <div><span>Assigned Engineer</span><b>{activeDraftIofPackage?.assignedEngineer || currentUserName}</b></div>
+            <div><span>Status</span><b>{activeDraftIofPackage?.workflowStatus ?? "Waiting"}</b></div>
+            <div><span>Package Readiness</span><b>{String((activeDraftIofPackage?.packageReadiness as any)?.status ?? "Not opened")}</b></div>
+            <div><span>Commercial Confidence</span><b>{activeDraftIofPackage ? `${activeDraftIofPackage.commercialConfidence}%` : "n/a"}</b></div>
+            <div><span>Engineering Confidence</span><b>{packageScore(activeDraftIofPackage?.engineeringConfidence)}</b></div>
+            <div><span>Assembly Confidence</span><b>{packageScore(activeDraftIofPackage?.assemblyConfidence)}</b></div>
+            <div><span>Completeness</span><b>{packageScore(activeDraftIofPackage?.packageCompleteness ?? (activeDraftIofPackage?.packageReadiness as any)?.packageCompleteness)}</b></div>
+            <div><span>Certification Progress</span><b>{packageScore(activeDraftIofPackage?.certificationProgress ?? (activeDraftIofPackage?.packageReadiness as any)?.certificationPercent)}</b></div>
+            <div><span>Revision</span><b>v{activeDraftIofPackage?.packageRevision ?? 1}</b></div>
+            <div><span>History</span><b>{activeDraftIofPackage?.historyIds?.length.toLocaleString() ?? "0"}</b></div>
+            <div><span>Queue</span><b>{engineeringReviewQueue.length.toLocaleString()}</b></div>
           </div>
           <div className="dal-actions">
             <button type="button" onClick={handleAssembleDraftIofForEngineering} disabled={!canWriteEngineeringCertification || !activeProposalRuntime || engineeringCertificationPending}>Assemble Draft IOF</button>
+            <button type="button" onClick={() => activeDraftIofPackage ? void handleOpenEngineeringDraftPackage(activeDraftIofPackage.packageId) : undefined} disabled={!activeDraftIofPackage || engineeringCertificationPending}>Open Package</button>
+            <button type="button" onClick={handleAssignActiveDraftIofPackageToMe} disabled={!canWriteEngineeringCertification || !activeDraftIofPackage || engineeringCertificationPending}>Assign Engineer</button>
+            <button type="button" className="secondary" onClick={handleReturnActiveDraftIofToCommercial} disabled={!canWriteEngineeringCertification || !activeDraftIofPackage || engineeringCertificationPending}>Return to Commercial</button>
             <button type="button" onClick={handleCertifyFirstIofUnit} disabled={!canWriteEngineeringCertification || !activeDraftIofPackage || engineeringCertificationPending}>Certify Next Unit</button>
             <button type="button" onClick={handleCertifyAllIofUnits} disabled={!canWriteEngineeringCertification || !activeDraftIofPackage || engineeringCertificationPending}>Certify All Units</button>
             <button type="button" onClick={handleCertifyEngineeringPackage} disabled={!canWriteEngineeringCertification || !activeDraftIofPackage || engineeringCertificationPending}>Certify Draft IOF Package</button>
@@ -6059,26 +6133,65 @@ export default function GoogleRfpWorkspace() {
           </div>
           <div className="dal-status">{engineeringCertificationNotice}</div>
           <details>
-            <summary>Assembly Report / Proposed Units</summary>
+            <summary>Package Explorer</summary>
             <div className="dal-list">
               {activeDraftIofPackage ? (
                 <>
                   <div className="dal-list-row teralinx-list-row">
-                    <b>Assembly Report</b>
-                    <span>{String((activeDraftIofPackage.assemblyReport as any)?.assembledFrom ?? "Runtime references")}</span>
-                    <small>
-                      Runtime Objects {String((activeDraftIofPackage.assemblyReport as any)?.runtimeObjectCount ?? activeDraftIofPackage.runtimeObjectIds.length)} /
-                      Relationships {String((activeDraftIofPackage.assemblyReport as any)?.relationshipCount ?? activeDraftIofPackage.runtimeRelationshipIds.length)} /
-                      Evidence {String((activeDraftIofPackage.assemblyReport as any)?.evidenceCount ?? activeDraftIofPackage.runtimeEvidenceIds.length)}
-                    </small>
+                    <b>Executive Summary</b>
+                    <span>{String((activeDraftIofPackage.proposalSummary as any)?.title ?? "Proposal summary")}</span>
+                    <small>{String((activeDraftIofPackage.proposalSummary as any)?.executiveSummary ?? "No executive summary provided.")}</small>
                   </div>
-                  {activeDraftIofPackage.proposedIofUnits.map((unit) => (
-                    <div className="dal-list-row teralinx-list-row" key={unit.unitId}>
-                      <b>{unit.name}</b>
-                      <span>{unit.status}</span>
-                      <small>{unit.unitType}. Confidence {unit.engineeringConfidence ?? 0}. Risk {unit.engineeringRisk ?? "UNREVIEWED"}.</small>
-                    </div>
-                  ))}
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Commercial Summary</b>
+                    <span>Assumptions {displayReferenceList((activeDraftIofPackage.commercialSummary as any)?.commercialAssumptionIds)}</span>
+                    <small>Pricing {displayReference((activeDraftIofPackage.commercialSummary as any)?.pricingSummary ?? "Referenced in proposal runtime")}.</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Customer Summary</b>
+                    <span>{String((activeDraftIofPackage.customerSummary as any)?.name ?? activeDraftIofPackage.customerId)}</span>
+                    <small>Approval {String((activeDraftIofPackage.customerSummary as any)?.approvalState ?? "Unknown")} at {String((activeDraftIofPackage.customerSummary as any)?.approvedAt ?? "n/a")}.</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Existing Inventory</b>
+                    <span>{manifestCount(activeDraftIofPackage, "inventory").toLocaleString()} references</span>
+                    <small>{displayReferenceList(activeDraftIofPackage.existingInventoryReferences)}</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Customer Design Request</b>
+                    <span>{manifestCount(activeDraftIofPackage, "customerRequests").toLocaleString()} requests</span>
+                    <small>{displayReferenceList(activeDraftIofPackage.customerDesignReferences)}</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Geometry / Segments</b>
+                    <span>{manifestCount(activeDraftIofPackage, "geometry").toLocaleString()} geometry refs</span>
+                    <small>{displayReferenceList(activeDraftIofPackage.geometryReferences)}</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Stations / Structures</b>
+                    <span>{manifestCount(activeDraftIofPackage, "stations").toLocaleString()} stations / {manifestCount(activeDraftIofPackage, "structures").toLocaleString()} structures</span>
+                    <small>Stations {displayReferenceList(activeDraftIofPackage.stations)}. Structures {displayReferenceList(activeDraftIofPackage.structures)}.</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Runtime Objects / Relationships</b>
+                    <span>{manifestCount(activeDraftIofPackage, "objects").toLocaleString()} objects / {manifestCount(activeDraftIofPackage, "relationships").toLocaleString()} relationships</span>
+                    <small>Objects {displayReferenceList(activeDraftIofPackage.runtimeObjectIds)}. Relationships {displayReferenceList(activeDraftIofPackage.runtimeRelationshipIds)}.</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Evidence / Dependencies</b>
+                    <span>{manifestCount(activeDraftIofPackage, "evidence").toLocaleString()} evidence / {manifestCount(activeDraftIofPackage, "dependencies").toLocaleString()} dependencies</span>
+                    <small>Evidence {displayReferenceList(activeDraftIofPackage.runtimeEvidenceIds)}. Dependencies {displayReferenceList(activeDraftIofPackage.dependencies)}.</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Engineering Notes / Commercial Notes</b>
+                    <span>{displayReferenceList(activeDraftIofPackage.engineeringNotes)}</span>
+                    <small>{displayReferenceList(activeDraftIofPackage.commercialNotes)}</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>History / Validation</b>
+                    <span>{activeDraftIofPackage.historyIds.length.toLocaleString()} history events / {activeDraftIofPackage.validation?.status ?? "No validation"}</span>
+                    <small>{displayReferenceList(activeDraftIofPackage.historyIds)}</small>
+                  </div>
                 </>
               ) : (
                 <div className="dal-status">Open a Draft IOF Package from the queue or assemble one from an approved Proposal.</div>
@@ -6086,13 +6199,161 @@ export default function GoogleRfpWorkspace() {
             </div>
           </details>
           <details>
+            <summary>True Manifest</summary>
+            <div className="teralinx-summary-grid">
+              {[
+                ["Objects", "objects"],
+                ["Relationships", "relationships"],
+                ["Inventory", "inventory"],
+                ["Geometry", "geometry"],
+                ["Stations", "stations"],
+                ["Structures", "structures"],
+                ["Dependencies", "dependencies"],
+                ["Evidence", "evidence"],
+                ["Documents", "documents"],
+                ["Commercial Assumptions", "commercialAssumptions"],
+                ["Customer Requests", "customerRequests"],
+                ["Engineering Requirements", "engineeringRequirements"],
+              ].map(([label, key]) => (
+                <div key={key}><span>{label}</span><b>{manifestCount(activeDraftIofPackage, key).toLocaleString()}</b></div>
+              ))}
+            </div>
+            <div className="dal-list">
+              {activeDraftIofPackage?.manifest ? (
+                <>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>{activeDraftIofPackage.manifest.manifestId}</b>
+                    <span>{activeDraftIofPackage.manifest.duplicationPolicy}</span>
+                    <small>Every manifest entry is a reference to runtime authority; package assembly does not copy customer data.</small>
+                  </div>
+                  {(["objects", "relationships", "inventory", "geometry", "evidence", "dependencies"] as const).map((key) => (
+                    <div className="dal-list-row teralinx-list-row" key={key}>
+                      <b>{key}</b>
+                      <span>{manifestCount(activeDraftIofPackage, key).toLocaleString()} entries</span>
+                      <small>{displayReferenceList((activeDraftIofPackage.manifest as any)[key]?.map((entry: any) => entry.label ?? entry.objectId), 6)}</small>
+                    </div>
+                  ))}
+                </>
+              ) : <div className="dal-status">No manifest is open.</div>}
+            </div>
+          </details>
+          <details>
+            <summary>Proposed IOF Units - {activeDraftIofPackage?.proposedIofUnits?.length.toLocaleString() ?? "0"}</summary>
+            <div className="dal-list">
+              {activeDraftIofPackage?.proposedIofUnits?.length ? activeDraftIofPackage.proposedIofUnits.map((unit) => (
+                <div className="dal-list-row teralinx-list-row" key={unit.unitId}>
+                  <b>{unit.name}</b>
+                  <span>{unit.status} / {unit.engineeringDecision ?? "PENDING_ENGINEERING_REVIEW"}</span>
+                  <small>
+                    Type {unit.unitType}. Qty {unit.quantity ?? 0}. Commercial {unit.commercialQuantity ?? 0}. Historical {unit.historicalQuantity ?? 0}.
+                    Marketplace {unit.marketplaceAdvisory ?? "NOT_REQUESTED"}. Engineering {unit.engineeringQuantity ?? 0}. Confidence {unit.confidence ?? unit.engineeringConfidence ?? 0}%.
+                  </small>
+                </div>
+              )) : <div className="dal-status">No Proposed IOF Units are available.</div>}
+            </div>
+          </details>
+          <details>
+            <summary>Assembly Graph</summary>
+            <div className="dal-list">
+              {activeDraftIofPackage?.dependencyGraph ? (
+                <>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>{activeDraftIofPackage.dependencyGraph.path}</b>
+                    <span>{activeDraftIofPackage.dependencyGraph.nodes.length.toLocaleString()} nodes / {activeDraftIofPackage.dependencyGraph.edges.length.toLocaleString()} edges</span>
+                    <small>Proposal references flow through Runtime Objects, relationships, units, evidence, geometry, then into the Draft IOF Package.</small>
+                  </div>
+                  {activeDraftIofPackage.dependencyGraph.nodes.slice(0, 8).map((node) => (
+                    <div className="dal-list-row teralinx-list-row" key={node.id}>
+                      <b>{node.label}</b>
+                      <span>{node.type}</span>
+                      <small>{node.id}</small>
+                    </div>
+                  ))}
+                </>
+              ) : <div className="dal-status">No dependency graph is open.</div>}
+            </div>
+          </details>
+          <details>
+            <summary>Readiness / Validation</summary>
+            <div className="dal-list">
+              {activeDraftIofPackage ? (
+                <>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Readiness Score</b>
+                    <span>{packageScore((activeDraftIofPackage.packageReadiness as any)?.readinessScore)}</span>
+                    <small>Missing {displayReferenceList((activeDraftIofPackage.packageReadiness as any)?.missingInformation, 8)}.</small>
+                  </div>
+                  {activeDraftIofPackage.validation?.checks?.map((check) => (
+                    <div className="dal-list-row teralinx-list-row" key={check.key}>
+                      <b>{check.label}</b>
+                      <span>{check.status}</span>
+                      <small>{check.key}</small>
+                    </div>
+                  ))}
+                </>
+              ) : <div className="dal-status">No package readiness is open.</div>}
+            </div>
+          </details>
+          <details>
+            <summary>Package Differences</summary>
+            <div className="dal-list">
+              {activeDraftIofPackage?.packageDifferences ? (
+                <>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Engineering Impact</b>
+                    <span>{activeDraftIofPackage.packageDifferences.engineeringImpact}</span>
+                    <small>Compared proposal v{String(activeDraftIofPackage.packageDifferences.proposalVersion ?? "n/a")} to package source v{String(activeDraftIofPackage.packageDifferences.packageSourceProposalVersion ?? "n/a")}.</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Objects</b>
+                    <span>Added {activeDraftIofPackage.packageDifferences.addedObjects.length} / Removed {activeDraftIofPackage.packageDifferences.removedObjects.length}</span>
+                    <small>Added {displayReferenceList(activeDraftIofPackage.packageDifferences.addedObjects)}. Removed {displayReferenceList(activeDraftIofPackage.packageDifferences.removedObjects)}.</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Geometry / Relationships</b>
+                    <span>Geometry {activeDraftIofPackage.packageDifferences.geometryChanges.added.length + activeDraftIofPackage.packageDifferences.geometryChanges.removed.length} / Relationships {activeDraftIofPackage.packageDifferences.relationshipChanges.added.length + activeDraftIofPackage.packageDifferences.relationshipChanges.removed.length}</span>
+                    <small>Modified units {displayReferenceList(activeDraftIofPackage.packageDifferences.modifiedUnits)}.</small>
+                  </div>
+                </>
+              ) : <div className="dal-status">No package differences are open.</div>}
+            </div>
+          </details>
+          <details>
+            <summary>Engineering Handoff</summary>
+            <div className="dal-list">
+              {activeDraftIofPackage ? (
+                <>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Draft IOF Package</b>
+                    <span>{activeDraftIofPackage.packageId}</span>
+                    <small>Manifest {activeDraftIofPackage.manifest?.manifestId ?? "n/a"}. Readiness {packageScore((activeDraftIofPackage.packageReadiness as any)?.readinessScore)}.</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Engineering Checklist</b>
+                    <span>{manifestCount(activeDraftIofPackage, "engineeringRequirements").toLocaleString()} requirements</span>
+                    <small>{displayReferenceList(activeDraftIofPackage.engineeringRequirements ?? activeDraftIofPackage.manifest?.engineeringRequirements?.map((entry) => entry.label), 8)}</small>
+                  </div>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Commercial Summary</b>
+                    <span>{String((activeDraftIofPackage.proposalSummary as any)?.proposalNumber ?? activeDraftIofPackage.proposalId)}</span>
+                    <small>Authority is Engineering Review. Marketplace, Contracts, SOF, and SOW remain disabled.</small>
+                  </div>
+                </>
+              ) : <div className="dal-status">Assemble or open a package to hand it to Engineering.</div>}
+            </div>
+          </details>
+          <details>
             <summary>Queued Draft IOF Packages - {engineeringReviewQueue.length.toLocaleString()}</summary>
             <div className="dal-list">
               {engineeringReviewQueue.length ? engineeringReviewQueue.map((item) => (
                 <button className="dal-list-row teralinx-list-row" type="button" key={item.packageId} onClick={() => void handleOpenEngineeringDraftPackage(item.packageId)}>
-                  <b>{item.packageId}</b>
+                  <b>{item.packageName ?? item.packageId}</b>
                   <span>{item.packageStatus} / {item.priority}</span>
-                  <small>{item.customer} / {item.opportunityId}. Units {item.certifiedUnitCount}/{item.proposedUnitCount}. Submitted {item.submissionDate ? new Date(item.submissionDate).toLocaleString() : "n/a"}.</small>
+                  <small>
+                    {item.customer} / {item.opportunityId}. Workspace {item.workspaceId ?? "n/a"}.
+                    Units {item.certifiedUnitCount}/{item.proposedUnitCount}. Complete {packageScore(item.packageCompleteness)}.
+                    Submitted {item.submissionDate ? new Date(item.submissionDate).toLocaleString() : "n/a"}.
+                  </small>
                 </button>
               )) : <div className="dal-status">No Draft IOF Packages are currently queued.</div>}
             </div>

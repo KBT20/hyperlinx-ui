@@ -36,15 +36,15 @@
     "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
   ],
   "sourceId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
-  "createdAt": "2026-06-30T12:57:08.247Z",
-  "updatedAt": "2026-06-30T12:57:08.280Z",
+  "createdAt": "2026-06-30T14:07:48.418Z",
+  "updatedAt": "2026-06-30T14:07:48.475Z",
   "metadata": {
     "executionAuthorized": true,
     "proposalId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
     "opportunityId": "GOOGLE-29M-OPPORTUNITY",
     "packageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
     "certifiedPackageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
-    "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+    "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782828468452",
     "noDuplicateRuntimeObjects": true
   }
 }

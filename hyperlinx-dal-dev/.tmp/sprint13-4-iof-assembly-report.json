@@ -1,5 +1,5 @@
 {
-  "startedAt": "2026-06-30T12:57:08.119Z",
+  "startedAt": "2026-06-30T14:07:48.099Z",
   "dataRoot": "C:\\Users\\kbt20\\hyperlinx\\hyperlinx-ui\\hyperlinx-dal-dev\\.tmp\\sprint13-4-iof-assembly",
   "assertions": [
     {
@@ -8,7 +8,7 @@
       "expected": 200,
       "actual": 200,
       "body": {
-        "token": "eyJzdWIiOiJ0ZXJhbGlueC11c2VyLXJ5YW4iLCJ1c2VybmFtZSI6InJ5YW4iLCJyb2xlIjoiQ1JPIiwiaWF0IjoiMjAyNi0wNi0zMFQxMjo1NzowOC4xMjlaIn0",
+        "token": "eyJzdWIiOiJ0ZXJhbGlueC11c2VyLXJ5YW4iLCJ1c2VybmFtZSI6InJ5YW4iLCJyb2xlIjoiQ1JPIiwiaWF0IjoiMjAyNi0wNi0zMFQxNDowNzo0OC4xMTNaIn0",
         "user": {
           "userId": "teralinx-user-ryan",
           "organizationId": "org-teralinx",
@@ -74,8 +74,8 @@
             "assignments": [],
             "notifications": [],
             "pinnedObjects": [],
-            "createdAt": "2026-06-30T12:57:08.129Z",
-            "updatedAt": "2026-06-30T12:57:08.129Z"
+            "createdAt": "2026-06-30T14:07:48.113Z",
+            "updatedAt": "2026-06-30T14:07:48.113Z"
           }
         },
         "workspace": {
@@ -104,10 +104,10 @@
           "assignments": [],
           "notifications": [],
           "pinnedObjects": [],
-          "createdAt": "2026-06-30T12:57:08.129Z",
-          "updatedAt": "2026-06-30T12:57:08.129Z"
+          "createdAt": "2026-06-30T14:07:48.114Z",
+          "updatedAt": "2026-06-30T14:07:48.114Z"
         },
-        "authenticatedAt": "2026-06-30T12:57:08.129Z",
+        "authenticatedAt": "2026-06-30T14:07:48.114Z",
         "provider": "TERALINX_ALPHA_INTERNAL"
       }
     },
@@ -117,7 +117,7 @@
       "expected": 200,
       "actual": 200,
       "body": {
-        "token": "eyJzdWIiOiJ0ZXJhbGlueC11c2VyLWt5bGUiLCJ1c2VybmFtZSI6Imt5bGUiLCJyb2xlIjoiQURNSU5JU1RSQVRPUl9DT08iLCJpYXQiOiIyMDI2LTA2LTMwVDEyOjU3OjA4LjEzM1oifQ",
+        "token": "eyJzdWIiOiJ0ZXJhbGlueC11c2VyLWt5bGUiLCJ1c2VybmFtZSI6Imt5bGUiLCJyb2xlIjoiQURNSU5JU1RSQVRPUl9DT08iLCJpYXQiOiIyMDI2LTA2LTMwVDE0OjA3OjQ4LjEyNloifQ",
         "user": {
           "userId": "teralinx-user-kyle",
           "organizationId": "org-teralinx",
@@ -197,8 +197,8 @@
             "assignments": [],
             "notifications": [],
             "pinnedObjects": [],
-            "createdAt": "2026-06-30T12:57:08.134Z",
-            "updatedAt": "2026-06-30T12:57:08.134Z"
+            "createdAt": "2026-06-30T14:07:48.126Z",
+            "updatedAt": "2026-06-30T14:07:48.126Z"
           }
         },
         "workspace": {
@@ -231,10 +231,10 @@
           "assignments": [],
           "notifications": [],
           "pinnedObjects": [],
-          "createdAt": "2026-06-30T12:57:08.134Z",
-          "updatedAt": "2026-06-30T12:57:08.134Z"
+          "createdAt": "2026-06-30T14:07:48.126Z",
+          "updatedAt": "2026-06-30T14:07:48.126Z"
         },
-        "authenticatedAt": "2026-06-30T12:57:08.134Z",
+        "authenticatedAt": "2026-06-30T14:07:48.126Z",
         "provider": "TERALINX_ALPHA_INTERNAL"
       }
     },
@@ -305,7 +305,7 @@
           "proposalDocumentReferences": [
             "DOC-GOOGLE-PROPOSAL"
           ],
-          "approvedAt": "2026-06-30T12:57:08.134Z",
+          "approvedAt": "2026-06-30T14:07:48.127Z",
           "noScopeVersionCreation": true,
           "noInventoryMutation": true,
           "proposalRecordType": "PROPOSAL_RUNTIME_OBJECT",
@@ -367,23 +367,23 @@
           "approvals": [],
           "history": [
             {
-              "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-ASSEMBLY-runtime.proposal.saved-1782824228144-896df0413e534",
+              "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-ASSEMBLY-runtime.proposal.saved-1782828468137-0ce6672dbff7d",
               "eventType": "runtime.proposal.saved",
               "actorId": "teralinx-user-ryan",
               "actor": "Ryan",
-              "timestamp": "2026-06-30T12:57:08.144Z",
+              "timestamp": "2026-06-30T14:07:48.137Z",
               "details": "Proposal saved with owner, workspace, visibility, authority, lifecycle, evidence, and relationship metadata.",
               "metadata": {}
             }
           ],
           "historyIds": [
-            "runtime-history-PROPOSAL-GOOGLE-29M-ASSEMBLY-runtime.proposal.saved-1782824228144-896df0413e534"
+            "runtime-history-PROPOSAL-GOOGLE-29M-ASSEMBLY-runtime.proposal.saved-1782828468137-0ce6672dbff7d"
           ],
           "notifications": [],
-          "createdDate": "2026-06-30T12:57:08.139Z",
-          "modifiedDate": "2026-06-30T12:57:08.144Z",
-          "createdAt": "2026-06-30T12:57:08.139Z",
-          "updatedAt": "2026-06-30T12:57:08.144Z",
+          "createdDate": "2026-06-30T14:07:48.134Z",
+          "modifiedDate": "2026-06-30T14:07:48.137Z",
+          "createdAt": "2026-06-30T14:07:48.134Z",
+          "updatedAt": "2026-06-30T14:07:48.137Z",
           "versions": [
             {
               "versionId": "PROPOSAL-GOOGLE-29M-ASSEMBLY-v1",
@@ -395,8 +395,8 @@
               "changedDealPointIds": [],
               "changedPricingFields": [],
               "changedGeometryReferences": [],
-              "createdAt": "2026-06-30T12:57:08.140Z",
-              "timestamp": "2026-06-30T12:57:08.140Z"
+              "createdAt": "2026-06-30T14:07:48.136Z",
+              "timestamp": "2026-06-30T14:07:48.136Z"
             }
           ],
           "readiness": {
@@ -444,7 +444,7 @@
           },
           "nextLifecycleAction": "CREATE_DRAFT_IOF_PACKAGE",
           "activityHistory": [
-            "runtime-history-PROPOSAL-GOOGLE-29M-ASSEMBLY-runtime.proposal.saved-1782824228144-896df0413e534"
+            "runtime-history-PROPOSAL-GOOGLE-29M-ASSEMBLY-runtime.proposal.saved-1782828468137-0ce6672dbff7d"
           ]
         }
       }
@@ -457,20 +457,35 @@
       "body": {
         "iofPackage": {
           "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+          "packageName": "PROP-GOOGLE-29M-ASSEMBLY Draft IOF Package",
           "packageType": "ENGINEERING",
           "status": "DRAFT",
           "workflowStatus": "ENGINEERING_REVIEW",
+          "organizationId": "org-teralinx",
+          "workspaceId": "workspace-teralinx-ryan",
+          "ownerId": "teralinx-user-ryan",
+          "owner": "Ryan",
+          "createdById": "teralinx-user-kyle",
+          "createdBy": "Kyle",
+          "visibility": "ORGANIZATION",
+          "authority": "ENGINEERING_REVIEW",
+          "lifecycleState": "IN_REVIEW",
           "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
           "customerId": "customer-google",
           "opportunityId": "GOOGLE-29M-OPPORTUNITY",
           "assignedEngineerId": "teralinx-user-kyle",
           "assignedEngineer": "Kyle",
           "priority": "NORMAL",
-          "submittedAt": "2026-06-30T12:57:08.158Z",
+          "submittedAt": "2026-06-30T14:07:48.157Z",
+          "packageRevision": 1,
+          "assemblyConfidence": 100,
+          "engineeringConfidence": 0,
           "proposalSummary": {
             "title": "Google 29M Assembly Proposal",
             "proposalNumber": "PROP-GOOGLE-29M-ASSEMBLY",
             "version": 1,
+            "status": "CUSTOMER_APPROVED",
+            "executiveSummary": "Assembly uses references only.",
             "readiness": {
               "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
               "status": "READY",
@@ -539,8 +554,32 @@
             "customerId": "customer-google",
             "name": "customer-google",
             "approvalState": "APPROVED",
-            "approvedAt": "2026-06-30T12:57:08.134Z"
+            "approvedAt": "2026-06-30T14:07:48.127Z"
           },
+          "commercialNotes": [
+            "Approved assembly source.",
+            "Assembly uses references only."
+          ],
+          "engineeringNotes": [
+            "Awaiting Engineering review."
+          ],
+          "customerRequests": [],
+          "engineeringRequirements": [
+            "geometryComplete",
+            "existingInventoryValidated",
+            "customerDesignReviewed",
+            "relationshipsValidated",
+            "dependenciesValidated",
+            "evidencePresent",
+            "commercialAssumptionsReviewed",
+            "unitQuantitiesVerified",
+            "engineeringStandardsMet",
+            "riskAccepted",
+            "packageComplete"
+          ],
+          "dependencies": [
+            "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+          ],
           "assemblyReport": {
             "assembledFrom": "APPROVED_PROPOSAL_RUNTIME_OBJECT",
             "noScopeVersionCreated": true,
@@ -567,18 +606,28 @@
               "runtimeEvidenceIds": [
                 "EVIDENCE-GOOGLE-APPROVAL"
               ],
+              "dependencyIds": [
+                "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+              ],
               "unitType": "RUNTIME_REFERENCE_UNIT",
               "name": "Proposed IOF Unit 1",
+              "quantity": 1,
+              "commercialQuantity": 1,
+              "historicalQuantity": 0,
+              "marketplaceAdvisory": "NOT_REQUESTED",
+              "engineeringQuantity": 0,
+              "confidence": 90,
+              "commercialConfidence": 90,
+              "engineeringDecision": "PENDING_ENGINEERING_REVIEW",
               "status": "PROPOSED",
               "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
-              "dependencyIds": [],
               "engineeringNote": "",
               "engineeringConfidence": 0,
               "engineeringRisk": "UNREVIEWED",
               "engineeringComments": [],
               "immutable": false,
-              "createdAt": "2026-06-30T12:57:08.157Z",
-              "updatedAt": "2026-06-30T12:57:08.157Z"
+              "createdAt": "2026-06-30T14:07:48.156Z",
+              "updatedAt": "2026-06-30T14:07:48.156Z"
             },
             {
               "unitId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
@@ -595,18 +644,28 @@
               "runtimeEvidenceIds": [
                 "EVIDENCE-GOOGLE-APPROVAL"
               ],
+              "dependencyIds": [
+                "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+              ],
               "unitType": "RUNTIME_REFERENCE_UNIT",
               "name": "Proposed IOF Unit 2",
+              "quantity": 1,
+              "commercialQuantity": 1,
+              "historicalQuantity": 0,
+              "marketplaceAdvisory": "NOT_REQUESTED",
+              "engineeringQuantity": 0,
+              "confidence": 90,
+              "commercialConfidence": 90,
+              "engineeringDecision": "PENDING_ENGINEERING_REVIEW",
               "status": "PROPOSED",
               "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
-              "dependencyIds": [],
               "engineeringNote": "",
               "engineeringConfidence": 0,
               "engineeringRisk": "UNREVIEWED",
               "engineeringComments": [],
               "immutable": false,
-              "createdAt": "2026-06-30T12:57:08.157Z",
-              "updatedAt": "2026-06-30T12:57:08.157Z"
+              "createdAt": "2026-06-30T14:07:48.156Z",
+              "updatedAt": "2026-06-30T14:07:48.156Z"
             }
           ],
           "runtimeObjectIds": [
@@ -629,27 +688,787 @@
           "geometryReferences": [
             "GEOMETRY-GOOGLE-29M"
           ],
+          "proposalDocumentReferences": [
+            "DOC-GOOGLE-PROPOSAL"
+          ],
           "sourceProposalVersion": 1,
           "draftPackageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
           "packageReadiness": {
             "status": "READY_FOR_ENGINEERING_REVIEW",
-            "missingInformation": [],
+            "missingInformation": [
+              "Engineering Review"
+            ],
+            "missingGeometry": false,
+            "missingInventory": false,
+            "missingRelationships": false,
+            "missingEvidence": false,
+            "missingUnits": false,
+            "missingEngineeringReview": true,
+            "missingValidation": false,
+            "dependencyCount": 1,
+            "readinessScore": 91,
+            "packageCompleteness": 91,
             "proposedUnitCount": 2,
             "certifiedUnitCount": 0,
             "certificationPercent": 0
           },
+          "manifest": {
+            "manifestId": "MANIFEST-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+            "organizationId": "org-teralinx",
+            "workspaceId": "workspace-teralinx-ryan",
+            "generatedAt": "2026-06-30T14:07:48.171Z",
+            "modelVersion": "IOF_PACKAGE_MANIFEST_V1",
+            "duplicationPolicy": "REFERENCE_ONLY_RUNTIME_OBJECTS",
+            "objects": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:objects:RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "entryType": "objects",
+                "objectId": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "objectType": "RUNTIME_OBJECT",
+                "label": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "PROPOSAL_RUNTIME_OBJECTS",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "PROPOSAL_RUNTIME_OBJECTS",
+                  "objectType": "RUNTIME_OBJECT"
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:objects:RUNTIME-ROUTE-GOOGLE-29M",
+                "entryType": "objects",
+                "objectId": "RUNTIME-ROUTE-GOOGLE-29M",
+                "objectType": "RUNTIME_OBJECT",
+                "label": "RUNTIME-ROUTE-GOOGLE-29M",
+                "runtimeObjectIds": [
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "PROPOSAL_RUNTIME_OBJECTS",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "PROPOSAL_RUNTIME_OBJECTS",
+                  "objectType": "RUNTIME_OBJECT"
+                }
+              }
+            ],
+            "relationships": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:relationships:DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "entryType": "relationships",
+                "objectId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "objectType": "RUNTIME_RELATIONSHIP",
+                "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "RELATIONSHIP_GRAPH",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "RELATIONSHIP_GRAPH",
+                  "objectType": "RUNTIME_RELATIONSHIP"
+                }
+              }
+            ],
+            "inventory": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:inventory:RUNTIME-INVENTORY-GOOGLE",
+                "entryType": "inventory",
+                "objectId": "RUNTIME-INVENTORY-GOOGLE",
+                "objectType": "CUSTOMER_INVENTORY_REFERENCE",
+                "label": "RUNTIME-INVENTORY-GOOGLE",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "CUSTOMER_INVENTORY",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "CUSTOMER_INVENTORY",
+                  "objectType": "CUSTOMER_INVENTORY_REFERENCE"
+                }
+              }
+            ],
+            "geometry": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:geometry:GEOMETRY-GOOGLE-29M",
+                "entryType": "geometry",
+                "objectId": "GEOMETRY-GOOGLE-29M",
+                "objectType": "GEOMETRY_REFERENCE",
+                "label": "GEOMETRY-GOOGLE-29M",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "GEOMETRY_REFERENCE",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "GEOMETRY_REFERENCE",
+                  "objectType": "GEOMETRY_REFERENCE"
+                }
+              }
+            ],
+            "stations": [],
+            "structures": [],
+            "dependencies": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:dependencies:DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "entryType": "dependencies",
+                "objectId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "objectType": "DEPENDENCY",
+                "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "PACKAGE_DEPENDENCY",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "PACKAGE_DEPENDENCY",
+                  "objectType": "DEPENDENCY",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              }
+            ],
+            "evidence": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:evidence:EVIDENCE-GOOGLE-APPROVAL",
+                "entryType": "evidence",
+                "objectId": "EVIDENCE-GOOGLE-APPROVAL",
+                "objectType": "EVIDENCE",
+                "label": "EVIDENCE-GOOGLE-APPROVAL",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "EVIDENCE_REGISTRY",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "EVIDENCE_REGISTRY",
+                  "objectType": "EVIDENCE"
+                }
+              }
+            ],
+            "documents": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:documents:DOC-GOOGLE-PROPOSAL",
+                "entryType": "documents",
+                "objectId": "DOC-GOOGLE-PROPOSAL",
+                "objectType": "DOCUMENT",
+                "label": "DOC-GOOGLE-PROPOSAL",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "PROPOSAL_DOCUMENTS",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "PROPOSAL_DOCUMENTS",
+                  "objectType": "DOCUMENT"
+                }
+              }
+            ],
+            "commercialAssumptions": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:commercialAssumptions:ASSUMPTION-1",
+                "entryType": "commercialAssumptions",
+                "objectId": "ASSUMPTION-1",
+                "objectType": "COMMERCIAL_ASSUMPTION",
+                "label": "ASSUMPTION-1",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "COMMERCIAL_SUMMARY",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "COMMERCIAL_SUMMARY",
+                  "objectType": "COMMERCIAL_ASSUMPTION"
+                }
+              }
+            ],
+            "customerRequests": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:customerRequests:CUSTOMER-DESIGN-GOOGLE",
+                "entryType": "customerRequests",
+                "objectId": "CUSTOMER-DESIGN-GOOGLE",
+                "objectType": "CUSTOMER_REQUEST",
+                "label": "CUSTOMER-DESIGN-GOOGLE",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "CUSTOMER_DESIGN_REQUEST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "CUSTOMER_DESIGN_REQUEST",
+                  "objectType": "CUSTOMER_REQUEST"
+                }
+              }
+            ],
+            "engineeringRequirements": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:geometryComplete",
+                "entryType": "engineeringRequirements",
+                "objectId": "geometryComplete",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "geometryComplete",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:existingInventoryValidated",
+                "entryType": "engineeringRequirements",
+                "objectId": "existingInventoryValidated",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "existingInventoryValidated",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:customerDesignReviewed",
+                "entryType": "engineeringRequirements",
+                "objectId": "customerDesignReviewed",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "customerDesignReviewed",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:relationshipsValidated",
+                "entryType": "engineeringRequirements",
+                "objectId": "relationshipsValidated",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "relationshipsValidated",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:dependenciesValidated",
+                "entryType": "engineeringRequirements",
+                "objectId": "dependenciesValidated",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "dependenciesValidated",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:evidencePresent",
+                "entryType": "engineeringRequirements",
+                "objectId": "evidencePresent",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "evidencePresent",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:commercialAssumptionsReviewed",
+                "entryType": "engineeringRequirements",
+                "objectId": "commercialAssumptionsReviewed",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "commercialAssumptionsReviewed",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:unitQuantitiesVerified",
+                "entryType": "engineeringRequirements",
+                "objectId": "unitQuantitiesVerified",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "unitQuantitiesVerified",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:engineeringStandardsMet",
+                "entryType": "engineeringRequirements",
+                "objectId": "engineeringStandardsMet",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "engineeringStandardsMet",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:riskAccepted",
+                "entryType": "engineeringRequirements",
+                "objectId": "riskAccepted",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "riskAccepted",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:packageComplete",
+                "entryType": "engineeringRequirements",
+                "objectId": "packageComplete",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "packageComplete",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              }
+            ],
+            "counts": {
+              "objects": 2,
+              "relationships": 1,
+              "inventory": 1,
+              "geometry": 1,
+              "stations": 0,
+              "structures": 0,
+              "dependencies": 1,
+              "evidence": 1,
+              "documents": 1,
+              "commercialAssumptions": 1,
+              "customerRequests": 1,
+              "engineeringRequirements": 11
+            },
+            "summary": {
+              "runtimeObjectCount": 2,
+              "relationshipCount": 1,
+              "inventoryCount": 1,
+              "geometryCount": 1,
+              "evidenceCount": 1,
+              "unitCount": 2,
+              "unitIds": [
+                "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+                "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002"
+              ],
+              "noDuplicateObjects": true
+            }
+          },
+          "dependencyGraph": {
+            "graphId": "GRAPH-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "generatedAt": "2026-06-30T14:07:48.172Z",
+            "path": "Proposal -> Runtime Objects -> Relationships -> Units -> Evidence -> Geometry -> Draft IOF Package",
+            "nodes": [
+              {
+                "id": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+                "type": "Proposal",
+                "label": "PROP-GOOGLE-29M-ASSEMBLY",
+                "metadata": {
+                  "runtimeObject": true
+                }
+              },
+              {
+                "id": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "type": "RuntimeObject",
+                "label": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "metadata": {
+                  "runtimeObject": true
+                }
+              },
+              {
+                "id": "RUNTIME-ROUTE-GOOGLE-29M",
+                "type": "RuntimeObject",
+                "label": "RUNTIME-ROUTE-GOOGLE-29M",
+                "metadata": {
+                  "runtimeObject": true
+                }
+              },
+              {
+                "id": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "type": "Relationship",
+                "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "metadata": {}
+              },
+              {
+                "id": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+                "type": "ProposedIOFUnit",
+                "label": "Proposed IOF Unit 1",
+                "metadata": {
+                  "status": "PROPOSED"
+                }
+              },
+              {
+                "id": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
+                "type": "ProposedIOFUnit",
+                "label": "Proposed IOF Unit 2",
+                "metadata": {
+                  "status": "PROPOSED"
+                }
+              },
+              {
+                "id": "EVIDENCE-GOOGLE-APPROVAL",
+                "type": "Evidence",
+                "label": "EVIDENCE-GOOGLE-APPROVAL",
+                "metadata": {}
+              },
+              {
+                "id": "GEOMETRY-GOOGLE-29M",
+                "type": "Geometry",
+                "label": "GEOMETRY-GOOGLE-29M",
+                "metadata": {}
+              },
+              {
+                "id": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+                "type": "DraftIOFPackage",
+                "label": "PROP-GOOGLE-29M-ASSEMBLY Draft IOF Package",
+                "metadata": {
+                  "status": "DRAFT"
+                }
+              }
+            ],
+            "edges": [
+              {
+                "edgeId": "PROPOSAL-GOOGLE-29M-ASSEMBLY->RUNTIME-OPPORTUNITY-GOOGLE-29M:REFERENCES_RUNTIME_OBJECT",
+                "from": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+                "to": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "relationship": "REFERENCES_RUNTIME_OBJECT",
+                "metadata": {}
+              },
+              {
+                "edgeId": "PROPOSAL-GOOGLE-29M-ASSEMBLY->RUNTIME-ROUTE-GOOGLE-29M:REFERENCES_RUNTIME_OBJECT",
+                "from": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+                "to": "RUNTIME-ROUTE-GOOGLE-29M",
+                "relationship": "REFERENCES_RUNTIME_OBJECT",
+                "metadata": {}
+              },
+              {
+                "edgeId": "RUNTIME-OPPORTUNITY-GOOGLE-29M->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+                "from": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "relationship": "RELATIONSHIP_CONTEXT",
+                "metadata": {}
+              },
+              {
+                "edgeId": "RUNTIME-ROUTE-GOOGLE-29M->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+                "from": "RUNTIME-ROUTE-GOOGLE-29M",
+                "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "relationship": "RELATIONSHIP_CONTEXT",
+                "metadata": {}
+              },
+              {
+                "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001:ASSEMBLES_UNIT",
+                "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "to": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+                "relationship": "ASSEMBLES_UNIT",
+                "metadata": {}
+              },
+              {
+                "edgeId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001->EVIDENCE-GOOGLE-APPROVAL:SUPPORTED_BY_EVIDENCE",
+                "from": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+                "to": "EVIDENCE-GOOGLE-APPROVAL",
+                "relationship": "SUPPORTED_BY_EVIDENCE",
+                "metadata": {}
+              },
+              {
+                "edgeId": "EVIDENCE-GOOGLE-APPROVAL->GEOMETRY-GOOGLE-29M:EVIDENCE_LOCATES_GEOMETRY",
+                "from": "EVIDENCE-GOOGLE-APPROVAL",
+                "to": "GEOMETRY-GOOGLE-29M",
+                "relationship": "EVIDENCE_LOCATES_GEOMETRY",
+                "metadata": {}
+              },
+              {
+                "edgeId": "GEOMETRY-GOOGLE-29M->DRAFT-IOF-GOOGLE-29M-ASSEMBLY:PACKAGED_IN_DRAFT_IOF",
+                "from": "GEOMETRY-GOOGLE-29M",
+                "to": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+                "relationship": "PACKAGED_IN_DRAFT_IOF",
+                "metadata": {}
+              },
+              {
+                "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002:ASSEMBLES_UNIT",
+                "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "to": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
+                "relationship": "ASSEMBLES_UNIT",
+                "metadata": {}
+              },
+              {
+                "edgeId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002->EVIDENCE-GOOGLE-APPROVAL:SUPPORTED_BY_EVIDENCE",
+                "from": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
+                "to": "EVIDENCE-GOOGLE-APPROVAL",
+                "relationship": "SUPPORTED_BY_EVIDENCE",
+                "metadata": {}
+              }
+            ],
+            "summary": {
+              "nodeCount": 9,
+              "edgeCount": 10,
+              "referenceOnly": true
+            }
+          },
+          "validation": {
+            "validationId": "VALIDATION-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "status": "WARNING",
+            "readinessScore": 91,
+            "checks": [
+              {
+                "key": "geometry",
+                "label": "Geometry",
+                "status": "PASS"
+              },
+              {
+                "key": "inventory",
+                "label": "Existing Inventory",
+                "status": "PASS"
+              },
+              {
+                "key": "relationships",
+                "label": "Relationships",
+                "status": "PASS"
+              },
+              {
+                "key": "evidence",
+                "label": "Evidence",
+                "status": "PASS"
+              },
+              {
+                "key": "units",
+                "label": "Proposed IOF Units",
+                "status": "PASS"
+              },
+              {
+                "key": "engineeringReview",
+                "label": "Engineering Review",
+                "status": "WARNING"
+              },
+              {
+                "key": "runtimeReferences",
+                "label": "Runtime References",
+                "status": "PASS"
+              }
+            ],
+            "validatedAt": "2026-06-30T14:07:48.171Z"
+          },
+          "packageDifferences": {
+            "differenceId": "DIFF-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+            "proposalVersion": 1,
+            "packageSourceProposalVersion": 1,
+            "comparedAt": "2026-06-30T14:07:48.166Z",
+            "addedObjects": [],
+            "removedObjects": [],
+            "modifiedUnits": [],
+            "geometryChanges": {
+              "added": [],
+              "removed": []
+            },
+            "relationshipChanges": {
+              "added": [],
+              "removed": []
+            },
+            "engineeringImpact": "NO_IMPACT"
+          },
           "engineeringReadiness": "READY_FOR_ENGINEERING_REVIEW",
           "commercialConfidence": 0,
+          "packageCompleteness": 91,
+          "certificationProgress": 0,
           "route": [],
           "stations": [],
+          "structures": [],
           "objects": [],
           "relationships": [],
           "evidence": [],
           "historyIds": [
-            "runtime-history-DRAFT-IOF-GOOGLE-29M-ASSEMBLY-runtime.iof_package.assembled_from_proposal-1782824228159-053210398a7bf"
+            "runtime-history-DRAFT-IOF-GOOGLE-29M-ASSEMBLY-runtime.iof_package.assembled_from_proposal-1782828468167-8e1459f3657cd"
           ],
-          "createdAt": "2026-06-30T12:57:08.158Z",
-          "updatedAt": "2026-06-30T12:57:08.159Z",
+          "createdAt": "2026-06-30T14:07:48.158Z",
+          "updatedAt": "2026-06-30T14:07:48.167Z",
           "noMarketplaceCreation": true,
           "noContractCreation": true,
           "noSofCreation": true,
@@ -657,20 +1476,35 @@
         },
         "draftPackage": {
           "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+          "packageName": "PROP-GOOGLE-29M-ASSEMBLY Draft IOF Package",
           "packageType": "ENGINEERING",
           "status": "DRAFT",
           "workflowStatus": "ENGINEERING_REVIEW",
+          "organizationId": "org-teralinx",
+          "workspaceId": "workspace-teralinx-ryan",
+          "ownerId": "teralinx-user-ryan",
+          "owner": "Ryan",
+          "createdById": "teralinx-user-kyle",
+          "createdBy": "Kyle",
+          "visibility": "ORGANIZATION",
+          "authority": "ENGINEERING_REVIEW",
+          "lifecycleState": "IN_REVIEW",
           "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
           "customerId": "customer-google",
           "opportunityId": "GOOGLE-29M-OPPORTUNITY",
           "assignedEngineerId": "teralinx-user-kyle",
           "assignedEngineer": "Kyle",
           "priority": "NORMAL",
-          "submittedAt": "2026-06-30T12:57:08.158Z",
+          "submittedAt": "2026-06-30T14:07:48.157Z",
+          "packageRevision": 1,
+          "assemblyConfidence": 100,
+          "engineeringConfidence": 0,
           "proposalSummary": {
             "title": "Google 29M Assembly Proposal",
             "proposalNumber": "PROP-GOOGLE-29M-ASSEMBLY",
             "version": 1,
+            "status": "CUSTOMER_APPROVED",
+            "executiveSummary": "Assembly uses references only.",
             "readiness": {
               "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
               "status": "READY",
@@ -739,8 +1573,32 @@
             "customerId": "customer-google",
             "name": "customer-google",
             "approvalState": "APPROVED",
-            "approvedAt": "2026-06-30T12:57:08.134Z"
+            "approvedAt": "2026-06-30T14:07:48.127Z"
           },
+          "commercialNotes": [
+            "Approved assembly source.",
+            "Assembly uses references only."
+          ],
+          "engineeringNotes": [
+            "Awaiting Engineering review."
+          ],
+          "customerRequests": [],
+          "engineeringRequirements": [
+            "geometryComplete",
+            "existingInventoryValidated",
+            "customerDesignReviewed",
+            "relationshipsValidated",
+            "dependenciesValidated",
+            "evidencePresent",
+            "commercialAssumptionsReviewed",
+            "unitQuantitiesVerified",
+            "engineeringStandardsMet",
+            "riskAccepted",
+            "packageComplete"
+          ],
+          "dependencies": [
+            "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+          ],
           "assemblyReport": {
             "assembledFrom": "APPROVED_PROPOSAL_RUNTIME_OBJECT",
             "noScopeVersionCreated": true,
@@ -767,18 +1625,28 @@
               "runtimeEvidenceIds": [
                 "EVIDENCE-GOOGLE-APPROVAL"
               ],
+              "dependencyIds": [
+                "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+              ],
               "unitType": "RUNTIME_REFERENCE_UNIT",
               "name": "Proposed IOF Unit 1",
+              "quantity": 1,
+              "commercialQuantity": 1,
+              "historicalQuantity": 0,
+              "marketplaceAdvisory": "NOT_REQUESTED",
+              "engineeringQuantity": 0,
+              "confidence": 90,
+              "commercialConfidence": 90,
+              "engineeringDecision": "PENDING_ENGINEERING_REVIEW",
               "status": "PROPOSED",
               "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
-              "dependencyIds": [],
               "engineeringNote": "",
               "engineeringConfidence": 0,
               "engineeringRisk": "UNREVIEWED",
               "engineeringComments": [],
               "immutable": false,
-              "createdAt": "2026-06-30T12:57:08.157Z",
-              "updatedAt": "2026-06-30T12:57:08.157Z"
+              "createdAt": "2026-06-30T14:07:48.156Z",
+              "updatedAt": "2026-06-30T14:07:48.156Z"
             },
             {
               "unitId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
@@ -795,18 +1663,28 @@
               "runtimeEvidenceIds": [
                 "EVIDENCE-GOOGLE-APPROVAL"
               ],
+              "dependencyIds": [
+                "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+              ],
               "unitType": "RUNTIME_REFERENCE_UNIT",
               "name": "Proposed IOF Unit 2",
+              "quantity": 1,
+              "commercialQuantity": 1,
+              "historicalQuantity": 0,
+              "marketplaceAdvisory": "NOT_REQUESTED",
+              "engineeringQuantity": 0,
+              "confidence": 90,
+              "commercialConfidence": 90,
+              "engineeringDecision": "PENDING_ENGINEERING_REVIEW",
               "status": "PROPOSED",
               "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
-              "dependencyIds": [],
               "engineeringNote": "",
               "engineeringConfidence": 0,
               "engineeringRisk": "UNREVIEWED",
               "engineeringComments": [],
               "immutable": false,
-              "createdAt": "2026-06-30T12:57:08.157Z",
-              "updatedAt": "2026-06-30T12:57:08.157Z"
+              "createdAt": "2026-06-30T14:07:48.156Z",
+              "updatedAt": "2026-06-30T14:07:48.156Z"
             }
           ],
           "runtimeObjectIds": [
@@ -829,27 +1707,787 @@
           "geometryReferences": [
             "GEOMETRY-GOOGLE-29M"
           ],
+          "proposalDocumentReferences": [
+            "DOC-GOOGLE-PROPOSAL"
+          ],
           "sourceProposalVersion": 1,
           "draftPackageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
           "packageReadiness": {
             "status": "READY_FOR_ENGINEERING_REVIEW",
-            "missingInformation": [],
+            "missingInformation": [
+              "Engineering Review"
+            ],
+            "missingGeometry": false,
+            "missingInventory": false,
+            "missingRelationships": false,
+            "missingEvidence": false,
+            "missingUnits": false,
+            "missingEngineeringReview": true,
+            "missingValidation": false,
+            "dependencyCount": 1,
+            "readinessScore": 91,
+            "packageCompleteness": 91,
             "proposedUnitCount": 2,
             "certifiedUnitCount": 0,
             "certificationPercent": 0
           },
+          "manifest": {
+            "manifestId": "MANIFEST-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+            "organizationId": "org-teralinx",
+            "workspaceId": "workspace-teralinx-ryan",
+            "generatedAt": "2026-06-30T14:07:48.171Z",
+            "modelVersion": "IOF_PACKAGE_MANIFEST_V1",
+            "duplicationPolicy": "REFERENCE_ONLY_RUNTIME_OBJECTS",
+            "objects": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:objects:RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "entryType": "objects",
+                "objectId": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "objectType": "RUNTIME_OBJECT",
+                "label": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "PROPOSAL_RUNTIME_OBJECTS",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "PROPOSAL_RUNTIME_OBJECTS",
+                  "objectType": "RUNTIME_OBJECT"
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:objects:RUNTIME-ROUTE-GOOGLE-29M",
+                "entryType": "objects",
+                "objectId": "RUNTIME-ROUTE-GOOGLE-29M",
+                "objectType": "RUNTIME_OBJECT",
+                "label": "RUNTIME-ROUTE-GOOGLE-29M",
+                "runtimeObjectIds": [
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "PROPOSAL_RUNTIME_OBJECTS",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "PROPOSAL_RUNTIME_OBJECTS",
+                  "objectType": "RUNTIME_OBJECT"
+                }
+              }
+            ],
+            "relationships": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:relationships:DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "entryType": "relationships",
+                "objectId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "objectType": "RUNTIME_RELATIONSHIP",
+                "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "RELATIONSHIP_GRAPH",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "RELATIONSHIP_GRAPH",
+                  "objectType": "RUNTIME_RELATIONSHIP"
+                }
+              }
+            ],
+            "inventory": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:inventory:RUNTIME-INVENTORY-GOOGLE",
+                "entryType": "inventory",
+                "objectId": "RUNTIME-INVENTORY-GOOGLE",
+                "objectType": "CUSTOMER_INVENTORY_REFERENCE",
+                "label": "RUNTIME-INVENTORY-GOOGLE",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "CUSTOMER_INVENTORY",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "CUSTOMER_INVENTORY",
+                  "objectType": "CUSTOMER_INVENTORY_REFERENCE"
+                }
+              }
+            ],
+            "geometry": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:geometry:GEOMETRY-GOOGLE-29M",
+                "entryType": "geometry",
+                "objectId": "GEOMETRY-GOOGLE-29M",
+                "objectType": "GEOMETRY_REFERENCE",
+                "label": "GEOMETRY-GOOGLE-29M",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "GEOMETRY_REFERENCE",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "GEOMETRY_REFERENCE",
+                  "objectType": "GEOMETRY_REFERENCE"
+                }
+              }
+            ],
+            "stations": [],
+            "structures": [],
+            "dependencies": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:dependencies:DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "entryType": "dependencies",
+                "objectId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "objectType": "DEPENDENCY",
+                "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "PACKAGE_DEPENDENCY",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "PACKAGE_DEPENDENCY",
+                  "objectType": "DEPENDENCY",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              }
+            ],
+            "evidence": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:evidence:EVIDENCE-GOOGLE-APPROVAL",
+                "entryType": "evidence",
+                "objectId": "EVIDENCE-GOOGLE-APPROVAL",
+                "objectType": "EVIDENCE",
+                "label": "EVIDENCE-GOOGLE-APPROVAL",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "EVIDENCE_REGISTRY",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "EVIDENCE_REGISTRY",
+                  "objectType": "EVIDENCE"
+                }
+              }
+            ],
+            "documents": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:documents:DOC-GOOGLE-PROPOSAL",
+                "entryType": "documents",
+                "objectId": "DOC-GOOGLE-PROPOSAL",
+                "objectType": "DOCUMENT",
+                "label": "DOC-GOOGLE-PROPOSAL",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "PROPOSAL_DOCUMENTS",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "PROPOSAL_DOCUMENTS",
+                  "objectType": "DOCUMENT"
+                }
+              }
+            ],
+            "commercialAssumptions": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:commercialAssumptions:ASSUMPTION-1",
+                "entryType": "commercialAssumptions",
+                "objectId": "ASSUMPTION-1",
+                "objectType": "COMMERCIAL_ASSUMPTION",
+                "label": "ASSUMPTION-1",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "COMMERCIAL_SUMMARY",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "COMMERCIAL_SUMMARY",
+                  "objectType": "COMMERCIAL_ASSUMPTION"
+                }
+              }
+            ],
+            "customerRequests": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:customerRequests:CUSTOMER-DESIGN-GOOGLE",
+                "entryType": "customerRequests",
+                "objectId": "CUSTOMER-DESIGN-GOOGLE",
+                "objectType": "CUSTOMER_REQUEST",
+                "label": "CUSTOMER-DESIGN-GOOGLE",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "CUSTOMER_DESIGN_REQUEST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "CUSTOMER_DESIGN_REQUEST",
+                  "objectType": "CUSTOMER_REQUEST"
+                }
+              }
+            ],
+            "engineeringRequirements": [
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:geometryComplete",
+                "entryType": "engineeringRequirements",
+                "objectId": "geometryComplete",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "geometryComplete",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:existingInventoryValidated",
+                "entryType": "engineeringRequirements",
+                "objectId": "existingInventoryValidated",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "existingInventoryValidated",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:customerDesignReviewed",
+                "entryType": "engineeringRequirements",
+                "objectId": "customerDesignReviewed",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "customerDesignReviewed",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:relationshipsValidated",
+                "entryType": "engineeringRequirements",
+                "objectId": "relationshipsValidated",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "relationshipsValidated",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:dependenciesValidated",
+                "entryType": "engineeringRequirements",
+                "objectId": "dependenciesValidated",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "dependenciesValidated",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:evidencePresent",
+                "entryType": "engineeringRequirements",
+                "objectId": "evidencePresent",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "evidencePresent",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:commercialAssumptionsReviewed",
+                "entryType": "engineeringRequirements",
+                "objectId": "commercialAssumptionsReviewed",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "commercialAssumptionsReviewed",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:unitQuantitiesVerified",
+                "entryType": "engineeringRequirements",
+                "objectId": "unitQuantitiesVerified",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "unitQuantitiesVerified",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:engineeringStandardsMet",
+                "entryType": "engineeringRequirements",
+                "objectId": "engineeringStandardsMet",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "engineeringStandardsMet",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:riskAccepted",
+                "entryType": "engineeringRequirements",
+                "objectId": "riskAccepted",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "riskAccepted",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              },
+              {
+                "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:packageComplete",
+                "entryType": "engineeringRequirements",
+                "objectId": "packageComplete",
+                "objectType": "ENGINEERING_REQUIREMENT",
+                "label": "packageComplete",
+                "runtimeObjectIds": [
+                  "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                  "RUNTIME-ROUTE-GOOGLE-29M",
+                  "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+                ],
+                "source": "ENGINEERING_CHECKLIST",
+                "authority": "ENGINEERING_REVIEW",
+                "lifecycle": "IN_REVIEW",
+                "duplicated": false,
+                "metadata": {
+                  "source": "ENGINEERING_CHECKLIST",
+                  "objectType": "ENGINEERING_REQUIREMENT",
+                  "runtimeObjectIds": [
+                    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                    "RUNTIME-ROUTE-GOOGLE-29M"
+                  ]
+                }
+              }
+            ],
+            "counts": {
+              "objects": 2,
+              "relationships": 1,
+              "inventory": 1,
+              "geometry": 1,
+              "stations": 0,
+              "structures": 0,
+              "dependencies": 1,
+              "evidence": 1,
+              "documents": 1,
+              "commercialAssumptions": 1,
+              "customerRequests": 1,
+              "engineeringRequirements": 11
+            },
+            "summary": {
+              "runtimeObjectCount": 2,
+              "relationshipCount": 1,
+              "inventoryCount": 1,
+              "geometryCount": 1,
+              "evidenceCount": 1,
+              "unitCount": 2,
+              "unitIds": [
+                "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+                "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002"
+              ],
+              "noDuplicateObjects": true
+            }
+          },
+          "dependencyGraph": {
+            "graphId": "GRAPH-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "generatedAt": "2026-06-30T14:07:48.172Z",
+            "path": "Proposal -> Runtime Objects -> Relationships -> Units -> Evidence -> Geometry -> Draft IOF Package",
+            "nodes": [
+              {
+                "id": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+                "type": "Proposal",
+                "label": "PROP-GOOGLE-29M-ASSEMBLY",
+                "metadata": {
+                  "runtimeObject": true
+                }
+              },
+              {
+                "id": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "type": "RuntimeObject",
+                "label": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "metadata": {
+                  "runtimeObject": true
+                }
+              },
+              {
+                "id": "RUNTIME-ROUTE-GOOGLE-29M",
+                "type": "RuntimeObject",
+                "label": "RUNTIME-ROUTE-GOOGLE-29M",
+                "metadata": {
+                  "runtimeObject": true
+                }
+              },
+              {
+                "id": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "type": "Relationship",
+                "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "metadata": {}
+              },
+              {
+                "id": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+                "type": "ProposedIOFUnit",
+                "label": "Proposed IOF Unit 1",
+                "metadata": {
+                  "status": "PROPOSED"
+                }
+              },
+              {
+                "id": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
+                "type": "ProposedIOFUnit",
+                "label": "Proposed IOF Unit 2",
+                "metadata": {
+                  "status": "PROPOSED"
+                }
+              },
+              {
+                "id": "EVIDENCE-GOOGLE-APPROVAL",
+                "type": "Evidence",
+                "label": "EVIDENCE-GOOGLE-APPROVAL",
+                "metadata": {}
+              },
+              {
+                "id": "GEOMETRY-GOOGLE-29M",
+                "type": "Geometry",
+                "label": "GEOMETRY-GOOGLE-29M",
+                "metadata": {}
+              },
+              {
+                "id": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+                "type": "DraftIOFPackage",
+                "label": "PROP-GOOGLE-29M-ASSEMBLY Draft IOF Package",
+                "metadata": {
+                  "status": "DRAFT"
+                }
+              }
+            ],
+            "edges": [
+              {
+                "edgeId": "PROPOSAL-GOOGLE-29M-ASSEMBLY->RUNTIME-OPPORTUNITY-GOOGLE-29M:REFERENCES_RUNTIME_OBJECT",
+                "from": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+                "to": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "relationship": "REFERENCES_RUNTIME_OBJECT",
+                "metadata": {}
+              },
+              {
+                "edgeId": "PROPOSAL-GOOGLE-29M-ASSEMBLY->RUNTIME-ROUTE-GOOGLE-29M:REFERENCES_RUNTIME_OBJECT",
+                "from": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+                "to": "RUNTIME-ROUTE-GOOGLE-29M",
+                "relationship": "REFERENCES_RUNTIME_OBJECT",
+                "metadata": {}
+              },
+              {
+                "edgeId": "RUNTIME-OPPORTUNITY-GOOGLE-29M->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+                "from": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "relationship": "RELATIONSHIP_CONTEXT",
+                "metadata": {}
+              },
+              {
+                "edgeId": "RUNTIME-ROUTE-GOOGLE-29M->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+                "from": "RUNTIME-ROUTE-GOOGLE-29M",
+                "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "relationship": "RELATIONSHIP_CONTEXT",
+                "metadata": {}
+              },
+              {
+                "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001:ASSEMBLES_UNIT",
+                "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "to": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+                "relationship": "ASSEMBLES_UNIT",
+                "metadata": {}
+              },
+              {
+                "edgeId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001->EVIDENCE-GOOGLE-APPROVAL:SUPPORTED_BY_EVIDENCE",
+                "from": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+                "to": "EVIDENCE-GOOGLE-APPROVAL",
+                "relationship": "SUPPORTED_BY_EVIDENCE",
+                "metadata": {}
+              },
+              {
+                "edgeId": "EVIDENCE-GOOGLE-APPROVAL->GEOMETRY-GOOGLE-29M:EVIDENCE_LOCATES_GEOMETRY",
+                "from": "EVIDENCE-GOOGLE-APPROVAL",
+                "to": "GEOMETRY-GOOGLE-29M",
+                "relationship": "EVIDENCE_LOCATES_GEOMETRY",
+                "metadata": {}
+              },
+              {
+                "edgeId": "GEOMETRY-GOOGLE-29M->DRAFT-IOF-GOOGLE-29M-ASSEMBLY:PACKAGED_IN_DRAFT_IOF",
+                "from": "GEOMETRY-GOOGLE-29M",
+                "to": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+                "relationship": "PACKAGED_IN_DRAFT_IOF",
+                "metadata": {}
+              },
+              {
+                "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002:ASSEMBLES_UNIT",
+                "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+                "to": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
+                "relationship": "ASSEMBLES_UNIT",
+                "metadata": {}
+              },
+              {
+                "edgeId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002->EVIDENCE-GOOGLE-APPROVAL:SUPPORTED_BY_EVIDENCE",
+                "from": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
+                "to": "EVIDENCE-GOOGLE-APPROVAL",
+                "relationship": "SUPPORTED_BY_EVIDENCE",
+                "metadata": {}
+              }
+            ],
+            "summary": {
+              "nodeCount": 9,
+              "edgeCount": 10,
+              "referenceOnly": true
+            }
+          },
+          "validation": {
+            "validationId": "VALIDATION-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "status": "WARNING",
+            "readinessScore": 91,
+            "checks": [
+              {
+                "key": "geometry",
+                "label": "Geometry",
+                "status": "PASS"
+              },
+              {
+                "key": "inventory",
+                "label": "Existing Inventory",
+                "status": "PASS"
+              },
+              {
+                "key": "relationships",
+                "label": "Relationships",
+                "status": "PASS"
+              },
+              {
+                "key": "evidence",
+                "label": "Evidence",
+                "status": "PASS"
+              },
+              {
+                "key": "units",
+                "label": "Proposed IOF Units",
+                "status": "PASS"
+              },
+              {
+                "key": "engineeringReview",
+                "label": "Engineering Review",
+                "status": "WARNING"
+              },
+              {
+                "key": "runtimeReferences",
+                "label": "Runtime References",
+                "status": "PASS"
+              }
+            ],
+            "validatedAt": "2026-06-30T14:07:48.171Z"
+          },
+          "packageDifferences": {
+            "differenceId": "DIFF-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+            "proposalVersion": 1,
+            "packageSourceProposalVersion": 1,
+            "comparedAt": "2026-06-30T14:07:48.166Z",
+            "addedObjects": [],
+            "removedObjects": [],
+            "modifiedUnits": [],
+            "geometryChanges": {
+              "added": [],
+              "removed": []
+            },
+            "relationshipChanges": {
+              "added": [],
+              "removed": []
+            },
+            "engineeringImpact": "NO_IMPACT"
+          },
           "engineeringReadiness": "READY_FOR_ENGINEERING_REVIEW",
           "commercialConfidence": 0,
+          "packageCompleteness": 91,
+          "certificationProgress": 0,
           "route": [],
           "stations": [],
+          "structures": [],
           "objects": [],
           "relationships": [],
           "evidence": [],
           "historyIds": [
-            "runtime-history-DRAFT-IOF-GOOGLE-29M-ASSEMBLY-runtime.iof_package.assembled_from_proposal-1782824228159-053210398a7bf"
+            "runtime-history-DRAFT-IOF-GOOGLE-29M-ASSEMBLY-runtime.iof_package.assembled_from_proposal-1782828468167-8e1459f3657cd"
           ],
-          "createdAt": "2026-06-30T12:57:08.158Z",
-          "updatedAt": "2026-06-30T12:57:08.159Z",
+          "createdAt": "2026-06-30T14:07:48.158Z",
+          "updatedAt": "2026-06-30T14:07:48.167Z",
           "noMarketplaceCreation": true,
           "noContractCreation": true,
           "noSofCreation": true,
@@ -861,19 +2499,34 @@
       "name": "assembly:draft-status",
       "status": "DRAFT",
       "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+      "packageName": "PROP-GOOGLE-29M-ASSEMBLY Draft IOF Package",
       "packageType": "ENGINEERING",
       "workflowStatus": "ENGINEERING_REVIEW",
+      "organizationId": "org-teralinx",
+      "workspaceId": "workspace-teralinx-ryan",
+      "ownerId": "teralinx-user-ryan",
+      "owner": "Ryan",
+      "createdById": "teralinx-user-kyle",
+      "createdBy": "Kyle",
+      "visibility": "ORGANIZATION",
+      "authority": "ENGINEERING_REVIEW",
+      "lifecycleState": "IN_REVIEW",
       "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
       "customerId": "customer-google",
       "opportunityId": "GOOGLE-29M-OPPORTUNITY",
       "assignedEngineerId": "teralinx-user-kyle",
       "assignedEngineer": "Kyle",
       "priority": "NORMAL",
-      "submittedAt": "2026-06-30T12:57:08.158Z",
+      "submittedAt": "2026-06-30T14:07:48.157Z",
+      "packageRevision": 1,
+      "assemblyConfidence": 100,
+      "engineeringConfidence": 0,
       "proposalSummary": {
         "title": "Google 29M Assembly Proposal",
         "proposalNumber": "PROP-GOOGLE-29M-ASSEMBLY",
         "version": 1,
+        "status": "CUSTOMER_APPROVED",
+        "executiveSummary": "Assembly uses references only.",
         "readiness": {
           "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
           "status": "READY",
@@ -942,8 +2595,32 @@
         "customerId": "customer-google",
         "name": "customer-google",
         "approvalState": "APPROVED",
-        "approvedAt": "2026-06-30T12:57:08.134Z"
+        "approvedAt": "2026-06-30T14:07:48.127Z"
       },
+      "commercialNotes": [
+        "Approved assembly source.",
+        "Assembly uses references only."
+      ],
+      "engineeringNotes": [
+        "Awaiting Engineering review."
+      ],
+      "customerRequests": [],
+      "engineeringRequirements": [
+        "geometryComplete",
+        "existingInventoryValidated",
+        "customerDesignReviewed",
+        "relationshipsValidated",
+        "dependenciesValidated",
+        "evidencePresent",
+        "commercialAssumptionsReviewed",
+        "unitQuantitiesVerified",
+        "engineeringStandardsMet",
+        "riskAccepted",
+        "packageComplete"
+      ],
+      "dependencies": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+      ],
       "assemblyReport": {
         "assembledFrom": "APPROVED_PROPOSAL_RUNTIME_OBJECT",
         "noScopeVersionCreated": true,
@@ -970,18 +2647,28 @@
           "runtimeEvidenceIds": [
             "EVIDENCE-GOOGLE-APPROVAL"
           ],
+          "dependencyIds": [
+            "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+          ],
           "unitType": "RUNTIME_REFERENCE_UNIT",
           "name": "Proposed IOF Unit 1",
+          "quantity": 1,
+          "commercialQuantity": 1,
+          "historicalQuantity": 0,
+          "marketplaceAdvisory": "NOT_REQUESTED",
+          "engineeringQuantity": 0,
+          "confidence": 90,
+          "commercialConfidence": 90,
+          "engineeringDecision": "PENDING_ENGINEERING_REVIEW",
           "status": "PROPOSED",
           "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
-          "dependencyIds": [],
           "engineeringNote": "",
           "engineeringConfidence": 0,
           "engineeringRisk": "UNREVIEWED",
           "engineeringComments": [],
           "immutable": false,
-          "createdAt": "2026-06-30T12:57:08.157Z",
-          "updatedAt": "2026-06-30T12:57:08.157Z"
+          "createdAt": "2026-06-30T14:07:48.156Z",
+          "updatedAt": "2026-06-30T14:07:48.156Z"
         },
         {
           "unitId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
@@ -998,18 +2685,28 @@
           "runtimeEvidenceIds": [
             "EVIDENCE-GOOGLE-APPROVAL"
           ],
+          "dependencyIds": [
+            "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+          ],
           "unitType": "RUNTIME_REFERENCE_UNIT",
           "name": "Proposed IOF Unit 2",
+          "quantity": 1,
+          "commercialQuantity": 1,
+          "historicalQuantity": 0,
+          "marketplaceAdvisory": "NOT_REQUESTED",
+          "engineeringQuantity": 0,
+          "confidence": 90,
+          "commercialConfidence": 90,
+          "engineeringDecision": "PENDING_ENGINEERING_REVIEW",
           "status": "PROPOSED",
           "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
-          "dependencyIds": [],
           "engineeringNote": "",
           "engineeringConfidence": 0,
           "engineeringRisk": "UNREVIEWED",
           "engineeringComments": [],
           "immutable": false,
-          "createdAt": "2026-06-30T12:57:08.157Z",
-          "updatedAt": "2026-06-30T12:57:08.157Z"
+          "createdAt": "2026-06-30T14:07:48.156Z",
+          "updatedAt": "2026-06-30T14:07:48.156Z"
         }
       ],
       "runtimeObjectIds": [
@@ -1032,27 +2729,787 @@
       "geometryReferences": [
         "GEOMETRY-GOOGLE-29M"
       ],
+      "proposalDocumentReferences": [
+        "DOC-GOOGLE-PROPOSAL"
+      ],
       "sourceProposalVersion": 1,
       "draftPackageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
       "packageReadiness": {
         "status": "READY_FOR_ENGINEERING_REVIEW",
-        "missingInformation": [],
+        "missingInformation": [
+          "Engineering Review"
+        ],
+        "missingGeometry": false,
+        "missingInventory": false,
+        "missingRelationships": false,
+        "missingEvidence": false,
+        "missingUnits": false,
+        "missingEngineeringReview": true,
+        "missingValidation": false,
+        "dependencyCount": 1,
+        "readinessScore": 91,
+        "packageCompleteness": 91,
         "proposedUnitCount": 2,
         "certifiedUnitCount": 0,
         "certificationPercent": 0
       },
+      "manifest": {
+        "manifestId": "MANIFEST-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+        "organizationId": "org-teralinx",
+        "workspaceId": "workspace-teralinx-ryan",
+        "generatedAt": "2026-06-30T14:07:48.171Z",
+        "modelVersion": "IOF_PACKAGE_MANIFEST_V1",
+        "duplicationPolicy": "REFERENCE_ONLY_RUNTIME_OBJECTS",
+        "objects": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:objects:RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "entryType": "objects",
+            "objectId": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "objectType": "RUNTIME_OBJECT",
+            "label": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "PROPOSAL_RUNTIME_OBJECTS",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "PROPOSAL_RUNTIME_OBJECTS",
+              "objectType": "RUNTIME_OBJECT"
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:objects:RUNTIME-ROUTE-GOOGLE-29M",
+            "entryType": "objects",
+            "objectId": "RUNTIME-ROUTE-GOOGLE-29M",
+            "objectType": "RUNTIME_OBJECT",
+            "label": "RUNTIME-ROUTE-GOOGLE-29M",
+            "runtimeObjectIds": [
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "PROPOSAL_RUNTIME_OBJECTS",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "PROPOSAL_RUNTIME_OBJECTS",
+              "objectType": "RUNTIME_OBJECT"
+            }
+          }
+        ],
+        "relationships": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:relationships:DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "entryType": "relationships",
+            "objectId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "objectType": "RUNTIME_RELATIONSHIP",
+            "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "RELATIONSHIP_GRAPH",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "RELATIONSHIP_GRAPH",
+              "objectType": "RUNTIME_RELATIONSHIP"
+            }
+          }
+        ],
+        "inventory": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:inventory:RUNTIME-INVENTORY-GOOGLE",
+            "entryType": "inventory",
+            "objectId": "RUNTIME-INVENTORY-GOOGLE",
+            "objectType": "CUSTOMER_INVENTORY_REFERENCE",
+            "label": "RUNTIME-INVENTORY-GOOGLE",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "CUSTOMER_INVENTORY",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "CUSTOMER_INVENTORY",
+              "objectType": "CUSTOMER_INVENTORY_REFERENCE"
+            }
+          }
+        ],
+        "geometry": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:geometry:GEOMETRY-GOOGLE-29M",
+            "entryType": "geometry",
+            "objectId": "GEOMETRY-GOOGLE-29M",
+            "objectType": "GEOMETRY_REFERENCE",
+            "label": "GEOMETRY-GOOGLE-29M",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "GEOMETRY_REFERENCE",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "GEOMETRY_REFERENCE",
+              "objectType": "GEOMETRY_REFERENCE"
+            }
+          }
+        ],
+        "stations": [],
+        "structures": [],
+        "dependencies": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:dependencies:DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "entryType": "dependencies",
+            "objectId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "objectType": "DEPENDENCY",
+            "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "PACKAGE_DEPENDENCY",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "PACKAGE_DEPENDENCY",
+              "objectType": "DEPENDENCY",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:evidence:EVIDENCE-GOOGLE-APPROVAL",
+            "entryType": "evidence",
+            "objectId": "EVIDENCE-GOOGLE-APPROVAL",
+            "objectType": "EVIDENCE",
+            "label": "EVIDENCE-GOOGLE-APPROVAL",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "EVIDENCE_REGISTRY",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "EVIDENCE_REGISTRY",
+              "objectType": "EVIDENCE"
+            }
+          }
+        ],
+        "documents": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:documents:DOC-GOOGLE-PROPOSAL",
+            "entryType": "documents",
+            "objectId": "DOC-GOOGLE-PROPOSAL",
+            "objectType": "DOCUMENT",
+            "label": "DOC-GOOGLE-PROPOSAL",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "PROPOSAL_DOCUMENTS",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "PROPOSAL_DOCUMENTS",
+              "objectType": "DOCUMENT"
+            }
+          }
+        ],
+        "commercialAssumptions": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:commercialAssumptions:ASSUMPTION-1",
+            "entryType": "commercialAssumptions",
+            "objectId": "ASSUMPTION-1",
+            "objectType": "COMMERCIAL_ASSUMPTION",
+            "label": "ASSUMPTION-1",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "COMMERCIAL_SUMMARY",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "COMMERCIAL_SUMMARY",
+              "objectType": "COMMERCIAL_ASSUMPTION"
+            }
+          }
+        ],
+        "customerRequests": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:customerRequests:CUSTOMER-DESIGN-GOOGLE",
+            "entryType": "customerRequests",
+            "objectId": "CUSTOMER-DESIGN-GOOGLE",
+            "objectType": "CUSTOMER_REQUEST",
+            "label": "CUSTOMER-DESIGN-GOOGLE",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "CUSTOMER_DESIGN_REQUEST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "CUSTOMER_DESIGN_REQUEST",
+              "objectType": "CUSTOMER_REQUEST"
+            }
+          }
+        ],
+        "engineeringRequirements": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:geometryComplete",
+            "entryType": "engineeringRequirements",
+            "objectId": "geometryComplete",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "geometryComplete",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:existingInventoryValidated",
+            "entryType": "engineeringRequirements",
+            "objectId": "existingInventoryValidated",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "existingInventoryValidated",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:customerDesignReviewed",
+            "entryType": "engineeringRequirements",
+            "objectId": "customerDesignReviewed",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "customerDesignReviewed",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:relationshipsValidated",
+            "entryType": "engineeringRequirements",
+            "objectId": "relationshipsValidated",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "relationshipsValidated",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:dependenciesValidated",
+            "entryType": "engineeringRequirements",
+            "objectId": "dependenciesValidated",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "dependenciesValidated",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:evidencePresent",
+            "entryType": "engineeringRequirements",
+            "objectId": "evidencePresent",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "evidencePresent",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:commercialAssumptionsReviewed",
+            "entryType": "engineeringRequirements",
+            "objectId": "commercialAssumptionsReviewed",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "commercialAssumptionsReviewed",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:unitQuantitiesVerified",
+            "entryType": "engineeringRequirements",
+            "objectId": "unitQuantitiesVerified",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "unitQuantitiesVerified",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:engineeringStandardsMet",
+            "entryType": "engineeringRequirements",
+            "objectId": "engineeringStandardsMet",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "engineeringStandardsMet",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:riskAccepted",
+            "entryType": "engineeringRequirements",
+            "objectId": "riskAccepted",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "riskAccepted",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:packageComplete",
+            "entryType": "engineeringRequirements",
+            "objectId": "packageComplete",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "packageComplete",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          }
+        ],
+        "counts": {
+          "objects": 2,
+          "relationships": 1,
+          "inventory": 1,
+          "geometry": 1,
+          "stations": 0,
+          "structures": 0,
+          "dependencies": 1,
+          "evidence": 1,
+          "documents": 1,
+          "commercialAssumptions": 1,
+          "customerRequests": 1,
+          "engineeringRequirements": 11
+        },
+        "summary": {
+          "runtimeObjectCount": 2,
+          "relationshipCount": 1,
+          "inventoryCount": 1,
+          "geometryCount": 1,
+          "evidenceCount": 1,
+          "unitCount": 2,
+          "unitIds": [
+            "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+            "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002"
+          ],
+          "noDuplicateObjects": true
+        }
+      },
+      "dependencyGraph": {
+        "graphId": "GRAPH-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "generatedAt": "2026-06-30T14:07:48.172Z",
+        "path": "Proposal -> Runtime Objects -> Relationships -> Units -> Evidence -> Geometry -> Draft IOF Package",
+        "nodes": [
+          {
+            "id": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+            "type": "Proposal",
+            "label": "PROP-GOOGLE-29M-ASSEMBLY",
+            "metadata": {
+              "runtimeObject": true
+            }
+          },
+          {
+            "id": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "type": "RuntimeObject",
+            "label": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "metadata": {
+              "runtimeObject": true
+            }
+          },
+          {
+            "id": "RUNTIME-ROUTE-GOOGLE-29M",
+            "type": "RuntimeObject",
+            "label": "RUNTIME-ROUTE-GOOGLE-29M",
+            "metadata": {
+              "runtimeObject": true
+            }
+          },
+          {
+            "id": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "type": "Relationship",
+            "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "metadata": {}
+          },
+          {
+            "id": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+            "type": "ProposedIOFUnit",
+            "label": "Proposed IOF Unit 1",
+            "metadata": {
+              "status": "PROPOSED"
+            }
+          },
+          {
+            "id": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
+            "type": "ProposedIOFUnit",
+            "label": "Proposed IOF Unit 2",
+            "metadata": {
+              "status": "PROPOSED"
+            }
+          },
+          {
+            "id": "EVIDENCE-GOOGLE-APPROVAL",
+            "type": "Evidence",
+            "label": "EVIDENCE-GOOGLE-APPROVAL",
+            "metadata": {}
+          },
+          {
+            "id": "GEOMETRY-GOOGLE-29M",
+            "type": "Geometry",
+            "label": "GEOMETRY-GOOGLE-29M",
+            "metadata": {}
+          },
+          {
+            "id": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "type": "DraftIOFPackage",
+            "label": "PROP-GOOGLE-29M-ASSEMBLY Draft IOF Package",
+            "metadata": {
+              "status": "DRAFT"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "edgeId": "PROPOSAL-GOOGLE-29M-ASSEMBLY->RUNTIME-OPPORTUNITY-GOOGLE-29M:REFERENCES_RUNTIME_OBJECT",
+            "from": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+            "to": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "relationship": "REFERENCES_RUNTIME_OBJECT",
+            "metadata": {}
+          },
+          {
+            "edgeId": "PROPOSAL-GOOGLE-29M-ASSEMBLY->RUNTIME-ROUTE-GOOGLE-29M:REFERENCES_RUNTIME_OBJECT",
+            "from": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+            "to": "RUNTIME-ROUTE-GOOGLE-29M",
+            "relationship": "REFERENCES_RUNTIME_OBJECT",
+            "metadata": {}
+          },
+          {
+            "edgeId": "RUNTIME-OPPORTUNITY-GOOGLE-29M->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+            "from": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "relationship": "RELATIONSHIP_CONTEXT",
+            "metadata": {}
+          },
+          {
+            "edgeId": "RUNTIME-ROUTE-GOOGLE-29M->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+            "from": "RUNTIME-ROUTE-GOOGLE-29M",
+            "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "relationship": "RELATIONSHIP_CONTEXT",
+            "metadata": {}
+          },
+          {
+            "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001:ASSEMBLES_UNIT",
+            "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "to": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+            "relationship": "ASSEMBLES_UNIT",
+            "metadata": {}
+          },
+          {
+            "edgeId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001->EVIDENCE-GOOGLE-APPROVAL:SUPPORTED_BY_EVIDENCE",
+            "from": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+            "to": "EVIDENCE-GOOGLE-APPROVAL",
+            "relationship": "SUPPORTED_BY_EVIDENCE",
+            "metadata": {}
+          },
+          {
+            "edgeId": "EVIDENCE-GOOGLE-APPROVAL->GEOMETRY-GOOGLE-29M:EVIDENCE_LOCATES_GEOMETRY",
+            "from": "EVIDENCE-GOOGLE-APPROVAL",
+            "to": "GEOMETRY-GOOGLE-29M",
+            "relationship": "EVIDENCE_LOCATES_GEOMETRY",
+            "metadata": {}
+          },
+          {
+            "edgeId": "GEOMETRY-GOOGLE-29M->DRAFT-IOF-GOOGLE-29M-ASSEMBLY:PACKAGED_IN_DRAFT_IOF",
+            "from": "GEOMETRY-GOOGLE-29M",
+            "to": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "relationship": "PACKAGED_IN_DRAFT_IOF",
+            "metadata": {}
+          },
+          {
+            "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002:ASSEMBLES_UNIT",
+            "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "to": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
+            "relationship": "ASSEMBLES_UNIT",
+            "metadata": {}
+          },
+          {
+            "edgeId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002->EVIDENCE-GOOGLE-APPROVAL:SUPPORTED_BY_EVIDENCE",
+            "from": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
+            "to": "EVIDENCE-GOOGLE-APPROVAL",
+            "relationship": "SUPPORTED_BY_EVIDENCE",
+            "metadata": {}
+          }
+        ],
+        "summary": {
+          "nodeCount": 9,
+          "edgeCount": 10,
+          "referenceOnly": true
+        }
+      },
+      "validation": {
+        "validationId": "VALIDATION-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "status": "WARNING",
+        "readinessScore": 91,
+        "checks": [
+          {
+            "key": "geometry",
+            "label": "Geometry",
+            "status": "PASS"
+          },
+          {
+            "key": "inventory",
+            "label": "Existing Inventory",
+            "status": "PASS"
+          },
+          {
+            "key": "relationships",
+            "label": "Relationships",
+            "status": "PASS"
+          },
+          {
+            "key": "evidence",
+            "label": "Evidence",
+            "status": "PASS"
+          },
+          {
+            "key": "units",
+            "label": "Proposed IOF Units",
+            "status": "PASS"
+          },
+          {
+            "key": "engineeringReview",
+            "label": "Engineering Review",
+            "status": "WARNING"
+          },
+          {
+            "key": "runtimeReferences",
+            "label": "Runtime References",
+            "status": "PASS"
+          }
+        ],
+        "validatedAt": "2026-06-30T14:07:48.171Z"
+      },
+      "packageDifferences": {
+        "differenceId": "DIFF-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+        "proposalVersion": 1,
+        "packageSourceProposalVersion": 1,
+        "comparedAt": "2026-06-30T14:07:48.166Z",
+        "addedObjects": [],
+        "removedObjects": [],
+        "modifiedUnits": [],
+        "geometryChanges": {
+          "added": [],
+          "removed": []
+        },
+        "relationshipChanges": {
+          "added": [],
+          "removed": []
+        },
+        "engineeringImpact": "NO_IMPACT"
+      },
       "engineeringReadiness": "READY_FOR_ENGINEERING_REVIEW",
       "commercialConfidence": 0,
+      "packageCompleteness": 91,
+      "certificationProgress": 0,
       "route": [],
       "stations": [],
+      "structures": [],
       "objects": [],
       "relationships": [],
       "evidence": [],
       "historyIds": [
-        "runtime-history-DRAFT-IOF-GOOGLE-29M-ASSEMBLY-runtime.iof_package.assembled_from_proposal-1782824228159-053210398a7bf"
+        "runtime-history-DRAFT-IOF-GOOGLE-29M-ASSEMBLY-runtime.iof_package.assembled_from_proposal-1782828468167-8e1459f3657cd"
       ],
-      "createdAt": "2026-06-30T12:57:08.158Z",
-      "updatedAt": "2026-06-30T12:57:08.159Z",
+      "createdAt": "2026-06-30T14:07:48.158Z",
+      "updatedAt": "2026-06-30T14:07:48.167Z",
       "noMarketplaceCreation": true,
       "noContractCreation": true,
       "noSofCreation": true,
@@ -1062,19 +3519,34 @@
       "name": "assembly:proposed-units",
       "status": "DRAFT",
       "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+      "packageName": "PROP-GOOGLE-29M-ASSEMBLY Draft IOF Package",
       "packageType": "ENGINEERING",
       "workflowStatus": "ENGINEERING_REVIEW",
+      "organizationId": "org-teralinx",
+      "workspaceId": "workspace-teralinx-ryan",
+      "ownerId": "teralinx-user-ryan",
+      "owner": "Ryan",
+      "createdById": "teralinx-user-kyle",
+      "createdBy": "Kyle",
+      "visibility": "ORGANIZATION",
+      "authority": "ENGINEERING_REVIEW",
+      "lifecycleState": "IN_REVIEW",
       "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
       "customerId": "customer-google",
       "opportunityId": "GOOGLE-29M-OPPORTUNITY",
       "assignedEngineerId": "teralinx-user-kyle",
       "assignedEngineer": "Kyle",
       "priority": "NORMAL",
-      "submittedAt": "2026-06-30T12:57:08.158Z",
+      "submittedAt": "2026-06-30T14:07:48.157Z",
+      "packageRevision": 1,
+      "assemblyConfidence": 100,
+      "engineeringConfidence": 0,
       "proposalSummary": {
         "title": "Google 29M Assembly Proposal",
         "proposalNumber": "PROP-GOOGLE-29M-ASSEMBLY",
         "version": 1,
+        "status": "CUSTOMER_APPROVED",
+        "executiveSummary": "Assembly uses references only.",
         "readiness": {
           "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
           "status": "READY",
@@ -1143,8 +3615,32 @@
         "customerId": "customer-google",
         "name": "customer-google",
         "approvalState": "APPROVED",
-        "approvedAt": "2026-06-30T12:57:08.134Z"
+        "approvedAt": "2026-06-30T14:07:48.127Z"
       },
+      "commercialNotes": [
+        "Approved assembly source.",
+        "Assembly uses references only."
+      ],
+      "engineeringNotes": [
+        "Awaiting Engineering review."
+      ],
+      "customerRequests": [],
+      "engineeringRequirements": [
+        "geometryComplete",
+        "existingInventoryValidated",
+        "customerDesignReviewed",
+        "relationshipsValidated",
+        "dependenciesValidated",
+        "evidencePresent",
+        "commercialAssumptionsReviewed",
+        "unitQuantitiesVerified",
+        "engineeringStandardsMet",
+        "riskAccepted",
+        "packageComplete"
+      ],
+      "dependencies": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+      ],
       "assemblyReport": {
         "assembledFrom": "APPROVED_PROPOSAL_RUNTIME_OBJECT",
         "noScopeVersionCreated": true,
@@ -1171,18 +3667,28 @@
           "runtimeEvidenceIds": [
             "EVIDENCE-GOOGLE-APPROVAL"
           ],
+          "dependencyIds": [
+            "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+          ],
           "unitType": "RUNTIME_REFERENCE_UNIT",
           "name": "Proposed IOF Unit 1",
+          "quantity": 1,
+          "commercialQuantity": 1,
+          "historicalQuantity": 0,
+          "marketplaceAdvisory": "NOT_REQUESTED",
+          "engineeringQuantity": 0,
+          "confidence": 90,
+          "commercialConfidence": 90,
+          "engineeringDecision": "PENDING_ENGINEERING_REVIEW",
           "status": "PROPOSED",
           "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
-          "dependencyIds": [],
           "engineeringNote": "",
           "engineeringConfidence": 0,
           "engineeringRisk": "UNREVIEWED",
           "engineeringComments": [],
           "immutable": false,
-          "createdAt": "2026-06-30T12:57:08.157Z",
-          "updatedAt": "2026-06-30T12:57:08.157Z"
+          "createdAt": "2026-06-30T14:07:48.156Z",
+          "updatedAt": "2026-06-30T14:07:48.156Z"
         },
         {
           "unitId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
@@ -1199,18 +3705,28 @@
           "runtimeEvidenceIds": [
             "EVIDENCE-GOOGLE-APPROVAL"
           ],
+          "dependencyIds": [
+            "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+          ],
           "unitType": "RUNTIME_REFERENCE_UNIT",
           "name": "Proposed IOF Unit 2",
+          "quantity": 1,
+          "commercialQuantity": 1,
+          "historicalQuantity": 0,
+          "marketplaceAdvisory": "NOT_REQUESTED",
+          "engineeringQuantity": 0,
+          "confidence": 90,
+          "commercialConfidence": 90,
+          "engineeringDecision": "PENDING_ENGINEERING_REVIEW",
           "status": "PROPOSED",
           "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
-          "dependencyIds": [],
           "engineeringNote": "",
           "engineeringConfidence": 0,
           "engineeringRisk": "UNREVIEWED",
           "engineeringComments": [],
           "immutable": false,
-          "createdAt": "2026-06-30T12:57:08.157Z",
-          "updatedAt": "2026-06-30T12:57:08.157Z"
+          "createdAt": "2026-06-30T14:07:48.156Z",
+          "updatedAt": "2026-06-30T14:07:48.156Z"
         }
       ],
       "runtimeObjectIds": [
@@ -1233,27 +3749,787 @@
       "geometryReferences": [
         "GEOMETRY-GOOGLE-29M"
       ],
+      "proposalDocumentReferences": [
+        "DOC-GOOGLE-PROPOSAL"
+      ],
       "sourceProposalVersion": 1,
       "draftPackageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
       "packageReadiness": {
         "status": "READY_FOR_ENGINEERING_REVIEW",
-        "missingInformation": [],
+        "missingInformation": [
+          "Engineering Review"
+        ],
+        "missingGeometry": false,
+        "missingInventory": false,
+        "missingRelationships": false,
+        "missingEvidence": false,
+        "missingUnits": false,
+        "missingEngineeringReview": true,
+        "missingValidation": false,
+        "dependencyCount": 1,
+        "readinessScore": 91,
+        "packageCompleteness": 91,
         "proposedUnitCount": 2,
         "certifiedUnitCount": 0,
         "certificationPercent": 0
       },
+      "manifest": {
+        "manifestId": "MANIFEST-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+        "organizationId": "org-teralinx",
+        "workspaceId": "workspace-teralinx-ryan",
+        "generatedAt": "2026-06-30T14:07:48.171Z",
+        "modelVersion": "IOF_PACKAGE_MANIFEST_V1",
+        "duplicationPolicy": "REFERENCE_ONLY_RUNTIME_OBJECTS",
+        "objects": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:objects:RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "entryType": "objects",
+            "objectId": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "objectType": "RUNTIME_OBJECT",
+            "label": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "PROPOSAL_RUNTIME_OBJECTS",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "PROPOSAL_RUNTIME_OBJECTS",
+              "objectType": "RUNTIME_OBJECT"
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:objects:RUNTIME-ROUTE-GOOGLE-29M",
+            "entryType": "objects",
+            "objectId": "RUNTIME-ROUTE-GOOGLE-29M",
+            "objectType": "RUNTIME_OBJECT",
+            "label": "RUNTIME-ROUTE-GOOGLE-29M",
+            "runtimeObjectIds": [
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "PROPOSAL_RUNTIME_OBJECTS",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "PROPOSAL_RUNTIME_OBJECTS",
+              "objectType": "RUNTIME_OBJECT"
+            }
+          }
+        ],
+        "relationships": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:relationships:DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "entryType": "relationships",
+            "objectId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "objectType": "RUNTIME_RELATIONSHIP",
+            "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "RELATIONSHIP_GRAPH",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "RELATIONSHIP_GRAPH",
+              "objectType": "RUNTIME_RELATIONSHIP"
+            }
+          }
+        ],
+        "inventory": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:inventory:RUNTIME-INVENTORY-GOOGLE",
+            "entryType": "inventory",
+            "objectId": "RUNTIME-INVENTORY-GOOGLE",
+            "objectType": "CUSTOMER_INVENTORY_REFERENCE",
+            "label": "RUNTIME-INVENTORY-GOOGLE",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "CUSTOMER_INVENTORY",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "CUSTOMER_INVENTORY",
+              "objectType": "CUSTOMER_INVENTORY_REFERENCE"
+            }
+          }
+        ],
+        "geometry": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:geometry:GEOMETRY-GOOGLE-29M",
+            "entryType": "geometry",
+            "objectId": "GEOMETRY-GOOGLE-29M",
+            "objectType": "GEOMETRY_REFERENCE",
+            "label": "GEOMETRY-GOOGLE-29M",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "GEOMETRY_REFERENCE",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "GEOMETRY_REFERENCE",
+              "objectType": "GEOMETRY_REFERENCE"
+            }
+          }
+        ],
+        "stations": [],
+        "structures": [],
+        "dependencies": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:dependencies:DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "entryType": "dependencies",
+            "objectId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "objectType": "DEPENDENCY",
+            "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "PACKAGE_DEPENDENCY",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "PACKAGE_DEPENDENCY",
+              "objectType": "DEPENDENCY",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          }
+        ],
+        "evidence": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:evidence:EVIDENCE-GOOGLE-APPROVAL",
+            "entryType": "evidence",
+            "objectId": "EVIDENCE-GOOGLE-APPROVAL",
+            "objectType": "EVIDENCE",
+            "label": "EVIDENCE-GOOGLE-APPROVAL",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "EVIDENCE_REGISTRY",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "EVIDENCE_REGISTRY",
+              "objectType": "EVIDENCE"
+            }
+          }
+        ],
+        "documents": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:documents:DOC-GOOGLE-PROPOSAL",
+            "entryType": "documents",
+            "objectId": "DOC-GOOGLE-PROPOSAL",
+            "objectType": "DOCUMENT",
+            "label": "DOC-GOOGLE-PROPOSAL",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "PROPOSAL_DOCUMENTS",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "PROPOSAL_DOCUMENTS",
+              "objectType": "DOCUMENT"
+            }
+          }
+        ],
+        "commercialAssumptions": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:commercialAssumptions:ASSUMPTION-1",
+            "entryType": "commercialAssumptions",
+            "objectId": "ASSUMPTION-1",
+            "objectType": "COMMERCIAL_ASSUMPTION",
+            "label": "ASSUMPTION-1",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "COMMERCIAL_SUMMARY",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "COMMERCIAL_SUMMARY",
+              "objectType": "COMMERCIAL_ASSUMPTION"
+            }
+          }
+        ],
+        "customerRequests": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:customerRequests:CUSTOMER-DESIGN-GOOGLE",
+            "entryType": "customerRequests",
+            "objectId": "CUSTOMER-DESIGN-GOOGLE",
+            "objectType": "CUSTOMER_REQUEST",
+            "label": "CUSTOMER-DESIGN-GOOGLE",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "CUSTOMER_DESIGN_REQUEST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "CUSTOMER_DESIGN_REQUEST",
+              "objectType": "CUSTOMER_REQUEST"
+            }
+          }
+        ],
+        "engineeringRequirements": [
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:geometryComplete",
+            "entryType": "engineeringRequirements",
+            "objectId": "geometryComplete",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "geometryComplete",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:existingInventoryValidated",
+            "entryType": "engineeringRequirements",
+            "objectId": "existingInventoryValidated",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "existingInventoryValidated",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:customerDesignReviewed",
+            "entryType": "engineeringRequirements",
+            "objectId": "customerDesignReviewed",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "customerDesignReviewed",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:relationshipsValidated",
+            "entryType": "engineeringRequirements",
+            "objectId": "relationshipsValidated",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "relationshipsValidated",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:dependenciesValidated",
+            "entryType": "engineeringRequirements",
+            "objectId": "dependenciesValidated",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "dependenciesValidated",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:evidencePresent",
+            "entryType": "engineeringRequirements",
+            "objectId": "evidencePresent",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "evidencePresent",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:commercialAssumptionsReviewed",
+            "entryType": "engineeringRequirements",
+            "objectId": "commercialAssumptionsReviewed",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "commercialAssumptionsReviewed",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:unitQuantitiesVerified",
+            "entryType": "engineeringRequirements",
+            "objectId": "unitQuantitiesVerified",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "unitQuantitiesVerified",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:engineeringStandardsMet",
+            "entryType": "engineeringRequirements",
+            "objectId": "engineeringStandardsMet",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "engineeringStandardsMet",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:riskAccepted",
+            "entryType": "engineeringRequirements",
+            "objectId": "riskAccepted",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "riskAccepted",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          },
+          {
+            "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:engineeringRequirements:packageComplete",
+            "entryType": "engineeringRequirements",
+            "objectId": "packageComplete",
+            "objectType": "ENGINEERING_REQUIREMENT",
+            "label": "packageComplete",
+            "runtimeObjectIds": [
+              "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+              "RUNTIME-ROUTE-GOOGLE-29M",
+              "PROPOSAL-GOOGLE-29M-ASSEMBLY"
+            ],
+            "source": "ENGINEERING_CHECKLIST",
+            "authority": "ENGINEERING_REVIEW",
+            "lifecycle": "IN_REVIEW",
+            "duplicated": false,
+            "metadata": {
+              "source": "ENGINEERING_CHECKLIST",
+              "objectType": "ENGINEERING_REQUIREMENT",
+              "runtimeObjectIds": [
+                "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+                "RUNTIME-ROUTE-GOOGLE-29M"
+              ]
+            }
+          }
+        ],
+        "counts": {
+          "objects": 2,
+          "relationships": 1,
+          "inventory": 1,
+          "geometry": 1,
+          "stations": 0,
+          "structures": 0,
+          "dependencies": 1,
+          "evidence": 1,
+          "documents": 1,
+          "commercialAssumptions": 1,
+          "customerRequests": 1,
+          "engineeringRequirements": 11
+        },
+        "summary": {
+          "runtimeObjectCount": 2,
+          "relationshipCount": 1,
+          "inventoryCount": 1,
+          "geometryCount": 1,
+          "evidenceCount": 1,
+          "unitCount": 2,
+          "unitIds": [
+            "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+            "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002"
+          ],
+          "noDuplicateObjects": true
+        }
+      },
+      "dependencyGraph": {
+        "graphId": "GRAPH-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "generatedAt": "2026-06-30T14:07:48.172Z",
+        "path": "Proposal -> Runtime Objects -> Relationships -> Units -> Evidence -> Geometry -> Draft IOF Package",
+        "nodes": [
+          {
+            "id": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+            "type": "Proposal",
+            "label": "PROP-GOOGLE-29M-ASSEMBLY",
+            "metadata": {
+              "runtimeObject": true
+            }
+          },
+          {
+            "id": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "type": "RuntimeObject",
+            "label": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "metadata": {
+              "runtimeObject": true
+            }
+          },
+          {
+            "id": "RUNTIME-ROUTE-GOOGLE-29M",
+            "type": "RuntimeObject",
+            "label": "RUNTIME-ROUTE-GOOGLE-29M",
+            "metadata": {
+              "runtimeObject": true
+            }
+          },
+          {
+            "id": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "type": "Relationship",
+            "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "metadata": {}
+          },
+          {
+            "id": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+            "type": "ProposedIOFUnit",
+            "label": "Proposed IOF Unit 1",
+            "metadata": {
+              "status": "PROPOSED"
+            }
+          },
+          {
+            "id": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
+            "type": "ProposedIOFUnit",
+            "label": "Proposed IOF Unit 2",
+            "metadata": {
+              "status": "PROPOSED"
+            }
+          },
+          {
+            "id": "EVIDENCE-GOOGLE-APPROVAL",
+            "type": "Evidence",
+            "label": "EVIDENCE-GOOGLE-APPROVAL",
+            "metadata": {}
+          },
+          {
+            "id": "GEOMETRY-GOOGLE-29M",
+            "type": "Geometry",
+            "label": "GEOMETRY-GOOGLE-29M",
+            "metadata": {}
+          },
+          {
+            "id": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "type": "DraftIOFPackage",
+            "label": "PROP-GOOGLE-29M-ASSEMBLY Draft IOF Package",
+            "metadata": {
+              "status": "DRAFT"
+            }
+          }
+        ],
+        "edges": [
+          {
+            "edgeId": "PROPOSAL-GOOGLE-29M-ASSEMBLY->RUNTIME-OPPORTUNITY-GOOGLE-29M:REFERENCES_RUNTIME_OBJECT",
+            "from": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+            "to": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "relationship": "REFERENCES_RUNTIME_OBJECT",
+            "metadata": {}
+          },
+          {
+            "edgeId": "PROPOSAL-GOOGLE-29M-ASSEMBLY->RUNTIME-ROUTE-GOOGLE-29M:REFERENCES_RUNTIME_OBJECT",
+            "from": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+            "to": "RUNTIME-ROUTE-GOOGLE-29M",
+            "relationship": "REFERENCES_RUNTIME_OBJECT",
+            "metadata": {}
+          },
+          {
+            "edgeId": "RUNTIME-OPPORTUNITY-GOOGLE-29M->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+            "from": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "relationship": "RELATIONSHIP_CONTEXT",
+            "metadata": {}
+          },
+          {
+            "edgeId": "RUNTIME-ROUTE-GOOGLE-29M->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+            "from": "RUNTIME-ROUTE-GOOGLE-29M",
+            "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "relationship": "RELATIONSHIP_CONTEXT",
+            "metadata": {}
+          },
+          {
+            "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001:ASSEMBLES_UNIT",
+            "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "to": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+            "relationship": "ASSEMBLES_UNIT",
+            "metadata": {}
+          },
+          {
+            "edgeId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001->EVIDENCE-GOOGLE-APPROVAL:SUPPORTED_BY_EVIDENCE",
+            "from": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:001",
+            "to": "EVIDENCE-GOOGLE-APPROVAL",
+            "relationship": "SUPPORTED_BY_EVIDENCE",
+            "metadata": {}
+          },
+          {
+            "edgeId": "EVIDENCE-GOOGLE-APPROVAL->GEOMETRY-GOOGLE-29M:EVIDENCE_LOCATES_GEOMETRY",
+            "from": "EVIDENCE-GOOGLE-APPROVAL",
+            "to": "GEOMETRY-GOOGLE-29M",
+            "relationship": "EVIDENCE_LOCATES_GEOMETRY",
+            "metadata": {}
+          },
+          {
+            "edgeId": "GEOMETRY-GOOGLE-29M->DRAFT-IOF-GOOGLE-29M-ASSEMBLY:PACKAGED_IN_DRAFT_IOF",
+            "from": "GEOMETRY-GOOGLE-29M",
+            "to": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "relationship": "PACKAGED_IN_DRAFT_IOF",
+            "metadata": {}
+          },
+          {
+            "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002:ASSEMBLES_UNIT",
+            "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "to": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
+            "relationship": "ASSEMBLES_UNIT",
+            "metadata": {}
+          },
+          {
+            "edgeId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002->EVIDENCE-GOOGLE-APPROVAL:SUPPORTED_BY_EVIDENCE",
+            "from": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY:unit:002",
+            "to": "EVIDENCE-GOOGLE-APPROVAL",
+            "relationship": "SUPPORTED_BY_EVIDENCE",
+            "metadata": {}
+          }
+        ],
+        "summary": {
+          "nodeCount": 9,
+          "edgeCount": 10,
+          "referenceOnly": true
+        }
+      },
+      "validation": {
+        "validationId": "VALIDATION-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "status": "WARNING",
+        "readinessScore": 91,
+        "checks": [
+          {
+            "key": "geometry",
+            "label": "Geometry",
+            "status": "PASS"
+          },
+          {
+            "key": "inventory",
+            "label": "Existing Inventory",
+            "status": "PASS"
+          },
+          {
+            "key": "relationships",
+            "label": "Relationships",
+            "status": "PASS"
+          },
+          {
+            "key": "evidence",
+            "label": "Evidence",
+            "status": "PASS"
+          },
+          {
+            "key": "units",
+            "label": "Proposed IOF Units",
+            "status": "PASS"
+          },
+          {
+            "key": "engineeringReview",
+            "label": "Engineering Review",
+            "status": "WARNING"
+          },
+          {
+            "key": "runtimeReferences",
+            "label": "Runtime References",
+            "status": "PASS"
+          }
+        ],
+        "validatedAt": "2026-06-30T14:07:48.171Z"
+      },
+      "packageDifferences": {
+        "differenceId": "DIFF-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+        "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+        "proposalVersion": 1,
+        "packageSourceProposalVersion": 1,
+        "comparedAt": "2026-06-30T14:07:48.166Z",
+        "addedObjects": [],
+        "removedObjects": [],
+        "modifiedUnits": [],
+        "geometryChanges": {
+          "added": [],
+          "removed": []
+        },
+        "relationshipChanges": {
+          "added": [],
+          "removed": []
+        },
+        "engineeringImpact": "NO_IMPACT"
+      },
       "engineeringReadiness": "READY_FOR_ENGINEERING_REVIEW",
       "commercialConfidence": 0,
+      "packageCompleteness": 91,
+      "certificationProgress": 0,
       "route": [],
       "stations": [],
+      "structures": [],
       "objects": [],
       "relationships": [],
       "evidence": [],
       "historyIds": [
-        "runtime-history-DRAFT-IOF-GOOGLE-29M-ASSEMBLY-runtime.iof_package.assembled_from_proposal-1782824228159-053210398a7bf"
+        "runtime-history-DRAFT-IOF-GOOGLE-29M-ASSEMBLY-runtime.iof_package.assembled_from_proposal-1782828468167-8e1459f3657cd"
       ],
-      "createdAt": "2026-06-30T12:57:08.158Z",
-      "updatedAt": "2026-06-30T12:57:08.159Z",
+      "createdAt": "2026-06-30T14:07:48.158Z",
+      "updatedAt": "2026-06-30T14:07:48.167Z",
       "noMarketplaceCreation": true,
       "noContractCreation": true,
       "noSofCreation": true,
@@ -1280,17 +4556,36 @@
         "engineeringReviewQueue": [
           {
             "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+            "packageName": "PROP-GOOGLE-29M-ASSEMBLY Draft IOF Package",
             "packageReadiness": {
               "status": "READY_FOR_ENGINEERING_REVIEW",
-              "missingInformation": [],
+              "missingInformation": [
+                "Engineering Review"
+              ],
+              "missingGeometry": false,
+              "missingInventory": false,
+              "missingRelationships": false,
+              "missingEvidence": false,
+              "missingUnits": false,
+              "missingEngineeringReview": true,
+              "missingValidation": false,
+              "dependencyCount": 1,
+              "readinessScore": 91,
+              "packageCompleteness": 91,
               "proposedUnitCount": 2,
               "certifiedUnitCount": 0,
               "certificationPercent": 0
             },
+            "packageCompleteness": 91,
+            "certificationProgress": 0,
+            "packageRevision": 1,
+            "workspaceId": "workspace-teralinx-ryan",
             "proposalSummary": {
               "title": "Google 29M Assembly Proposal",
               "proposalNumber": "PROP-GOOGLE-29M-ASSEMBLY",
               "version": 1,
+              "status": "CUSTOMER_APPROVED",
+              "executiveSummary": "Assembly uses references only.",
               "readiness": {
                 "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
                 "status": "READY",
@@ -1336,6 +4631,8 @@
               }
             },
             "commercialConfidence": 0,
+            "engineeringConfidence": 0,
+            "assemblyConfidence": 100,
             "engineeringReadiness": "READY_FOR_ENGINEERING_REVIEW",
             "assemblyReport": {
               "assembledFrom": "APPROVED_PROPOSAL_RUNTIME_OBJECT",
@@ -1351,8 +4648,8 @@
             "assignedEngineer": "Kyle",
             "assignedEngineerId": "teralinx-user-kyle",
             "priority": "NORMAL",
-            "submissionDate": "2026-06-30T12:57:08.158Z",
-            "submittedAt": "2026-06-30T12:57:08.158Z",
+            "submissionDate": "2026-06-30T14:07:48.157Z",
+            "submittedAt": "2026-06-30T14:07:48.157Z",
             "customer": "customer-google",
             "customerId": "customer-google",
             "opportunity": "GOOGLE-29M-OPPORTUNITY",
@@ -1361,7 +4658,7 @@
             "proposedUnitCount": 2,
             "certifiedUnitCount": 0,
             "status": "DRAFT",
-            "updatedAt": "2026-06-30T12:57:08.159Z"
+            "updatedAt": "2026-06-30T14:07:48.167Z"
           }
         ]
       }
@@ -1372,17 +4669,36 @@
       "engineeringReviewQueue": [
         {
           "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+          "packageName": "PROP-GOOGLE-29M-ASSEMBLY Draft IOF Package",
           "packageReadiness": {
             "status": "READY_FOR_ENGINEERING_REVIEW",
-            "missingInformation": [],
+            "missingInformation": [
+              "Engineering Review"
+            ],
+            "missingGeometry": false,
+            "missingInventory": false,
+            "missingRelationships": false,
+            "missingEvidence": false,
+            "missingUnits": false,
+            "missingEngineeringReview": true,
+            "missingValidation": false,
+            "dependencyCount": 1,
+            "readinessScore": 91,
+            "packageCompleteness": 91,
             "proposedUnitCount": 2,
             "certifiedUnitCount": 0,
             "certificationPercent": 0
           },
+          "packageCompleteness": 91,
+          "certificationProgress": 0,
+          "packageRevision": 1,
+          "workspaceId": "workspace-teralinx-ryan",
           "proposalSummary": {
             "title": "Google 29M Assembly Proposal",
             "proposalNumber": "PROP-GOOGLE-29M-ASSEMBLY",
             "version": 1,
+            "status": "CUSTOMER_APPROVED",
+            "executiveSummary": "Assembly uses references only.",
             "readiness": {
               "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
               "status": "READY",
@@ -1428,6 +4744,8 @@
             }
           },
           "commercialConfidence": 0,
+          "engineeringConfidence": 0,
+          "assemblyConfidence": 100,
           "engineeringReadiness": "READY_FOR_ENGINEERING_REVIEW",
           "assemblyReport": {
             "assembledFrom": "APPROVED_PROPOSAL_RUNTIME_OBJECT",
@@ -1443,8 +4761,8 @@
           "assignedEngineer": "Kyle",
           "assignedEngineerId": "teralinx-user-kyle",
           "priority": "NORMAL",
-          "submissionDate": "2026-06-30T12:57:08.158Z",
-          "submittedAt": "2026-06-30T12:57:08.158Z",
+          "submissionDate": "2026-06-30T14:07:48.157Z",
+          "submittedAt": "2026-06-30T14:07:48.157Z",
           "customer": "customer-google",
           "customerId": "customer-google",
           "opportunity": "GOOGLE-29M-OPPORTUNITY",
@@ -1453,7 +4771,7 @@
           "proposedUnitCount": 2,
           "certifiedUnitCount": 0,
           "status": "DRAFT",
-          "updatedAt": "2026-06-30T12:57:08.159Z"
+          "updatedAt": "2026-06-30T14:07:48.167Z"
         }
       ]
     },
@@ -1472,7 +4790,7 @@
       "scopeVersions": []
     }
   ],
-  "completedAt": "2026-06-30T12:57:08.176Z",
+  "completedAt": "2026-06-30T14:07:48.198Z",
   "summary": {
     "assertions": 11,
     "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",

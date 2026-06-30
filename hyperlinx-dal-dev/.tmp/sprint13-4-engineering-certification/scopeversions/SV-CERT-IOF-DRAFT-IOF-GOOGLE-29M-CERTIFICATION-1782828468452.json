@@ -1,5 +1,5 @@
 {
-  "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+  "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782828468452",
   "type": "EXECUTION_AUTHORITY",
   "status": "CERTIFIED",
   "certificationState": "CERTIFIED",
@@ -27,11 +27,11 @@
     "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
     "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002"
   ],
-  "createdAt": "2026-06-30T12:57:08.265Z",
-  "updatedAt": "2026-06-30T12:57:08.265Z",
+  "createdAt": "2026-06-30T14:07:48.452Z",
+  "updatedAt": "2026-06-30T14:07:48.452Z",
   "canonicalTruth": {
     "lifecycleState": "CERTIFIED",
-    "lifecycleTimestamp": "2026-06-30T12:57:08.265Z",
+    "lifecycleTimestamp": "2026-06-30T14:07:48.452Z",
     "constitutionalAuthority": "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE",
     "certifiedIofPackageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
     "executionAuthorizationCertificateId": "EXEC-AUTH-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
@@ -70,7 +70,10 @@
         "geometryReferences": [
           "GEOMETRY-GOOGLE-AUSTIN-29M"
         ],
-        "dependencyIds": [],
+        "dependencyIds": [
+          "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+          "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+        ],
         "status": "CERTIFIED"
       },
       {
@@ -82,7 +85,10 @@
         "geometryReferences": [
           "GEOMETRY-GOOGLE-AUSTIN-29M"
         ],
-        "dependencyIds": [],
+        "dependencyIds": [
+          "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+          "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+        ],
         "status": "CERTIFIED"
       }
     ],
@@ -98,16 +104,16 @@
   },
   "events": [
     {
-      "eventId": "event-1782824228265-da1060498a1cd",
+      "eventId": "event-1782828468453-a43df08ab8109",
       "type": "scopeversion.created_from_certified_iof_package",
-      "entityId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+      "entityId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782828468452",
       "entityType": "ScopeVersion",
       "payload": {
         "certifiedIofPackageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
         "executionAuthorizationCertificateId": "EXEC-AUTH-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
         "authority": "EXECUTION"
       },
-      "createdAt": "2026-06-30T12:57:08.265Z"
+      "createdAt": "2026-06-30T14:07:48.452Z"
     }
   ]
 }

@@ -1,19 +1,34 @@
 {
   "packageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+  "packageName": "PROP-GOOGLE-29M-CERTIFICATION Draft IOF Package",
   "packageType": "ENGINEERING",
   "status": "CERTIFIED",
   "workflowStatus": "CERTIFIED_IOF_PACKAGE",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "ownerId": "teralinx-user-ryan",
+  "owner": "Ryan",
+  "createdById": "teralinx-user-kyle",
+  "createdBy": "Kyle",
+  "visibility": "ORGANIZATION",
+  "authority": "ENGINEERING_REVIEW",
+  "lifecycleState": "IN_REVIEW",
   "proposalId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
   "customerId": "customer-google",
   "opportunityId": "GOOGLE-29M-OPPORTUNITY",
   "assignedEngineerId": "teralinx-user-kyle",
   "assignedEngineer": "Kyle",
   "priority": "HIGH",
-  "submittedAt": "2026-06-30T12:57:08.200Z",
+  "submittedAt": "2026-06-30T14:07:48.295Z",
+  "packageRevision": 1,
+  "assemblyConfidence": 100,
+  "engineeringConfidence": 0,
   "proposalSummary": {
     "title": "Google Austin 29M Certified Execution Proposal",
     "proposalNumber": "PROP-GOOGLE-29M-CERTIFICATION",
     "version": 1,
+    "status": "CUSTOMER_APPROVED",
+    "executiveSummary": "Approved proposal supplies runtime references only.",
     "readiness": {
       "proposalId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
       "status": "READY",
@@ -84,8 +99,33 @@
     "customerId": "customer-google",
     "name": "customer-google",
     "approvalState": "APPROVED",
-    "approvedAt": "2026-06-30T12:57:08.178Z"
+    "approvedAt": "2026-06-30T14:07:48.261Z"
   },
+  "commercialNotes": [
+    "Customer-approved proposal for engineering certification proof.",
+    "Approved proposal supplies runtime references only."
+  ],
+  "engineeringNotes": [
+    "Awaiting Engineering review."
+  ],
+  "customerRequests": [],
+  "engineeringRequirements": [
+    "geometryComplete",
+    "existingInventoryValidated",
+    "customerDesignReviewed",
+    "relationshipsValidated",
+    "dependenciesValidated",
+    "evidencePresent",
+    "commercialAssumptionsReviewed",
+    "unitQuantitiesVerified",
+    "engineeringStandardsMet",
+    "riskAccepted",
+    "packageComplete"
+  ],
+  "dependencies": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+  ],
   "assemblyReport": {
     "assembledFrom": "APPROVED_PROPOSAL_RUNTIME_OBJECT",
     "noScopeVersionCreated": true,
@@ -114,11 +154,22 @@
         "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
         "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
       ],
+      "dependencyIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+      ],
       "unitType": "RUNTIME_REFERENCE_UNIT",
       "name": "Proposed IOF Unit 1",
+      "quantity": 1,
+      "commercialQuantity": 1,
+      "historicalQuantity": 0,
+      "marketplaceAdvisory": "NOT_REQUESTED",
+      "engineeringQuantity": 1,
+      "confidence": 90,
+      "commercialConfidence": 90,
+      "engineeringDecision": "CERTIFIED",
       "status": "CERTIFIED",
       "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
-      "dependencyIds": [],
       "engineeringNote": "Certified DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
       "engineeringConfidence": 94,
       "engineeringRisk": "ACCEPTED",
@@ -126,11 +177,11 @@
         "Certified by Kyle."
       ],
       "immutable": true,
-      "createdAt": "2026-06-30T12:57:08.200Z",
-      "updatedAt": "2026-06-30T12:57:08.221Z",
+      "createdAt": "2026-06-30T14:07:48.294Z",
+      "updatedAt": "2026-06-30T14:07:48.354Z",
       "certifiedBy": "Kyle",
       "certifiedById": "teralinx-user-kyle",
-      "certifiedAt": "2026-06-30T12:57:08.221Z"
+      "certifiedAt": "2026-06-30T14:07:48.354Z"
     },
     {
       "unitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
@@ -149,11 +200,22 @@
         "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
         "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
       ],
+      "dependencyIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+      ],
       "unitType": "RUNTIME_REFERENCE_UNIT",
       "name": "Proposed IOF Unit 2",
+      "quantity": 1,
+      "commercialQuantity": 1,
+      "historicalQuantity": 0,
+      "marketplaceAdvisory": "NOT_REQUESTED",
+      "engineeringQuantity": 1,
+      "confidence": 90,
+      "commercialConfidence": 90,
+      "engineeringDecision": "CERTIFIED",
       "status": "CERTIFIED",
       "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
-      "dependencyIds": [],
       "engineeringNote": "Certified DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
       "engineeringConfidence": 94,
       "engineeringRisk": "ACCEPTED",
@@ -161,11 +223,11 @@
         "Certified by Kyle."
       ],
       "immutable": true,
-      "createdAt": "2026-06-30T12:57:08.200Z",
-      "updatedAt": "2026-06-30T12:57:08.231Z",
+      "createdAt": "2026-06-30T14:07:48.294Z",
+      "updatedAt": "2026-06-30T14:07:48.381Z",
       "certifiedBy": "Kyle",
       "certifiedById": "teralinx-user-kyle",
-      "certifiedAt": "2026-06-30T12:57:08.231Z"
+      "certifiedAt": "2026-06-30T14:07:48.381Z"
     }
   ],
   "runtimeObjectIds": [
@@ -190,19 +252,902 @@
   "geometryReferences": [
     "GEOMETRY-GOOGLE-AUSTIN-29M"
   ],
+  "proposalDocumentReferences": [
+    "DOC-GOOGLE-COMMERCIAL-PREVIEW"
+  ],
   "sourceProposalVersion": 1,
   "draftPackageId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
   "packageReadiness": {
     "status": "READY_FOR_PACKAGE_CERTIFICATION",
     "missingInformation": [],
+    "missingGeometry": false,
+    "missingInventory": false,
+    "missingRelationships": false,
+    "missingEvidence": false,
+    "missingUnits": false,
+    "missingEngineeringReview": false,
+    "missingValidation": false,
+    "dependencyCount": 2,
+    "readinessScore": 100,
+    "packageCompleteness": 100,
     "proposedUnitCount": 2,
     "certifiedUnitCount": 2,
     "certificationPercent": 100
   },
+  "manifest": {
+    "manifestId": "MANIFEST-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+    "packageId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+    "proposalId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
+    "organizationId": "org-teralinx",
+    "workspaceId": "workspace-teralinx-ryan",
+    "generatedAt": "2026-06-30T14:07:48.417Z",
+    "modelVersion": "IOF_PACKAGE_MANIFEST_V1",
+    "duplicationPolicy": "REFERENCE_ONLY_RUNTIME_OBJECTS",
+    "objects": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:objects:RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+        "entryType": "objects",
+        "objectId": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+        "objectType": "RUNTIME_OBJECT",
+        "label": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "PROPOSAL_RUNTIME_OBJECTS",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PROPOSAL_RUNTIME_OBJECTS",
+          "objectType": "RUNTIME_OBJECT"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:objects:RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+        "entryType": "objects",
+        "objectId": "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+        "objectType": "RUNTIME_OBJECT",
+        "label": "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+        "runtimeObjectIds": [
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "PROPOSAL_RUNTIME_OBJECTS",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PROPOSAL_RUNTIME_OBJECTS",
+          "objectType": "RUNTIME_OBJECT"
+        }
+      }
+    ],
+    "relationships": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:relationships:DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "entryType": "relationships",
+        "objectId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "objectType": "RUNTIME_RELATIONSHIP",
+        "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "RELATIONSHIP_GRAPH",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "RELATIONSHIP_GRAPH",
+          "objectType": "RUNTIME_RELATIONSHIP"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:relationships:REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "entryType": "relationships",
+        "objectId": "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "objectType": "RUNTIME_RELATIONSHIP",
+        "label": "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "RELATIONSHIP_GRAPH",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "RELATIONSHIP_GRAPH",
+          "objectType": "RUNTIME_RELATIONSHIP"
+        }
+      }
+    ],
+    "inventory": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:inventory:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "entryType": "inventory",
+        "objectId": "RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "objectType": "CUSTOMER_INVENTORY_REFERENCE",
+        "label": "RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "CUSTOMER_INVENTORY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "CUSTOMER_INVENTORY",
+          "objectType": "CUSTOMER_INVENTORY_REFERENCE"
+        }
+      }
+    ],
+    "geometry": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:geometry:GEOMETRY-GOOGLE-AUSTIN-29M",
+        "entryType": "geometry",
+        "objectId": "GEOMETRY-GOOGLE-AUSTIN-29M",
+        "objectType": "GEOMETRY_REFERENCE",
+        "label": "GEOMETRY-GOOGLE-AUSTIN-29M",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "GEOMETRY_REFERENCE",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "GEOMETRY_REFERENCE",
+          "objectType": "GEOMETRY_REFERENCE"
+        }
+      }
+    ],
+    "stations": [],
+    "structures": [],
+    "dependencies": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:dependencies:DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "entryType": "dependencies",
+        "objectId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "objectType": "DEPENDENCY",
+        "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "PACKAGE_DEPENDENCY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PACKAGE_DEPENDENCY",
+          "objectType": "DEPENDENCY",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:dependencies:REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "entryType": "dependencies",
+        "objectId": "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "objectType": "DEPENDENCY",
+        "label": "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "PACKAGE_DEPENDENCY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PACKAGE_DEPENDENCY",
+          "objectType": "DEPENDENCY",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      }
+    ],
+    "evidence": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:evidence:EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "entryType": "evidence",
+        "objectId": "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "objectType": "EVIDENCE",
+        "label": "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "EVIDENCE_REGISTRY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "EVIDENCE_REGISTRY",
+          "objectType": "EVIDENCE"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:evidence:EVIDENCE-GOOGLE-CUSTOMER-APPROVAL",
+        "entryType": "evidence",
+        "objectId": "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL",
+        "objectType": "EVIDENCE",
+        "label": "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "EVIDENCE_REGISTRY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "EVIDENCE_REGISTRY",
+          "objectType": "EVIDENCE"
+        }
+      }
+    ],
+    "documents": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:documents:DOC-GOOGLE-COMMERCIAL-PREVIEW",
+        "entryType": "documents",
+        "objectId": "DOC-GOOGLE-COMMERCIAL-PREVIEW",
+        "objectType": "DOCUMENT",
+        "label": "DOC-GOOGLE-COMMERCIAL-PREVIEW",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "PROPOSAL_DOCUMENTS",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PROPOSAL_DOCUMENTS",
+          "objectType": "DOCUMENT"
+        }
+      }
+    ],
+    "commercialAssumptions": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:commercialAssumptions:ASSUMPTION-GOOGLE-AUSTIN-CIVIL-MIX",
+        "entryType": "commercialAssumptions",
+        "objectId": "ASSUMPTION-GOOGLE-AUSTIN-CIVIL-MIX",
+        "objectType": "COMMERCIAL_ASSUMPTION",
+        "label": "ASSUMPTION-GOOGLE-AUSTIN-CIVIL-MIX",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "COMMERCIAL_SUMMARY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "COMMERCIAL_SUMMARY",
+          "objectType": "COMMERCIAL_ASSUMPTION"
+        }
+      }
+    ],
+    "customerRequests": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:customerRequests:CUSTOMER-DESIGN-GOOGLE-29M",
+        "entryType": "customerRequests",
+        "objectId": "CUSTOMER-DESIGN-GOOGLE-29M",
+        "objectType": "CUSTOMER_REQUEST",
+        "label": "CUSTOMER-DESIGN-GOOGLE-29M",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "CUSTOMER_DESIGN_REQUEST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "CUSTOMER_DESIGN_REQUEST",
+          "objectType": "CUSTOMER_REQUEST"
+        }
+      }
+    ],
+    "engineeringRequirements": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:engineeringRequirements:geometryComplete",
+        "entryType": "engineeringRequirements",
+        "objectId": "geometryComplete",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "geometryComplete",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:engineeringRequirements:existingInventoryValidated",
+        "entryType": "engineeringRequirements",
+        "objectId": "existingInventoryValidated",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "existingInventoryValidated",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:engineeringRequirements:customerDesignReviewed",
+        "entryType": "engineeringRequirements",
+        "objectId": "customerDesignReviewed",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "customerDesignReviewed",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:engineeringRequirements:relationshipsValidated",
+        "entryType": "engineeringRequirements",
+        "objectId": "relationshipsValidated",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "relationshipsValidated",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:engineeringRequirements:dependenciesValidated",
+        "entryType": "engineeringRequirements",
+        "objectId": "dependenciesValidated",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "dependenciesValidated",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:engineeringRequirements:evidencePresent",
+        "entryType": "engineeringRequirements",
+        "objectId": "evidencePresent",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "evidencePresent",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:engineeringRequirements:commercialAssumptionsReviewed",
+        "entryType": "engineeringRequirements",
+        "objectId": "commercialAssumptionsReviewed",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "commercialAssumptionsReviewed",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:engineeringRequirements:unitQuantitiesVerified",
+        "entryType": "engineeringRequirements",
+        "objectId": "unitQuantitiesVerified",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "unitQuantitiesVerified",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:engineeringRequirements:engineeringStandardsMet",
+        "entryType": "engineeringRequirements",
+        "objectId": "engineeringStandardsMet",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "engineeringStandardsMet",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:engineeringRequirements:riskAccepted",
+        "entryType": "engineeringRequirements",
+        "objectId": "riskAccepted",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "riskAccepted",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:engineeringRequirements:packageComplete",
+        "entryType": "engineeringRequirements",
+        "objectId": "packageComplete",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "packageComplete",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+          "PROPOSAL-GOOGLE-29M-CERTIFICATION"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ]
+        }
+      }
+    ],
+    "counts": {
+      "objects": 2,
+      "relationships": 2,
+      "inventory": 1,
+      "geometry": 1,
+      "stations": 0,
+      "structures": 0,
+      "dependencies": 2,
+      "evidence": 2,
+      "documents": 1,
+      "commercialAssumptions": 1,
+      "customerRequests": 1,
+      "engineeringRequirements": 11
+    },
+    "summary": {
+      "runtimeObjectCount": 2,
+      "relationshipCount": 2,
+      "inventoryCount": 1,
+      "geometryCount": 1,
+      "evidenceCount": 2,
+      "unitCount": 2,
+      "unitIds": [
+        "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+        "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002"
+      ],
+      "noDuplicateObjects": true
+    }
+  },
+  "dependencyGraph": {
+    "graphId": "GRAPH-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+    "packageId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+    "generatedAt": "2026-06-30T14:07:48.418Z",
+    "path": "Proposal -> Runtime Objects -> Relationships -> Units -> Evidence -> Geometry -> Draft IOF Package",
+    "nodes": [
+      {
+        "id": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
+        "type": "Proposal",
+        "label": "PROP-GOOGLE-29M-CERTIFICATION",
+        "metadata": {
+          "runtimeObject": true
+        }
+      },
+      {
+        "id": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+        "type": "RuntimeObject",
+        "label": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+        "metadata": {
+          "runtimeObject": true
+        }
+      },
+      {
+        "id": "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+        "type": "RuntimeObject",
+        "label": "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+        "metadata": {
+          "runtimeObject": true
+        }
+      },
+      {
+        "id": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "type": "Relationship",
+        "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "metadata": {}
+      },
+      {
+        "id": "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "type": "Relationship",
+        "label": "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "metadata": {}
+      },
+      {
+        "id": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+        "type": "ProposedIOFUnit",
+        "label": "Proposed IOF Unit 1",
+        "metadata": {
+          "status": "CERTIFIED"
+        }
+      },
+      {
+        "id": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
+        "type": "ProposedIOFUnit",
+        "label": "Proposed IOF Unit 2",
+        "metadata": {
+          "status": "CERTIFIED"
+        }
+      },
+      {
+        "id": "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "type": "Evidence",
+        "label": "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "metadata": {}
+      },
+      {
+        "id": "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL",
+        "type": "Evidence",
+        "label": "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL",
+        "metadata": {}
+      },
+      {
+        "id": "GEOMETRY-GOOGLE-AUSTIN-29M",
+        "type": "Geometry",
+        "label": "GEOMETRY-GOOGLE-AUSTIN-29M",
+        "metadata": {}
+      },
+      {
+        "id": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+        "type": "DraftIOFPackage",
+        "label": "PROP-GOOGLE-29M-CERTIFICATION Draft IOF Package",
+        "metadata": {
+          "status": "DRAFT"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "PROPOSAL-GOOGLE-29M-CERTIFICATION->RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY:REFERENCES_RUNTIME_OBJECT",
+        "from": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
+        "to": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+        "relationship": "REFERENCES_RUNTIME_OBJECT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "PROPOSAL-GOOGLE-29M-CERTIFICATION->RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001:REFERENCES_RUNTIME_OBJECT",
+        "from": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
+        "to": "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+        "relationship": "REFERENCES_RUNTIME_OBJECT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+        "from": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+        "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "relationship": "RELATIONSHIP_CONTEXT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+        "from": "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+        "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "relationship": "RELATIONSHIP_CONTEXT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY->REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN:RELATIONSHIP_CONTEXT",
+        "from": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+        "to": "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "relationship": "RELATIONSHIP_CONTEXT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001->REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN:RELATIONSHIP_CONTEXT",
+        "from": "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+        "to": "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "relationship": "RELATIONSHIP_CONTEXT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001:ASSEMBLES_UNIT",
+        "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "to": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+        "relationship": "ASSEMBLES_UNIT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN->DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001:ASSEMBLES_UNIT",
+        "from": "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "to": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+        "relationship": "ASSEMBLES_UNIT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001->EVIDENCE-GOOGLE-COMMERCIAL-DRAFT:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+        "to": "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001->EVIDENCE-GOOGLE-CUSTOMER-APPROVAL:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+        "to": "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      },
+      {
+        "edgeId": "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT->GEOMETRY-GOOGLE-AUSTIN-29M:EVIDENCE_LOCATES_GEOMETRY",
+        "from": "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "to": "GEOMETRY-GOOGLE-AUSTIN-29M",
+        "relationship": "EVIDENCE_LOCATES_GEOMETRY",
+        "metadata": {}
+      },
+      {
+        "edgeId": "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL->GEOMETRY-GOOGLE-AUSTIN-29M:EVIDENCE_LOCATES_GEOMETRY",
+        "from": "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL",
+        "to": "GEOMETRY-GOOGLE-AUSTIN-29M",
+        "relationship": "EVIDENCE_LOCATES_GEOMETRY",
+        "metadata": {}
+      },
+      {
+        "edgeId": "GEOMETRY-GOOGLE-AUSTIN-29M->DRAFT-IOF-GOOGLE-29M-CERTIFICATION:PACKAGED_IN_DRAFT_IOF",
+        "from": "GEOMETRY-GOOGLE-AUSTIN-29M",
+        "to": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+        "relationship": "PACKAGED_IN_DRAFT_IOF",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002:ASSEMBLES_UNIT",
+        "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "to": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
+        "relationship": "ASSEMBLES_UNIT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN->DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002:ASSEMBLES_UNIT",
+        "from": "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN",
+        "to": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
+        "relationship": "ASSEMBLES_UNIT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002->EVIDENCE-GOOGLE-COMMERCIAL-DRAFT:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
+        "to": "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002->EVIDENCE-GOOGLE-CUSTOMER-APPROVAL:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
+        "to": "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      }
+    ],
+    "summary": {
+      "nodeCount": 11,
+      "edgeCount": 17,
+      "referenceOnly": true
+    }
+  },
+  "validation": {
+    "validationId": "VALIDATION-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+    "packageId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+    "status": "PASS",
+    "readinessScore": 100,
+    "checks": [
+      {
+        "key": "geometry",
+        "label": "Geometry",
+        "status": "PASS"
+      },
+      {
+        "key": "inventory",
+        "label": "Existing Inventory",
+        "status": "PASS"
+      },
+      {
+        "key": "relationships",
+        "label": "Relationships",
+        "status": "PASS"
+      },
+      {
+        "key": "evidence",
+        "label": "Evidence",
+        "status": "PASS"
+      },
+      {
+        "key": "units",
+        "label": "Proposed IOF Units",
+        "status": "PASS"
+      },
+      {
+        "key": "engineeringReview",
+        "label": "Engineering Review",
+        "status": "PASS"
+      },
+      {
+        "key": "runtimeReferences",
+        "label": "Runtime References",
+        "status": "PASS"
+      }
+    ],
+    "validatedAt": "2026-06-30T14:07:48.417Z"
+  },
+  "packageDifferences": {
+    "differenceId": "DIFF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+    "packageId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+    "proposalId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
+    "proposalVersion": 1,
+    "packageSourceProposalVersion": 1,
+    "comparedAt": "2026-06-30T14:07:48.306Z",
+    "addedObjects": [],
+    "removedObjects": [],
+    "modifiedUnits": [],
+    "geometryChanges": {
+      "added": [],
+      "removed": []
+    },
+    "relationshipChanges": {
+      "added": [],
+      "removed": []
+    },
+    "engineeringImpact": "NO_IMPACT"
+  },
   "engineeringReadiness": "READY_FOR_ENGINEERING_REVIEW",
   "commercialConfidence": 0,
+  "packageCompleteness": 91,
+  "certificationProgress": 0,
   "route": [],
   "stations": [],
+  "structures": [],
   "objects": [
     {
       "unitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
@@ -221,11 +1166,22 @@
         "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
         "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
       ],
+      "dependencyIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+      ],
       "unitType": "RUNTIME_REFERENCE_UNIT",
       "name": "Proposed IOF Unit 1",
+      "quantity": 1,
+      "commercialQuantity": 1,
+      "historicalQuantity": 0,
+      "marketplaceAdvisory": "NOT_REQUESTED",
+      "engineeringQuantity": 1,
+      "confidence": 90,
+      "commercialConfidence": 90,
+      "engineeringDecision": "CERTIFIED",
       "status": "CERTIFIED",
       "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
-      "dependencyIds": [],
       "engineeringNote": "Certified DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
       "engineeringConfidence": 94,
       "engineeringRisk": "ACCEPTED",
@@ -233,11 +1189,11 @@
         "Certified by Kyle."
       ],
       "immutable": true,
-      "createdAt": "2026-06-30T12:57:08.200Z",
-      "updatedAt": "2026-06-30T12:57:08.221Z",
+      "createdAt": "2026-06-30T14:07:48.294Z",
+      "updatedAt": "2026-06-30T14:07:48.354Z",
       "certifiedBy": "Kyle",
       "certifiedById": "teralinx-user-kyle",
-      "certifiedAt": "2026-06-30T12:57:08.221Z"
+      "certifiedAt": "2026-06-30T14:07:48.354Z"
     },
     {
       "unitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
@@ -256,11 +1212,22 @@
         "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
         "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
       ],
+      "dependencyIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+      ],
       "unitType": "RUNTIME_REFERENCE_UNIT",
       "name": "Proposed IOF Unit 2",
+      "quantity": 1,
+      "commercialQuantity": 1,
+      "historicalQuantity": 0,
+      "marketplaceAdvisory": "NOT_REQUESTED",
+      "engineeringQuantity": 1,
+      "confidence": 90,
+      "commercialConfidence": 90,
+      "engineeringDecision": "CERTIFIED",
       "status": "CERTIFIED",
       "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
-      "dependencyIds": [],
       "engineeringNote": "Certified DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
       "engineeringConfidence": 94,
       "engineeringRisk": "ACCEPTED",
@@ -268,22 +1235,22 @@
         "Certified by Kyle."
       ],
       "immutable": true,
-      "createdAt": "2026-06-30T12:57:08.200Z",
-      "updatedAt": "2026-06-30T12:57:08.231Z",
+      "createdAt": "2026-06-30T14:07:48.294Z",
+      "updatedAt": "2026-06-30T14:07:48.381Z",
       "certifiedBy": "Kyle",
       "certifiedById": "teralinx-user-kyle",
-      "certifiedAt": "2026-06-30T12:57:08.231Z"
+      "certifiedAt": "2026-06-30T14:07:48.381Z"
     }
   ],
   "relationships": [],
   "evidence": [],
   "historyIds": [
-    "runtime-history-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-runtime.iof_package.assembled_from_proposal-1782824228202-aa66c3cd876c7",
-    "runtime-history-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-runtime.iof_unit.certify-1782824228222-845ecfbfe9d7f",
-    "runtime-history-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-runtime.iof_unit.certify-1782824228231-cdc69570a9548"
+    "runtime-history-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-runtime.iof_package.assembled_from_proposal-1782828468307-35dc4a95c8fc2",
+    "runtime-history-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-runtime.iof_unit.certify-1782828468357-c5d2042c6bca4",
+    "runtime-history-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-runtime.iof_unit.certify-1782828468383-599ebcf4eed69"
   ],
-  "createdAt": "2026-06-30T12:57:08.247Z",
-  "updatedAt": "2026-06-30T12:57:08.270Z",
+  "createdAt": "2026-06-30T14:07:48.418Z",
+  "updatedAt": "2026-06-30T14:07:48.459Z",
   "noMarketplaceCreation": true,
   "noContractCreation": true,
   "noSofCreation": true,
@@ -291,7 +1258,7 @@
   "certifiedPackageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
   "sourcePackageId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
   "sourceDraftPackageId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
-  "certifiedAt": "2026-06-30T12:57:08.247Z",
+  "certifiedAt": "2026-06-30T14:07:48.418Z",
   "certifiedBy": "Kyle",
   "certifiedById": "teralinx-user-kyle",
   "engineeringChecklist": {
@@ -308,7 +1275,7 @@
     "packageComplete": true,
     "certificationConfidence": 95,
     "engineeringNotes": "Engineering certification complete; execution stops at ScopeVersion.",
-    "completedAt": "2026-06-30T12:57:08.247Z"
+    "completedAt": "2026-06-30T14:07:48.418Z"
   },
   "certificationConfidence": 95,
   "certifiedIofUnits": [
@@ -329,11 +1296,22 @@
         "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
         "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
       ],
+      "dependencyIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+      ],
       "unitType": "RUNTIME_REFERENCE_UNIT",
       "name": "Proposed IOF Unit 1",
+      "quantity": 1,
+      "commercialQuantity": 1,
+      "historicalQuantity": 0,
+      "marketplaceAdvisory": "NOT_REQUESTED",
+      "engineeringQuantity": 1,
+      "confidence": 90,
+      "commercialConfidence": 90,
+      "engineeringDecision": "CERTIFIED",
       "status": "CERTIFIED",
       "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
-      "dependencyIds": [],
       "engineeringNote": "Certified DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
       "engineeringConfidence": 94,
       "engineeringRisk": "ACCEPTED",
@@ -341,11 +1319,11 @@
         "Certified by Kyle."
       ],
       "immutable": true,
-      "createdAt": "2026-06-30T12:57:08.200Z",
-      "updatedAt": "2026-06-30T12:57:08.221Z",
+      "createdAt": "2026-06-30T14:07:48.294Z",
+      "updatedAt": "2026-06-30T14:07:48.354Z",
       "certifiedBy": "Kyle",
       "certifiedById": "teralinx-user-kyle",
-      "certifiedAt": "2026-06-30T12:57:08.221Z"
+      "certifiedAt": "2026-06-30T14:07:48.354Z"
     },
     {
       "unitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
@@ -364,11 +1342,22 @@
         "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
         "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
       ],
+      "dependencyIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+      ],
       "unitType": "RUNTIME_REFERENCE_UNIT",
       "name": "Proposed IOF Unit 2",
+      "quantity": 1,
+      "commercialQuantity": 1,
+      "historicalQuantity": 0,
+      "marketplaceAdvisory": "NOT_REQUESTED",
+      "engineeringQuantity": 1,
+      "confidence": 90,
+      "commercialConfidence": 90,
+      "engineeringDecision": "CERTIFIED",
       "status": "CERTIFIED",
       "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
-      "dependencyIds": [],
       "engineeringNote": "Certified DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
       "engineeringConfidence": 94,
       "engineeringRisk": "ACCEPTED",
@@ -376,15 +1365,15 @@
         "Certified by Kyle."
       ],
       "immutable": true,
-      "createdAt": "2026-06-30T12:57:08.200Z",
-      "updatedAt": "2026-06-30T12:57:08.231Z",
+      "createdAt": "2026-06-30T14:07:48.294Z",
+      "updatedAt": "2026-06-30T14:07:48.381Z",
       "certifiedBy": "Kyle",
       "certifiedById": "teralinx-user-kyle",
-      "certifiedAt": "2026-06-30T12:57:08.231Z"
+      "certifiedAt": "2026-06-30T14:07:48.381Z"
     }
   ],
   "immutable": true,
   "executionAuthorized": true,
   "executionAuthorizationCertificateId": "EXEC-AUTH-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
-  "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265"
+  "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782828468452"
 }

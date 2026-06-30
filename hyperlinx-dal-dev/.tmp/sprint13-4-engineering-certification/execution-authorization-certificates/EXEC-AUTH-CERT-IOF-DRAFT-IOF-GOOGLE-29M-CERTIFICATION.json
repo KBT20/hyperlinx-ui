@@ -3,10 +3,10 @@
   "proposalId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
   "draftIofPackageId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
   "certifiedIofPackageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
-  "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+  "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782828468452",
   "engineeringApproverId": "teralinx-user-kyle",
   "engineeringApprover": "Kyle",
-  "certificationTimestamp": "2026-06-30T12:57:08.247Z",
+  "certificationTimestamp": "2026-06-30T14:07:48.419Z",
   "engineeringChecklist": {
     "geometryComplete": true,
     "existingInventoryValidated": true,
@@ -21,21 +21,21 @@
     "packageComplete": true,
     "certificationConfidence": 95,
     "engineeringNotes": "Engineering certification complete; execution stops at ScopeVersion.",
-    "completedAt": "2026-06-30T12:57:08.247Z"
+    "completedAt": "2026-06-30T14:07:48.418Z"
   },
   "authorityTransfer": {
     "from": "ENGINEERING",
     "to": "EXECUTION",
     "status": "TRANSFERRED",
-    "transferredAt": "2026-06-30T12:57:08.270Z"
+    "transferredAt": "2026-06-30T14:07:48.459Z"
   },
   "runtimeObjectCount": 2,
   "relationshipCount": 2,
   "evidenceCount": 2,
   "certificationConfidence": 95,
-  "assemblyFingerprint": "639c5ef58a8609fb01f3c057f20eb3a8308ab922cf008391351d9e941187e258",
-  "createdAt": "2026-06-30T12:57:08.247Z",
-  "updatedAt": "2026-06-30T12:57:08.270Z",
+  "assemblyFingerprint": "a5f04e2b0d734cfd0db10a8f31c1269fcb3fedbe46c322bf291a4061cf89b4f7",
+  "createdAt": "2026-06-30T14:07:48.419Z",
+  "updatedAt": "2026-06-30T14:07:48.459Z",
   "status": "EXECUTION_AUTHORIZED",
   "immutable": true
 }

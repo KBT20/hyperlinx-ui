@@ -63,7 +63,7 @@
   "proposalDocumentReferences": [
     "DOC-GOOGLE-COMMERCIAL-PREVIEW"
   ],
-  "approvedAt": "2026-06-30T12:57:08.178Z",
+  "approvedAt": "2026-06-30T14:07:48.261Z",
   "version": 1,
   "noScopeVersionCreation": true,
   "noInventoryMutation": true,
@@ -129,23 +129,23 @@
   "approvals": [],
   "history": [
     {
-      "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-CERTIFICATION-runtime.proposal.saved-1782824228185-68813cd4e854d",
+      "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-CERTIFICATION-runtime.proposal.saved-1782828468271-f9808f47ff554",
       "eventType": "runtime.proposal.saved",
       "actorId": "teralinx-user-ryan",
       "actor": "Ryan",
-      "timestamp": "2026-06-30T12:57:08.185Z",
+      "timestamp": "2026-06-30T14:07:48.271Z",
       "details": "Proposal saved with owner, workspace, visibility, authority, lifecycle, evidence, and relationship metadata.",
       "metadata": {}
     }
   ],
   "historyIds": [
-    "runtime-history-PROPOSAL-GOOGLE-29M-CERTIFICATION-runtime.proposal.saved-1782824228185-68813cd4e854d"
+    "runtime-history-PROPOSAL-GOOGLE-29M-CERTIFICATION-runtime.proposal.saved-1782828468271-f9808f47ff554"
   ],
   "notifications": [],
-  "createdDate": "2026-06-30T12:57:08.183Z",
-  "modifiedDate": "2026-06-30T12:57:08.185Z",
-  "createdAt": "2026-06-30T12:57:08.183Z",
-  "updatedAt": "2026-06-30T12:57:08.185Z",
+  "createdDate": "2026-06-30T14:07:48.268Z",
+  "modifiedDate": "2026-06-30T14:07:48.271Z",
+  "createdAt": "2026-06-30T14:07:48.268Z",
+  "updatedAt": "2026-06-30T14:07:48.271Z",
   "versions": [
     {
       "versionId": "PROPOSAL-GOOGLE-29M-CERTIFICATION-v1",
@@ -157,8 +157,8 @@
       "changedDealPointIds": [],
       "changedPricingFields": [],
       "changedGeometryReferences": [],
-      "createdAt": "2026-06-30T12:57:08.184Z",
-      "timestamp": "2026-06-30T12:57:08.184Z"
+      "createdAt": "2026-06-30T14:07:48.269Z",
+      "timestamp": "2026-06-30T14:07:48.269Z"
     }
   ],
   "readiness": {
@@ -206,6 +206,6 @@
   },
   "nextLifecycleAction": "CREATE_DRAFT_IOF_PACKAGE",
   "activityHistory": [
-    "runtime-history-PROPOSAL-GOOGLE-29M-CERTIFICATION-runtime.proposal.saved-1782824228185-68813cd4e854d"
+    "runtime-history-PROPOSAL-GOOGLE-29M-CERTIFICATION-runtime.proposal.saved-1782828468271-f9808f47ff554"
   ]
 }

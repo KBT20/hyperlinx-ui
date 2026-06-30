@@ -89,6 +89,14 @@ function normalizeUnit(unit = {}, packageId, index = 0) {
     runtimeEvidenceIds: unique(asArray(unit.runtimeEvidenceIds ?? unit.evidenceIds)),
     geometryReferences: unique(asArray(unit.geometryReferences ?? unit.geometryIds)),
     dependencyIds: unique(asArray(unit.dependencyIds ?? unit.dependencies)),
+    quantity: numeric(unit.quantity, numeric(unit.commercialQuantity, 1)),
+    commercialQuantity: numeric(unit.commercialQuantity, numeric(unit.quantity, 1)),
+    historicalQuantity: numeric(unit.historicalQuantity, 0),
+    marketplaceAdvisory: String(unit.marketplaceAdvisory ?? "NOT_REQUESTED"),
+    engineeringQuantity: numeric(unit.engineeringQuantity, unit.status === "CERTIFIED" ? numeric(unit.quantity, 1) : 0),
+    confidence: numeric(unit.confidence, numeric(unit.commercialConfidence, numeric(unit.engineeringConfidence, 0))),
+    commercialConfidence: numeric(unit.commercialConfidence, numeric(unit.confidence, 0)),
+    engineeringDecision: String(unit.engineeringDecision ?? (unit.status === "CERTIFIED" ? "CERTIFIED" : "PENDING_ENGINEERING_REVIEW")),
     engineeringNote: unit.engineeringNote ?? "",
     engineeringConfidence: numeric(unit.engineeringConfidence, 0),
     engineeringRisk: unit.engineeringRisk ?? "UNREVIEWED",
@@ -114,15 +122,35 @@ function normalizeDraftPackage(raw = {}) {
   const packageId = String(raw.packageId ?? raw.draftPackageId ?? createId("draft-iof-package"));
   const proposedIofUnits = proposedUnitsForPackage({ ...raw, packageId });
   const status = String(raw.status ?? "DRAFT");
-  const packageReadiness = packageReadinessFor({ ...raw, packageId, status, proposedIofUnits });
+  const packageInput = { ...raw, packageId, status, proposedIofUnits };
+  const packageReadiness = packageReadinessFor(packageInput);
+  const validation = buildPackageValidation({ ...packageInput, packageReadiness });
+  const manifest = buildPackageManifest({ ...packageInput, packageReadiness, validation });
+  const dependencyGraph = buildPackageDependencyGraph({ ...packageInput, packageReadiness, validation, manifest });
+  const packageDifferences = raw.packageDifferences ?? buildPackageDifferences(packageInput);
+  const averageEngineeringConfidence = proposedIofUnits.length
+    ? Math.round(proposedIofUnits.reduce((sum, unit) => sum + numeric(unit.engineeringConfidence), 0) / proposedIofUnits.length)
+    : 0;
   return {
     ...raw,
     packageId,
     draftPackageId: String(raw.draftPackageId ?? packageId),
+    packageName: String(raw.packageName ?? raw.name ?? `Draft IOF Package ${raw.proposalSummary?.proposalNumber ?? raw.proposalId ?? packageId}`),
     packageType: raw.packageType ?? "ENGINEERING",
     status,
     workflowStatus: raw.workflowStatus ?? (status === "RETURNED_TO_COMMERCIAL" ? "RETURNED_TO_COMMERCIAL" : "ENGINEERING_REVIEW"),
+    organizationId: String(raw.organizationId ?? raw.organization ?? ""),
+    workspaceId: String(raw.workspaceId ?? raw.workspace ?? ""),
+    ownerId: String(raw.ownerId ?? raw.createdById ?? ""),
+    owner: String(raw.owner ?? raw.createdBy ?? ""),
+    visibility: String(raw.visibility ?? "ORGANIZATION"),
+    authority: String(raw.authority ?? "ENGINEERING_REVIEW"),
+    lifecycleState: String(raw.lifecycleState ?? (status === "CERTIFIED" ? "CERTIFIED" : "IN_REVIEW")),
     packageReadiness,
+    manifest,
+    dependencyGraph,
+    validation,
+    packageDifferences,
     proposalId: String(raw.proposalId ?? raw.sourceProposalId ?? ""),
     customerId: String(raw.customerId ?? raw.accountId ?? ""),
     opportunityId: String(raw.opportunityId ?? ""),
@@ -135,13 +163,25 @@ function normalizeDraftPackage(raw = {}) {
     customerSummary: raw.customerSummary ?? {},
     engineeringReadiness: raw.engineeringReadiness ?? packageReadiness.status,
     commercialConfidence: numeric(raw.commercialConfidence, numeric(raw.confidence, 0)),
+    engineeringConfidence: numeric(raw.engineeringConfidence, averageEngineeringConfidence),
+    assemblyConfidence: numeric(raw.assemblyConfidence, numeric(packageReadiness.readinessScore, 0)),
+    packageCompleteness: numeric(raw.packageCompleteness, numeric(packageReadiness.packageCompleteness, packageReadiness.readinessScore)),
+    certificationProgress: numeric(raw.certificationProgress, packageReadiness.certificationPercent),
+    packageRevision: numeric(raw.packageRevision, numeric(raw.revision, 1)),
     assemblyReport: raw.assemblyReport ?? {},
     proposedIofUnits,
     route: asArray(raw.route),
     stations: asArray(raw.stations),
+    structures: asArray(raw.structures),
+    dependencies: asArray(raw.dependencies),
     objects: asArray(raw.objects),
     relationships: asArray(raw.relationships),
     evidence: asArray(raw.evidence),
+    proposalDocumentReferences: unique(asArray(raw.proposalDocumentReferences)),
+    customerRequests: asArray(raw.customerRequests),
+    commercialNotes: asArray(raw.commercialNotes),
+    engineeringNotes: asArray(raw.engineeringNotes),
+    engineeringRequirements: asArray(raw.engineeringRequirements),
     historyIds: unique(asArray(raw.historyIds)),
     runtimeObjectIds: unique(asArray(raw.runtimeObjectIds)),
     runtimeRelationshipIds: unique(asArray(raw.runtimeRelationshipIds)),
@@ -162,19 +202,348 @@ function normalizeDraftPackage(raw = {}) {
 function packageReadinessFor(record = {}) {
   const units = asArray(record.proposedIofUnits);
   const certifiedUnits = units.filter((unit) => unit?.status === "CERTIFIED").length;
+  const runtimeObjectIds = unique([
+    ...asArray(record.runtimeObjectIds),
+    ...units.flatMap((unit) => asArray(unit?.runtimeObjectIds)),
+    ...units.map((unit) => unit?.sourceRuntimeObjectId),
+  ]);
+  const geometryReferences = unique([
+    ...asArray(record.geometryReferences),
+    ...units.flatMap((unit) => asArray(unit?.geometryReferences)),
+  ]);
+  const relationshipIds = unique([
+    ...asArray(record.runtimeRelationshipIds),
+    ...units.flatMap((unit) => asArray(unit?.runtimeRelationshipIds)),
+  ]);
+  const evidenceIds = unique([
+    ...asArray(record.runtimeEvidenceIds),
+    ...units.flatMap((unit) => asArray(unit?.runtimeEvidenceIds)),
+  ]);
+  const dependencyIds = unique([
+    ...asArray(record.dependencies).map((dependency) => typeof dependency === "object" ? dependency.dependencyId ?? dependency.id : dependency),
+    ...units.flatMap((unit) => asArray(unit?.dependencyIds)),
+  ]);
+  const hasValidation = record.validation?.status === "PASS" || Boolean(record.proposalId && units.length && (geometryReferences.length || runtimeObjectIds.length));
+  const missingGeometry = !geometryReferences.length;
+  const missingInventory = !asArray(record.existingInventoryReferences).length;
+  const missingRelationships = !relationshipIds.length;
+  const missingEvidence = !evidenceIds.length && !asArray(record.evidence).length;
+  const missingUnits = !units.length;
+  const missingEngineeringReview = units.some((unit) => !["CERTIFIED", "REJECTED", "MODIFIED", "APPROVED"].includes(String(unit?.status ?? "")));
+  const missingValidation = !hasValidation;
   const missing = [];
   if (!record.proposalId) missing.push("Proposal reference");
   if (!record.customerId) missing.push("Customer");
   if (!record.opportunityId) missing.push("Opportunity");
-  if (!units.length) missing.push("Proposed IOF Units");
-  if (!asArray(record.runtimeObjectIds).length && !asArray(record.geometryReferences).length) missing.push("Runtime object or geometry references");
-  if (!asArray(record.runtimeEvidenceIds).length && !asArray(record.evidence).length) missing.push("Evidence");
+  if (missingUnits) missing.push("Proposed IOF Units");
+  if (!runtimeObjectIds.length && missingGeometry) missing.push("Runtime object or geometry references");
+  if (missingGeometry) missing.push("Geometry");
+  if (missingInventory) missing.push("Existing Inventory");
+  if (missingRelationships) missing.push("Relationships");
+  if (missingEvidence) missing.push("Evidence");
+  if (missingEngineeringReview) missing.push("Engineering Review");
+  if (missingValidation) missing.push("Validation");
+  const checks = [
+    Boolean(record.proposalId),
+    Boolean(record.customerId),
+    Boolean(record.opportunityId),
+    !missingUnits,
+    Boolean(runtimeObjectIds.length || geometryReferences.length),
+    !missingGeometry,
+    !missingInventory,
+    !missingRelationships,
+    !missingEvidence,
+    !missingEngineeringReview,
+    !missingValidation,
+  ];
+  const readinessScore = Math.round((checks.filter(Boolean).length / checks.length) * 100);
   return {
-    status: missing.length ? "INCOMPLETE" : certifiedUnits === units.length && units.length ? "READY_FOR_PACKAGE_CERTIFICATION" : "READY_FOR_ENGINEERING_REVIEW",
+    status: missing.filter((item) => !["Engineering Review", "Validation"].includes(item)).length
+      ? "INCOMPLETE"
+      : certifiedUnits === units.length && units.length
+        ? "READY_FOR_PACKAGE_CERTIFICATION"
+        : "READY_FOR_ENGINEERING_REVIEW",
     missingInformation: missing,
+    missingGeometry,
+    missingInventory,
+    missingRelationships,
+    missingEvidence,
+    missingUnits,
+    missingEngineeringReview,
+    missingValidation,
+    dependencyCount: dependencyIds.length,
+    readinessScore,
+    packageCompleteness: readinessScore,
     proposedUnitCount: units.length,
     certifiedUnitCount: certifiedUnits,
     certificationPercent: units.length ? Math.round((certifiedUnits / units.length) * 100) : 0,
+  };
+}
+
+function entryId(value, fallback) {
+  if (value && typeof value === "object") {
+    return String(value.objectId ?? value.runtimeObjectId ?? value.relationshipId ?? value.evidenceId ?? value.geometryId ?? value.stationId ?? value.structureId ?? value.dependencyId ?? value.documentId ?? value.id ?? fallback);
+  }
+  return String(value ?? fallback);
+}
+
+function entryLabel(value, fallback) {
+  if (value && typeof value === "object") {
+    return String(value.name ?? value.label ?? value.title ?? value.objectName ?? value.summary ?? value.description ?? entryId(value, fallback));
+  }
+  return String(value ?? fallback);
+}
+
+function entryMetadata(value = {}, metadata = {}) {
+  return {
+    ...(value && typeof value === "object" ? value : {}),
+    ...metadata,
+  };
+}
+
+function manifestEntry(kind, value, index, record, metadata = {}) {
+  const id = entryId(value, `${kind}-${index + 1}`);
+  const runtimeObjectIds = unique([
+    ...asArray(metadata.runtimeObjectIds),
+    ...(kind === "objects" ? [id] : []),
+    ...asArray(record.runtimeObjectIds),
+    record.proposalId,
+  ]);
+  return {
+    manifestEntryId: `${record.packageId ?? "draft-iof"}:${kind}:${id}`.replace(/\s+/g, "-"),
+    entryType: kind,
+    objectId: id,
+    objectType: String(metadata.objectType ?? kind.toUpperCase()),
+    label: entryLabel(value, id),
+    runtimeObjectIds,
+    source: String(metadata.source ?? "RUNTIME_REFERENCE"),
+    authority: String(metadata.authority ?? record.authority ?? "ENGINEERING_REVIEW"),
+    lifecycle: String(metadata.lifecycle ?? record.lifecycleState ?? "IN_REVIEW"),
+    duplicated: false,
+    metadata: entryMetadata(value, metadata),
+  };
+}
+
+function manifestEntries(kind, values, record, metadata = {}) {
+  return unique(asArray(values).map((value, index) => entryId(value, `${kind}-${index + 1}`)))
+    .map((id, index) => {
+      const value = asArray(values).find((candidate, candidateIndex) => entryId(candidate, `${kind}-${candidateIndex + 1}`) === id) ?? id;
+      return manifestEntry(kind, value, index, record, metadata);
+    });
+}
+
+function packageUnitIds(record = {}) {
+  return asArray(record.proposedIofUnits).map((unit, index) => unit?.unitId ?? `${record.packageId}:unit:${index + 1}`);
+}
+
+function buildPackageManifest(record = {}) {
+  const units = asArray(record.proposedIofUnits);
+  const runtimeObjectIds = unique([
+    ...asArray(record.runtimeObjectIds),
+    ...units.flatMap((unit) => asArray(unit?.runtimeObjectIds)),
+    ...units.map((unit) => unit?.sourceRuntimeObjectId),
+  ]);
+  const relationshipIds = unique([
+    ...asArray(record.runtimeRelationshipIds),
+    ...units.flatMap((unit) => asArray(unit?.runtimeRelationshipIds)),
+  ]);
+  const geometryReferences = unique([
+    ...asArray(record.geometryReferences),
+    ...units.flatMap((unit) => asArray(unit?.geometryReferences)),
+  ]);
+  const evidenceIds = unique([
+    ...asArray(record.runtimeEvidenceIds),
+    ...units.flatMap((unit) => asArray(unit?.runtimeEvidenceIds)),
+  ]);
+  const dependencyIds = unique([
+    ...asArray(record.dependencies).map((dependency, index) => entryId(dependency, `dependency-${index + 1}`)),
+    ...units.flatMap((unit) => asArray(unit?.dependencyIds)),
+  ]);
+  const structures = asArray(record.structures).length ? asArray(record.structures) : asArray(record.objects).filter((item) => item?.objectType === "STRUCTURE" || item?.classification === "STRUCTURE");
+  const commercialAssumptions = asArray(record.commercialSummary?.commercialAssumptionIds);
+  const customerRequests = [
+    ...asArray(record.customerDesignReferences),
+    ...asArray(record.customerRequests).map((request, index) => entryId(request, `customer-request-${index + 1}`)),
+  ];
+  const engineeringRequirements = asArray(record.engineeringRequirements).length ? asArray(record.engineeringRequirements) : CHECKLIST_KEYS;
+  const manifest = {
+    manifestId: `MANIFEST-${record.packageId ?? "DRAFT-IOF"}`,
+    packageId: record.packageId,
+    proposalId: record.proposalId,
+    organizationId: record.organizationId,
+    workspaceId: record.workspaceId,
+    generatedAt: nowIso(),
+    modelVersion: "IOF_PACKAGE_MANIFEST_V1",
+    duplicationPolicy: "REFERENCE_ONLY_RUNTIME_OBJECTS",
+    objects: manifestEntries("objects", runtimeObjectIds, record, { source: "PROPOSAL_RUNTIME_OBJECTS", objectType: "RUNTIME_OBJECT" }),
+    relationships: manifestEntries("relationships", relationshipIds, record, { source: "RELATIONSHIP_GRAPH", objectType: "RUNTIME_RELATIONSHIP" }),
+    inventory: manifestEntries("inventory", record.existingInventoryReferences, record, { source: "CUSTOMER_INVENTORY", objectType: "CUSTOMER_INVENTORY_REFERENCE" }),
+    geometry: manifestEntries("geometry", geometryReferences, record, { source: "GEOMETRY_REFERENCE", objectType: "GEOMETRY_REFERENCE" }),
+    stations: manifestEntries("stations", record.stations, record, { source: "STATION_REFERENCE", objectType: "STATION" }),
+    structures: manifestEntries("structures", structures, record, { source: "STRUCTURE_REFERENCE", objectType: "STRUCTURE" }),
+    dependencies: manifestEntries("dependencies", dependencyIds, record, { source: "PACKAGE_DEPENDENCY", objectType: "DEPENDENCY", runtimeObjectIds }),
+    evidence: manifestEntries("evidence", evidenceIds, record, { source: "EVIDENCE_REGISTRY", objectType: "EVIDENCE" }),
+    documents: manifestEntries("documents", record.proposalDocumentReferences, record, { source: "PROPOSAL_DOCUMENTS", objectType: "DOCUMENT" }),
+    commercialAssumptions: manifestEntries("commercialAssumptions", commercialAssumptions, record, { source: "COMMERCIAL_SUMMARY", objectType: "COMMERCIAL_ASSUMPTION" }),
+    customerRequests: manifestEntries("customerRequests", customerRequests, record, { source: "CUSTOMER_DESIGN_REQUEST", objectType: "CUSTOMER_REQUEST" }),
+    engineeringRequirements: manifestEntries("engineeringRequirements", engineeringRequirements, record, { source: "ENGINEERING_CHECKLIST", objectType: "ENGINEERING_REQUIREMENT", runtimeObjectIds }),
+  };
+  manifest.counts = Object.fromEntries(
+    Object.entries(manifest)
+      .filter(([, value]) => Array.isArray(value))
+      .map(([key, value]) => [key, value.length]),
+  );
+  manifest.summary = {
+    runtimeObjectCount: manifest.objects.length,
+    relationshipCount: manifest.relationships.length,
+    inventoryCount: manifest.inventory.length,
+    geometryCount: manifest.geometry.length,
+    evidenceCount: manifest.evidence.length,
+    unitCount: units.length,
+    unitIds: packageUnitIds(record),
+    noDuplicateObjects: true,
+  };
+  return manifest;
+}
+
+function graphNode(id, type, label, metadata = {}) {
+  return { id, type, label, metadata };
+}
+
+function graphEdge(from, to, relationship, metadata = {}) {
+  return { edgeId: `${from}->${to}:${relationship}`.replace(/\s+/g, "-"), from, to, relationship, metadata };
+}
+
+function buildPackageDependencyGraph(record = {}) {
+  const units = asArray(record.proposedIofUnits);
+  const runtimeObjectIds = unique([
+    ...asArray(record.runtimeObjectIds),
+    ...units.flatMap((unit) => asArray(unit?.runtimeObjectIds)),
+    ...units.map((unit) => unit?.sourceRuntimeObjectId),
+  ]);
+  const relationshipIds = unique([
+    ...asArray(record.runtimeRelationshipIds),
+    ...units.flatMap((unit) => asArray(unit?.runtimeRelationshipIds)),
+  ]);
+  const evidenceIds = unique([
+    ...asArray(record.runtimeEvidenceIds),
+    ...units.flatMap((unit) => asArray(unit?.runtimeEvidenceIds)),
+  ]);
+  const geometryReferences = unique([
+    ...asArray(record.geometryReferences),
+    ...units.flatMap((unit) => asArray(unit?.geometryReferences)),
+  ]);
+  const proposalNodeId = record.proposalId || `${record.packageId}:proposal`;
+  const packageNodeId = record.packageId || "draft-iof-package";
+  const nodes = [
+    graphNode(proposalNodeId, "Proposal", record.proposalSummary?.proposalNumber ?? record.proposalId ?? "Proposal", { runtimeObject: true }),
+    ...runtimeObjectIds.map((id) => graphNode(id, "RuntimeObject", id, { runtimeObject: true })),
+    ...relationshipIds.map((id) => graphNode(id, "Relationship", id)),
+    ...units.map((unit) => graphNode(unit.unitId, "ProposedIOFUnit", unit.name ?? unit.unitId, { status: unit.status })),
+    ...evidenceIds.map((id) => graphNode(id, "Evidence", id)),
+    ...geometryReferences.map((id) => graphNode(id, "Geometry", id)),
+    graphNode(packageNodeId, "DraftIOFPackage", record.packageName ?? record.packageId ?? "Draft IOF Package", { status: record.status }),
+  ];
+  const edges = [];
+  for (const objectId of runtimeObjectIds) edges.push(graphEdge(proposalNodeId, objectId, "REFERENCES_RUNTIME_OBJECT"));
+  for (const relationshipId of relationshipIds) {
+    const objectTargets = runtimeObjectIds.length ? runtimeObjectIds : [proposalNodeId];
+    for (const objectId of objectTargets) edges.push(graphEdge(objectId, relationshipId, "RELATIONSHIP_CONTEXT"));
+  }
+  for (const unit of units) {
+    const relationshipTargets = unit.runtimeRelationshipIds?.length ? unit.runtimeRelationshipIds : relationshipIds;
+    const objectTargets = unit.runtimeObjectIds?.length ? unit.runtimeObjectIds : runtimeObjectIds;
+    if (relationshipTargets.length) {
+      for (const relationshipId of relationshipTargets) edges.push(graphEdge(relationshipId, unit.unitId, "ASSEMBLES_UNIT"));
+    } else {
+      for (const objectId of objectTargets.length ? objectTargets : [proposalNodeId]) edges.push(graphEdge(objectId, unit.unitId, "ASSEMBLES_UNIT"));
+    }
+    const unitEvidence = unit.runtimeEvidenceIds?.length ? unit.runtimeEvidenceIds : evidenceIds;
+    const unitGeometry = unit.geometryReferences?.length ? unit.geometryReferences : geometryReferences;
+    if (unitEvidence.length) {
+      for (const evidenceId of unitEvidence) edges.push(graphEdge(unit.unitId, evidenceId, "SUPPORTED_BY_EVIDENCE"));
+      for (const evidenceId of unitEvidence) {
+        for (const geometryId of unitGeometry) edges.push(graphEdge(evidenceId, geometryId, "EVIDENCE_LOCATES_GEOMETRY"));
+      }
+    } else {
+      for (const geometryId of unitGeometry) edges.push(graphEdge(unit.unitId, geometryId, "USES_GEOMETRY"));
+    }
+    if (unitGeometry.length) {
+      for (const geometryId of unitGeometry) edges.push(graphEdge(geometryId, packageNodeId, "PACKAGED_IN_DRAFT_IOF"));
+    } else {
+      edges.push(graphEdge(unit.unitId, packageNodeId, "PACKAGED_IN_DRAFT_IOF"));
+    }
+  }
+  const uniqueNodes = [...new Map(nodes.map((node) => [node.id, node])).values()];
+  const uniqueEdges = [...new Map(edges.map((edge) => [edge.edgeId, edge])).values()];
+  return {
+    graphId: `GRAPH-${record.packageId ?? "DRAFT-IOF"}`,
+    packageId: record.packageId,
+    generatedAt: nowIso(),
+    path: "Proposal -> Runtime Objects -> Relationships -> Units -> Evidence -> Geometry -> Draft IOF Package",
+    nodes: uniqueNodes,
+    edges: uniqueEdges,
+    summary: {
+      nodeCount: uniqueNodes.length,
+      edgeCount: uniqueEdges.length,
+      referenceOnly: true,
+    },
+  };
+}
+
+function buildPackageValidation(record = {}) {
+  const readiness = record.packageReadiness ?? packageReadinessFor(record);
+  const checks = [
+    { key: "geometry", label: "Geometry", status: readiness.missingGeometry ? "FAIL" : "PASS" },
+    { key: "inventory", label: "Existing Inventory", status: readiness.missingInventory ? "WARNING" : "PASS" },
+    { key: "relationships", label: "Relationships", status: readiness.missingRelationships ? "WARNING" : "PASS" },
+    { key: "evidence", label: "Evidence", status: readiness.missingEvidence ? "WARNING" : "PASS" },
+    { key: "units", label: "Proposed IOF Units", status: readiness.missingUnits ? "FAIL" : "PASS" },
+    { key: "engineeringReview", label: "Engineering Review", status: readiness.missingEngineeringReview ? "WARNING" : "PASS" },
+    { key: "runtimeReferences", label: "Runtime References", status: asArray(record.runtimeObjectIds).length || asArray(record.geometryReferences).length ? "PASS" : "FAIL" },
+  ];
+  const hasFail = checks.some((check) => check.status === "FAIL");
+  const hasWarning = checks.some((check) => check.status === "WARNING");
+  return {
+    validationId: `VALIDATION-${record.packageId ?? "DRAFT-IOF"}`,
+    packageId: record.packageId,
+    status: hasFail ? "FAIL" : hasWarning ? "WARNING" : "PASS",
+    readinessScore: readiness.readinessScore,
+    checks,
+    validatedAt: nowIso(),
+  };
+}
+
+function buildPackageDifferences(record = {}, proposal = null) {
+  const proposalRuntimeObjectIds = unique(asArray(proposal?.runtimeObjectIds));
+  const packageRuntimeObjectIds = unique(asArray(record.runtimeObjectIds));
+  const proposalGeometryReferences = unique(asArray(proposal?.geometryReferences));
+  const packageGeometryReferences = unique(asArray(record.geometryReferences));
+  const proposalRelationshipIds = unique(asArray(proposal?.runtimeRelationshipIds));
+  const packageRelationshipIds = unique(asArray(record.runtimeRelationshipIds));
+  const addedObjects = proposal ? proposalRuntimeObjectIds.filter((id) => !packageRuntimeObjectIds.includes(id)) : [];
+  const removedObjects = proposal ? packageRuntimeObjectIds.filter((id) => !proposalRuntimeObjectIds.includes(id)) : [];
+  const addedGeometry = proposal ? proposalGeometryReferences.filter((id) => !packageGeometryReferences.includes(id)) : [];
+  const removedGeometry = proposal ? packageGeometryReferences.filter((id) => !proposalGeometryReferences.includes(id)) : [];
+  const addedRelationships = proposal ? proposalRelationshipIds.filter((id) => !packageRelationshipIds.includes(id)) : [];
+  const removedRelationships = proposal ? packageRelationshipIds.filter((id) => !proposalRelationshipIds.includes(id)) : [];
+  const modifiedUnits = asArray(record.proposedIofUnits)
+    .filter((unit) => unit?.modifiedAt || !["PROPOSED", "CERTIFIED"].includes(String(unit?.status ?? "")) || numeric(unit?.engineeringQuantity) !== 0)
+    .map((unit) => unit.unitId);
+  const hasImpact = addedObjects.length || removedObjects.length || addedGeometry.length || removedGeometry.length || addedRelationships.length || removedRelationships.length || modifiedUnits.length;
+  return {
+    differenceId: `DIFF-${record.packageId ?? "DRAFT-IOF"}`,
+    packageId: record.packageId,
+    proposalId: record.proposalId,
+    proposalVersion: proposal?.version ?? record.sourceProposalVersion ?? null,
+    packageSourceProposalVersion: record.sourceProposalVersion ?? null,
+    comparedAt: nowIso(),
+    addedObjects,
+    removedObjects,
+    modifiedUnits,
+    geometryChanges: { added: addedGeometry, removed: removedGeometry },
+    relationshipChanges: { added: addedRelationships, removed: removedRelationships },
+    engineeringImpact: hasImpact ? "ENGINEERING_REVIEW_REQUIRED" : "NO_IMPACT",
   };
 }
 
@@ -267,6 +636,15 @@ async function loadDraftPackage(packageId) {
   return normalizeDraftPackage(await loadRecord(DIRS.iofPackages, packageId));
 }
 
+async function decorateDraftPackageForResponse(record) {
+  const draft = normalizeDraftPackage(record);
+  const proposal = draft.proposalId ? await loadRecord(DIRS.proposalDrafts, draft.proposalId).catch(() => null) : null;
+  return normalizeDraftPackage({
+    ...draft,
+    packageDifferences: buildPackageDifferences(draft, proposal),
+  });
+}
+
 async function persistDraftPackage(record, user, eventType = "runtime.iof_package.saved", details = "Draft IOF Package saved.") {
   const normalized = normalizeDraftPackage(record);
   const history = await appendHistory(normalized, user, eventType, details);
@@ -284,9 +662,16 @@ function packageQueueItem(record) {
   const draft = normalizeDraftPackage(record);
   return {
     packageId: draft.packageId,
+    packageName: draft.packageName,
     packageReadiness: draft.packageReadiness,
+    packageCompleteness: draft.packageCompleteness,
+    certificationProgress: draft.certificationProgress,
+    packageRevision: draft.packageRevision,
+    workspaceId: draft.workspaceId,
     proposalSummary: draft.proposalSummary,
     commercialConfidence: draft.commercialConfidence,
+    engineeringConfidence: draft.engineeringConfidence,
+    assemblyConfidence: draft.assemblyConfidence,
     engineeringReadiness: draft.engineeringReadiness,
     assemblyReport: draft.assemblyReport,
     packageStatus: draft.status,
@@ -319,6 +704,7 @@ function unitsFromProposal(proposal, packageId) {
   const runtimeIds = unique(asArray(proposal.runtimeObjectIds));
   const geometryRefs = unique(asArray(proposal.geometryReferences));
   const sources = runtimeIds.length ? runtimeIds : geometryRefs;
+  const confidence = numeric(proposal.confidenceSummary?.commercialReadiness, numeric(proposal.readiness?.confidence, 80));
   return sources.map((sourceId, index) => normalizeUnit({
     unitId: `${packageId}:unit:${String(index + 1).padStart(3, "0")}`,
     sourceRuntimeObjectId: runtimeIds[index] ?? "",
@@ -326,8 +712,17 @@ function unitsFromProposal(proposal, packageId) {
     geometryReferences: geometryRefs[index] ? [geometryRefs[index]] : geometryRefs.slice(0, 1),
     runtimeRelationshipIds: asArray(proposal.runtimeRelationshipIds),
     runtimeEvidenceIds: asArray(proposal.runtimeEvidenceIds),
+    dependencyIds: asArray(proposal.dependencyIds ?? proposal.runtimeRelationshipIds),
     unitType: runtimeIds[index] ? "RUNTIME_REFERENCE_UNIT" : "GEOMETRY_REFERENCE_UNIT",
     name: `Proposed IOF Unit ${index + 1}`,
+    quantity: 1,
+    commercialQuantity: 1,
+    historicalQuantity: 0,
+    marketplaceAdvisory: "NOT_REQUESTED",
+    engineeringQuantity: 0,
+    confidence,
+    commercialConfidence: confidence,
+    engineeringDecision: "PENDING_ENGINEERING_REVIEW",
     status: "PROPOSED",
   }, packageId, index));
 }
@@ -356,9 +751,19 @@ async function handleAssembleFromProposal(req, res, user) {
   }
   const draft = await persistDraftPackage({
     packageId,
+    packageName: String(body.packageName ?? `${proposal.proposalNumber ?? proposalId} Draft IOF Package`),
     packageType: "ENGINEERING",
     status: "DRAFT",
     workflowStatus: "ENGINEERING_REVIEW",
+    organizationId: proposal.organizationId ?? user.organizationId,
+    workspaceId: proposal.workspaceId ?? user.workspaceId,
+    ownerId: proposal.commercialOwnerId ?? proposal.ownerId ?? user.userId,
+    owner: proposal.commercialOwner ?? proposal.owner ?? user.name,
+    createdById: user.userId,
+    createdBy: user.name,
+    visibility: "ORGANIZATION",
+    authority: "ENGINEERING_REVIEW",
+    lifecycleState: "IN_REVIEW",
     proposalId,
     customerId: proposal.customerId,
     opportunityId: proposal.opportunityId,
@@ -366,10 +771,15 @@ async function handleAssembleFromProposal(req, res, user) {
     assignedEngineer: body.assignedEngineer ?? user.name,
     priority: body.priority ?? "NORMAL",
     submittedAt: nowIso(),
+    packageRevision: 1,
+    assemblyConfidence: numeric(proposal.readiness?.confidence, numeric(proposal.confidenceSummary?.commercialReadiness, 80)),
+    engineeringConfidence: 0,
     proposalSummary: {
       title: proposal.title,
       proposalNumber: proposal.proposalNumber,
       version: proposal.version,
+      status: proposal.status,
+      executiveSummary: proposal.executiveSummary,
       readiness: proposal.readiness,
     },
     commercialSummary: {
@@ -385,6 +795,18 @@ async function handleAssembleFromProposal(req, res, user) {
       approvalState: proposal.approvalState,
       approvedAt: proposal.approvedAt,
     },
+    commercialNotes: unique([
+      proposal.summary,
+      proposal.executiveSummary,
+      ...(asArray(proposal.commercialNotes).map(String)),
+    ]),
+    engineeringNotes: ["Awaiting Engineering review."],
+    customerRequests: asArray(proposal.comments),
+    engineeringRequirements: CHECKLIST_KEYS,
+    dependencies: unique([
+      ...asArray(proposal.dependencyIds),
+      ...asArray(proposal.runtimeRelationshipIds),
+    ]),
     assemblyReport: {
       assembledFrom: "APPROVED_PROPOSAL_RUNTIME_OBJECT",
       noScopeVersionCreated: true,
@@ -403,6 +825,7 @@ async function handleAssembleFromProposal(req, res, user) {
     customerDesignReferences: proposal.customerDesignReferences,
     customerTwinReference: proposal.customerTwinReference,
     geometryReferences: proposal.geometryReferences,
+    proposalDocumentReferences: proposal.proposalDocumentReferences,
     sourceProposalVersion: proposal.version,
   }, user, "runtime.iof_package.assembled_from_proposal", "Draft IOF Package assembled from approved Proposal references.");
   await appendHistory(draft, user, "runtime.authority_transfer.commercial_to_engineering", "Authority transferred from Commercial Proposal to Engineering Review.", {
@@ -410,6 +833,32 @@ async function handleAssembleFromProposal(req, res, user) {
     packageId: draft.packageId,
   });
   jsonResponse(res, 201, { iofPackage: draft, draftPackage: draft });
+}
+
+async function handleAssignEngineer(req, res, user, packageId) {
+  const draft = await loadDraftPackage(packageId).catch(() => null);
+  if (!draft) {
+    errorResponse(res, 404, `Draft IOF Package not found: ${packageId}`);
+    return;
+  }
+  if (["CERTIFIED", "CLOSED", "ARCHIVED"].includes(draft.status)) {
+    errorResponse(res, 409, "Closed IOF Packages cannot be reassigned.");
+    return;
+  }
+  const body = await readRequestJson(req);
+  const assignedEngineerId = String(body.assignedEngineerId ?? body.engineerId ?? user.userId);
+  const assignedEngineer = String(body.assignedEngineer ?? body.engineerName ?? user.name);
+  const saved = await persistDraftPackage({
+    ...draft,
+    assignedEngineerId,
+    assignedEngineer,
+    engineeringReadiness: "ASSIGNED_FOR_ENGINEERING_REVIEW",
+    updatedAt: nowIso(),
+  }, user, "runtime.iof_package.assigned_engineer", `Draft IOF Package assigned to ${assignedEngineer}.`, {
+    assignedEngineerId,
+    assignedEngineer,
+  });
+  jsonResponse(res, 200, { iofPackage: saved, draftPackage: saved });
 }
 
 function findUnit(record, unitId) {
@@ -449,6 +898,8 @@ async function updateUnit(req, res, user, packageId, unitId, action) {
       engineeringNote: body.engineeringNote ?? body.note ?? unit.engineeringNote,
       engineeringConfidence: numeric(body.engineeringConfidence ?? body.confidence, 90),
       engineeringRisk: body.engineeringRisk ?? body.risk ?? "ACCEPTED",
+      engineeringQuantity: numeric(body.engineeringQuantity, numeric(unit.quantity, 1)),
+      engineeringDecision: "CERTIFIED",
       engineeringComments: [...asArray(unit.engineeringComments), ...asArray(body.engineeringComments ?? body.comments)],
       immutable: true,
       updatedAt: timestamp,
@@ -474,6 +925,7 @@ async function updateUnit(req, res, user, packageId, unitId, action) {
       rejectedAt: timestamp,
       rejectionReason: body.reason ?? body.rejectionReason ?? "Rejected during Engineering certification.",
       engineeringRisk: body.engineeringRisk ?? "REJECTED",
+      engineeringDecision: "REJECTED",
       updatedAt: timestamp,
     };
   } else if (action === "split") {
@@ -855,10 +1307,48 @@ export async function handleEngineeringCertification(req, res, pathname) {
     return true;
   }
 
-  if (req.method === "GET" && parts[0] === "draft-packages" && parts[1]) {
+  if (req.method === "GET" && parts[0] === "draft-packages" && parts[1] && parts[2] === "manifest") {
     const draft = await loadDraftPackage(parts[1]).catch(() => null);
     if (!draft) errorResponse(res, 404, `Draft IOF Package not found: ${parts[1]}`);
+    else jsonResponse(res, 200, { manifest: draft.manifest, draftPackage: draft });
+    return true;
+  }
+
+  if (req.method === "GET" && parts[0] === "draft-packages" && parts[1] && parts[2] === "graph") {
+    const draft = await loadDraftPackage(parts[1]).catch(() => null);
+    if (!draft) errorResponse(res, 404, `Draft IOF Package not found: ${parts[1]}`);
+    else jsonResponse(res, 200, { dependencyGraph: draft.dependencyGraph, draftPackage: draft });
+    return true;
+  }
+
+  if (req.method === "GET" && parts[0] === "draft-packages" && parts[1] && parts[2] === "readiness") {
+    const draft = await loadDraftPackage(parts[1]).catch(() => null);
+    if (!draft) errorResponse(res, 404, `Draft IOF Package not found: ${parts[1]}`);
+    else jsonResponse(res, 200, { packageReadiness: draft.packageReadiness, validation: draft.validation, draftPackage: draft });
+    return true;
+  }
+
+  if (req.method === "GET" && parts[0] === "draft-packages" && parts[1] && parts[2] === "differences") {
+    const draft = await loadDraftPackage(parts[1]).catch(() => null);
+    if (!draft) {
+      errorResponse(res, 404, `Draft IOF Package not found: ${parts[1]}`);
+    } else {
+      const proposal = draft.proposalId ? await loadRecord(DIRS.proposalDrafts, draft.proposalId).catch(() => null) : null;
+      jsonResponse(res, 200, { packageDifferences: buildPackageDifferences(draft, proposal), draftPackage: draft });
+    }
+    return true;
+  }
+
+  if (req.method === "GET" && parts[0] === "draft-packages" && parts[1] && parts.length === 2) {
+    const raw = await loadRecord(DIRS.iofPackages, parts[1]).catch(() => null);
+    const draft = raw ? await decorateDraftPackageForResponse(raw) : null;
+    if (!draft) errorResponse(res, 404, `Draft IOF Package not found: ${parts[1]}`);
     else jsonResponse(res, 200, { iofPackage: draft, draftPackage: draft });
+    return true;
+  }
+
+  if (req.method === "POST" && parts[0] === "draft-packages" && parts[1] && parts[2] === "assign-engineer") {
+    await handleAssignEngineer(req, res, user, parts[1]);
     return true;
   }
 

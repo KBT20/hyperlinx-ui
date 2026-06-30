@@ -1,14 +1,15 @@
 {
-  "workspaceId": "workspace-google-customer",
-  "userId": "google-participant-001",
+  "workspaceId": "workspace-teralinx-ryan",
+  "userId": "teralinx-user-ryan",
   "organizationId": "org-teralinx",
-  "name": "Google Customer Workspace",
+  "name": "Ryan Workspace",
   "preferences": {
     "defaultWorkspace": "googleRfp",
-    "dashboardDensity": "participant"
+    "dashboardDensity": "commercial"
   },
   "dashboard": {
     "sections": [
+      "My Opportunities",
       "Assigned Work",
       "Recent Activity",
       "Pending Approvals",
@@ -23,6 +24,6 @@
   "assignments": [],
   "notifications": [],
   "pinnedObjects": [],
-  "createdAt": "2026-06-30T14:07:48.257Z",
-  "updatedAt": "2026-06-30T14:07:48.257Z"
+  "createdAt": "2026-06-30T14:07:48.221Z",
+  "updatedAt": "2026-06-30T14:07:48.221Z"
 }

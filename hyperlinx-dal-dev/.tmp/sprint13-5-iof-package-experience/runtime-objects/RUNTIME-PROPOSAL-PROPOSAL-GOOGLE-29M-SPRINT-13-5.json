@@ -1,8 +1,8 @@
 {
-  "runtimeId": "RUNTIME-PROPOSAL-PROPOSAL-GOOGLE-29M-ASSEMBLY",
-  "objectId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+  "runtimeId": "RUNTIME-PROPOSAL-PROPOSAL-GOOGLE-29M-SPRINT-13-5",
+  "objectId": "PROPOSAL-GOOGLE-29M-SPRINT-13-5",
   "objectType": "PROPOSAL",
-  "name": "Google 29M Assembly Proposal",
+  "name": "Google 29M IOF Package Proposal",
   "owner": "Ryan",
   "ownerId": "teralinx-user-ryan",
   "createdBy": "Ryan",
@@ -34,42 +34,51 @@
   "lifecycleState": "APPROVED",
   "version": 1,
   "evidenceIds": [
-    "EVIDENCE-GOOGLE-APPROVAL"
+    "EVIDENCE-GOOGLE-APPROVAL",
+    "EVIDENCE-GOOGLE-KMZ",
+    "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW"
   ],
   "evidenceLinks": [
-    "EVIDENCE-GOOGLE-APPROVAL"
+    "EVIDENCE-GOOGLE-APPROVAL",
+    "EVIDENCE-GOOGLE-KMZ",
+    "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW"
   ],
   "relationshipIds": [
-    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE"
   ],
   "relationshipLinks": [
-    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE"
   ],
-  "sourceId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
-  "createdAt": "2026-06-30T14:07:48.134Z",
-  "updatedAt": "2026-06-30T14:07:48.137Z",
+  "sourceId": "PROPOSAL-GOOGLE-29M-SPRINT-13-5",
+  "createdAt": "2026-06-30T14:07:48.240Z",
+  "updatedAt": "2026-06-30T14:07:48.243Z",
   "metadata": {
-    "proposalNumber": "PROP-GOOGLE-29M-ASSEMBLY",
+    "proposalNumber": "PROP-GOOGLE-29M-SPRINT-13-5",
     "customerId": "customer-google",
     "opportunityId": "GOOGLE-29M-OPPORTUNITY",
     "status": "CUSTOMER_APPROVED",
     "approvalState": "APPROVED",
     "nextLifecycleAction": "CREATE_DRAFT_IOF_PACKAGE",
     "existingInventoryReferences": [
-      "RUNTIME-INVENTORY-GOOGLE"
+      "RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+      "RUNTIME-INVENTORY-GOOGLE-STILLWATER"
     ],
     "customerDesignReferences": [
-      "CUSTOMER-DESIGN-GOOGLE"
+      "CUSTOMER-DESIGN-GOOGLE-DIVERSITY-REQUEST"
     ],
     "customerTwinReference": "CUSTOMER-TWIN-GOOGLE",
     "geometryReferences": [
-      "GEOMETRY-GOOGLE-29M"
+      "GEOMETRY-GOOGLE-29M-A",
+      "GEOMETRY-GOOGLE-29M-Z"
     ],
     "proposalDocumentReferences": [
-      "DOC-GOOGLE-PROPOSAL"
+      "DOC-GOOGLE-EXECUTIVE-SUMMARY",
+      "DOC-GOOGLE-COMMERCIAL-PRICING"
     ],
     "readiness": {
-      "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+      "proposalId": "PROPOSAL-GOOGLE-29M-SPRINT-13-5",
       "status": "READY",
       "canCreateDraftIofPackage": true,
       "customerApproved": true,
@@ -86,14 +95,14 @@
         "assignedCustomerUsers": [
           "google-participant-001"
         ],
-        "comments": 0,
+        "comments": 1,
         "attachments": 0
       },
       "engineering": {
         "status": "READY_FOR_DRAFT_IOF",
-        "runtimeObjectCount": 2,
-        "relationshipCount": 1,
-        "geometryReferenceCount": 1
+        "runtimeObjectCount": 3,
+        "relationshipCount": 2,
+        "geometryReferenceCount": 2
       },
       "marketplace": {
         "status": "REFERENCE_ONLY",
@@ -101,8 +110,8 @@
       },
       "runtimeHealth": {
         "status": "PASS",
-        "evidenceCount": 1,
-        "existingInventoryReferences": 1,
+        "evidenceCount": 3,
+        "existingInventoryReferences": 2,
         "customerTwinReference": "CUSTOMER-TWIN-GOOGLE",
         "duplicateObjectsCreated": false
       },

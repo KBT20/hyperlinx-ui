@@ -1,0 +1,1583 @@
+{
+  "packageId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+  "packageName": "PROP-GOOGLE-29M-SPRINT-13-5 Draft IOF Package",
+  "packageType": "ENGINEERING",
+  "status": "DRAFT",
+  "workflowStatus": "ENGINEERING_REVIEW",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "ownerId": "teralinx-user-ryan",
+  "owner": "Ryan",
+  "createdById": "teralinx-user-kyle",
+  "createdBy": "Kyle",
+  "visibility": "ORGANIZATION",
+  "authority": "ENGINEERING_REVIEW",
+  "lifecycleState": "IN_REVIEW",
+  "proposalId": "PROPOSAL-GOOGLE-29M-SPRINT-13-5",
+  "customerId": "customer-google",
+  "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+  "assignedEngineerId": "teralinx-user-kyle",
+  "assignedEngineer": "Kyle",
+  "priority": "HIGH",
+  "submittedAt": "2026-06-30T14:07:48.267Z",
+  "packageRevision": 1,
+  "assemblyConfidence": 100,
+  "engineeringConfidence": 0,
+  "proposalSummary": {
+    "title": "Google 29M IOF Package Proposal",
+    "proposalNumber": "PROP-GOOGLE-29M-SPRINT-13-5",
+    "version": 1,
+    "status": "CUSTOMER_APPROVED",
+    "executiveSummary": "Google 29M package uses runtime references for opportunity, route, inventory, evidence, and geometry.",
+    "readiness": {
+      "proposalId": "PROPOSAL-GOOGLE-29M-SPRINT-13-5",
+      "status": "READY",
+      "canCreateDraftIofPackage": true,
+      "customerApproved": true,
+      "proposalComplete": true,
+      "runtimeValid": true,
+      "commercial": {
+        "status": "PASS",
+        "missingInformation": [],
+        "dealPointCount": 1,
+        "pricingSummaryPresent": true
+      },
+      "customer": {
+        "status": "APPROVED",
+        "assignedCustomerUsers": [
+          "google-participant-001"
+        ],
+        "comments": 1,
+        "attachments": 0
+      },
+      "engineering": {
+        "status": "READY_FOR_DRAFT_IOF",
+        "runtimeObjectCount": 3,
+        "relationshipCount": 2,
+        "geometryReferenceCount": 2
+      },
+      "marketplace": {
+        "status": "REFERENCE_ONLY",
+        "recommendation": "Use approved Proposal references as Sprint 13.3 Draft IOF source input."
+      },
+      "runtimeHealth": {
+        "status": "PASS",
+        "evidenceCount": 3,
+        "existingInventoryReferences": 2,
+        "customerTwinReference": "CUSTOMER-TWIN-GOOGLE",
+        "duplicateObjectsCreated": false
+      },
+      "confidence": 100,
+      "missingInformation": [],
+      "blockingIssues": [],
+      "recommendation": "Expose Create Draft IOF Package source references without assembling a package."
+    }
+  },
+  "commercialSummary": {
+    "pricingSummary": {
+      "budgetCost": 29000000,
+      "sellPriceIru": 43500000,
+      "routeMiles": 29
+    },
+    "marginSummary": {
+      "grossMarginDollars": 14500000,
+      "grossMarginPercent": 33.3
+    },
+    "confidenceSummary": {
+      "commercialReadiness": 91
+    },
+    "commercialAssumptionIds": [
+      "ASSUMPTION-GOOGLE-ROUTE-MILES",
+      "ASSUMPTION-GOOGLE-IRU-TERM"
+    ],
+    "dealPointIds": [
+      "DEAL-GOOGLE-29M"
+    ]
+  },
+  "customerSummary": {
+    "customerId": "customer-google",
+    "name": "customer-google",
+    "approvalState": "APPROVED",
+    "approvedAt": "2026-06-30T14:07:48.234Z"
+  },
+  "commercialNotes": [
+    "Commercial proposal approved for Draft IOF Package assembly.",
+    "Google 29M package uses runtime references for opportunity, route, inventory, evidence, and geometry."
+  ],
+  "engineeringNotes": [
+    "Awaiting Engineering review."
+  ],
+  "customerRequests": [
+    {
+      "commentId": "CUSTOMER-REQUEST-GOOGLE-001",
+      "author": "Google Network Engineering",
+      "comment": "Proceed with the 29M diversity package for engineering review.",
+      "createdAt": "2026-06-30T14:07:48.234Z"
+    }
+  ],
+  "engineeringRequirements": [
+    "geometryComplete",
+    "existingInventoryValidated",
+    "customerDesignReviewed",
+    "relationshipsValidated",
+    "dependenciesValidated",
+    "evidencePresent",
+    "commercialAssumptionsReviewed",
+    "unitQuantitiesVerified",
+    "engineeringStandardsMet",
+    "riskAccepted",
+    "packageComplete"
+  ],
+  "dependencies": [
+    "DEPENDENCY-PERMITTING",
+    "DEPENDENCY-INVENTORY-VALIDATION",
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE"
+  ],
+  "assemblyReport": {
+    "assembledFrom": "APPROVED_PROPOSAL_RUNTIME_OBJECT",
+    "noScopeVersionCreated": true,
+    "noMarketplaceCreated": true,
+    "noDuplicateRuntimeObjects": true,
+    "runtimeObjectCount": 3,
+    "relationshipCount": 2,
+    "evidenceCount": 3,
+    "proposedUnitCount": 3
+  },
+  "proposedIofUnits": [
+    {
+      "unitId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001",
+      "sourceRuntimeObjectId": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+      "runtimeObjectIds": [
+        "RUNTIME-OPPORTUNITY-GOOGLE-29M"
+      ],
+      "geometryReferences": [
+        "GEOMETRY-GOOGLE-29M-A"
+      ],
+      "runtimeRelationshipIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE"
+      ],
+      "runtimeEvidenceIds": [
+        "EVIDENCE-GOOGLE-APPROVAL",
+        "EVIDENCE-GOOGLE-KMZ",
+        "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW"
+      ],
+      "dependencyIds": [
+        "DEPENDENCY-PERMITTING",
+        "DEPENDENCY-INVENTORY-VALIDATION"
+      ],
+      "unitType": "RUNTIME_REFERENCE_UNIT",
+      "name": "Proposed IOF Unit 1",
+      "quantity": 1,
+      "commercialQuantity": 1,
+      "historicalQuantity": 0,
+      "marketplaceAdvisory": "NOT_REQUESTED",
+      "engineeringQuantity": 0,
+      "confidence": 91,
+      "commercialConfidence": 91,
+      "engineeringDecision": "PENDING_ENGINEERING_REVIEW",
+      "status": "PROPOSED",
+      "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001",
+      "engineeringNote": "",
+      "engineeringConfidence": 0,
+      "engineeringRisk": "UNREVIEWED",
+      "engineeringComments": [],
+      "immutable": false,
+      "createdAt": "2026-06-30T14:07:48.266Z",
+      "updatedAt": "2026-06-30T14:07:48.266Z"
+    },
+    {
+      "unitId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002",
+      "sourceRuntimeObjectId": "RUNTIME-ROUTE-GOOGLE-29M",
+      "runtimeObjectIds": [
+        "RUNTIME-ROUTE-GOOGLE-29M"
+      ],
+      "geometryReferences": [
+        "GEOMETRY-GOOGLE-29M-Z"
+      ],
+      "runtimeRelationshipIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE"
+      ],
+      "runtimeEvidenceIds": [
+        "EVIDENCE-GOOGLE-APPROVAL",
+        "EVIDENCE-GOOGLE-KMZ",
+        "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW"
+      ],
+      "dependencyIds": [
+        "DEPENDENCY-PERMITTING",
+        "DEPENDENCY-INVENTORY-VALIDATION"
+      ],
+      "unitType": "RUNTIME_REFERENCE_UNIT",
+      "name": "Proposed IOF Unit 2",
+      "quantity": 1,
+      "commercialQuantity": 1,
+      "historicalQuantity": 0,
+      "marketplaceAdvisory": "NOT_REQUESTED",
+      "engineeringQuantity": 0,
+      "confidence": 91,
+      "commercialConfidence": 91,
+      "engineeringDecision": "PENDING_ENGINEERING_REVIEW",
+      "status": "PROPOSED",
+      "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002",
+      "engineeringNote": "",
+      "engineeringConfidence": 0,
+      "engineeringRisk": "UNREVIEWED",
+      "engineeringComments": [],
+      "immutable": false,
+      "createdAt": "2026-06-30T14:07:48.267Z",
+      "updatedAt": "2026-06-30T14:07:48.267Z"
+    },
+    {
+      "unitId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003",
+      "sourceRuntimeObjectId": "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+      "runtimeObjectIds": [
+        "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+      ],
+      "geometryReferences": [
+        "GEOMETRY-GOOGLE-29M-A"
+      ],
+      "runtimeRelationshipIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE"
+      ],
+      "runtimeEvidenceIds": [
+        "EVIDENCE-GOOGLE-APPROVAL",
+        "EVIDENCE-GOOGLE-KMZ",
+        "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW"
+      ],
+      "dependencyIds": [
+        "DEPENDENCY-PERMITTING",
+        "DEPENDENCY-INVENTORY-VALIDATION"
+      ],
+      "unitType": "RUNTIME_REFERENCE_UNIT",
+      "name": "Proposed IOF Unit 3",
+      "quantity": 1,
+      "commercialQuantity": 1,
+      "historicalQuantity": 0,
+      "marketplaceAdvisory": "NOT_REQUESTED",
+      "engineeringQuantity": 0,
+      "confidence": 91,
+      "commercialConfidence": 91,
+      "engineeringDecision": "PENDING_ENGINEERING_REVIEW",
+      "status": "PROPOSED",
+      "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003",
+      "engineeringNote": "",
+      "engineeringConfidence": 0,
+      "engineeringRisk": "UNREVIEWED",
+      "engineeringComments": [],
+      "immutable": false,
+      "createdAt": "2026-06-30T14:07:48.267Z",
+      "updatedAt": "2026-06-30T14:07:48.267Z"
+    }
+  ],
+  "runtimeObjectIds": [
+    "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+    "RUNTIME-ROUTE-GOOGLE-29M",
+    "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+  ],
+  "runtimeRelationshipIds": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE"
+  ],
+  "runtimeEvidenceIds": [
+    "EVIDENCE-GOOGLE-APPROVAL",
+    "EVIDENCE-GOOGLE-KMZ",
+    "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW"
+  ],
+  "existingInventoryReferences": [
+    "RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+    "RUNTIME-INVENTORY-GOOGLE-STILLWATER"
+  ],
+  "customerDesignReferences": [
+    "CUSTOMER-DESIGN-GOOGLE-DIVERSITY-REQUEST"
+  ],
+  "customerTwinReference": "CUSTOMER-TWIN-GOOGLE",
+  "geometryReferences": [
+    "GEOMETRY-GOOGLE-29M-A",
+    "GEOMETRY-GOOGLE-29M-Z"
+  ],
+  "proposalDocumentReferences": [
+    "DOC-GOOGLE-EXECUTIVE-SUMMARY",
+    "DOC-GOOGLE-COMMERCIAL-PRICING"
+  ],
+  "sourceProposalVersion": 1,
+  "draftPackageId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+  "packageReadiness": {
+    "status": "READY_FOR_ENGINEERING_REVIEW",
+    "missingInformation": [
+      "Engineering Review"
+    ],
+    "missingGeometry": false,
+    "missingInventory": false,
+    "missingRelationships": false,
+    "missingEvidence": false,
+    "missingUnits": false,
+    "missingEngineeringReview": true,
+    "missingValidation": false,
+    "dependencyCount": 4,
+    "readinessScore": 91,
+    "packageCompleteness": 91,
+    "proposedUnitCount": 3,
+    "certifiedUnitCount": 0,
+    "certificationPercent": 0
+  },
+  "manifest": {
+    "manifestId": "MANIFEST-DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+    "packageId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+    "proposalId": "PROPOSAL-GOOGLE-29M-SPRINT-13-5",
+    "organizationId": "org-teralinx",
+    "workspaceId": "workspace-teralinx-ryan",
+    "generatedAt": "2026-06-30T14:07:48.359Z",
+    "modelVersion": "IOF_PACKAGE_MANIFEST_V1",
+    "duplicationPolicy": "REFERENCE_ONLY_RUNTIME_OBJECTS",
+    "objects": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:objects:RUNTIME-OPPORTUNITY-GOOGLE-29M",
+        "entryType": "objects",
+        "objectId": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+        "objectType": "RUNTIME_OBJECT",
+        "label": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "PROPOSAL_RUNTIME_OBJECTS",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PROPOSAL_RUNTIME_OBJECTS",
+          "objectType": "RUNTIME_OBJECT"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:objects:RUNTIME-ROUTE-GOOGLE-29M",
+        "entryType": "objects",
+        "objectId": "RUNTIME-ROUTE-GOOGLE-29M",
+        "objectType": "RUNTIME_OBJECT",
+        "label": "RUNTIME-ROUTE-GOOGLE-29M",
+        "runtimeObjectIds": [
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "PROPOSAL_RUNTIME_OBJECTS",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PROPOSAL_RUNTIME_OBJECTS",
+          "objectType": "RUNTIME_OBJECT"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:objects:RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+        "entryType": "objects",
+        "objectId": "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+        "objectType": "RUNTIME_OBJECT",
+        "label": "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+        "runtimeObjectIds": [
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "PROPOSAL_RUNTIME_OBJECTS",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PROPOSAL_RUNTIME_OBJECTS",
+          "objectType": "RUNTIME_OBJECT"
+        }
+      }
+    ],
+    "relationships": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:relationships:DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "entryType": "relationships",
+        "objectId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "objectType": "RUNTIME_RELATIONSHIP",
+        "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "RELATIONSHIP_GRAPH",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "RELATIONSHIP_GRAPH",
+          "objectType": "RUNTIME_RELATIONSHIP"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:relationships:EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "entryType": "relationships",
+        "objectId": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "objectType": "RUNTIME_RELATIONSHIP",
+        "label": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "RELATIONSHIP_GRAPH",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "RELATIONSHIP_GRAPH",
+          "objectType": "RUNTIME_RELATIONSHIP"
+        }
+      }
+    ],
+    "inventory": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:inventory:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "entryType": "inventory",
+        "objectId": "RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "objectType": "CUSTOMER_INVENTORY_REFERENCE",
+        "label": "RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "CUSTOMER_INVENTORY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "CUSTOMER_INVENTORY",
+          "objectType": "CUSTOMER_INVENTORY_REFERENCE"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:inventory:RUNTIME-INVENTORY-GOOGLE-STILLWATER",
+        "entryType": "inventory",
+        "objectId": "RUNTIME-INVENTORY-GOOGLE-STILLWATER",
+        "objectType": "CUSTOMER_INVENTORY_REFERENCE",
+        "label": "RUNTIME-INVENTORY-GOOGLE-STILLWATER",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "CUSTOMER_INVENTORY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "CUSTOMER_INVENTORY",
+          "objectType": "CUSTOMER_INVENTORY_REFERENCE"
+        }
+      }
+    ],
+    "geometry": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:geometry:GEOMETRY-GOOGLE-29M-A",
+        "entryType": "geometry",
+        "objectId": "GEOMETRY-GOOGLE-29M-A",
+        "objectType": "GEOMETRY_REFERENCE",
+        "label": "GEOMETRY-GOOGLE-29M-A",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "GEOMETRY_REFERENCE",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "GEOMETRY_REFERENCE",
+          "objectType": "GEOMETRY_REFERENCE"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:geometry:GEOMETRY-GOOGLE-29M-Z",
+        "entryType": "geometry",
+        "objectId": "GEOMETRY-GOOGLE-29M-Z",
+        "objectType": "GEOMETRY_REFERENCE",
+        "label": "GEOMETRY-GOOGLE-29M-Z",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "GEOMETRY_REFERENCE",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "GEOMETRY_REFERENCE",
+          "objectType": "GEOMETRY_REFERENCE"
+        }
+      }
+    ],
+    "stations": [],
+    "structures": [],
+    "dependencies": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:dependencies:DEPENDENCY-PERMITTING",
+        "entryType": "dependencies",
+        "objectId": "DEPENDENCY-PERMITTING",
+        "objectType": "DEPENDENCY",
+        "label": "DEPENDENCY-PERMITTING",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "PACKAGE_DEPENDENCY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PACKAGE_DEPENDENCY",
+          "objectType": "DEPENDENCY",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:dependencies:DEPENDENCY-INVENTORY-VALIDATION",
+        "entryType": "dependencies",
+        "objectId": "DEPENDENCY-INVENTORY-VALIDATION",
+        "objectType": "DEPENDENCY",
+        "label": "DEPENDENCY-INVENTORY-VALIDATION",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "PACKAGE_DEPENDENCY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PACKAGE_DEPENDENCY",
+          "objectType": "DEPENDENCY",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:dependencies:DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "entryType": "dependencies",
+        "objectId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "objectType": "DEPENDENCY",
+        "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "PACKAGE_DEPENDENCY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PACKAGE_DEPENDENCY",
+          "objectType": "DEPENDENCY",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:dependencies:EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "entryType": "dependencies",
+        "objectId": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "objectType": "DEPENDENCY",
+        "label": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "PACKAGE_DEPENDENCY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PACKAGE_DEPENDENCY",
+          "objectType": "DEPENDENCY",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      }
+    ],
+    "evidence": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:evidence:EVIDENCE-GOOGLE-APPROVAL",
+        "entryType": "evidence",
+        "objectId": "EVIDENCE-GOOGLE-APPROVAL",
+        "objectType": "EVIDENCE",
+        "label": "EVIDENCE-GOOGLE-APPROVAL",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "EVIDENCE_REGISTRY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "EVIDENCE_REGISTRY",
+          "objectType": "EVIDENCE"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:evidence:EVIDENCE-GOOGLE-KMZ",
+        "entryType": "evidence",
+        "objectId": "EVIDENCE-GOOGLE-KMZ",
+        "objectType": "EVIDENCE",
+        "label": "EVIDENCE-GOOGLE-KMZ",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "EVIDENCE_REGISTRY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "EVIDENCE_REGISTRY",
+          "objectType": "EVIDENCE"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:evidence:EVIDENCE-GOOGLE-COMMERCIAL-REVIEW",
+        "entryType": "evidence",
+        "objectId": "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW",
+        "objectType": "EVIDENCE",
+        "label": "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "EVIDENCE_REGISTRY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "EVIDENCE_REGISTRY",
+          "objectType": "EVIDENCE"
+        }
+      }
+    ],
+    "documents": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:documents:DOC-GOOGLE-EXECUTIVE-SUMMARY",
+        "entryType": "documents",
+        "objectId": "DOC-GOOGLE-EXECUTIVE-SUMMARY",
+        "objectType": "DOCUMENT",
+        "label": "DOC-GOOGLE-EXECUTIVE-SUMMARY",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "PROPOSAL_DOCUMENTS",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PROPOSAL_DOCUMENTS",
+          "objectType": "DOCUMENT"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:documents:DOC-GOOGLE-COMMERCIAL-PRICING",
+        "entryType": "documents",
+        "objectId": "DOC-GOOGLE-COMMERCIAL-PRICING",
+        "objectType": "DOCUMENT",
+        "label": "DOC-GOOGLE-COMMERCIAL-PRICING",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "PROPOSAL_DOCUMENTS",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "PROPOSAL_DOCUMENTS",
+          "objectType": "DOCUMENT"
+        }
+      }
+    ],
+    "commercialAssumptions": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:commercialAssumptions:ASSUMPTION-GOOGLE-ROUTE-MILES",
+        "entryType": "commercialAssumptions",
+        "objectId": "ASSUMPTION-GOOGLE-ROUTE-MILES",
+        "objectType": "COMMERCIAL_ASSUMPTION",
+        "label": "ASSUMPTION-GOOGLE-ROUTE-MILES",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "COMMERCIAL_SUMMARY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "COMMERCIAL_SUMMARY",
+          "objectType": "COMMERCIAL_ASSUMPTION"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:commercialAssumptions:ASSUMPTION-GOOGLE-IRU-TERM",
+        "entryType": "commercialAssumptions",
+        "objectId": "ASSUMPTION-GOOGLE-IRU-TERM",
+        "objectType": "COMMERCIAL_ASSUMPTION",
+        "label": "ASSUMPTION-GOOGLE-IRU-TERM",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "COMMERCIAL_SUMMARY",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "COMMERCIAL_SUMMARY",
+          "objectType": "COMMERCIAL_ASSUMPTION"
+        }
+      }
+    ],
+    "customerRequests": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:customerRequests:CUSTOMER-DESIGN-GOOGLE-DIVERSITY-REQUEST",
+        "entryType": "customerRequests",
+        "objectId": "CUSTOMER-DESIGN-GOOGLE-DIVERSITY-REQUEST",
+        "objectType": "CUSTOMER_REQUEST",
+        "label": "CUSTOMER-DESIGN-GOOGLE-DIVERSITY-REQUEST",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "CUSTOMER_DESIGN_REQUEST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "CUSTOMER_DESIGN_REQUEST",
+          "objectType": "CUSTOMER_REQUEST"
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:customerRequests:customer-request-1",
+        "entryType": "customerRequests",
+        "objectId": "customer-request-1",
+        "objectType": "CUSTOMER_REQUEST",
+        "label": "customer-request-1",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "CUSTOMER_DESIGN_REQUEST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "CUSTOMER_DESIGN_REQUEST",
+          "objectType": "CUSTOMER_REQUEST"
+        }
+      }
+    ],
+    "engineeringRequirements": [
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:engineeringRequirements:geometryComplete",
+        "entryType": "engineeringRequirements",
+        "objectId": "geometryComplete",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "geometryComplete",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:engineeringRequirements:existingInventoryValidated",
+        "entryType": "engineeringRequirements",
+        "objectId": "existingInventoryValidated",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "existingInventoryValidated",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:engineeringRequirements:customerDesignReviewed",
+        "entryType": "engineeringRequirements",
+        "objectId": "customerDesignReviewed",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "customerDesignReviewed",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:engineeringRequirements:relationshipsValidated",
+        "entryType": "engineeringRequirements",
+        "objectId": "relationshipsValidated",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "relationshipsValidated",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:engineeringRequirements:dependenciesValidated",
+        "entryType": "engineeringRequirements",
+        "objectId": "dependenciesValidated",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "dependenciesValidated",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:engineeringRequirements:evidencePresent",
+        "entryType": "engineeringRequirements",
+        "objectId": "evidencePresent",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "evidencePresent",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:engineeringRequirements:commercialAssumptionsReviewed",
+        "entryType": "engineeringRequirements",
+        "objectId": "commercialAssumptionsReviewed",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "commercialAssumptionsReviewed",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:engineeringRequirements:unitQuantitiesVerified",
+        "entryType": "engineeringRequirements",
+        "objectId": "unitQuantitiesVerified",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "unitQuantitiesVerified",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:engineeringRequirements:engineeringStandardsMet",
+        "entryType": "engineeringRequirements",
+        "objectId": "engineeringStandardsMet",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "engineeringStandardsMet",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:engineeringRequirements:riskAccepted",
+        "entryType": "engineeringRequirements",
+        "objectId": "riskAccepted",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "riskAccepted",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      },
+      {
+        "manifestEntryId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:engineeringRequirements:packageComplete",
+        "entryType": "engineeringRequirements",
+        "objectId": "packageComplete",
+        "objectType": "ENGINEERING_REQUIREMENT",
+        "label": "packageComplete",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+          "RUNTIME-ROUTE-GOOGLE-29M",
+          "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+          "PROPOSAL-GOOGLE-29M-SPRINT-13-5"
+        ],
+        "source": "ENGINEERING_CHECKLIST",
+        "authority": "ENGINEERING_REVIEW",
+        "lifecycle": "IN_REVIEW",
+        "duplicated": false,
+        "metadata": {
+          "source": "ENGINEERING_CHECKLIST",
+          "objectType": "ENGINEERING_REQUIREMENT",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+            "RUNTIME-ROUTE-GOOGLE-29M",
+            "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M"
+          ]
+        }
+      }
+    ],
+    "counts": {
+      "objects": 3,
+      "relationships": 2,
+      "inventory": 2,
+      "geometry": 2,
+      "stations": 0,
+      "structures": 0,
+      "dependencies": 4,
+      "evidence": 3,
+      "documents": 2,
+      "commercialAssumptions": 2,
+      "customerRequests": 2,
+      "engineeringRequirements": 11
+    },
+    "summary": {
+      "runtimeObjectCount": 3,
+      "relationshipCount": 2,
+      "inventoryCount": 2,
+      "geometryCount": 2,
+      "evidenceCount": 3,
+      "unitCount": 3,
+      "unitIds": [
+        "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001",
+        "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002",
+        "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003"
+      ],
+      "noDuplicateObjects": true
+    }
+  },
+  "dependencyGraph": {
+    "graphId": "GRAPH-DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+    "packageId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+    "generatedAt": "2026-06-30T14:07:48.360Z",
+    "path": "Proposal -> Runtime Objects -> Relationships -> Units -> Evidence -> Geometry -> Draft IOF Package",
+    "nodes": [
+      {
+        "id": "PROPOSAL-GOOGLE-29M-SPRINT-13-5",
+        "type": "Proposal",
+        "label": "PROP-GOOGLE-29M-SPRINT-13-5",
+        "metadata": {
+          "runtimeObject": true
+        }
+      },
+      {
+        "id": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+        "type": "RuntimeObject",
+        "label": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+        "metadata": {
+          "runtimeObject": true
+        }
+      },
+      {
+        "id": "RUNTIME-ROUTE-GOOGLE-29M",
+        "type": "RuntimeObject",
+        "label": "RUNTIME-ROUTE-GOOGLE-29M",
+        "metadata": {
+          "runtimeObject": true
+        }
+      },
+      {
+        "id": "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+        "type": "RuntimeObject",
+        "label": "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+        "metadata": {
+          "runtimeObject": true
+        }
+      },
+      {
+        "id": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "type": "Relationship",
+        "label": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "metadata": {}
+      },
+      {
+        "id": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "type": "Relationship",
+        "label": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "metadata": {}
+      },
+      {
+        "id": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001",
+        "type": "ProposedIOFUnit",
+        "label": "Proposed IOF Unit 1",
+        "metadata": {
+          "status": "PROPOSED"
+        }
+      },
+      {
+        "id": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002",
+        "type": "ProposedIOFUnit",
+        "label": "Proposed IOF Unit 2",
+        "metadata": {
+          "status": "PROPOSED"
+        }
+      },
+      {
+        "id": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003",
+        "type": "ProposedIOFUnit",
+        "label": "Proposed IOF Unit 3",
+        "metadata": {
+          "status": "PROPOSED"
+        }
+      },
+      {
+        "id": "EVIDENCE-GOOGLE-APPROVAL",
+        "type": "Evidence",
+        "label": "EVIDENCE-GOOGLE-APPROVAL",
+        "metadata": {}
+      },
+      {
+        "id": "EVIDENCE-GOOGLE-KMZ",
+        "type": "Evidence",
+        "label": "EVIDENCE-GOOGLE-KMZ",
+        "metadata": {}
+      },
+      {
+        "id": "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW",
+        "type": "Evidence",
+        "label": "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW",
+        "metadata": {}
+      },
+      {
+        "id": "GEOMETRY-GOOGLE-29M-A",
+        "type": "Geometry",
+        "label": "GEOMETRY-GOOGLE-29M-A",
+        "metadata": {}
+      },
+      {
+        "id": "GEOMETRY-GOOGLE-29M-Z",
+        "type": "Geometry",
+        "label": "GEOMETRY-GOOGLE-29M-Z",
+        "metadata": {}
+      },
+      {
+        "id": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+        "type": "DraftIOFPackage",
+        "label": "PROP-GOOGLE-29M-SPRINT-13-5 Draft IOF Package",
+        "metadata": {
+          "status": "DRAFT"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "edgeId": "PROPOSAL-GOOGLE-29M-SPRINT-13-5->RUNTIME-OPPORTUNITY-GOOGLE-29M:REFERENCES_RUNTIME_OBJECT",
+        "from": "PROPOSAL-GOOGLE-29M-SPRINT-13-5",
+        "to": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+        "relationship": "REFERENCES_RUNTIME_OBJECT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "PROPOSAL-GOOGLE-29M-SPRINT-13-5->RUNTIME-ROUTE-GOOGLE-29M:REFERENCES_RUNTIME_OBJECT",
+        "from": "PROPOSAL-GOOGLE-29M-SPRINT-13-5",
+        "to": "RUNTIME-ROUTE-GOOGLE-29M",
+        "relationship": "REFERENCES_RUNTIME_OBJECT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "PROPOSAL-GOOGLE-29M-SPRINT-13-5->RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M:REFERENCES_RUNTIME_OBJECT",
+        "from": "PROPOSAL-GOOGLE-29M-SPRINT-13-5",
+        "to": "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+        "relationship": "REFERENCES_RUNTIME_OBJECT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "RUNTIME-OPPORTUNITY-GOOGLE-29M->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+        "from": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+        "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "relationship": "RELATIONSHIP_CONTEXT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "RUNTIME-ROUTE-GOOGLE-29M->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+        "from": "RUNTIME-ROUTE-GOOGLE-29M",
+        "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "relationship": "RELATIONSHIP_CONTEXT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M->DERIVED_FROM:GOOGLE-29M-OPPORTUNITY:RELATIONSHIP_CONTEXT",
+        "from": "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+        "to": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "relationship": "RELATIONSHIP_CONTEXT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "RUNTIME-OPPORTUNITY-GOOGLE-29M->EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE:RELATIONSHIP_CONTEXT",
+        "from": "RUNTIME-OPPORTUNITY-GOOGLE-29M",
+        "to": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "relationship": "RELATIONSHIP_CONTEXT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "RUNTIME-ROUTE-GOOGLE-29M->EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE:RELATIONSHIP_CONTEXT",
+        "from": "RUNTIME-ROUTE-GOOGLE-29M",
+        "to": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "relationship": "RELATIONSHIP_CONTEXT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M->EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE:RELATIONSHIP_CONTEXT",
+        "from": "RUNTIME-CUSTOMER-DESIGN-GOOGLE-29M",
+        "to": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "relationship": "RELATIONSHIP_CONTEXT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001:ASSEMBLES_UNIT",
+        "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "to": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001",
+        "relationship": "ASSEMBLES_UNIT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE->DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001:ASSEMBLES_UNIT",
+        "from": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "to": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001",
+        "relationship": "ASSEMBLES_UNIT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001->EVIDENCE-GOOGLE-APPROVAL:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001",
+        "to": "EVIDENCE-GOOGLE-APPROVAL",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001->EVIDENCE-GOOGLE-KMZ:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001",
+        "to": "EVIDENCE-GOOGLE-KMZ",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001->EVIDENCE-GOOGLE-COMMERCIAL-REVIEW:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:001",
+        "to": "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      },
+      {
+        "edgeId": "EVIDENCE-GOOGLE-APPROVAL->GEOMETRY-GOOGLE-29M-A:EVIDENCE_LOCATES_GEOMETRY",
+        "from": "EVIDENCE-GOOGLE-APPROVAL",
+        "to": "GEOMETRY-GOOGLE-29M-A",
+        "relationship": "EVIDENCE_LOCATES_GEOMETRY",
+        "metadata": {}
+      },
+      {
+        "edgeId": "EVIDENCE-GOOGLE-KMZ->GEOMETRY-GOOGLE-29M-A:EVIDENCE_LOCATES_GEOMETRY",
+        "from": "EVIDENCE-GOOGLE-KMZ",
+        "to": "GEOMETRY-GOOGLE-29M-A",
+        "relationship": "EVIDENCE_LOCATES_GEOMETRY",
+        "metadata": {}
+      },
+      {
+        "edgeId": "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW->GEOMETRY-GOOGLE-29M-A:EVIDENCE_LOCATES_GEOMETRY",
+        "from": "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW",
+        "to": "GEOMETRY-GOOGLE-29M-A",
+        "relationship": "EVIDENCE_LOCATES_GEOMETRY",
+        "metadata": {}
+      },
+      {
+        "edgeId": "GEOMETRY-GOOGLE-29M-A->DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:PACKAGED_IN_DRAFT_IOF",
+        "from": "GEOMETRY-GOOGLE-29M-A",
+        "to": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+        "relationship": "PACKAGED_IN_DRAFT_IOF",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002:ASSEMBLES_UNIT",
+        "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "to": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002",
+        "relationship": "ASSEMBLES_UNIT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE->DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002:ASSEMBLES_UNIT",
+        "from": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "to": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002",
+        "relationship": "ASSEMBLES_UNIT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002->EVIDENCE-GOOGLE-APPROVAL:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002",
+        "to": "EVIDENCE-GOOGLE-APPROVAL",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002->EVIDENCE-GOOGLE-KMZ:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002",
+        "to": "EVIDENCE-GOOGLE-KMZ",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002->EVIDENCE-GOOGLE-COMMERCIAL-REVIEW:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:002",
+        "to": "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      },
+      {
+        "edgeId": "EVIDENCE-GOOGLE-APPROVAL->GEOMETRY-GOOGLE-29M-Z:EVIDENCE_LOCATES_GEOMETRY",
+        "from": "EVIDENCE-GOOGLE-APPROVAL",
+        "to": "GEOMETRY-GOOGLE-29M-Z",
+        "relationship": "EVIDENCE_LOCATES_GEOMETRY",
+        "metadata": {}
+      },
+      {
+        "edgeId": "EVIDENCE-GOOGLE-KMZ->GEOMETRY-GOOGLE-29M-Z:EVIDENCE_LOCATES_GEOMETRY",
+        "from": "EVIDENCE-GOOGLE-KMZ",
+        "to": "GEOMETRY-GOOGLE-29M-Z",
+        "relationship": "EVIDENCE_LOCATES_GEOMETRY",
+        "metadata": {}
+      },
+      {
+        "edgeId": "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW->GEOMETRY-GOOGLE-29M-Z:EVIDENCE_LOCATES_GEOMETRY",
+        "from": "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW",
+        "to": "GEOMETRY-GOOGLE-29M-Z",
+        "relationship": "EVIDENCE_LOCATES_GEOMETRY",
+        "metadata": {}
+      },
+      {
+        "edgeId": "GEOMETRY-GOOGLE-29M-Z->DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:PACKAGED_IN_DRAFT_IOF",
+        "from": "GEOMETRY-GOOGLE-29M-Z",
+        "to": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+        "relationship": "PACKAGED_IN_DRAFT_IOF",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY->DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003:ASSEMBLES_UNIT",
+        "from": "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "to": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003",
+        "relationship": "ASSEMBLES_UNIT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE->DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003:ASSEMBLES_UNIT",
+        "from": "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE",
+        "to": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003",
+        "relationship": "ASSEMBLES_UNIT",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003->EVIDENCE-GOOGLE-APPROVAL:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003",
+        "to": "EVIDENCE-GOOGLE-APPROVAL",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003->EVIDENCE-GOOGLE-KMZ:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003",
+        "to": "EVIDENCE-GOOGLE-KMZ",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      },
+      {
+        "edgeId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003->EVIDENCE-GOOGLE-COMMERCIAL-REVIEW:SUPPORTED_BY_EVIDENCE",
+        "from": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5:unit:003",
+        "to": "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW",
+        "relationship": "SUPPORTED_BY_EVIDENCE",
+        "metadata": {}
+      }
+    ],
+    "summary": {
+      "nodeCount": 15,
+      "edgeCount": 32,
+      "referenceOnly": true
+    }
+  },
+  "validation": {
+    "validationId": "VALIDATION-DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+    "packageId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+    "status": "WARNING",
+    "readinessScore": 91,
+    "checks": [
+      {
+        "key": "geometry",
+        "label": "Geometry",
+        "status": "PASS"
+      },
+      {
+        "key": "inventory",
+        "label": "Existing Inventory",
+        "status": "PASS"
+      },
+      {
+        "key": "relationships",
+        "label": "Relationships",
+        "status": "PASS"
+      },
+      {
+        "key": "evidence",
+        "label": "Evidence",
+        "status": "PASS"
+      },
+      {
+        "key": "units",
+        "label": "Proposed IOF Units",
+        "status": "PASS"
+      },
+      {
+        "key": "engineeringReview",
+        "label": "Engineering Review",
+        "status": "WARNING"
+      },
+      {
+        "key": "runtimeReferences",
+        "label": "Runtime References",
+        "status": "PASS"
+      }
+    ],
+    "validatedAt": "2026-06-30T14:07:48.359Z"
+  },
+  "packageDifferences": {
+    "differenceId": "DIFF-DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+    "packageId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+    "proposalId": "PROPOSAL-GOOGLE-29M-SPRINT-13-5",
+    "proposalVersion": 1,
+    "packageSourceProposalVersion": 1,
+    "comparedAt": "2026-06-30T14:07:48.280Z",
+    "addedObjects": [],
+    "removedObjects": [],
+    "modifiedUnits": [],
+    "geometryChanges": {
+      "added": [],
+      "removed": []
+    },
+    "relationshipChanges": {
+      "added": [],
+      "removed": []
+    },
+    "engineeringImpact": "NO_IMPACT"
+  },
+  "engineeringReadiness": "ASSIGNED_FOR_ENGINEERING_REVIEW",
+  "commercialConfidence": 0,
+  "packageCompleteness": 91,
+  "certificationProgress": 0,
+  "route": [],
+  "stations": [],
+  "structures": [],
+  "objects": [],
+  "relationships": [],
+  "evidence": [],
+  "historyIds": [
+    "runtime-history-DRAFT-IOF-GOOGLE-29M-SPRINT-13-5-runtime.iof_package.assembled_from_proposal-1782828468281-fdd8b69e66349",
+    "runtime-history-DRAFT-IOF-GOOGLE-29M-SPRINT-13-5-runtime.iof_package.assigned_engineer-1782828468354-fbfb34a9fdd28"
+  ],
+  "createdAt": "2026-06-30T14:07:48.269Z",
+  "updatedAt": "2026-06-30T14:07:48.354Z",
+  "noMarketplaceCreation": true,
+  "noContractCreation": true,
+  "noSofCreation": true,
+  "noSowCreation": true
+}

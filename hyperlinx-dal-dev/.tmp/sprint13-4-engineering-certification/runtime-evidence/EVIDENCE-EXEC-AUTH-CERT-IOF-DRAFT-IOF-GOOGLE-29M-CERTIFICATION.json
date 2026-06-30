@@ -5,19 +5,19 @@
   "sourceSystem": "Engineering Certification Runtime",
   "authority": "ENGINEERING_REVIEW",
   "validationStatus": "PASS",
-  "collectedAt": "2026-06-30T12:57:08.275Z",
-  "ingestedAt": "2026-06-30T12:57:08.275Z",
-  "createdAt": "2026-06-30T12:57:08.275Z",
-  "updatedAt": "2026-06-30T12:57:08.275Z",
+  "collectedAt": "2026-06-30T14:07:48.467Z",
+  "ingestedAt": "2026-06-30T14:07:48.467Z",
+  "createdAt": "2026-06-30T14:07:48.467Z",
+  "updatedAt": "2026-06-30T14:07:48.467Z",
   "lineage": {
     "proposalId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
     "draftIofPackageId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
     "certifiedIofPackageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
-    "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+    "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782828468452",
     "certifiedBy": "teralinx-user-kyle"
   },
   "metadata": {
-    "assemblyFingerprint": "639c5ef58a8609fb01f3c057f20eb3a8308ab922cf008391351d9e941187e258",
+    "assemblyFingerprint": "a5f04e2b0d734cfd0db10a8f31c1269fcb3fedbe46c322bf291a4061cf89b4f7",
     "certificationConfidence": 95,
     "noMarketplaceCreation": true,
     "noContractCreation": true

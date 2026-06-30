@@ -1,5 +1,5 @@
 {
-  "historyId": "runtime-history-DRAFT-IOF-GOOGLE-29M-ASSEMBLY-runtime.authority_transfer.commercial_to_engineering-1782824228166-4fcea5872207a",
+  "historyId": "runtime-history-DRAFT-IOF-GOOGLE-29M-ASSEMBLY-runtime.authority_transfer.commercial_to_engineering-1782828468180-93a99022b7df4",
   "eventType": "runtime.authority_transfer.commercial_to_engineering",
   "actor": "Kyle",
   "actorId": "teralinx-user-kyle",
@@ -8,9 +8,9 @@
   "objectName": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
   "organizationId": "org-teralinx",
   "workspaceId": "workspace-teralinx-kyle",
-  "timestamp": "2026-06-30T12:57:08.166Z",
-  "createdAt": "2026-06-30T12:57:08.166Z",
-  "updatedAt": "2026-06-30T12:57:08.166Z",
+  "timestamp": "2026-06-30T14:07:48.180Z",
+  "createdAt": "2026-06-30T14:07:48.180Z",
+  "updatedAt": "2026-06-30T14:07:48.180Z",
   "details": "Authority transferred from Commercial Proposal to Engineering Review.",
   "metadata": {
     "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",

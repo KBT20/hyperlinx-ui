@@ -1,0 +1,51 @@
+{
+  "runtimeId": "RUNTIME-DRAFT-IOF-DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+  "objectId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+  "objectType": "ENGINEERING",
+  "name": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+  "owner": "Kyle",
+  "ownerId": "teralinx-user-kyle",
+  "createdBy": "Kyle",
+  "createdById": "teralinx-user-kyle",
+  "assignedTo": [
+    "teralinx-user-kyle"
+  ],
+  "organization": "org-teralinx",
+  "organizationId": "org-teralinx",
+  "workspace": "workspace-teralinx-kyle",
+  "workspaceId": "workspace-teralinx-kyle",
+  "customerId": "customer-google",
+  "visibility": "ORGANIZATION",
+  "authority": "ENGINEERING_REVIEW",
+  "lifecycleState": "IN_REVIEW",
+  "version": 1,
+  "evidenceIds": [
+    "EVIDENCE-GOOGLE-APPROVAL",
+    "EVIDENCE-GOOGLE-KMZ",
+    "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW"
+  ],
+  "evidenceLinks": [
+    "EVIDENCE-GOOGLE-APPROVAL",
+    "EVIDENCE-GOOGLE-KMZ",
+    "EVIDENCE-GOOGLE-COMMERCIAL-REVIEW"
+  ],
+  "relationshipIds": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE"
+  ],
+  "relationshipLinks": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "EXTENDS_INVENTORY:RUNTIME-INVENTORY-GOOGLE-MUSKOGEE"
+  ],
+  "sourceId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+  "createdAt": "2026-06-30T14:07:48.269Z",
+  "updatedAt": "2026-06-30T14:07:48.365Z",
+  "metadata": {
+    "status": "DRAFT",
+    "workflowStatus": "ENGINEERING_REVIEW",
+    "proposalId": "PROPOSAL-GOOGLE-29M-SPRINT-13-5",
+    "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+    "packageId": "DRAFT-IOF-GOOGLE-29M-SPRINT-13-5",
+    "noDuplicateRuntimeObjects": true
+  }
+}
