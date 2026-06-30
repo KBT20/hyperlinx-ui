@@ -1,0 +1,13 @@
+{
+  "historyId": "HIST-GOOGLE-DESIGN-REQUEST",
+  "eventType": "runtime.customer_design.submitted",
+  "actor": "Google Customer",
+  "actorId": "google-participant-001",
+  "objectType": "CustomerDesignRequest",
+  "objectId": "GOOGLE-DESIGN-REQUEST-29M",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-google-customer",
+  "timestamp": "2026-06-30T12:57:56.828Z",
+  "createdAt": "2026-06-30T12:57:56.828Z",
+  "updatedAt": "2026-06-30T12:57:56.828Z"
+}

@@ -1,0 +1,15 @@
+{
+  "relationshipId": "REL-GOOGLE-TWIN-FROM-INVENTORY",
+  "relationshipType": "BUILT_FROM_INVENTORY",
+  "fromRuntimeId": "RUNTIME-TWIN-GOOGLE-AUSTIN",
+  "toRuntimeId": "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+  "authority": "RUNTIME_GRAPH",
+  "organizationId": "org-teralinx",
+  "customerId": "customer-google",
+  "evidenceIds": [
+    "EVID-GOOGLE-KMZ-EXISTING"
+  ],
+  "version": 1,
+  "createdAt": "2026-06-30T12:57:56.834Z",
+  "updatedAt": "2026-06-30T12:57:56.834Z"
+}

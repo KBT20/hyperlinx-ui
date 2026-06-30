@@ -1,0 +1,104 @@
+{
+  "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+  "name": "Google $29M Operational Proof Opportunity",
+  "accountId": "customer-google",
+  "customerName": "Google",
+  "revenue": 29000000,
+  "status": "SAVED",
+  "visibility": "SHARED",
+  "ownerId": "teralinx-user-ryan",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "selectedScopeId": "GOOGLE-DESIGN-REQUEST-29M",
+  "evidenceLinks": [
+    "EVID-GOOGLE-KMZ-EXISTING",
+    "EVID-GOOGLE-RFP-DESIGN"
+  ],
+  "relationshipLinks": [
+    "RUNTIME-TWIN-GOOGLE-AUSTIN",
+    "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+    "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001"
+  ],
+  "commercialDraftType": "EXTEND_EXISTING_NETWORK",
+  "authority": {
+    "owner": "teralinx-user-ryan",
+    "contributors": [],
+    "reviewers": [
+      "teralinx-user-fran",
+      "google-participant-001"
+    ],
+    "approvers": [
+      "teralinx-user-kyle"
+    ],
+    "executives": [
+      "teralinx-user-kyle"
+    ],
+    "sharedWith": [
+      "teralinx-user-fran",
+      "google-participant-001",
+      "teralinx-user-kyle"
+    ]
+  },
+  "metadata": {
+    "extendsExistingNetwork": true,
+    "greenfieldCorridor": false,
+    "customerTwinId": "RUNTIME-TWIN-GOOGLE-AUSTIN"
+  },
+  "objectId": "GOOGLE-29M-OPPORTUNITY",
+  "runtimeObjectId": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+  "objectType": "OPPORTUNITY",
+  "organization": "Teralinx",
+  "workspace": "workspace-teralinx-ryan",
+  "owner": "Ryan",
+  "createdBy": "Ryan",
+  "createdById": "teralinx-user-ryan",
+  "assignedTo": [
+    "teralinx-user-fran",
+    "teralinx-user-kyle",
+    "google-participant-001"
+  ],
+  "assignment": {
+    "owner": "teralinx-user-ryan",
+    "contributors": [],
+    "reviewers": [
+      "teralinx-user-fran",
+      "google-participant-001"
+    ],
+    "approvers": [
+      "teralinx-user-kyle"
+    ],
+    "executives": [
+      "teralinx-user-kyle"
+    ]
+  },
+  "lifecycleState": "ACTIVE",
+  "version": 3,
+  "activeView": "networks",
+  "liveSession": null,
+  "snapshotCount": 0,
+  "evidenceIds": [
+    "EVID-GOOGLE-KMZ-EXISTING",
+    "EVID-GOOGLE-RFP-DESIGN"
+  ],
+  "relationshipIds": [
+    "RUNTIME-TWIN-GOOGLE-AUSTIN",
+    "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+    "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001"
+  ],
+  "activityHistory": [
+    "runtime-history-GOOGLE-29M-OPPORTUNITY-runtime.opportunity.saved-1782824276844-a4b2d75284335",
+    "runtime-history-GOOGLE-29M-OPPORTUNITY-runtime.opportunity.shared-1782824276850-55148ce89e81f",
+    "runtime-history-GOOGLE-29M-OPPORTUNITY-runtime.opportunity.assigned-1782824276856-a347b4a5c32fb"
+  ],
+  "historyIds": [
+    "runtime-history-GOOGLE-29M-OPPORTUNITY-runtime.opportunity.saved-1782824276844-a4b2d75284335",
+    "runtime-history-GOOGLE-29M-OPPORTUNITY-runtime.opportunity.shared-1782824276850-55148ce89e81f",
+    "runtime-history-GOOGLE-29M-OPPORTUNITY-runtime.opportunity.assigned-1782824276856-a347b4a5c32fb"
+  ],
+  "createdDate": "2026-06-30T12:57:56.844Z",
+  "modifiedDate": "2026-06-30T12:57:56.856Z",
+  "createdAt": "2026-06-30T12:57:56.844Z",
+  "updatedAt": "2026-06-30T12:57:56.856Z",
+  "noScopeVersionCreation": true,
+  "noInventoryMutation": true
+}

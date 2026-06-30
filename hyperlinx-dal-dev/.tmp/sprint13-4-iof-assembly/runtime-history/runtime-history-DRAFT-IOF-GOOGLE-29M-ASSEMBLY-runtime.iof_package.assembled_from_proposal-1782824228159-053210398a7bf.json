@@ -1,0 +1,16 @@
+{
+  "historyId": "runtime-history-DRAFT-IOF-GOOGLE-29M-ASSEMBLY-runtime.iof_package.assembled_from_proposal-1782824228159-053210398a7bf",
+  "eventType": "runtime.iof_package.assembled_from_proposal",
+  "actor": "Kyle",
+  "actorId": "teralinx-user-kyle",
+  "objectType": "IOFPackage",
+  "objectId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+  "objectName": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-kyle",
+  "timestamp": "2026-06-30T12:57:08.159Z",
+  "createdAt": "2026-06-30T12:57:08.159Z",
+  "updatedAt": "2026-06-30T12:57:08.159Z",
+  "details": "Draft IOF Package assembled from approved Proposal references.",
+  "metadata": {}
+}

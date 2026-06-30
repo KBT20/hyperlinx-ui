@@ -1,0 +1,50 @@
+{
+  "runtimeId": "ENG-GOOGLE-29M",
+  "objectId": "ENG-GOOGLE-29M",
+  "objectType": "ENGINEERING_DRAFT",
+  "name": "Google $29M Engineering Draft",
+  "customerId": "customer-google",
+  "customer": "Google",
+  "owner": "teralinx-user-kyle",
+  "ownerId": "teralinx-user-kyle",
+  "createdBy": "teralinx-user-kyle",
+  "createdById": "teralinx-user-kyle",
+  "assignedTo": [
+    "teralinx-user-ryan"
+  ],
+  "organization": "org-teralinx",
+  "organizationId": "org-teralinx",
+  "workspace": "workspace-teralinx-kyle",
+  "workspaceId": "workspace-teralinx-kyle",
+  "visibility": "SHARED",
+  "authority": "ENGINEERING",
+  "lifecycleState": "CERTIFIED",
+  "version": 1,
+  "evidenceIds": [
+    "EVID-GOOGLE-ENG-CERT"
+  ],
+  "evidenceLinks": [
+    "EVID-GOOGLE-ENG-CERT"
+  ],
+  "relationshipIds": [
+    "REL-GOOGLE-PROPOSAL-ENGINEERING",
+    "REL-GOOGLE-ENGINEERING-CERTIFIED-ROUTE"
+  ],
+  "relationshipLinks": [
+    "REL-GOOGLE-PROPOSAL-ENGINEERING",
+    "REL-GOOGLE-ENGINEERING-CERTIFIED-ROUTE"
+  ],
+  "source": "ENGINEERING_LIBRARY",
+  "classification": "engineering_draft",
+  "confidence": 0.96,
+  "lifecycle": "CERTIFIED",
+  "createdDate": "2026-06-30T12:57:56.895Z",
+  "modifiedDate": "2026-06-30T12:57:56.895Z",
+  "createdAt": "2026-06-30T12:57:56.895Z",
+  "updatedAt": "2026-06-30T12:57:56.895Z",
+  "metadata": {
+    "noDuplicateRuntimeObject": true,
+    "proposalRecordId": "PROPOSAL-GOOGLE-29M",
+    "certifiedRouteId": "CR-GOOGLE-29M"
+  }
+}

@@ -1,4 +1,5 @@
 import { DAL_API } from "../config/dalApi";
+import { withStoredAuth } from "./authHeaders";
 import { findRecord, readCollection, writeRecord, deleteRecord } from "./dalStorage";
 import { createScopeVersionFromInventoryGraph } from "../scopeversion/scopeVersionUtils";
 import { applyScopeVersionCertification } from "../scopeversion/scopeVersionCertification";
@@ -36,7 +37,7 @@ function apiUrl(path: string) {
 }
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, withStoredAuth(init));
   const text = await response.text().catch(() => "");
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}${text ? `: ${text}` : ""}`);
   return (text ? JSON.parse(text) : {}) as T;

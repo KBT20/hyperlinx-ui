@@ -8,6 +8,7 @@ import type {
   RuntimeTranslationCommitResponse,
   RuntimeValidationReport,
 } from "../runtime/RuntimeObjectModel";
+import type { TeralinxAuthSession } from "./teralinxRuntime";
 
 function apiUrl(path: string) {
   return `${DAL_API}${path}`;
@@ -20,15 +21,22 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (text ? JSON.parse(text) : {}) as T;
 }
 
+function authHeaders(session?: TeralinxAuthSession | null, headers: HeadersInit = {}) {
+  return {
+    ...headers,
+    ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
+  };
+}
+
 function unwrapList<T>(data: any, keys: string[]): T[] {
   const items = keys.map((key) => data?.[key]).find(Array.isArray) ?? data?.items ?? data?.data ?? data;
   return Array.isArray(items) ? items : [];
 }
 
-export async function commitRuntimeTranslation(runtimeCommit: RuntimeTranslationCommitRequest) {
+export async function commitRuntimeTranslation(runtimeCommit: RuntimeTranslationCommitRequest, session?: TeralinxAuthSession | null) {
   return requestJson<RuntimeTranslationCommitResponse>("/api/runtime/commit", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
     body: JSON.stringify({ runtimeCommit }),
   });
 }

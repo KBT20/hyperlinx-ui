@@ -1,0 +1,12 @@
+{
+  "validationId": "VAL-GOOGLE-ENGINEERING-CERTIFIED",
+  "status": "PASS",
+  "checks": [
+    "engineering_after_customer_approval",
+    "certified_route_required",
+    "route_not_direct_fallback"
+  ],
+  "validatedAt": "2026-06-30T12:57:56.901Z",
+  "createdAt": "2026-06-30T12:57:56.901Z",
+  "updatedAt": "2026-06-30T12:57:56.901Z"
+}

@@ -1,0 +1,74 @@
+{
+  "runtimeId": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+  "objectId": "GOOGLE-29M-OPPORTUNITY",
+  "objectType": "OPPORTUNITY",
+  "name": "Google $29M Operational Proof Opportunity",
+  "owner": "Ryan",
+  "ownerId": "teralinx-user-ryan",
+  "createdBy": "Ryan",
+  "createdById": "teralinx-user-ryan",
+  "assignedTo": [
+    "teralinx-user-fran",
+    "teralinx-user-kyle",
+    "google-participant-001"
+  ],
+  "organization": "org-teralinx",
+  "workspace": "workspace-teralinx-ryan",
+  "visibility": "SHARED",
+  "authority": "COMMERCIAL_REVIEW",
+  "authorityGrants": {
+    "owner": "teralinx-user-ryan",
+    "contributors": [],
+    "reviewers": [
+      "teralinx-user-fran",
+      "google-participant-001"
+    ],
+    "approvers": [
+      "teralinx-user-kyle"
+    ],
+    "executives": [
+      "teralinx-user-kyle"
+    ],
+    "sharedWith": [
+      "teralinx-user-fran",
+      "google-participant-001",
+      "teralinx-user-kyle"
+    ]
+  },
+  "lifecycleState": "ACTIVE",
+  "version": 3,
+  "evidenceIds": [
+    "EVID-GOOGLE-KMZ-EXISTING",
+    "EVID-GOOGLE-RFP-DESIGN"
+  ],
+  "evidenceLinks": [
+    "EVID-GOOGLE-KMZ-EXISTING",
+    "EVID-GOOGLE-RFP-DESIGN"
+  ],
+  "relationshipIds": [
+    "RUNTIME-TWIN-GOOGLE-AUSTIN",
+    "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+    "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001"
+  ],
+  "relationshipLinks": [
+    "RUNTIME-TWIN-GOOGLE-AUSTIN",
+    "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+    "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001"
+  ],
+  "sourceId": "GOOGLE-29M-OPPORTUNITY",
+  "createdAt": "2026-06-30T12:57:56.844Z",
+  "updatedAt": "2026-06-30T12:57:56.856Z",
+  "metadata": {
+    "accountId": "customer-google",
+    "status": "SAVED",
+    "selectedScopeId": "GOOGLE-DESIGN-REQUEST-29M",
+    "activityHistory": [
+      "runtime-history-GOOGLE-29M-OPPORTUNITY-runtime.opportunity.saved-1782824276844-a4b2d75284335",
+      "runtime-history-GOOGLE-29M-OPPORTUNITY-runtime.opportunity.shared-1782824276850-55148ce89e81f",
+      "runtime-history-GOOGLE-29M-OPPORTUNITY-runtime.opportunity.assigned-1782824276856-a347b4a5c32fb"
+    ],
+    "noDuplicateObjects": true,
+    "noScopeVersionCreation": true,
+    "noInventoryMutation": true
+  }
+}

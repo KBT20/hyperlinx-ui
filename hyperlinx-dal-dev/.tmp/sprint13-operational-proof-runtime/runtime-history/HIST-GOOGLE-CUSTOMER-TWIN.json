@@ -1,0 +1,13 @@
+{
+  "historyId": "HIST-GOOGLE-CUSTOMER-TWIN",
+  "eventType": "runtime.customer_twin.created",
+  "actor": "Ryan",
+  "actorId": "teralinx-user-ryan",
+  "objectType": "CustomerTwin",
+  "objectId": "RUNTIME-TWIN-GOOGLE-AUSTIN",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "timestamp": "2026-06-30T12:57:56.838Z",
+  "createdAt": "2026-06-30T12:57:56.838Z",
+  "updatedAt": "2026-06-30T12:57:56.838Z"
+}

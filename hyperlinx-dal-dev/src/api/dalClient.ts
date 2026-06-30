@@ -1,4 +1,5 @@
 import { DAL_API, DAL_INVENTORY_GRAPH_API } from "../config/dalApi";
+import { withStoredAuth } from "./authHeaders";
 import {
   deleteRecord,
   findRecord,
@@ -70,7 +71,7 @@ function apiUrl(path: string, base = DAL_API) {
 }
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+  const res = await fetch(url, withStoredAuth(init));
   const text = await res.text().catch(() => "");
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}${text ? `: ${text}` : ""}`);
   return (text ? JSON.parse(text) : {}) as T;

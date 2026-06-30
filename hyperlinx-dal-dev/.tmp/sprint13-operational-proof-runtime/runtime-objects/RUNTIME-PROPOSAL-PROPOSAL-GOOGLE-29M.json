@@ -1,0 +1,126 @@
+{
+  "runtimeId": "RUNTIME-PROPOSAL-PROPOSAL-GOOGLE-29M",
+  "objectId": "PROPOSAL-GOOGLE-29M",
+  "objectType": "PROPOSAL",
+  "name": "Google $29M Customer Review Proposal",
+  "owner": "Ryan",
+  "ownerId": "teralinx-user-ryan",
+  "createdBy": "Ryan",
+  "createdById": "teralinx-user-ryan",
+  "assignedTo": [
+    "google-participant-001"
+  ],
+  "organization": "org-teralinx",
+  "organizationId": "org-teralinx",
+  "workspace": "workspace-teralinx-ryan",
+  "workspaceId": "workspace-teralinx-ryan",
+  "customerId": "customer-google",
+  "visibility": "SHARED",
+  "authority": "COMMERCIAL_REVIEW",
+  "authorityGrants": {
+    "owner": "teralinx-user-ryan",
+    "contributors": [],
+    "reviewers": [],
+    "approvers": [],
+    "executives": [],
+    "customerReviewers": [
+      "google-participant-001"
+    ],
+    "salesEngineering": [],
+    "sharedWith": [
+      "google-participant-001"
+    ]
+  },
+  "lifecycleState": "IN_REVIEW",
+  "version": 1,
+  "evidenceIds": [
+    "EVID-GOOGLE-COMMERCIAL-DRAFT",
+    "EVID-GOOGLE-KMZ-EXISTING",
+    "EVID-GOOGLE-RFP-DESIGN"
+  ],
+  "evidenceLinks": [
+    "EVID-GOOGLE-COMMERCIAL-DRAFT",
+    "EVID-GOOGLE-KMZ-EXISTING",
+    "EVID-GOOGLE-RFP-DESIGN"
+  ],
+  "relationshipIds": [
+    "GOOGLE-29M-OPPORTUNITY",
+    "RUNTIME-TWIN-GOOGLE-AUSTIN",
+    "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001"
+  ],
+  "relationshipLinks": [
+    "GOOGLE-29M-OPPORTUNITY",
+    "RUNTIME-TWIN-GOOGLE-AUSTIN",
+    "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001"
+  ],
+  "sourceId": "PROPOSAL-GOOGLE-29M",
+  "createdAt": "2026-06-30T12:57:56.865Z",
+  "updatedAt": "2026-06-30T12:57:56.873Z",
+  "metadata": {
+    "proposalNumber": "PROP-PROPOSAL-GOOGLE-29M",
+    "customerId": "customer-google",
+    "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+    "status": "CUSTOMER_APPROVED",
+    "approvalState": "APPROVED",
+    "nextLifecycleAction": "CREATE_DRAFT_IOF_PACKAGE",
+    "existingInventoryReferences": [
+      "INV-GOOGLE-AUSTIN-EXISTING"
+    ],
+    "customerDesignReferences": [
+      "GOOGLE-DESIGN-REQUEST-29M"
+    ],
+    "customerTwinReference": "RUNTIME-TWIN-GOOGLE-AUSTIN",
+    "geometryReferences": [
+      "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001"
+    ],
+    "proposalDocumentReferences": [
+      "DOC-GOOGLE-OPERATIONAL-PROOF"
+    ],
+    "readiness": {
+      "proposalId": "PROPOSAL-GOOGLE-29M",
+      "status": "READY",
+      "canCreateDraftIofPackage": true,
+      "customerApproved": true,
+      "proposalComplete": true,
+      "runtimeValid": true,
+      "commercial": {
+        "status": "PASS",
+        "missingInformation": [],
+        "dealPointCount": 1,
+        "pricingSummaryPresent": true
+      },
+      "customer": {
+        "status": "APPROVED",
+        "assignedCustomerUsers": [
+          "google-participant-001"
+        ],
+        "comments": 0,
+        "attachments": 0
+      },
+      "engineering": {
+        "status": "READY_FOR_DRAFT_IOF",
+        "runtimeObjectCount": 2,
+        "relationshipCount": 3,
+        "geometryReferenceCount": 1
+      },
+      "marketplace": {
+        "status": "REFERENCE_ONLY",
+        "recommendation": "Use approved Proposal references as Sprint 13.3 Draft IOF source input."
+      },
+      "runtimeHealth": {
+        "status": "PASS",
+        "evidenceCount": 3,
+        "existingInventoryReferences": 1,
+        "customerTwinReference": "RUNTIME-TWIN-GOOGLE-AUSTIN",
+        "duplicateObjectsCreated": false
+      },
+      "confidence": 100,
+      "missingInformation": [],
+      "blockingIssues": [],
+      "recommendation": "Expose Create Draft IOF Package source references without assembling a package."
+    },
+    "noDuplicateObjects": true,
+    "noScopeVersionCreation": true,
+    "noInventoryMutation": true
+  }
+}

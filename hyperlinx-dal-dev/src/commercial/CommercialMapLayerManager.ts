@@ -5,8 +5,11 @@ export type CommercialMapDomain =
   | "CUSTOMER_PROPOSED_NETWORK"
   | "SALES_COMMERCIAL_DRAFT"
   | "CUSTOMER_DRAFT"
+  | "ENGINEERING_DRAFT"
   | "ACCEPTED_PROPOSAL"
-  | "SHARED_REVIEW";
+  | "SHARED_REVIEW"
+  | "FIELD_CERTIFIED"
+  | "OPERATIONAL";
 
 export type CommercialMapFeatureScope = "BASE" | "ROUTES" | "OBJECTS" | "CORRIDOR" | "REVIEW";
 export type CommercialMapVisibility = "VISIBLE" | "HIDDEN";
@@ -19,7 +22,7 @@ export interface CommercialMapLayer {
   label: string;
   domain: CommercialMapDomain;
   accountId: string;
-  authority: "Customer" | "Sales" | "Commercial Review" | "System";
+  authority: "Customer" | "Sales" | "Commercial Review" | "Engineering" | "Field" | "Operations" | "System";
   owner: string;
   visibility: CommercialMapVisibility;
   lockState: CommercialMapLockState;
@@ -40,9 +43,12 @@ const DOMAIN_Z_INDEX: Record<CommercialMapDomain, number> = {
   CUSTOMER_INVENTORY: 20,
   CUSTOMER_PROPOSED_NETWORK: 40,
   SALES_COMMERCIAL_DRAFT: 50,
+  ENGINEERING_DRAFT: 54,
   ACCEPTED_PROPOSAL: 55,
   CUSTOMER_DRAFT: 60,
   SHARED_REVIEW: 70,
+  FIELD_CERTIFIED: 80,
+  OPERATIONAL: 90,
 };
 
 export function commercialMapZIndex(domain: CommercialMapDomain, featureScope: CommercialMapFeatureScope) {

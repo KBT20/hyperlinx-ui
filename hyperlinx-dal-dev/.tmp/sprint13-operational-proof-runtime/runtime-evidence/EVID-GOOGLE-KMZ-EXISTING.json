@@ -1,0 +1,12 @@
+{
+  "evidenceId": "EVID-GOOGLE-KMZ-EXISTING",
+  "sourceType": "KMZ",
+  "sourceName": "Google Austin Existing Inventory",
+  "authority": "CUSTOMER_PROVIDED",
+  "validationStatus": "VALIDATED",
+  "customerId": "customer-google",
+  "collectedAt": "2026-06-30T12:57:56.794Z",
+  "ingestedAt": "2026-06-30T12:57:56.794Z",
+  "createdAt": "2026-06-30T12:57:56.794Z",
+  "updatedAt": "2026-06-30T12:57:56.794Z"
+}

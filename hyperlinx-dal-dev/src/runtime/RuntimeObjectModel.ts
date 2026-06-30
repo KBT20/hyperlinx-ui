@@ -15,7 +15,26 @@ export type RuntimeAuthority =
   | "COMMERCIAL_REVIEW"
   | "ENGINEERING_REVIEW";
 
+export type RuntimeVisibility = "PRIVATE" | "SHARED" | "ORGANIZATION" | "PUBLIC";
+
+export type RuntimeLifecycleState =
+  | "DRAFT"
+  | "ACTIVE"
+  | "IN_REVIEW"
+  | "APPROVED"
+  | "ACCEPTED"
+  | "ARCHIVED"
+  | "SUPERSEDED"
+  | "RETIRED";
+
 export type RuntimeObjectType =
+  | "DESIGN_REQUEST"
+  | "PROPOSED_ROUTE"
+  | "PROPOSED_SEGMENT"
+  | "OPPORTUNITY"
+  | "PROPOSAL"
+  | "ENGINEERING"
+  | "SCOPE_VERSION"
   | "ROUTE"
   | "SEGMENT"
   | "HANDHOLE"
@@ -65,7 +84,22 @@ export interface RuntimeInventoryRecord {
   inventoryType: RuntimeInventoryType;
   owner: string;
   name: string;
+  organization: string;
+  organizationId?: string;
+  workspace: string;
+  workspaceId?: string;
+  visibility: RuntimeVisibility;
   authority: RuntimeAuthority;
+  lifecycleState: RuntimeLifecycleState;
+  customer?: string;
+  customerId?: string;
+  source?: string;
+  sourceType?: string;
+  sourceFilename?: string;
+  inventoryAuthorityType?: string;
+  ownerUserId?: string;
+  validationStatus?: string;
+  runtimeObjectIds?: string[];
   version: number;
   status: "ACTIVE" | "SUPERSEDED" | "RETIRED";
   evidenceIds: string[];
@@ -80,12 +114,42 @@ export interface RuntimeInventoryRecord {
 
 export interface RuntimeObjectRecord {
   runtimeId: string;
+  objectId: string;
   objectType: RuntimeObjectType;
   name: string;
+  owner: string;
+  createdBy: string;
+  assignedTo: string[];
+  organization: string;
+  workspace: string;
+  inventoryId?: string;
+  inventoryAuthorityType?: string;
+  sourceType?: string;
+  sourceFilename?: string;
+  customerId?: string;
+  organizationId?: string;
+  workspaceId?: string;
+  ownerUserId?: string;
+  validationStatus?: string;
+  runtimeObjectIds?: string[];
+  designImportId?: string;
+  requestedBy?: string;
+  designIntent?: string;
+  scopeVersionId?: string;
+  proposedGeometry?: DALCoordinate[];
+  scopeVersion?: string;
+  customer?: string;
+  source?: string;
+  classification?: string;
+  confidence?: number;
+  visibility: RuntimeVisibility;
   version: number;
   authority: RuntimeAuthority;
+  lifecycleState: RuntimeLifecycleState;
   evidenceIds: string[];
+  evidenceLinks: string[];
   relationshipIds: string[];
+  relationshipLinks: string[];
   coordinates?: DALCoordinate;
   geometry?: {
     type: "LineString" | "Polygon" | "Point";
@@ -151,7 +215,7 @@ export interface RuntimeConnectorRecord {
 
 export interface RuntimeTranslationCommitRequest {
   commitId: string;
-  sourceWorkspace: "Translate";
+  sourceWorkspace: "Translate" | "CommercialPlanning" | "CustomerDesignRequest";
   sourceImportId: string;
   actor: string;
   committedAt: string;
@@ -222,6 +286,21 @@ function mapCustomerObjectType(object: ImportedCustomerObject): RuntimeObjectTyp
   return "POINT";
 }
 
+function runtimeGovernance(record: CustomerDesignImport) {
+  return {
+    owner: (record as any).owner ?? record.customerName ?? "Teralinx",
+    createdBy: record.uploadedBy ?? (record as any).createdBy ?? "Teralinx",
+    assignedTo: [] as string[],
+    organization: (record as any).organizationId ?? "org-teralinx",
+    workspace: (record as any).workspaceId ?? "workspace-teralinx-system",
+    scopeVersion: "NO_SCOPEVERSION",
+    customer: record.customerName,
+    source: record.sourceFileName,
+    visibility: "ORGANIZATION" as RuntimeVisibility,
+    lifecycleState: "ACTIVE" as RuntimeLifecycleState,
+  };
+}
+
 function sourceEvidence(record: CustomerDesignImport, timestamp: string): RuntimeEvidenceRecord {
   return {
     evidenceId: runtimeId("EVIDENCE", record.importId, "SOURCE"),
@@ -252,14 +331,21 @@ function sourceEvidence(record: CustomerDesignImport, timestamp: string): Runtim
 
 function routeRuntimeObject(record: CustomerDesignImport, route: ImportedCustomerRoute, timestamp: string): RuntimeObjectRecord {
   const evidenceId = routeEvidenceId(record, route);
+  const runtimeObjectId = runtimeId("RUNTIME-ROUTE", record.designId, route.routeId);
   return {
-    runtimeId: runtimeId("RUNTIME-ROUTE", record.designId, route.routeId),
+    runtimeId: runtimeObjectId,
+    objectId: runtimeObjectId,
     objectType: "ROUTE",
     name: route.name,
+    ...runtimeGovernance(record),
+    classification: route.designState,
+    confidence: route.confidence,
     version: 1,
     authority: "CUSTOMER_EVIDENCE",
     evidenceIds: [evidenceId],
+    evidenceLinks: [evidenceId],
     relationshipIds: [],
+    relationshipLinks: [],
     geometry: {
       type: "LineString",
       coordinates: route.dalGeometry,
@@ -282,14 +368,21 @@ function routeRuntimeObject(record: CustomerDesignImport, route: ImportedCustome
 
 function segmentRuntimeObject(record: CustomerDesignImport, route: ImportedCustomerRoute, timestamp: string): RuntimeObjectRecord {
   const evidenceId = routeEvidenceId(record, route);
+  const runtimeObjectId = runtimeId("RUNTIME-SEGMENT", record.designId, route.routeId, "001");
   return {
-    runtimeId: runtimeId("RUNTIME-SEGMENT", record.designId, route.routeId, "001"),
+    runtimeId: runtimeObjectId,
+    objectId: runtimeObjectId,
     objectType: "SEGMENT",
     name: `${route.name} Segment 001`,
+    ...runtimeGovernance(record),
+    classification: "SEGMENT",
+    confidence: route.confidence,
     version: 1,
     authority: "CUSTOMER_EVIDENCE",
     evidenceIds: [evidenceId],
+    evidenceLinks: [evidenceId],
     relationshipIds: [],
+    relationshipLinks: [],
     geometry: {
       type: "LineString",
       coordinates: route.dalGeometry,
@@ -309,14 +402,22 @@ function segmentRuntimeObject(record: CustomerDesignImport, route: ImportedCusto
 }
 
 function objectRuntimeObject(record: CustomerDesignImport, object: ImportedCustomerObject, timestamp: string): RuntimeObjectRecord {
+  const runtimeObjectId = runtimeId("RUNTIME-OBJECT", record.designId, object.objectId);
+  const evidenceId = objectEvidenceId(record, object);
   return {
-    runtimeId: runtimeId("RUNTIME-OBJECT", record.designId, object.objectId),
+    runtimeId: runtimeObjectId,
+    objectId: runtimeObjectId,
     objectType: mapCustomerObjectType(object),
     name: object.name,
+    ...runtimeGovernance(record),
+    classification: object.objectType,
+    confidence: object.confidence,
     version: 1,
     authority: "CUSTOMER_EVIDENCE",
-    evidenceIds: [objectEvidenceId(record, object)],
+    evidenceIds: [evidenceId],
+    evidenceLinks: [evidenceId],
     relationshipIds: [],
+    relationshipLinks: [],
     coordinates: [object.longitude, object.latitude],
     routeId: object.nearestRouteId,
     stationFeet: object.nearestStationFeet,
@@ -334,14 +435,22 @@ function objectRuntimeObject(record: CustomerDesignImport, object: ImportedCusto
 
 function polygonRuntimeObject(record: CustomerDesignImport, polygon: ImportedCustomerPolygon, timestamp: string): RuntimeObjectRecord {
   const isCrossing = /crossing|rail|river|highway|road|bridge/i.test(polygon.name);
+  const runtimeObjectId = runtimeId("RUNTIME-POLYGON", record.designId, polygon.polygonId);
+  const evidenceId = polygonEvidenceId(record, polygon);
   return {
-    runtimeId: runtimeId("RUNTIME-POLYGON", record.designId, polygon.polygonId),
+    runtimeId: runtimeObjectId,
+    objectId: runtimeObjectId,
     objectType: isCrossing ? "CROSSING" : "POLYGON",
     name: polygon.name,
+    ...runtimeGovernance(record),
+    classification: isCrossing ? "CROSSING" : "POLYGON",
+    confidence: polygon.confidence,
     version: 1,
     authority: "CUSTOMER_EVIDENCE",
-    evidenceIds: [polygonEvidenceId(record, polygon)],
+    evidenceIds: [evidenceId],
+    evidenceLinks: [evidenceId],
     relationshipIds: [],
+    relationshipLinks: [],
     geometry: {
       type: "Polygon",
       coordinates: polygon.rings,
@@ -386,13 +495,7 @@ function validationStatus(checks: RuntimeValidationReport["checks"]): Validation
   return "PASS";
 }
 
-export function buildRuntimeCommitFromCustomerDesign(
-  record: CustomerDesignImport,
-  graph: InventoryGraph | null | undefined,
-  actor = record.uploadedBy || "Teralinx",
-): RuntimeTranslationCommitRequest {
-  const timestamp = new Date().toISOString();
-  const commitId = runtimeId("RUNTIME-COMMIT", record.importId);
+function runtimeEvidenceForRecord(record: CustomerDesignImport, timestamp: string) {
   const sourceEvidenceRecord = sourceEvidence(record, timestamp);
   const routeEvidence = record.routes.map((route) => ({
     ...sourceEvidenceRecord,
@@ -432,15 +535,110 @@ export function buildRuntimeCommitFromCustomerDesign(
       rings: polygon.rings.length,
     },
   }));
-  const evidence = [sourceEvidenceRecord, ...routeEvidence, ...objectEvidence, ...polygonEvidence];
+  return [sourceEvidenceRecord, ...routeEvidence, ...objectEvidence, ...polygonEvidence];
+}
 
+function parsedRuntimeObjects(record: CustomerDesignImport, timestamp: string) {
   const routeObjects = record.routes.map((route) => routeRuntimeObject(record, route, timestamp));
   const segmentObjects = record.routes.map((route) => segmentRuntimeObject(record, route, timestamp));
   const customerObjects = record.objects.map((object) => objectRuntimeObject(record, object, timestamp));
   const polygonObjects = record.polygons.map((polygon) => polygonRuntimeObject(record, polygon, timestamp));
+  return { routeObjects, segmentObjects, customerObjects, polygonObjects };
+}
+
+function attachRelationshipLinks(runtimeObjects: RuntimeObjectRecord[], relationships: RuntimeRelationshipRecord[]) {
+  for (const object of runtimeObjects) {
+    const linkedRelationships = relationships
+      .filter((item) => item.fromRuntimeId === object.runtimeId || item.toRuntimeId === object.runtimeId)
+      .map((item) => item.relationshipId);
+    object.relationshipIds = linkedRelationships;
+    object.relationshipLinks = linkedRelationships;
+  }
+}
+
+function activeDesignRoute(record: CustomerDesignImport) {
+  const activeRouteId = record.activeRouteId ?? record.routes[0]?.routeId ?? "";
+  return record.routes.find((route) => route.routeId === activeRouteId) ?? record.routes[0];
+}
+
+function proposedGeometryForRecord(record: CustomerDesignImport) {
+  const route = activeDesignRoute(record);
+  return record.proposedGeometry?.length
+    ? record.proposedGeometry
+    : route?.dalGeometry?.length
+      ? route.dalGeometry
+      : record.previewGeometry ?? [];
+}
+
+function ownerUserIdForRecord(record: CustomerDesignImport) {
+  return String((record as any).ownerUserId ?? (record as any).createdById ?? record.uploadedBy ?? "teralinx-system");
+}
+
+function inventoryAuthorityFields(record: CustomerDesignImport, inventoryId: string, validationStatus: string, runtimeObjectIds: string[]) {
+  const governance = runtimeGovernance(record);
+  return {
+    inventoryId,
+    inventoryAuthorityType: "EXISTING_CUSTOMER_INVENTORY",
+    sourceType: record.sourceType,
+    sourceFilename: record.sourceFileName,
+    customerId: record.accountId,
+    organizationId: governance.organization,
+    workspaceId: governance.workspace,
+    ownerUserId: ownerUserIdForRecord(record),
+    classification: "EXISTING_INVENTORY",
+    validationStatus,
+    runtimeObjectIds,
+  };
+}
+
+function designRequestFields(record: CustomerDesignImport) {
+  const governance = runtimeGovernance(record);
+  const scopeVersionId = record.scopeVersionId ?? runtimeId("SV-CDR", record.designId);
+  return {
+    designImportId: record.designImportId ?? record.importId,
+    customerId: record.accountId,
+    sourceType: record.sourceType,
+    sourceFilename: record.sourceFileName,
+    requestedBy: record.uploadedBy,
+    organizationId: governance.organization,
+    workspaceId: governance.workspace,
+    designIntent: record.designIntent ?? "CUSTOMER_DESIGN_REQUEST",
+    scopeVersionId,
+    scopeVersion: scopeVersionId,
+    proposedGeometry: proposedGeometryForRecord(record),
+  };
+}
+
+export function buildRuntimeCommitFromExistingInventoryImport(
+  record: CustomerDesignImport,
+  graph: InventoryGraph | null | undefined,
+  actor = record.uploadedBy || "Teralinx",
+): RuntimeTranslationCommitRequest {
+  const timestamp = new Date().toISOString();
+  const commitId = runtimeId("RUNTIME-COMMIT-INVENTORY", record.importId);
+  const evidence = runtimeEvidenceForRecord(record, timestamp);
+  const { routeObjects, segmentObjects, customerObjects, polygonObjects } = parsedRuntimeObjects(record, timestamp);
   const runtimeObjects = [...routeObjects, ...segmentObjects, ...customerObjects, ...polygonObjects];
 
   const inventoryId = runtimeId("RUNTIME-INVENTORY-CUSTOMER", record.designId);
+  const validationState = record.diagnostics.some((item) => item.severity === "ERROR") ? "FAIL" : "PASS";
+  const objectIds = runtimeObjects.map((object) => object.runtimeId);
+  const authorityFields = inventoryAuthorityFields(record, inventoryId, validationState, objectIds);
+  runtimeObjects.forEach((object) => {
+    Object.assign(object, authorityFields, {
+      classification: object.classification ?? authorityFields.classification,
+      metadata: {
+        ...object.metadata,
+        lane: "EXISTING_INVENTORY",
+        inventoryId,
+        inventoryAuthorityType: authorityFields.inventoryAuthorityType,
+        sourceType: record.sourceType,
+        sourceFilename: record.sourceFileName,
+        customerId: record.accountId,
+      },
+    });
+  });
+
   const relationships: RuntimeRelationshipRecord[] = [];
   for (const object of runtimeObjects) {
     relationships.push(relationship("CONTAINS", inventoryId, object.runtimeId, object.evidenceIds, timestamp));
@@ -463,15 +661,31 @@ export function buildRuntimeCommitFromCustomerDesign(
       ),
     );
   }
+  attachRelationshipLinks(runtimeObjects, relationships);
 
-  const objectIds = runtimeObjects.map((object) => object.runtimeId);
   const relationshipIds = relationships.map((item) => item.relationshipId);
+  const inventoryGovernance = runtimeGovernance(record);
   const inventories: RuntimeInventoryRecord[] = [{
     inventoryId,
     inventoryType: "CUSTOMER",
     owner: record.customerName,
     name: `${record.customerName} Customer Inventory`,
+    organization: inventoryGovernance.organization,
+    organizationId: inventoryGovernance.organization,
+    workspace: inventoryGovernance.workspace,
+    workspaceId: inventoryGovernance.workspace,
+    visibility: "ORGANIZATION",
     authority: "CUSTOMER_EVIDENCE",
+    lifecycleState: "ACTIVE",
+    customer: record.customerName,
+    customerId: record.accountId,
+    source: record.sourceFileName,
+    sourceType: record.sourceType,
+    sourceFilename: record.sourceFileName,
+    inventoryAuthorityType: "EXISTING_CUSTOMER_INVENTORY",
+    ownerUserId: ownerUserIdForRecord(record),
+    validationStatus: validationState,
+    runtimeObjectIds: objectIds,
     version: 1,
     status: "ACTIVE",
     evidenceIds: evidence.map((item) => item.evidenceId),
@@ -487,6 +701,8 @@ export function buildRuntimeCommitFromCustomerDesign(
       customerName: record.customerName,
       sourceFileName: record.sourceFileName,
       sourceType: record.sourceType,
+      lane: "EXISTING_INVENTORY",
+      inventoryAuthorityType: "EXISTING_CUSTOMER_INVENTORY",
       routeCount: record.routes.length,
       objectCount: record.objects.length,
       polygonCount: record.polygons.length,
@@ -506,7 +722,7 @@ export function buildRuntimeCommitFromCustomerDesign(
     {
       checkId: "RUNTIME_OBJECTS_CREATED",
       status: runtimeObjects.length > 0 ? "PASS" : "WARNING",
-      message: "Customer design evidence normalized into runtime objects.",
+      message: "Existing Inventory evidence normalized into Customer Twin runtime objects.",
       details: { objectCount: runtimeObjects.length },
     },
     {
@@ -516,20 +732,19 @@ export function buildRuntimeCommitFromCustomerDesign(
       details: { relationshipCount: relationships.length },
     },
     {
-      checkId: "AUTHORITY_CONTAINED",
-      status: record.noScopeVersionCreation && record.noInventoryMutation && record.noCertifiedRouteAuthority ? "PASS" : "FAIL",
-      message: "Translator commit does not create ScopeVersion, certified route, or production inventory authority.",
+      checkId: "EXISTING_INVENTORY_LANE",
+      status: inventories.length > 0 && runtimeObjects.every((object) => object.inventoryId === inventoryId) ? "PASS" : "FAIL",
+      message: "Existing Inventory commits create Runtime Inventory and Customer Twin source objects.",
       details: {
-        noScopeVersionCreation: record.noScopeVersionCreation,
-        noInventoryMutation: record.noInventoryMutation,
-        noCertifiedRouteAuthority: record.noCertifiedRouteAuthority,
+        inventoryId,
+        runtimeObjectCount: runtimeObjects.length,
       },
     },
   ];
 
   return {
     commitId,
-    sourceWorkspace: "Translate",
+    sourceWorkspace: "CommercialPlanning",
     sourceImportId: record.importId,
     actor,
     committedAt: timestamp,
@@ -556,8 +771,9 @@ export function buildRuntimeCommitFromCustomerDesign(
       objectId: record.importId,
       objectName: record.sourceFileName,
       timestamp,
-      details: "Customer design evidence prepared for shared runtime commit.",
+      details: "Existing Inventory evidence prepared for Customer Twin runtime authority.",
       metadata: {
+        lane: "EXISTING_INVENTORY",
         designId: record.designId,
         inventoryId,
       },
@@ -570,17 +786,215 @@ export function buildRuntimeCommitFromCustomerDesign(
       authorityBoundary: "EVIDENCE_ONLY",
       supportedEvidenceTypes: [record.sourceType],
       metadata: {
-        sourceWorkspace: "Translate",
+        sourceWorkspace: "CommercialPlanning",
+        lane: "EXISTING_INVENTORY",
         customerName: record.customerName,
         accountId: record.accountId,
       },
     }],
     metadata: {
       designId: record.designId,
+      lane: "EXISTING_INVENTORY",
       customerName: record.customerName,
       sourceFileName: record.sourceFileName,
       activeRouteId: record.activeRouteId,
       graphId: graph?.graphId ?? record.graphId,
+    },
+  };
+}
+
+export function buildRuntimeCommitFromCustomerDesign(
+  record: CustomerDesignImport,
+  _graph: InventoryGraph | null | undefined,
+  actor = record.uploadedBy || "Teralinx",
+): RuntimeTranslationCommitRequest {
+  const timestamp = new Date().toISOString();
+  const commitId = runtimeId("RUNTIME-COMMIT-DESIGN-REQUEST", record.importId);
+  const evidence = runtimeEvidenceForRecord(record, timestamp);
+  const { routeObjects, segmentObjects, customerObjects, polygonObjects } = parsedRuntimeObjects(record, timestamp);
+  const fields = designRequestFields(record);
+  const designRequestId = runtimeId("RUNTIME-DESIGN-REQUEST", record.designImportId ?? record.importId);
+  const governance = runtimeGovernance(record);
+  const designRequestObject: RuntimeObjectRecord = {
+    runtimeId: designRequestId,
+    objectId: designRequestId,
+    objectType: "DESIGN_REQUEST",
+    name: `${record.customerName} Design Request`,
+    ...governance,
+    ...fields,
+    visibility: "SHARED",
+    classification: "CUSTOMER_DESIGN_REQUEST",
+    confidence: Math.max(60, Math.round(record.provenance?.parseConfidence ?? 72)),
+    version: 1,
+    authority: "CUSTOMER_EVIDENCE",
+    lifecycleState: "DRAFT",
+    evidenceIds: evidence.map((item) => item.evidenceId),
+    evidenceLinks: evidence.map((item) => item.evidenceId),
+    relationshipIds: [],
+    relationshipLinks: [],
+    geometry: fields.proposedGeometry.length ? { type: "LineString", coordinates: fields.proposedGeometry } : undefined,
+    sourceId: record.importId,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    metadata: {
+      lane: "CUSTOMER_DESIGN_REQUEST",
+      designId: record.designId,
+      designImportId: fields.designImportId,
+      scopeVersionId: fields.scopeVersionId,
+      sourceType: record.sourceType,
+      sourceFilename: record.sourceFileName,
+      customerId: record.accountId,
+      routeCount: record.routes.length,
+      objectCount: record.objects.length,
+      polygonCount: record.polygons.length,
+    },
+  };
+
+  const proposedObjects = [...routeObjects, ...segmentObjects, ...customerObjects, ...polygonObjects].map((object) => {
+    const nextType = object.objectType === "ROUTE"
+      ? "PROPOSED_ROUTE"
+      : object.objectType === "SEGMENT"
+        ? "PROPOSED_SEGMENT"
+        : object.objectType;
+    return {
+      ...object,
+      objectType: nextType,
+      ...fields,
+      visibility: "SHARED" as RuntimeVisibility,
+      lifecycleState: "DRAFT" as RuntimeLifecycleState,
+      classification: object.classification ?? "CUSTOMER_DESIGN_REQUEST",
+      metadata: {
+        ...object.metadata,
+        lane: "CUSTOMER_DESIGN_REQUEST",
+        designImportId: fields.designImportId,
+        scopeVersionId: fields.scopeVersionId,
+        sourceType: record.sourceType,
+        sourceFilename: record.sourceFileName,
+        customerId: record.accountId,
+      },
+    } as RuntimeObjectRecord;
+  });
+  const runtimeObjects = [designRequestObject, ...proposedObjects];
+
+  const relationships: RuntimeRelationshipRecord[] = [];
+  for (const object of proposedObjects) {
+    relationships.push(relationship("CONTAINS", designRequestId, object.runtimeId, object.evidenceIds, timestamp, { lane: "CUSTOMER_DESIGN_REQUEST" }));
+  }
+  for (const route of record.routes) {
+    const routeId = runtimeId("RUNTIME-ROUTE", record.designId, route.routeId);
+    const segmentId = runtimeId("RUNTIME-SEGMENT", record.designId, route.routeId, "001");
+    relationships.push(relationship("CONTAINS", routeId, segmentId, [routeEvidenceId(record, route)], timestamp, { lane: "CUSTOMER_DESIGN_REQUEST" }));
+  }
+  for (const object of record.objects) {
+    if (!object.nearestRouteId) continue;
+    relationships.push(
+      relationship(
+        "SNAPPED_TO",
+        runtimeId("RUNTIME-OBJECT", record.designId, object.objectId),
+        runtimeId("RUNTIME-ROUTE", record.designId, object.nearestRouteId),
+        [objectEvidenceId(record, object)],
+        timestamp,
+        { lane: "CUSTOMER_DESIGN_REQUEST", stationFeet: object.nearestStationFeet },
+      ),
+    );
+  }
+  attachRelationshipLinks(runtimeObjects, relationships);
+
+  const relationshipTargets = new Set(runtimeObjects.map((object) => object.runtimeId));
+  const checks: RuntimeValidationReport["checks"] = [
+    {
+      checkId: "EVIDENCE_REGISTERED",
+      status: evidence.length > 0 ? "PASS" : "FAIL",
+      message: "Every customer design request starts from raw evidence.",
+      details: { evidenceCount: evidence.length },
+    },
+    {
+      checkId: "DESIGN_REQUEST_OBJECT_CREATED",
+      status: runtimeObjects.some((object) => object.objectType === "DESIGN_REQUEST") ? "PASS" : "FAIL",
+      message: "Customer Design Request creates design intent, not Existing Inventory.",
+      details: { designRequestId, scopeVersionId: fields.scopeVersionId },
+    },
+    {
+      checkId: "SCOPEVERSION_REFERENCE_PRESENT",
+      status: fields.scopeVersionId ? "PASS" : "FAIL",
+      message: "Customer Design Request carries a candidate ScopeVersion reference.",
+      details: { scopeVersionId: fields.scopeVersionId },
+    },
+    {
+      checkId: "RELATIONSHIP_REFERENCES_VALID",
+      status: relationships.every((item) => relationshipTargets.has(item.fromRuntimeId) && relationshipTargets.has(item.toRuntimeId)) ? "PASS" : "FAIL",
+      message: "Runtime relationships reference registered design request runtime IDs.",
+      details: { relationshipCount: relationships.length },
+    },
+    {
+      checkId: "NO_EXISTING_INVENTORY_MUTATION",
+      status: "PASS",
+      message: "Customer Design Request commits do not create Runtime Inventory or Customer Twin source data.",
+      details: { inventoryCount: 0 },
+    },
+  ];
+
+  return {
+    commitId,
+    sourceWorkspace: "CustomerDesignRequest",
+    sourceImportId: record.importId,
+    actor,
+    committedAt: timestamp,
+    evidence,
+    inventories: [],
+    runtimeObjects,
+    relationships,
+    validationReports: [{
+      validationId: runtimeId("RUNTIME-VALIDATION", commitId),
+      status: validationStatus(checks),
+      checks,
+      validatedAt: timestamp,
+      metadata: {
+        lane: "CUSTOMER_DESIGN_REQUEST",
+        importId: record.importId,
+        designId: record.designId,
+        scopeVersionId: fields.scopeVersionId,
+        sourceFileName: record.sourceFileName,
+      },
+    }],
+    history: [{
+      historyId: runtimeId("RUNTIME-HISTORY", commitId, "PREPARED"),
+      eventType: "runtime.customer_design_request.prepared",
+      actor,
+      objectType: "CustomerDesignRequest",
+      objectId: record.importId,
+      objectName: record.sourceFileName,
+      timestamp,
+      details: "Customer Design Request evidence prepared as design intent with candidate ScopeVersion.",
+      metadata: {
+        lane: "CUSTOMER_DESIGN_REQUEST",
+        designId: record.designId,
+        designImportId: fields.designImportId,
+        scopeVersionId: fields.scopeVersionId,
+      },
+    }],
+    connectors: [{
+      connectorId: runtimeId("CONNECTOR", record.sourceType, "CUSTOMER-DESIGN-REQUEST"),
+      connectorType: record.sourceType === "API" ? "API" : "FILE",
+      name: `${record.sourceType} Customer Design Request Connector`,
+      status: "ACTIVE",
+      authorityBoundary: "EVIDENCE_ONLY",
+      supportedEvidenceTypes: [record.sourceType],
+      metadata: {
+        sourceWorkspace: "CustomerDesignRequest",
+        lane: "CUSTOMER_DESIGN_REQUEST",
+        customerName: record.customerName,
+        accountId: record.accountId,
+      },
+    }],
+    metadata: {
+      lane: "CUSTOMER_DESIGN_REQUEST",
+      designId: record.designId,
+      designImportId: fields.designImportId,
+      customerName: record.customerName,
+      sourceFileName: record.sourceFileName,
+      activeRouteId: record.activeRouteId,
+      scopeVersionId: fields.scopeVersionId,
     },
   };
 }

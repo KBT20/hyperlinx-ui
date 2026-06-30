@@ -10,6 +10,7 @@ import {
   persistRecord,
   readRequestJson,
 } from "./_shared.js";
+import { runtimeWorkspaceForUser, userFromBearerToken } from "./auth.js";
 
 function asArray(value) {
   if (Array.isArray(value)) return value;
@@ -40,7 +41,13 @@ function normalizeInventory(record = {}) {
     inventoryId: String(record.inventoryId ?? createId("runtime-inventory")),
     inventoryType: record.inventoryType ?? "CUSTOMER",
     owner: record.owner ?? record.customerName ?? record.organization ?? "Teralinx",
+    organization: record.organization ?? record.organizationId ?? "org-teralinx",
+    workspace: record.workspace ?? record.workspaceId ?? "workspace-teralinx-system",
+    visibility: record.visibility ?? "ORGANIZATION",
     authority: record.authority ?? "RUNTIME",
+    lifecycleState: record.lifecycleState ?? record.status ?? "ACTIVE",
+    customer: record.customer ?? record.customerName ?? record.metadata?.customerName,
+    source: record.source ?? record.sourceFileName ?? record.metadata?.sourceFileName,
     version: Number(record.version ?? 1),
     status: record.status ?? "ACTIVE",
     evidenceIds: asArray(record.evidenceIds),
@@ -53,14 +60,27 @@ function normalizeInventory(record = {}) {
 
 function normalizeRuntimeObject(record = {}) {
   const timestamp = record.updatedAt ?? record.createdAt ?? nowIso();
+  const runtimeId = String(record.runtimeId ?? record.objectId ?? createId("runtime-object"));
+  const evidenceIds = asArray(record.evidenceIds ?? record.evidenceLinks);
+  const relationshipIds = asArray(record.relationshipIds ?? record.relationshipLinks);
   return {
     ...record,
-    runtimeId: String(record.runtimeId ?? record.objectId ?? createId("runtime-object")),
+    runtimeId,
+    objectId: String(record.objectId ?? runtimeId),
     objectType: record.objectType ?? "UNKNOWN",
+    owner: record.owner ?? record.ownerId ?? record.createdBy ?? "teralinx-system",
+    createdBy: record.createdBy ?? record.owner ?? record.ownerId ?? "teralinx-system",
+    assignedTo: asArray(record.assignedTo),
+    organization: record.organization ?? record.organizationId ?? "org-teralinx",
+    workspace: record.workspace ?? record.workspaceId ?? "workspace-teralinx-system",
+    visibility: record.visibility ?? "PRIVATE",
     authority: record.authority ?? "RUNTIME",
+    lifecycleState: record.lifecycleState ?? record.status ?? "ACTIVE",
     version: Number(record.version ?? 1),
-    evidenceIds: asArray(record.evidenceIds),
-    relationshipIds: asArray(record.relationshipIds),
+    evidenceIds,
+    evidenceLinks: asArray(record.evidenceLinks ?? evidenceIds),
+    relationshipIds,
+    relationshipLinks: asArray(record.relationshipLinks ?? relationshipIds),
     createdAt: record.createdAt ?? timestamp,
     updatedAt: timestamp,
   };
@@ -201,6 +221,17 @@ const collectionRoutes = [
   },
 ];
 
+function isRuntimeFoundationMutation(req, pathname) {
+  if (!["POST", "PUT", "DELETE"].includes(String(req.method))) return false;
+  return pathname.startsWith("/api/runtime/") ||
+    pathname === "/api/evidence" ||
+    pathname.startsWith("/api/evidence/") ||
+    pathname === "/api/inventory" ||
+    pathname.startsWith("/api/inventory/") ||
+    pathname === "/api/connectors" ||
+    pathname.startsWith("/api/connectors/");
+}
+
 async function persistMany(dir, idKey, records, normalize) {
   const saved = [];
   for (const record of asArray(records)) {
@@ -224,7 +255,7 @@ async function handleRuntimeSearch(req, res, pathname) {
   if (handleOptions(req, res)) return true;
   if (req.method !== "GET") return false;
 
-  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  const url = new URL(req.url ?? "/", `https://${req.headers.host ?? "runtime.invalid"}`);
   const query = String(url.searchParams.get("q") ?? "").trim().toLowerCase();
   const collectionFilter = String(url.searchParams.get("collection") ?? "").trim().toLowerCase();
   const pools = [
@@ -245,17 +276,64 @@ async function handleRuntimeSearch(req, res, pathname) {
   return true;
 }
 
+async function handleRuntimeWorkspaces(req, res, pathname) {
+  const normalizedPath = pathname.replace(/\/+$/, "");
+  if (!normalizedPath.startsWith("/api/runtime/workspaces")) return false;
+  if (handleOptions(req, res)) return true;
+
+  if (normalizedPath === "/api/runtime/workspaces/me" && req.method === "GET") {
+    const user = userFromBearerToken(req);
+    if (!user) {
+      errorResponse(res, 401, "Authentication token is missing or invalid.");
+      return true;
+    }
+    jsonResponse(res, 200, {
+      workspace: runtimeWorkspaceForUser(user),
+      hierarchy: {
+        tenant: user.organizationId,
+        user: user.userId,
+        workspace: user.workspaceId,
+        libraries: [
+          "Opportunity Library",
+          "Proposal Library",
+          "Engineering Library",
+          "ScopeVersion Library",
+          "Evidence Registry",
+          "Activity History",
+          "Runtime Object Library",
+          "Relationship Graph",
+        ],
+      },
+    });
+    return true;
+  }
+
+  if (normalizedPath === "/api/runtime/workspaces" && req.method === "GET") {
+    jsonResponse(res, 200, { workspaces: await listRecords(DIRS.runtimeWorkspaces) });
+    return true;
+  }
+
+  errorResponse(res, 404, "Runtime workspace route not found.");
+  return true;
+}
+
 async function handleRuntimeCommit(req, res, pathname) {
   if (pathname !== "/api/runtime/commit") return false;
   if (handleOptions(req, res)) return true;
   if (req.method !== "POST") return false;
+
+  const user = userFromBearerToken(req);
+  if (!user) {
+    errorResponse(res, 401, "Authentication token is required for runtime commits.");
+    return true;
+  }
 
   const body = await readRequestJson(req);
   const input = body.runtimeCommit ?? body.commit ?? body;
   const timestamp = nowIso();
   const commitId = String(input.commitId ?? createId("runtime-commit"));
   const evidence = await persistMany(DIRS.runtimeEvidence, "evidenceId", input.evidence ?? input.evidenceRecords, normalizeEvidence);
-  const inventories = await persistMany(DIRS.runtimeInventories, "inventoryId", input.inventories ?? input.inventory, normalizeInventory);
+  const inventories = await persistMany(DIRS.runtimeInventories, "inventoryId", input.inventories ?? input.runtimeInventories ?? input.inventory, normalizeInventory);
   const runtimeObjects = await persistMany(DIRS.runtimeObjects, "runtimeId", input.runtimeObjects ?? input.objects, normalizeRuntimeObject);
   const relationships = await persistMany(DIRS.runtimeRelationships, "relationshipId", input.relationships, normalizeRelationship);
   const validationReports = await persistMany(DIRS.runtimeValidation, "validationId", input.validationReports ?? input.validation, normalizeValidation);
@@ -265,10 +343,13 @@ async function handleRuntimeCommit(req, res, pathname) {
     await persistRecord(DIRS.runtimeHistory, `${commitId}-history`, normalizeHistory({
       historyId: `${commitId}-history`,
       eventType: "runtime.translation_committed",
-      actor: input.actor ?? "system",
+      actor: input.actor ?? user.name,
+      actorId: user.userId,
       objectType: "RuntimeCommit",
       objectId: commitId,
       timestamp,
+      organizationId: user.organizationId,
+      workspaceId: user.workspaceId,
       payload: {
         evidenceCount: evidence.length,
         inventoryCount: inventories.length,
@@ -317,6 +398,11 @@ async function handleRuntimeCommits(req, res, pathname) {
 }
 
 export async function handleRuntimeFoundation(req, res, pathname) {
+  if (isRuntimeFoundationMutation(req, pathname) && pathname !== "/api/runtime/commit" && !userFromBearerToken(req)) {
+    errorResponse(res, 401, "Authentication token is required for runtime foundation mutations.");
+    return true;
+  }
+  if (await handleRuntimeWorkspaces(req, res, pathname)) return true;
   if (await handleRuntimeSearch(req, res, pathname)) return true;
   if (await handleRuntimeCommit(req, res, pathname)) return true;
   if (await handleRuntimeCommits(req, res, pathname)) return true;

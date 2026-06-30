@@ -1,0 +1,16 @@
+{
+  "relationshipId": "REL-GOOGLE-DESIGN-EXTENDS-EXISTING",
+  "relationshipType": "EXTENDS_EXISTING_NETWORK",
+  "fromRuntimeId": "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001",
+  "toRuntimeId": "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+  "authority": "RUNTIME_GRAPH",
+  "organizationId": "org-teralinx",
+  "customerId": "customer-google",
+  "evidenceIds": [
+    "EVID-GOOGLE-RFP-DESIGN",
+    "EVID-GOOGLE-KMZ-EXISTING"
+  ],
+  "version": 1,
+  "createdAt": "2026-06-30T12:57:56.826Z",
+  "updatedAt": "2026-06-30T12:57:56.826Z"
+}

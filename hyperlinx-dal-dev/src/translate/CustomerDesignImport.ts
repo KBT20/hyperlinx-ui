@@ -2,7 +2,7 @@ import type { DALCoordinate } from "../types/dal";
 import type { InventoryGraph } from "../types/dal";
 import type { CommercialCorridorDraft } from "../commercial/CommercialCorridorDraftEngine";
 
-export type CustomerDesignSourceType = "KMZ" | "KML" | "CSV" | "API";
+export type CustomerDesignSourceType = "KMZ" | "KML" | "GEOJSON" | "CSV" | "SHAPEFILE" | "JSON_RUNTIME_INVENTORY" | "API";
 
 export type CustomerDesignImportStatus =
   | "UPLOADED"
@@ -86,7 +86,7 @@ export interface ImportProvenance {
   placemarkName?: string;
   description?: string;
   style?: string;
-  geometryType?: "LineString" | "Point" | "Polygon" | "CSV_ROUTE" | "CSV_AZ";
+  geometryType?: "LineString" | "Point" | "Polygon" | "CSV_ROUTE" | "CSV_AZ" | "GEOJSON";
   parseConfidence: number;
   importedAt: string;
   accountId: string;
@@ -189,6 +189,12 @@ export interface CustomerDesignImport {
   inventoryGraphId?: string;
   graphId?: string;
   inventoryGraph?: InventoryGraph;
+  designImportId?: string;
+  designIntent?: string;
+  scopeVersionId?: string;
+  proposedGeometry?: DALCoordinate[];
+  evidenceIds?: string[];
+  relationshipIds?: string[];
   runtimeCommitId?: string;
   runtimeInventoryId?: string;
   runtimeEvidenceIds?: string[];

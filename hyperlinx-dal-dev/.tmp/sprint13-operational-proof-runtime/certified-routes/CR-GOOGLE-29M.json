@@ -1,0 +1,73 @@
+{
+  "certifiedRouteId": "CR-GOOGLE-29M",
+  "routeAuthorityState": "CERTIFIED_ROUTE",
+  "routeMode": "ENGINEER_DEFINED",
+  "corridorBasis": "CUSTOMER_TWIN_EXTENSION",
+  "inventoryId": "INV-GOOGLE-AUSTIN-EXISTING",
+  "graphId": "",
+  "scopeVersionId": "SV-GOOGLE-29M-PRODUCTION",
+  "opportunitySeedId": "GOOGLE-29M-OPPORTUNITY",
+  "candidateCoordinate": [
+    -97.7421,
+    30.2672
+  ],
+  "attachmentCoordinate": [
+    -97.6813,
+    30.3142
+  ],
+  "geometry": [
+    [
+      -97.7421,
+      30.2672
+    ],
+    [
+      -97.7218,
+      30.2824
+    ],
+    [
+      -97.7011,
+      30.2978
+    ],
+    [
+      -97.6813,
+      30.3142
+    ]
+  ],
+  "geometryHash": "google-29m-route-v1",
+  "routeFeet": 26300,
+  "routeMiles": 4.98,
+  "crowFlyFeet": 23400,
+  "routeToCrowFlyRatio": 1.12,
+  "constraintEvidenceId": "EVID-GOOGLE-ENG-CERT",
+  "constraintEvidenceHash": "constraints-google-29m-v1",
+  "constraintEvidenceStatus": "CURRENT",
+  "crossingSummary": {
+    "roadCrossings": "UNKNOWN",
+    "railCrossings": "UNKNOWN",
+    "waterCrossings": "UNKNOWN",
+    "parcelCrossings": "UNKNOWN",
+    "buildingConflicts": "UNKNOWN"
+  },
+  "constructabilityScore": 87,
+  "riskScore": 21,
+  "permitAuthorities": [
+    "Austin Transportation",
+    "Travis County"
+  ],
+  "certification": {
+    "certifiedBy": "Kyle",
+    "certifiedAt": "2026-06-30T12:57:56.894Z",
+    "certificationNotes": "Certified for operational proof after customer approval."
+  },
+  "authority": {
+    "canGenerateAuthoritativeQuote": true,
+    "canCreateIOFPackage": true,
+    "canCreateControlWork": true,
+    "canCreateFieldWork": true,
+    "canMutateTwinPlannedState": true,
+    "requiredActions": [],
+    "warnings": []
+  },
+  "createdAt": "2026-06-30T12:57:56.891Z",
+  "updatedAt": "2026-06-30T12:57:56.894Z"
+}

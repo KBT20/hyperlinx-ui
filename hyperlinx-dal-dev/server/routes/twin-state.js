@@ -341,7 +341,7 @@ export async function handleTwinState(req, res, pathname) {
     return true;
   }
 
-  const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  const url = new URL(req.url ?? "/", `https://${req.headers.host ?? "runtime.invalid"}`);
   const scopeVersionId = url.searchParams.get("scopeVersionId") ?? "";
   console.log("[TWIN_PROJECTION_REQUEST]", { scopeVersionId: scopeVersionId || "none" });
   const projection = await buildProjection(scopeVersionId);

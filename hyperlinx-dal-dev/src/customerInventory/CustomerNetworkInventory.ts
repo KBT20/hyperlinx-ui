@@ -713,15 +713,25 @@ function customerFeatureType(objectType: RuntimeObjectType): CustomerInventoryFe
   return "UNKNOWN_PLACEMARK";
 }
 
+function runtimeObjectKind(object: RuntimeObjectRecord) {
+  return String(object.objectType ?? object.classification ?? "").toUpperCase();
+}
+
+function isRuntimeLineInventoryObject(object: RuntimeObjectRecord, kinds: string[]) {
+  const kind = runtimeObjectKind(object);
+  return kinds.includes(kind) && runtimeLineCoordinates(object).length > 1;
+}
+
 function layerFromRuntimeInventory(
   accountId: string,
   inventory: RuntimeInventoryRecord,
   objects: RuntimeObjectRecord[],
 ): CustomerInventoryLayer {
   const sourceName = String(inventory.metadata?.sourceFileName ?? inventory.name ?? inventory.inventoryId);
-  const routeObjects = objects.filter((object) => object.objectType === "ROUTE" && runtimeLineCoordinates(object).length > 1);
-  const segmentObjects = objects.filter((object) => object.objectType === "SEGMENT" && runtimeLineCoordinates(object).length > 1);
-  const lineObjects = routeObjects.length ? routeObjects : segmentObjects;
+  const routeObjects = objects.filter((object) => isRuntimeLineInventoryObject(object, ["ROUTE", "CUSTOMER_ROUTE"]));
+  const segmentObjects = objects.filter((object) => isRuntimeLineInventoryObject(object, ["SEGMENT", "CUSTOMER_SEGMENT"]));
+  const genericLineObjects = objects.filter((object) => runtimeLineCoordinates(object).length > 1 && !["POLYGON", "CUSTOMER_POLYGON"].includes(runtimeObjectKind(object)));
+  const lineObjects = routeObjects.length ? routeObjects : segmentObjects.length ? segmentObjects : genericLineObjects;
   const lines: CustomerInventoryLine[] = lineObjects.map((object) => {
     const coordinates = runtimeLineCoordinates(object);
     return {

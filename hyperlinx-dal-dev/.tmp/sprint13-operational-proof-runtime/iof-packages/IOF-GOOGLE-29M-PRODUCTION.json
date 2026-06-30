@@ -1,0 +1,84 @@
+{
+  "packageId": "IOF-GOOGLE-29M-PRODUCTION",
+  "scopeVersionId": "SV-GOOGLE-29M-PRODUCTION",
+  "packageType": "ENGINEERING",
+  "status": "READY",
+  "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+  "proposalRecordId": "PROPOSAL-GOOGLE-29M",
+  "engineeringDraftId": "ENG-GOOGLE-29M",
+  "certifiedRouteId": "CR-GOOGLE-29M",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-kyle",
+  "evidenceLinks": [
+    "EVID-GOOGLE-ENG-CERT",
+    "EVID-GOOGLE-CUSTOMER-APPROVAL"
+  ],
+  "relationshipLinks": [
+    "ENG-GOOGLE-29M",
+    "CR-GOOGLE-29M"
+  ],
+  "route": [
+    [
+      -97.7421,
+      30.2672
+    ],
+    [
+      -97.7218,
+      30.2824
+    ],
+    [
+      -97.7011,
+      30.2978
+    ],
+    [
+      -97.6813,
+      30.3142
+    ]
+  ],
+  "stations": [
+    {
+      "stationId": "ST-GOOGLE-A",
+      "measureFeet": 0,
+      "stationState": "PLANNED"
+    },
+    {
+      "stationId": "ST-GOOGLE-MID",
+      "measureFeet": 13150,
+      "stationState": "PLANNED"
+    },
+    {
+      "stationId": "ST-GOOGLE-Z",
+      "measureFeet": 26300,
+      "stationState": "PLANNED"
+    }
+  ],
+  "objects": [
+    {
+      "objectId": "OBJ-GOOGLE-FIBER-001",
+      "stationId": "ST-GOOGLE-A",
+      "objectState": "PLANNED"
+    },
+    {
+      "objectId": "OBJ-GOOGLE-FIBER-002",
+      "stationId": "ST-GOOGLE-MID",
+      "objectState": "PLANNED"
+    },
+    {
+      "objectId": "OBJ-GOOGLE-FIBER-003",
+      "stationId": "ST-GOOGLE-Z",
+      "objectState": "PLANNED"
+    }
+  ],
+  "authority": {
+    "owner": "teralinx-user-kyle",
+    "source": "CERTIFIED_ENGINEERING_ROUTE",
+    "certifiedRouteId": "CR-GOOGLE-29M"
+  },
+  "createdAt": "2026-06-30T12:57:56.908Z",
+  "updatedAt": "2026-06-30T12:57:56.908Z",
+  "progress": {
+    "totalObjects": 3,
+    "completedObjects": 0,
+    "percentComplete": 0
+  }
+}

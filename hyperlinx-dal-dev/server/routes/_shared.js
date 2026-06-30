@@ -6,7 +6,7 @@ export const ROUTES_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const SERVER_ROOT = path.resolve(ROUTES_DIR, "..");
 export const PROJECT_ROOT = path.resolve(SERVER_ROOT, "..");
 
-export const PORT = Number(process.env.DAL_PORT ?? process.env.PORT ?? 3001);
+export const PORT = Number(process.env.DAL_PORT ?? process.env.PORT ?? 0);
 export const DATA_ROOT = process.env.DAL_DATA_ROOT
   ? path.resolve(process.env.DAL_DATA_ROOT)
   : path.join(SERVER_ROOT, "data");
@@ -18,6 +18,8 @@ export const DIRS = {
   inventoryGraphs: path.join(DATA_ROOT, "inventory-graphs"),
   marketplaceQuotes: path.join(DATA_ROOT, "marketplace-quotes"),
   iofPackages: path.join(DATA_ROOT, "iof-packages"),
+  certifiedIofPackages: path.join(DATA_ROOT, "certified-iof-packages"),
+  executionAuthorizationCertificates: path.join(DATA_ROOT, "execution-authorization-certificates"),
   closeEvents: path.join(DATA_ROOT, "close-events"),
   certifiedRoutes: path.join(DATA_ROOT, "certified-routes"),
   controlWorkItems: path.join(DATA_ROOT, "control-work-items"),
@@ -27,6 +29,7 @@ export const DIRS = {
   engineeringDrafts: path.join(DATA_ROOT, "engineering-drafts"),
   proposalDrafts: path.join(DATA_ROOT, "proposal-drafts"),
   activity: path.join(DATA_ROOT, "activity"),
+  runtimeWorkspaces: path.join(DATA_ROOT, "runtime-workspaces"),
   runtimeEvidence: path.join(DATA_ROOT, "runtime-evidence"),
   runtimeInventories: path.join(DATA_ROOT, "runtime-inventories"),
   runtimeObjects: path.join(DATA_ROOT, "runtime-objects"),

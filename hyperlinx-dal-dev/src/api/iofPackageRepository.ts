@@ -1,4 +1,5 @@
 import { DAL_API } from "../config/dalApi";
+import { withStoredAuth } from "./authHeaders";
 import { findRecord, readCollection, writeRecord } from "./dalStorage";
 import { createScopeVersion, loadScopeVersion } from "./scopeVersionRepository";
 import { createCloseEvent } from "./closeEventRepository";
@@ -37,7 +38,7 @@ function createId(prefix: string) {
 }
 
 async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const response = await fetch(url, withStoredAuth(init));
   const text = await response.text().catch(() => "");
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}${text ? `: ${text}` : ""}`);
   return (text ? JSON.parse(text) : {}) as T;

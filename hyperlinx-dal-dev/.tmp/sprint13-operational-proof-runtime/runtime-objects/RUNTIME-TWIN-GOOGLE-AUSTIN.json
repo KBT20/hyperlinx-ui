@@ -1,0 +1,82 @@
+{
+  "runtimeId": "RUNTIME-TWIN-GOOGLE-AUSTIN",
+  "objectId": "RUNTIME-TWIN-GOOGLE-AUSTIN",
+  "objectType": "CUSTOMER_TWIN",
+  "name": "Google Austin Customer Twin",
+  "customerId": "customer-google",
+  "customer": "Google",
+  "owner": "teralinx-user-ryan",
+  "ownerId": "teralinx-user-ryan",
+  "createdBy": "teralinx-user-ryan",
+  "createdById": "teralinx-user-ryan",
+  "assignedTo": [
+    "teralinx-user-kyle",
+    "google-participant-001"
+  ],
+  "organization": "org-teralinx",
+  "organizationId": "org-teralinx",
+  "workspace": "workspace-teralinx-ryan",
+  "workspaceId": "workspace-teralinx-ryan",
+  "visibility": "ORGANIZATION",
+  "authority": "CUSTOMER_TWIN",
+  "lifecycleState": "ACTIVE",
+  "version": 1,
+  "evidenceIds": [
+    "EVID-GOOGLE-KMZ-EXISTING",
+    "EVID-GOOGLE-RFP-DESIGN"
+  ],
+  "evidenceLinks": [
+    "EVID-GOOGLE-KMZ-EXISTING",
+    "EVID-GOOGLE-RFP-DESIGN"
+  ],
+  "relationshipIds": [
+    "REL-GOOGLE-TWIN-FROM-INVENTORY",
+    "REL-GOOGLE-TWIN-INCLUDES-DESIGN"
+  ],
+  "relationshipLinks": [
+    "REL-GOOGLE-TWIN-FROM-INVENTORY",
+    "REL-GOOGLE-TWIN-INCLUDES-DESIGN"
+  ],
+  "geometry": {
+    "type": "GeometryCollection",
+    "geometries": [
+      {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -97.7421,
+            30.2672
+          ],
+          [
+            -97.7218,
+            30.2824
+          ],
+          [
+            -97.7011,
+            30.2978
+          ],
+          [
+            -97.6813,
+            30.3142
+          ]
+        ]
+      }
+    ]
+  },
+  "source": "RUNTIME_OBJECT_GRAPH",
+  "classification": "customer_twin",
+  "confidence": 0.95,
+  "lifecycle": "ACTIVE",
+  "createdDate": "2026-06-30T12:57:56.832Z",
+  "modifiedDate": "2026-06-30T12:57:56.832Z",
+  "createdAt": "2026-06-30T12:57:56.832Z",
+  "updatedAt": "2026-06-30T12:57:56.832Z",
+  "metadata": {
+    "noDuplicateRuntimeObject": true,
+    "builtFromRuntimeObjects": [
+      "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+      "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001"
+    ],
+    "privateEditsRemainWorkspaceDrafts": true
+  }
+}

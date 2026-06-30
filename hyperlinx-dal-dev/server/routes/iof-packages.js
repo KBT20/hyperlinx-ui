@@ -14,6 +14,7 @@ import {
 } from "./_shared.js";
 import { createChildScopeVersionFromClose, loadScopeVersion, persistScopeVersion } from "./scopeversions.js";
 import { normalizeCloseEvent } from "./close-events.js";
+import { requireAnyPermission } from "./authority.js";
 
 function normalizeIofPackage(input = {}) {
   const raw = input.iofPackage ?? input.package ?? input;
@@ -64,6 +65,12 @@ export async function handleIofPackages(req, res, pathname) {
   const match = routeMatch(pathname, "/api/iof-packages");
   if (!match) return false;
   if (handleOptions(req, res)) return true;
+
+  if (req.method === "GET") {
+    if (!requireAnyPermission(req, res, ["workspace.engineering.read", "workspace.engineering.write", "scopeversion.authority"], "You do not have authority to read IOF Packages.")) return true;
+  } else if (["POST", "PUT"].includes(String(req.method)) || match.action === "archive" || match.action === "close") {
+    if (!requireAnyPermission(req, res, ["scopeversion.authority"], "Only IOF authority may create, update, archive, or close IOF Packages.")) return true;
+  }
 
   if (match.base && req.method === "GET") {
     jsonResponse(res, 200, { iofPackages: sortedByUpdated(await listRecords(DIRS.iofPackages)) });
@@ -132,8 +139,8 @@ export async function handleIofPackages(req, res, pathname) {
 
   if (!match.base && req.method === "PUT") {
     const existing = await loadRecord(DIRS.iofPackages, match.id).catch(() => null);
-    if (existing?.status === "CLOSED") {
-      errorResponse(res, 409, "Closed IOF Packages cannot be updated. Create a new package for new work.");
+    if (existing?.status === "CLOSED" || existing?.status === "CERTIFIED") {
+      errorResponse(res, 409, "Closed or Certified IOF Packages cannot be updated. Create a new proposal revision cycle.");
       return true;
     }
     const body = await readRequestJson(req);

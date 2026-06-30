@@ -1,0 +1,12 @@
+{
+  "evidenceId": "EVID-GOOGLE-RFP-DESIGN",
+  "sourceType": "GEOJSON",
+  "sourceName": "Google $29M Customer Design Request",
+  "authority": "CUSTOMER_REQUEST",
+  "validationStatus": "VALIDATED",
+  "customerId": "customer-google",
+  "collectedAt": "2026-06-30T12:57:56.823Z",
+  "ingestedAt": "2026-06-30T12:57:56.823Z",
+  "createdAt": "2026-06-30T12:57:56.823Z",
+  "updatedAt": "2026-06-30T12:57:56.823Z"
+}

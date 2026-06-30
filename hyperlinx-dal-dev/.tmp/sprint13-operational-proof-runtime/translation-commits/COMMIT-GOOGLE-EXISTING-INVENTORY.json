@@ -1,0 +1,280 @@
+{
+  "commitId": "COMMIT-GOOGLE-EXISTING-INVENTORY",
+  "actor": "Google Customer",
+  "evidence": [
+    {
+      "evidenceId": "EVID-GOOGLE-KMZ-EXISTING",
+      "sourceType": "KMZ",
+      "sourceName": "Google Austin Existing Inventory",
+      "authority": "CUSTOMER_PROVIDED",
+      "validationStatus": "VALIDATED",
+      "customerId": "customer-google"
+    }
+  ],
+  "inventories": [
+    {
+      "inventoryId": "INV-GOOGLE-AUSTIN-EXISTING",
+      "inventoryType": "CUSTOMER_EXISTING_NETWORK",
+      "owner": "google-participant-001",
+      "organization": "org-teralinx",
+      "workspace": "workspace-google-customer",
+      "visibility": "ORGANIZATION",
+      "authority": "CUSTOMER_INVENTORY",
+      "lifecycleState": "ACTIVE",
+      "customer": "Google",
+      "source": "KMZ_IMPORT",
+      "evidenceIds": [
+        "EVID-GOOGLE-KMZ-EXISTING"
+      ],
+      "objectIds": [
+        "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+        "RUNTIME-INV-POP-GOOGLE-AUS-A",
+        "RUNTIME-INV-POP-GOOGLE-AUS-Z"
+      ]
+    }
+  ],
+  "runtimeObjects": [
+    {
+      "runtimeId": "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+      "objectId": "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+      "objectType": "EXISTING_ROUTE",
+      "name": "Google Austin Existing Backbone",
+      "customerId": "customer-google",
+      "customer": "Google",
+      "owner": "google-participant-001",
+      "ownerId": "google-participant-001",
+      "createdBy": "google-participant-001",
+      "createdById": "google-participant-001",
+      "assignedTo": [
+        "teralinx-user-ryan"
+      ],
+      "organization": "org-teralinx",
+      "organizationId": "org-teralinx",
+      "workspace": "workspace-google-customer",
+      "workspaceId": "workspace-google-customer",
+      "visibility": "ORGANIZATION",
+      "authority": "CUSTOMER_INVENTORY",
+      "lifecycleState": "ACTIVE",
+      "version": 1,
+      "scopeVersion": "CUSTOMER-INVENTORY-GOOGLE-ACTIVE",
+      "evidenceIds": [
+        "EVID-GOOGLE-KMZ-EXISTING"
+      ],
+      "evidenceLinks": [
+        "EVID-GOOGLE-KMZ-EXISTING"
+      ],
+      "relationshipIds": [],
+      "relationshipLinks": [],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -97.7421,
+            30.2672
+          ],
+          [
+            -97.7218,
+            30.2824
+          ],
+          [
+            -97.7011,
+            30.2978
+          ],
+          [
+            -97.6813,
+            30.3142
+          ]
+        ]
+      },
+      "source": "KMZ_IMPORT",
+      "classification": "fiber_backbone",
+      "confidence": 0.97,
+      "lifecycle": "ACTIVE",
+      "createdDate": "2026-06-30T12:57:56.793Z",
+      "modifiedDate": "2026-06-30T12:57:56.793Z",
+      "createdAt": "2026-06-30T12:57:56.793Z",
+      "updatedAt": "2026-06-30T12:57:56.793Z",
+      "metadata": {
+        "noDuplicateRuntimeObject": true,
+        "lane": "EXISTING_INVENTORY"
+      }
+    },
+    {
+      "runtimeId": "RUNTIME-INV-POP-GOOGLE-AUS-A",
+      "objectId": "RUNTIME-INV-POP-GOOGLE-AUS-A",
+      "objectType": "EXISTING_POP",
+      "name": "Google Austin POP A",
+      "customerId": "customer-google",
+      "customer": "Google",
+      "owner": "google-participant-001",
+      "ownerId": "google-participant-001",
+      "createdBy": "google-participant-001",
+      "createdById": "google-participant-001",
+      "assignedTo": [
+        "teralinx-user-ryan"
+      ],
+      "organization": "org-teralinx",
+      "organizationId": "org-teralinx",
+      "workspace": "workspace-google-customer",
+      "workspaceId": "workspace-google-customer",
+      "visibility": "ORGANIZATION",
+      "authority": "CUSTOMER_INVENTORY",
+      "lifecycleState": "ACTIVE",
+      "version": 1,
+      "evidenceIds": [
+        "EVID-GOOGLE-KMZ-EXISTING"
+      ],
+      "evidenceLinks": [
+        "EVID-GOOGLE-KMZ-EXISTING"
+      ],
+      "relationshipIds": [],
+      "relationshipLinks": [],
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -97.7421,
+          30.2672
+        ]
+      },
+      "source": "KMZ_IMPORT",
+      "classification": "pop",
+      "confidence": 0.99,
+      "lifecycle": "ACTIVE",
+      "createdDate": "2026-06-30T12:57:56.793Z",
+      "modifiedDate": "2026-06-30T12:57:56.793Z",
+      "createdAt": "2026-06-30T12:57:56.793Z",
+      "updatedAt": "2026-06-30T12:57:56.793Z",
+      "metadata": {
+        "noDuplicateRuntimeObject": true,
+        "lane": "EXISTING_INVENTORY"
+      }
+    },
+    {
+      "runtimeId": "RUNTIME-INV-POP-GOOGLE-AUS-Z",
+      "objectId": "RUNTIME-INV-POP-GOOGLE-AUS-Z",
+      "objectType": "EXISTING_POP",
+      "name": "Google Austin POP Z",
+      "customerId": "customer-google",
+      "customer": "Google",
+      "owner": "google-participant-001",
+      "ownerId": "google-participant-001",
+      "createdBy": "google-participant-001",
+      "createdById": "google-participant-001",
+      "assignedTo": [
+        "teralinx-user-ryan"
+      ],
+      "organization": "org-teralinx",
+      "organizationId": "org-teralinx",
+      "workspace": "workspace-google-customer",
+      "workspaceId": "workspace-google-customer",
+      "visibility": "ORGANIZATION",
+      "authority": "CUSTOMER_INVENTORY",
+      "lifecycleState": "ACTIVE",
+      "version": 1,
+      "evidenceIds": [
+        "EVID-GOOGLE-KMZ-EXISTING"
+      ],
+      "evidenceLinks": [
+        "EVID-GOOGLE-KMZ-EXISTING"
+      ],
+      "relationshipIds": [],
+      "relationshipLinks": [],
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -97.6813,
+          30.3142
+        ]
+      },
+      "source": "KMZ_IMPORT",
+      "classification": "pop",
+      "confidence": 0.99,
+      "lifecycle": "ACTIVE",
+      "createdDate": "2026-06-30T12:57:56.793Z",
+      "modifiedDate": "2026-06-30T12:57:56.793Z",
+      "createdAt": "2026-06-30T12:57:56.793Z",
+      "updatedAt": "2026-06-30T12:57:56.793Z",
+      "metadata": {
+        "noDuplicateRuntimeObject": true,
+        "lane": "EXISTING_INVENTORY"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "REL-GOOGLE-EXISTING-POP-A",
+      "relationshipType": "HAS_ENDPOINT",
+      "fromRuntimeId": "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+      "toRuntimeId": "RUNTIME-INV-POP-GOOGLE-AUS-A",
+      "authority": "RUNTIME_GRAPH",
+      "organizationId": "org-teralinx",
+      "customerId": "customer-google",
+      "evidenceIds": [
+        "EVID-GOOGLE-KMZ-EXISTING"
+      ]
+    },
+    {
+      "relationshipId": "REL-GOOGLE-EXISTING-POP-Z",
+      "relationshipType": "HAS_ENDPOINT",
+      "fromRuntimeId": "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+      "toRuntimeId": "RUNTIME-INV-POP-GOOGLE-AUS-Z",
+      "authority": "RUNTIME_GRAPH",
+      "organizationId": "org-teralinx",
+      "customerId": "customer-google",
+      "evidenceIds": [
+        "EVID-GOOGLE-KMZ-EXISTING"
+      ]
+    }
+  ],
+  "validationReports": [
+    {
+      "validationId": "VAL-GOOGLE-EXISTING-INVENTORY",
+      "status": "PASS",
+      "checks": [
+        "owner_present",
+        "geometry_present",
+        "classification_present",
+        "confidence_present",
+        "lifecycle_present"
+      ]
+    }
+  ],
+  "history": [
+    {
+      "historyId": "HIST-GOOGLE-EXISTING-INVENTORY",
+      "eventType": "runtime.inventory.imported",
+      "actor": "Google Customer",
+      "actorId": "google-participant-001",
+      "objectType": "RuntimeInventory",
+      "objectId": "INV-GOOGLE-AUSTIN-EXISTING",
+      "organizationId": "org-teralinx",
+      "workspaceId": "workspace-google-customer"
+    }
+  ],
+  "status": "COMMITTED",
+  "committedAt": "2026-06-30T12:57:56.794Z",
+  "updatedAt": "2026-06-30T12:57:56.794Z",
+  "evidenceIds": [
+    "EVID-GOOGLE-KMZ-EXISTING"
+  ],
+  "inventoryIds": [
+    "INV-GOOGLE-AUSTIN-EXISTING"
+  ],
+  "runtimeObjectIds": [
+    "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+    "RUNTIME-INV-POP-GOOGLE-AUS-A",
+    "RUNTIME-INV-POP-GOOGLE-AUS-Z"
+  ],
+  "relationshipIds": [
+    "REL-GOOGLE-EXISTING-POP-A",
+    "REL-GOOGLE-EXISTING-POP-Z"
+  ],
+  "validationReportIds": [
+    "VAL-GOOGLE-EXISTING-INVENTORY"
+  ],
+  "historyIds": [
+    "HIST-GOOGLE-EXISTING-INVENTORY",
+    "COMMIT-GOOGLE-EXISTING-INVENTORY-history"
+  ],
+  "connectorIds": []
+}

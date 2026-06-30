@@ -74,7 +74,7 @@ function TeralinxLoginScreen({ login, loginError, runtimeInfo, runtimeStatus }: 
         <div>
           <div className="dal-kicker">TERALINX</div>
           <h1>Teralinx Infrastructure Operating Platform</h1>
-          <p>Internal alpha runtime. All users authenticate into the same deployed DAL runtime and land in Commercial Planning.</p>
+          <p>Internal alpha runtime. Each authenticated user receives an isolated workspace backed by the shared governed runtime.</p>
         </div>
         <form className="teralinx-login-form" onSubmit={handleSubmit}>
           <label>

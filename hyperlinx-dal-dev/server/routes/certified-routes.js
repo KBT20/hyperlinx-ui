@@ -13,6 +13,7 @@ import {
   sortedByUpdated,
   unwrapBody,
 } from "./_shared.js";
+import { requireAnyPermission } from "./authority.js";
 
 function numeric(value, fallback = 0) {
   const next = Number(value);
@@ -116,6 +117,12 @@ export async function handleCertifiedRoutes(req, res, pathname) {
   const match = routeMatch(pathname, "/api/certified-routes");
   if (!match) return false;
   if (handleOptions(req, res)) return true;
+
+  if (req.method === "GET") {
+    if (!requireAnyPermission(req, res, ["workspace.salesEngineering", "workspace.engineering.read", "workspace.engineering.write", "scopeversion.authority"], "You do not have authority to read Certified Routes.")) return true;
+  } else if (["POST", "PUT"].includes(String(req.method)) || match.action === "certify" || match.action === "reject") {
+    if (!requireAnyPermission(req, res, ["workspace.engineering.write", "scopeversion.authority"], "Only Engineering may create or certify route authority.")) return true;
+  }
 
   if (match.base && req.method === "GET") {
     jsonResponse(res, 200, { certifiedRoutes: sortedByUpdated((await listRecords(DIRS.certifiedRoutes)).map(normalizeCertifiedRoute)) });

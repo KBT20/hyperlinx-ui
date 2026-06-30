@@ -1,0 +1,20 @@
+{
+  "historyId": "COMMIT-GOOGLE-CUSTOMER-TWIN-history",
+  "eventType": "runtime.translation_committed",
+  "actor": "Ryan",
+  "actorId": "teralinx-user-ryan",
+  "objectType": "RuntimeCommit",
+  "objectId": "COMMIT-GOOGLE-CUSTOMER-TWIN",
+  "timestamp": "2026-06-30T12:57:56.832Z",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "payload": {
+    "evidenceCount": 0,
+    "inventoryCount": 0,
+    "objectCount": 1,
+    "relationshipCount": 2,
+    "connectorCount": 0
+  },
+  "createdAt": "2026-06-30T12:57:56.832Z",
+  "updatedAt": "2026-06-30T12:57:56.832Z"
+}

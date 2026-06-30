@@ -1,0 +1,12 @@
+{
+  "validationId": "VAL-GOOGLE-PROPOSAL-APPROVAL",
+  "status": "PASS",
+  "checks": [
+    "proposal_references_opportunity",
+    "customer_approval_persisted",
+    "no_scopeversion_before_approval"
+  ],
+  "validatedAt": "2026-06-30T12:57:56.883Z",
+  "createdAt": "2026-06-30T12:57:56.883Z",
+  "updatedAt": "2026-06-30T12:57:56.883Z"
+}

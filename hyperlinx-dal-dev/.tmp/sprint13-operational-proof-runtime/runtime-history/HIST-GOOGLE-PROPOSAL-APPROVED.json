@@ -1,0 +1,13 @@
+{
+  "historyId": "HIST-GOOGLE-PROPOSAL-APPROVED",
+  "eventType": "runtime.proposal.customer_approved",
+  "actor": "Google Customer",
+  "actorId": "google-participant-001",
+  "objectType": "Proposal",
+  "objectId": "PROPOSAL-GOOGLE-29M",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-google-customer",
+  "timestamp": "2026-06-30T12:57:56.885Z",
+  "createdAt": "2026-06-30T12:57:56.885Z",
+  "updatedAt": "2026-06-30T12:57:56.885Z"
+}

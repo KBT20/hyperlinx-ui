@@ -1,6 +1,7 @@
 import { createId, now } from "../api/dalClient";
 import type { GraphDiffSummary } from "../graph/graphDiff";
 import type { CandidateSite } from "../types/candidateSite";
+import type { CustomerDesignImport } from "../translate/CustomerDesignImport";
 import type {
   CertificationSnapshot,
   FieldClosure,
@@ -137,6 +138,83 @@ export function createScopeVersionFromInventoryGraph(graph: InventoryGraph): Sco
     createdAt: timestamp,
     updatedAt: timestamp,
     events: [event("scopeversion.created", graph.inventoryId, "InventoryGraph", { source: "InventoryGraph" })],
+  };
+}
+
+export function createScopeVersionFromCustomerDesignImport(record: CustomerDesignImport): ScopeVersion {
+  const timestamp = now();
+  const activeRouteId = record.activeRouteId ?? record.routes[0]?.routeId ?? "";
+  const activeRoute = record.routes.find((route) => route.routeId === activeRouteId) ?? record.routes[0];
+  const proposedGeometry = record.proposedGeometry?.length
+    ? record.proposedGeometry
+    : activeRoute?.dalGeometry?.length
+      ? activeRoute.dalGeometry
+      : record.previewGeometry ?? [];
+  const anchorCoordinate = proposedGeometry[0] ?? [0, 0];
+  const scopeVersionId = record.scopeVersionId ?? `SV-CDR-${record.designId}`;
+  const designIntent = record.designIntent ?? "CUSTOMER_DESIGN_REQUEST";
+  return {
+    scopeVersionId,
+    type: "CANDIDATE",
+    rootScopeVersionId: scopeVersionId,
+    relationshipType: "ROOT",
+    graphId: record.graphId,
+    graphVersion: record.graphId,
+    source: "CustomerDesignRequest",
+    status: "DRAFT",
+    certificationState: "DRAFT",
+    isImmutable: false,
+    createdBy: record.uploadedBy,
+    geometry: proposedGeometry,
+    buildFeet: activeRoute?.routeFeet,
+    buildMiles: activeRoute?.routeMiles,
+    decisionTimestamp: timestamp,
+    canonicalTruth: {
+      designImportId: record.importId,
+      customerId: record.accountId,
+      customerName: record.customerName,
+      sourceType: record.sourceType,
+      sourceFilename: record.sourceFileName,
+      requestedBy: record.uploadedBy,
+      designIntent,
+      scopeVersionId,
+      proposedGeometry,
+      routeCount: record.routes.length,
+      objectCount: record.objects.length,
+      polygonCount: record.polygons.length,
+      activeRouteId,
+      networkBasis: {
+        routeId: activeRoute?.routeId ?? "",
+        routeName: activeRoute?.name,
+        nodeId: "",
+        stationId: "",
+        attachmentPoint: anchorCoordinate,
+        attachmentCoordinates: anchorCoordinate,
+        attachmentMethod: "CUSTOMER_DESIGN_REQUEST",
+        attachmentConfidence: activeRoute?.confidence,
+      },
+      geographicBasis: {
+        candidateLatitude: Number(anchorCoordinate[1] ?? 0),
+        candidateLongitude: Number(anchorCoordinate[0] ?? 0),
+        geometry: proposedGeometry,
+        buildPath: { source: "CustomerDesignRequest", routeId: activeRoute?.routeId ?? "" },
+        routeGeometry: proposedGeometry,
+      },
+      lifecycleState: "DRAFT",
+      lifecycleTimestamp: timestamp,
+      constitutionalAuthority: "NON_AUTHORITATIVE",
+    },
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    events: [
+      event("scopeversion.customer_design_request.created", record.importId, "CustomerDesignImport", {
+        designImportId: record.importId,
+        designId: record.designId,
+        customerId: record.accountId,
+        sourceFilename: record.sourceFileName,
+        designIntent,
+      }),
+    ],
   };
 }
 

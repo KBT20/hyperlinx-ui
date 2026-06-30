@@ -1,0 +1,12 @@
+{
+  "validationId": "VAL-GOOGLE-DESIGN-REQUEST",
+  "status": "PASS",
+  "checks": [
+    "customer_request_separate_from_inventory",
+    "no_scopeversion_created",
+    "no_inventory_mutation"
+  ],
+  "validatedAt": "2026-06-30T12:57:56.827Z",
+  "createdAt": "2026-06-30T12:57:56.827Z",
+  "updatedAt": "2026-06-30T12:57:56.827Z"
+}

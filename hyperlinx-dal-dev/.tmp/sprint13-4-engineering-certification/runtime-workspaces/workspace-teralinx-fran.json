@@ -1,0 +1,29 @@
+{
+  "workspaceId": "workspace-teralinx-fran",
+  "userId": "teralinx-user-fran",
+  "organizationId": "org-teralinx",
+  "name": "Fran Workspace",
+  "preferences": {
+    "defaultWorkspace": "googleRfp",
+    "dashboardDensity": "review"
+  },
+  "dashboard": {
+    "sections": [
+      "My Opportunities",
+      "Assigned Work",
+      "Recent Activity",
+      "Pending Approvals",
+      "Notifications"
+    ],
+    "executiveOverview": false,
+    "organizationPipeline": false,
+    "revenue": false,
+    "operationalIntelligence": false
+  },
+  "recentActivity": [],
+  "assignments": [],
+  "notifications": [],
+  "pinnedObjects": [],
+  "createdAt": "2026-06-30T12:57:08.171Z",
+  "updatedAt": "2026-06-30T12:57:08.171Z"
+}

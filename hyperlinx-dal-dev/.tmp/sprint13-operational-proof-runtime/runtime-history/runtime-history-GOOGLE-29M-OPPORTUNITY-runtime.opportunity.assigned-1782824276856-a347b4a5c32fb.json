@@ -1,0 +1,39 @@
+{
+  "historyId": "runtime-history-GOOGLE-29M-OPPORTUNITY-runtime.opportunity.assigned-1782824276856-a347b4a5c32fb",
+  "eventType": "runtime.opportunity.assigned",
+  "actor": "Ryan",
+  "actorId": "teralinx-user-ryan",
+  "objectType": "Opportunity",
+  "objectId": "GOOGLE-29M-OPPORTUNITY",
+  "objectName": "Google $29M Operational Proof Opportunity",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "timestamp": "2026-06-30T12:57:56.856Z",
+  "createdAt": "2026-06-30T12:57:56.856Z",
+  "updatedAt": "2026-06-30T12:57:56.856Z",
+  "details": "Opportunity assignment and authority updated.",
+  "metadata": {
+    "visibility": "SHARED",
+    "lifecycleState": "ACTIVE",
+    "version": 3,
+    "authority": {
+      "owner": "teralinx-user-ryan",
+      "contributors": [],
+      "reviewers": [
+        "teralinx-user-fran",
+        "google-participant-001"
+      ],
+      "approvers": [
+        "teralinx-user-kyle"
+      ],
+      "executives": [
+        "teralinx-user-kyle"
+      ],
+      "sharedWith": [
+        "teralinx-user-fran",
+        "google-participant-001",
+        "teralinx-user-kyle"
+      ]
+    }
+  }
+}

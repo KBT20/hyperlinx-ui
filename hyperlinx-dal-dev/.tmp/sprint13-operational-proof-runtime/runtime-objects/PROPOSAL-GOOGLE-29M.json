@@ -1,0 +1,51 @@
+{
+  "runtimeId": "PROPOSAL-GOOGLE-29M",
+  "objectId": "PROPOSAL-GOOGLE-29M",
+  "objectType": "PROPOSAL",
+  "name": "Google $29M Customer Approved Proposal",
+  "customerId": "customer-google",
+  "customer": "Google",
+  "owner": "teralinx-user-ryan",
+  "ownerId": "teralinx-user-ryan",
+  "createdBy": "teralinx-user-ryan",
+  "createdById": "teralinx-user-ryan",
+  "assignedTo": [
+    "google-participant-001",
+    "teralinx-user-kyle"
+  ],
+  "organization": "org-teralinx",
+  "organizationId": "org-teralinx",
+  "workspace": "workspace-teralinx-ryan",
+  "workspaceId": "workspace-teralinx-ryan",
+  "visibility": "SHARED",
+  "authority": "CUSTOMER_APPROVED_PROPOSAL",
+  "lifecycleState": "ACCEPTED",
+  "version": 1,
+  "evidenceIds": [
+    "EVID-GOOGLE-COMMERCIAL-DRAFT",
+    "EVID-GOOGLE-CUSTOMER-APPROVAL"
+  ],
+  "evidenceLinks": [
+    "EVID-GOOGLE-COMMERCIAL-DRAFT",
+    "EVID-GOOGLE-CUSTOMER-APPROVAL"
+  ],
+  "relationshipIds": [
+    "REL-GOOGLE-OPPORTUNITY-PROPOSAL"
+  ],
+  "relationshipLinks": [
+    "REL-GOOGLE-OPPORTUNITY-PROPOSAL"
+  ],
+  "source": "PROPOSAL_LIBRARY",
+  "classification": "proposal",
+  "confidence": 1,
+  "lifecycle": "ACCEPTED",
+  "createdDate": "2026-06-30T12:57:56.878Z",
+  "modifiedDate": "2026-06-30T12:57:56.878Z",
+  "createdAt": "2026-06-30T12:57:56.878Z",
+  "updatedAt": "2026-06-30T12:57:56.878Z",
+  "metadata": {
+    "noDuplicateRuntimeObject": true,
+    "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+    "amount": 29000000
+  }
+}

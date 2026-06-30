@@ -11,6 +11,7 @@ import { handleCommercialOpportunities } from "./routes/commercial-opportunities
 import { handleControlWorkItems } from "./routes/control-work-items.js";
 import { handleCustomerDesignImports } from "./routes/customer-design-imports.js";
 import { handleEngineeringDrafts } from "./routes/engineering-drafts.js";
+import { handleEngineeringCertification } from "./routes/engineering-certification.js";
 import { handleFieldClosures } from "./routes/field-closures.js";
 import { handleGeocode } from "./routes/geocode.js";
 import { handleInventoryGraphs } from "./routes/inventory-graphs.js";
@@ -33,6 +34,7 @@ const routes = [
   handleCustomerDesignImports,
   handleCommercialOpportunities,
   handleEngineeringDrafts,
+  handleEngineeringCertification,
   handleProposalDrafts,
   handleRuntimeFoundation,
   handleCandidateSites,
@@ -89,7 +91,7 @@ async function serveStaticApp(req, res, pathname) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    const url = new URL(req.url ?? "/", `https://${req.headers.host ?? "runtime.invalid"}`);
     if (handleOptions(req, res)) return;
     for (const route of routes) {
       if (await route(req, res, url.pathname)) return;
@@ -115,6 +117,7 @@ const server = http.createServer(async (req, res) => {
           customerDesignImports: true,
           commercialOpportunities: true,
           engineeringDrafts: true,
+          engineeringCertification: true,
           proposalDrafts: true,
           scopeVersions: true,
           candidateSites: true,
@@ -140,8 +143,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
+  const address = server.address();
+  const activePort = typeof address === "object" && address ? address.port : PORT;
   console.log("TERALINX RUNTIME READY", {
-    port: PORT,
+    port: activePort,
     dataRoot: DATA_ROOT,
     ...DIRS,
   });

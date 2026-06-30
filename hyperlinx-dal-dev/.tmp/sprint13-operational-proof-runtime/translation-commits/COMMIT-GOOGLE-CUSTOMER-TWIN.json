@@ -1,0 +1,157 @@
+{
+  "commitId": "COMMIT-GOOGLE-CUSTOMER-TWIN",
+  "actor": "Ryan",
+  "runtimeObjects": [
+    {
+      "runtimeId": "RUNTIME-TWIN-GOOGLE-AUSTIN",
+      "objectId": "RUNTIME-TWIN-GOOGLE-AUSTIN",
+      "objectType": "CUSTOMER_TWIN",
+      "name": "Google Austin Customer Twin",
+      "customerId": "customer-google",
+      "customer": "Google",
+      "owner": "teralinx-user-ryan",
+      "ownerId": "teralinx-user-ryan",
+      "createdBy": "teralinx-user-ryan",
+      "createdById": "teralinx-user-ryan",
+      "assignedTo": [
+        "teralinx-user-kyle",
+        "google-participant-001"
+      ],
+      "organization": "org-teralinx",
+      "organizationId": "org-teralinx",
+      "workspace": "workspace-teralinx-ryan",
+      "workspaceId": "workspace-teralinx-ryan",
+      "visibility": "ORGANIZATION",
+      "authority": "CUSTOMER_TWIN",
+      "lifecycleState": "ACTIVE",
+      "version": 1,
+      "evidenceIds": [
+        "EVID-GOOGLE-KMZ-EXISTING",
+        "EVID-GOOGLE-RFP-DESIGN"
+      ],
+      "evidenceLinks": [
+        "EVID-GOOGLE-KMZ-EXISTING",
+        "EVID-GOOGLE-RFP-DESIGN"
+      ],
+      "relationshipIds": [
+        "REL-GOOGLE-TWIN-FROM-INVENTORY",
+        "REL-GOOGLE-TWIN-INCLUDES-DESIGN"
+      ],
+      "relationshipLinks": [
+        "REL-GOOGLE-TWIN-FROM-INVENTORY",
+        "REL-GOOGLE-TWIN-INCLUDES-DESIGN"
+      ],
+      "geometry": {
+        "type": "GeometryCollection",
+        "geometries": [
+          {
+            "type": "LineString",
+            "coordinates": [
+              [
+                -97.7421,
+                30.2672
+              ],
+              [
+                -97.7218,
+                30.2824
+              ],
+              [
+                -97.7011,
+                30.2978
+              ],
+              [
+                -97.6813,
+                30.3142
+              ]
+            ]
+          }
+        ]
+      },
+      "source": "RUNTIME_OBJECT_GRAPH",
+      "classification": "customer_twin",
+      "confidence": 0.95,
+      "lifecycle": "ACTIVE",
+      "createdDate": "2026-06-30T12:57:56.832Z",
+      "modifiedDate": "2026-06-30T12:57:56.832Z",
+      "createdAt": "2026-06-30T12:57:56.832Z",
+      "updatedAt": "2026-06-30T12:57:56.832Z",
+      "metadata": {
+        "noDuplicateRuntimeObject": true,
+        "builtFromRuntimeObjects": [
+          "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+          "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001"
+        ],
+        "privateEditsRemainWorkspaceDrafts": true
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "REL-GOOGLE-TWIN-FROM-INVENTORY",
+      "relationshipType": "BUILT_FROM_INVENTORY",
+      "fromRuntimeId": "RUNTIME-TWIN-GOOGLE-AUSTIN",
+      "toRuntimeId": "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+      "authority": "RUNTIME_GRAPH",
+      "organizationId": "org-teralinx",
+      "customerId": "customer-google",
+      "evidenceIds": [
+        "EVID-GOOGLE-KMZ-EXISTING"
+      ]
+    },
+    {
+      "relationshipId": "REL-GOOGLE-TWIN-INCLUDES-DESIGN",
+      "relationshipType": "INCLUDES_CUSTOMER_REQUEST",
+      "fromRuntimeId": "RUNTIME-TWIN-GOOGLE-AUSTIN",
+      "toRuntimeId": "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001",
+      "authority": "RUNTIME_GRAPH",
+      "organizationId": "org-teralinx",
+      "customerId": "customer-google",
+      "evidenceIds": [
+        "EVID-GOOGLE-RFP-DESIGN"
+      ]
+    }
+  ],
+  "validationReports": [
+    {
+      "validationId": "VAL-GOOGLE-CUSTOMER-TWIN",
+      "status": "PASS",
+      "checks": [
+        "twin_builds_from_imported_inventory",
+        "twin_persists_as_organization_asset",
+        "workspace_drafts_do_not_replace_twin"
+      ]
+    }
+  ],
+  "history": [
+    {
+      "historyId": "HIST-GOOGLE-CUSTOMER-TWIN",
+      "eventType": "runtime.customer_twin.created",
+      "actor": "Ryan",
+      "actorId": "teralinx-user-ryan",
+      "objectType": "CustomerTwin",
+      "objectId": "RUNTIME-TWIN-GOOGLE-AUSTIN",
+      "organizationId": "org-teralinx",
+      "workspaceId": "workspace-teralinx-ryan"
+    }
+  ],
+  "status": "COMMITTED",
+  "committedAt": "2026-06-30T12:57:56.832Z",
+  "updatedAt": "2026-06-30T12:57:56.832Z",
+  "evidenceIds": [],
+  "inventoryIds": [],
+  "runtimeObjectIds": [
+    "RUNTIME-TWIN-GOOGLE-AUSTIN"
+  ],
+  "relationshipIds": [
+    "REL-GOOGLE-TWIN-FROM-INVENTORY",
+    "REL-GOOGLE-TWIN-INCLUDES-DESIGN"
+  ],
+  "validationReportIds": [
+    "VAL-GOOGLE-CUSTOMER-TWIN"
+  ],
+  "historyIds": [
+    "HIST-GOOGLE-CUSTOMER-TWIN",
+    "COMMIT-GOOGLE-CUSTOMER-TWIN-history"
+  ],
+  "connectorIds": []
+}

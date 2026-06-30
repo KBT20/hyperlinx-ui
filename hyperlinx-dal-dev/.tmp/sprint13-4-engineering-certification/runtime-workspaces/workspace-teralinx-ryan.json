@@ -1,0 +1,29 @@
+{
+  "workspaceId": "workspace-teralinx-ryan",
+  "userId": "teralinx-user-ryan",
+  "organizationId": "org-teralinx",
+  "name": "Ryan Workspace",
+  "preferences": {
+    "defaultWorkspace": "googleRfp",
+    "dashboardDensity": "commercial"
+  },
+  "dashboard": {
+    "sections": [
+      "My Opportunities",
+      "Assigned Work",
+      "Recent Activity",
+      "Pending Approvals",
+      "Notifications"
+    ],
+    "executiveOverview": false,
+    "organizationPipeline": false,
+    "revenue": false,
+    "operationalIntelligence": false
+  },
+  "recentActivity": [],
+  "assignments": [],
+  "notifications": [],
+  "pinnedObjects": [],
+  "createdAt": "2026-06-30T12:57:08.162Z",
+  "updatedAt": "2026-06-30T12:57:08.162Z"
+}

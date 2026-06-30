@@ -1,0 +1,15 @@
+{
+  "relationshipId": "REL-GOOGLE-EXISTING-POP-Z",
+  "relationshipType": "HAS_ENDPOINT",
+  "fromRuntimeId": "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+  "toRuntimeId": "RUNTIME-INV-POP-GOOGLE-AUS-Z",
+  "authority": "RUNTIME_GRAPH",
+  "organizationId": "org-teralinx",
+  "customerId": "customer-google",
+  "evidenceIds": [
+    "EVID-GOOGLE-KMZ-EXISTING"
+  ],
+  "version": 1,
+  "createdAt": "2026-06-30T12:57:56.803Z",
+  "updatedAt": "2026-06-30T12:57:56.803Z"
+}

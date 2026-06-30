@@ -1,0 +1,23 @@
+{
+  "evidenceId": "proposal-evidence-1782824228140-bd87adafaa9ff",
+  "sourceType": "CUSTOMER_UPLOAD",
+  "sourceName": "Google review notes.pdf",
+  "sourceSystem": "Proposal Collaboration",
+  "authority": "CUSTOMER_EVIDENCE",
+  "validationStatus": "PENDING",
+  "collectedAt": "2026-06-30T12:57:08.140Z",
+  "ingestedAt": "2026-06-30T12:57:08.140Z",
+  "createdAt": "2026-06-30T12:57:08.140Z",
+  "updatedAt": "2026-06-30T12:57:08.140Z",
+  "lineage": {
+    "proposalId": "PROPOSAL-GOOGLE-29M-RUNTIME",
+    "customerId": "customer-google",
+    "uploadedBy": "google-participant-001"
+  },
+  "metadata": {
+    "reviewRound": 1,
+    "proposalVersion": 1,
+    "noScopeVersionCreation": true,
+    "noInventoryMutation": true
+  }
+}

@@ -241,6 +241,7 @@ function DALShell() {
         </div>
         <div className="dal-targets">
           <span>User: {session?.user.name} / {session?.user.title}</span>
+          <span>Workspace: {session?.user.workspaceId ?? session?.workspace?.workspaceId ?? "unassigned"} / User ID: {session?.user.userId ?? "anonymous"}</span>
           <span>Organization: {runtimeInfo?.organization ?? "Teralinx"} / Owner: {runtimeInfo?.workspaceOwner ?? "Teralinx"}</span>
           <span>Runtime Version: {runtimeInfo?.runtimeVersion ?? "loading"} / Commit: {runtimeInfo?.gitCommit ?? "loading"}</span>
           <span>Build Date: {runtimeInfo?.buildDate ?? "loading"} / Environment: {runtimeInfo?.environment ?? "alpha"}</span>

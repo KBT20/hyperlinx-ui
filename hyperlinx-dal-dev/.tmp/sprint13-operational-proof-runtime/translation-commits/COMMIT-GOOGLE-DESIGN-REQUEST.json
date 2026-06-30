@@ -1,0 +1,147 @@
+{
+  "commitId": "COMMIT-GOOGLE-DESIGN-REQUEST",
+  "actor": "Google Customer",
+  "evidence": [
+    {
+      "evidenceId": "EVID-GOOGLE-RFP-DESIGN",
+      "sourceType": "GEOJSON",
+      "sourceName": "Google $29M Customer Design Request",
+      "authority": "CUSTOMER_REQUEST",
+      "validationStatus": "VALIDATED",
+      "customerId": "customer-google"
+    }
+  ],
+  "runtimeObjects": [
+    {
+      "runtimeId": "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001",
+      "objectId": "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001",
+      "objectType": "CUSTOMER_DESIGN_REQUEST",
+      "name": "Google $29M Requested Extension",
+      "customerId": "customer-google",
+      "customer": "Google",
+      "owner": "google-participant-001",
+      "ownerId": "google-participant-001",
+      "createdBy": "google-participant-001",
+      "createdById": "google-participant-001",
+      "assignedTo": [
+        "teralinx-user-ryan",
+        "teralinx-user-kyle"
+      ],
+      "organization": "org-teralinx",
+      "organizationId": "org-teralinx",
+      "workspace": "workspace-google-customer",
+      "workspaceId": "workspace-google-customer",
+      "visibility": "ORGANIZATION",
+      "authority": "CUSTOMER_DESIGN_REQUEST",
+      "lifecycleState": "SUBMITTED",
+      "version": 1,
+      "evidenceIds": [
+        "EVID-GOOGLE-RFP-DESIGN"
+      ],
+      "evidenceLinks": [
+        "EVID-GOOGLE-RFP-DESIGN"
+      ],
+      "relationshipIds": [
+        "REL-GOOGLE-DESIGN-EXTENDS-EXISTING"
+      ],
+      "relationshipLinks": [
+        "REL-GOOGLE-DESIGN-EXTENDS-EXISTING"
+      ],
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -97.7421,
+            30.2672
+          ],
+          [
+            -97.7218,
+            30.2824
+          ],
+          [
+            -97.7011,
+            30.2978
+          ],
+          [
+            -97.6813,
+            30.3142
+          ]
+        ]
+      },
+      "source": "GEOJSON_IMPORT",
+      "classification": "customer_requested_extension",
+      "confidence": 0.92,
+      "lifecycle": "SUBMITTED",
+      "createdDate": "2026-06-30T12:57:56.823Z",
+      "modifiedDate": "2026-06-30T12:57:56.823Z",
+      "createdAt": "2026-06-30T12:57:56.823Z",
+      "updatedAt": "2026-06-30T12:57:56.823Z",
+      "metadata": {
+        "noDuplicateRuntimeObject": true,
+        "lane": "CUSTOMER_DESIGN_REQUEST",
+        "noScopeVersionCreation": true,
+        "noInventoryMutation": true,
+        "noCertifiedRouteAuthority": true
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "REL-GOOGLE-DESIGN-EXTENDS-EXISTING",
+      "relationshipType": "EXTENDS_EXISTING_NETWORK",
+      "fromRuntimeId": "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001",
+      "toRuntimeId": "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+      "authority": "RUNTIME_GRAPH",
+      "organizationId": "org-teralinx",
+      "customerId": "customer-google",
+      "evidenceIds": [
+        "EVID-GOOGLE-RFP-DESIGN",
+        "EVID-GOOGLE-KMZ-EXISTING"
+      ]
+    }
+  ],
+  "validationReports": [
+    {
+      "validationId": "VAL-GOOGLE-DESIGN-REQUEST",
+      "status": "PASS",
+      "checks": [
+        "customer_request_separate_from_inventory",
+        "no_scopeversion_created",
+        "no_inventory_mutation"
+      ]
+    }
+  ],
+  "history": [
+    {
+      "historyId": "HIST-GOOGLE-DESIGN-REQUEST",
+      "eventType": "runtime.customer_design.submitted",
+      "actor": "Google Customer",
+      "actorId": "google-participant-001",
+      "objectType": "CustomerDesignRequest",
+      "objectId": "GOOGLE-DESIGN-REQUEST-29M",
+      "organizationId": "org-teralinx",
+      "workspaceId": "workspace-google-customer"
+    }
+  ],
+  "status": "COMMITTED",
+  "committedAt": "2026-06-30T12:57:56.823Z",
+  "updatedAt": "2026-06-30T12:57:56.823Z",
+  "evidenceIds": [
+    "EVID-GOOGLE-RFP-DESIGN"
+  ],
+  "inventoryIds": [],
+  "runtimeObjectIds": [
+    "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001"
+  ],
+  "relationshipIds": [
+    "REL-GOOGLE-DESIGN-EXTENDS-EXISTING"
+  ],
+  "validationReportIds": [
+    "VAL-GOOGLE-DESIGN-REQUEST"
+  ],
+  "historyIds": [
+    "HIST-GOOGLE-DESIGN-REQUEST",
+    "COMMIT-GOOGLE-DESIGN-REQUEST-history"
+  ],
+  "connectorIds": []
+}

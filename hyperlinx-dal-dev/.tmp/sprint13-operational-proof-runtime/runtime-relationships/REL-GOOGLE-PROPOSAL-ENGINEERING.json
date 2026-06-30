@@ -1,0 +1,15 @@
+{
+  "relationshipId": "REL-GOOGLE-PROPOSAL-ENGINEERING",
+  "relationshipType": "CREATED_ENGINEERING_DRAFT",
+  "fromRuntimeId": "PROPOSAL-GOOGLE-29M",
+  "toRuntimeId": "ENG-GOOGLE-29M",
+  "authority": "RUNTIME_GRAPH",
+  "organizationId": "org-teralinx",
+  "customerId": "customer-google",
+  "evidenceIds": [
+    "EVID-GOOGLE-CUSTOMER-APPROVAL"
+  ],
+  "version": 1,
+  "createdAt": "2026-06-30T12:57:56.899Z",
+  "updatedAt": "2026-06-30T12:57:56.899Z"
+}

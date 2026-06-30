@@ -3,6 +3,7 @@ import type { ValidationStatus } from "../types/dal";
 
 export type UniversalTranslationDomain =
   | "CUSTOMER_INVENTORY"
+  | "CUSTOMER_DESIGN_REQUEST"
   | "CARRIER_INVENTORY"
   | "TERALINX_INVENTORY"
   | "COMMERCIAL_DESIGN"

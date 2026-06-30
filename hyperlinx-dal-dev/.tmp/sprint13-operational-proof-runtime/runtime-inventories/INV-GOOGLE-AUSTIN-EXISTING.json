@@ -1,0 +1,25 @@
+{
+  "inventoryId": "INV-GOOGLE-AUSTIN-EXISTING",
+  "inventoryType": "CUSTOMER_EXISTING_NETWORK",
+  "owner": "google-participant-001",
+  "organization": "org-teralinx",
+  "workspace": "workspace-google-customer",
+  "visibility": "ORGANIZATION",
+  "authority": "CUSTOMER_INVENTORY",
+  "lifecycleState": "ACTIVE",
+  "customer": "Google",
+  "source": "KMZ_IMPORT",
+  "evidenceIds": [
+    "EVID-GOOGLE-KMZ-EXISTING"
+  ],
+  "objectIds": [
+    "RUNTIME-INV-ROUTE-GOOGLE-AUS-001",
+    "RUNTIME-INV-POP-GOOGLE-AUS-A",
+    "RUNTIME-INV-POP-GOOGLE-AUS-Z"
+  ],
+  "version": 1,
+  "status": "ACTIVE",
+  "relationshipIds": [],
+  "createdAt": "2026-06-30T12:57:56.796Z",
+  "updatedAt": "2026-06-30T12:57:56.796Z"
+}

@@ -1,0 +1,118 @@
+{
+  "runtimeId": "RUNTIME-PROPOSAL-PROPOSAL-GOOGLE-29M-ASSEMBLY",
+  "objectId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+  "objectType": "PROPOSAL",
+  "name": "Google 29M Assembly Proposal",
+  "owner": "Ryan",
+  "ownerId": "teralinx-user-ryan",
+  "createdBy": "Ryan",
+  "createdById": "teralinx-user-ryan",
+  "assignedTo": [
+    "google-participant-001"
+  ],
+  "organization": "org-teralinx",
+  "organizationId": "org-teralinx",
+  "workspace": "workspace-teralinx-ryan",
+  "workspaceId": "workspace-teralinx-ryan",
+  "customerId": "customer-google",
+  "visibility": "SHARED",
+  "authority": "COMMERCIAL_REVIEW",
+  "authorityGrants": {
+    "owner": "teralinx-user-ryan",
+    "contributors": [],
+    "reviewers": [],
+    "approvers": [],
+    "executives": [],
+    "customerReviewers": [
+      "google-participant-001"
+    ],
+    "salesEngineering": [],
+    "sharedWith": [
+      "google-participant-001"
+    ]
+  },
+  "lifecycleState": "APPROVED",
+  "version": 1,
+  "evidenceIds": [
+    "EVIDENCE-GOOGLE-APPROVAL"
+  ],
+  "evidenceLinks": [
+    "EVIDENCE-GOOGLE-APPROVAL"
+  ],
+  "relationshipIds": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+  ],
+  "relationshipLinks": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+  ],
+  "sourceId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+  "createdAt": "2026-06-30T12:57:08.139Z",
+  "updatedAt": "2026-06-30T12:57:08.144Z",
+  "metadata": {
+    "proposalNumber": "PROP-GOOGLE-29M-ASSEMBLY",
+    "customerId": "customer-google",
+    "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+    "status": "CUSTOMER_APPROVED",
+    "approvalState": "APPROVED",
+    "nextLifecycleAction": "CREATE_DRAFT_IOF_PACKAGE",
+    "existingInventoryReferences": [
+      "RUNTIME-INVENTORY-GOOGLE"
+    ],
+    "customerDesignReferences": [
+      "CUSTOMER-DESIGN-GOOGLE"
+    ],
+    "customerTwinReference": "CUSTOMER-TWIN-GOOGLE",
+    "geometryReferences": [
+      "GEOMETRY-GOOGLE-29M"
+    ],
+    "proposalDocumentReferences": [
+      "DOC-GOOGLE-PROPOSAL"
+    ],
+    "readiness": {
+      "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+      "status": "READY",
+      "canCreateDraftIofPackage": true,
+      "customerApproved": true,
+      "proposalComplete": true,
+      "runtimeValid": true,
+      "commercial": {
+        "status": "PASS",
+        "missingInformation": [],
+        "dealPointCount": 1,
+        "pricingSummaryPresent": true
+      },
+      "customer": {
+        "status": "APPROVED",
+        "assignedCustomerUsers": [
+          "google-participant-001"
+        ],
+        "comments": 0,
+        "attachments": 0
+      },
+      "engineering": {
+        "status": "READY_FOR_DRAFT_IOF",
+        "runtimeObjectCount": 2,
+        "relationshipCount": 1,
+        "geometryReferenceCount": 1
+      },
+      "marketplace": {
+        "status": "REFERENCE_ONLY",
+        "recommendation": "Use approved Proposal references as Sprint 13.3 Draft IOF source input."
+      },
+      "runtimeHealth": {
+        "status": "PASS",
+        "evidenceCount": 1,
+        "existingInventoryReferences": 1,
+        "customerTwinReference": "CUSTOMER-TWIN-GOOGLE",
+        "duplicateObjectsCreated": false
+      },
+      "confidence": 100,
+      "missingInformation": [],
+      "blockingIssues": [],
+      "recommendation": "Expose Create Draft IOF Package source references without assembling a package."
+    },
+    "noDuplicateObjects": true,
+    "noScopeVersionCreation": true,
+    "noInventoryMutation": true
+  }
+}

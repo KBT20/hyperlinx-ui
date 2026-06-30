@@ -1,0 +1,113 @@
+{
+  "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+  "type": "EXECUTION_AUTHORITY",
+  "status": "CERTIFIED",
+  "certificationState": "CERTIFIED",
+  "isImmutable": true,
+  "certifiedIofPackageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+  "executionAuthorizationCertificateId": "EXEC-AUTH-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+  "proposalId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
+  "customerId": "customer-google",
+  "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-kyle",
+  "runtimeObjectIds": [
+    "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+    "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+  ],
+  "runtimeRelationshipIds": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+  ],
+  "runtimeEvidenceIds": [
+    "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+    "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
+  ],
+  "certifiedIofUnitIds": [
+    "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+    "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002"
+  ],
+  "createdAt": "2026-06-30T12:57:08.265Z",
+  "updatedAt": "2026-06-30T12:57:08.265Z",
+  "canonicalTruth": {
+    "lifecycleState": "CERTIFIED",
+    "lifecycleTimestamp": "2026-06-30T12:57:08.265Z",
+    "constitutionalAuthority": "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE",
+    "certifiedIofPackageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+    "executionAuthorizationCertificateId": "EXEC-AUTH-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+    "proposalId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
+    "customerId": "customer-google",
+    "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+    "existingInventoryReferences": [
+      "RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+    ],
+    "customerTwinReference": "CUSTOMER-TWIN-GOOGLE-AUSTIN",
+    "customerDesignReferences": [
+      "CUSTOMER-DESIGN-GOOGLE-29M"
+    ],
+    "geometryReferences": [
+      "GEOMETRY-GOOGLE-AUSTIN-29M"
+    ],
+    "relationships": [
+      "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+      "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+    ],
+    "evidence": [
+      "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+      "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
+    ],
+    "certifiedIofUnitIds": [
+      "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+      "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002"
+    ],
+    "certifiedIofUnits": [
+      {
+        "unitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+        "unitType": "RUNTIME_REFERENCE_UNIT",
+        "runtimeObjectIds": [
+          "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY"
+        ],
+        "geometryReferences": [
+          "GEOMETRY-GOOGLE-AUSTIN-29M"
+        ],
+        "dependencyIds": [],
+        "status": "CERTIFIED"
+      },
+      {
+        "unitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
+        "unitType": "RUNTIME_REFERENCE_UNIT",
+        "runtimeObjectIds": [
+          "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+        ],
+        "geometryReferences": [
+          "GEOMETRY-GOOGLE-AUSTIN-29M"
+        ],
+        "dependencyIds": [],
+        "status": "CERTIFIED"
+      }
+    ],
+    "executionGate": {
+      "marketplaceEnabled": false,
+      "contractsEnabled": false,
+      "procurementEnabled": false,
+      "controlEnabled": false,
+      "fieldEnabled": false,
+      "operationalIntelligenceEnabled": false,
+      "nextConsumer": "MARKETPLACE_NEXT_PHASE"
+    }
+  },
+  "events": [
+    {
+      "eventId": "event-1782824228265-da1060498a1cd",
+      "type": "scopeversion.created_from_certified_iof_package",
+      "entityId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+      "entityType": "ScopeVersion",
+      "payload": {
+        "certifiedIofPackageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+        "executionAuthorizationCertificateId": "EXEC-AUTH-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+        "authority": "EXECUTION"
+      },
+      "createdAt": "2026-06-30T12:57:08.265Z"
+    }
+  ]
+}

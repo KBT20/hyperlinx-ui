@@ -1,0 +1,36 @@
+{
+  "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.revision.created-1782824228164-a2306f63fe339",
+  "eventType": "runtime.proposal.revision.created",
+  "actor": "Ryan",
+  "actorId": "teralinx-user-ryan",
+  "objectType": "Proposal",
+  "objectId": "PROPOSAL-GOOGLE-29M-RUNTIME",
+  "objectName": "Google Austin 29M Commercial Proposal",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "timestamp": "2026-06-30T12:57:08.164Z",
+  "createdAt": "2026-06-30T12:57:08.164Z",
+  "updatedAt": "2026-06-30T12:57:08.164Z",
+  "details": "v2 addresses customer diversity assumption.",
+  "metadata": {
+    "status": "COMMERCIAL_REVISION",
+    "approvalState": "REVISION_IN_PROGRESS",
+    "visibility": "SHARED",
+    "lifecycleState": "DRAFT",
+    "version": 2,
+    "authority": {
+      "owner": "teralinx-user-ryan",
+      "contributors": [],
+      "reviewers": [],
+      "approvers": [],
+      "executives": [],
+      "customerReviewers": [
+        "google-participant-001"
+      ],
+      "salesEngineering": [],
+      "sharedWith": [
+        "google-participant-001"
+      ]
+    }
+  }
+}

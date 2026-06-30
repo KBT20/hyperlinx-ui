@@ -1,0 +1,45 @@
+{
+  "runtimeId": "RUNTIME-DRAFT-IOF-DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+  "objectId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+  "objectType": "ENGINEERING",
+  "name": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+  "owner": "Kyle",
+  "ownerId": "teralinx-user-kyle",
+  "createdBy": "Kyle",
+  "createdById": "teralinx-user-kyle",
+  "assignedTo": [
+    "teralinx-user-kyle"
+  ],
+  "organization": "org-teralinx",
+  "organizationId": "org-teralinx",
+  "workspace": "workspace-teralinx-kyle",
+  "workspaceId": "workspace-teralinx-kyle",
+  "customerId": "customer-google",
+  "visibility": "ORGANIZATION",
+  "authority": "ENGINEERING_REVIEW",
+  "lifecycleState": "IN_REVIEW",
+  "version": 1,
+  "evidenceIds": [
+    "EVIDENCE-GOOGLE-APPROVAL"
+  ],
+  "evidenceLinks": [
+    "EVIDENCE-GOOGLE-APPROVAL"
+  ],
+  "relationshipIds": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+  ],
+  "relationshipLinks": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY"
+  ],
+  "sourceId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+  "createdAt": "2026-06-30T12:57:08.158Z",
+  "updatedAt": "2026-06-30T12:57:08.163Z",
+  "metadata": {
+    "status": "DRAFT",
+    "workflowStatus": "ENGINEERING_REVIEW",
+    "proposalId": "PROPOSAL-GOOGLE-29M-ASSEMBLY",
+    "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+    "packageId": "DRAFT-IOF-GOOGLE-29M-ASSEMBLY",
+    "noDuplicateRuntimeObjects": true
+  }
+}

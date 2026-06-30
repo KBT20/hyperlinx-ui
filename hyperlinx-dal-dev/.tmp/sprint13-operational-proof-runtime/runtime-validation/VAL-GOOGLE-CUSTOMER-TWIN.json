@@ -1,0 +1,12 @@
+{
+  "validationId": "VAL-GOOGLE-CUSTOMER-TWIN",
+  "status": "PASS",
+  "checks": [
+    "twin_builds_from_imported_inventory",
+    "twin_persists_as_organization_asset",
+    "workspace_drafts_do_not_replace_twin"
+  ],
+  "validatedAt": "2026-06-30T12:57:56.836Z",
+  "createdAt": "2026-06-30T12:57:56.836Z",
+  "updatedAt": "2026-06-30T12:57:56.836Z"
+}

@@ -795,7 +795,7 @@ export type ScopeVersion = {
   candidateSiteId?: string;
   sourceOpportunityId?: string;
   createdBy?: string;
-  source: "InventoryGraph" | "GraphExtension" | "OpportunitySeed" | "PrismOpportunity" | "DesignCandidate" | "FieldClosure" | "Manual";
+  source: "InventoryGraph" | "GraphExtension" | "OpportunitySeed" | "PrismOpportunity" | "DesignCandidate" | "CustomerDesignRequest" | "FieldClosure" | "Manual";
   status: ScopeVersionStatus;
   certificationState: ScopeVersionCertificationState;
   isImmutable?: boolean;

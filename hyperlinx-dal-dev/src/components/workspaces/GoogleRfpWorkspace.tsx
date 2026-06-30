@@ -43,11 +43,40 @@ import {
 } from "../../commercial/TransparentEstimatingEngine";
 import type { IlaPlanningControls } from "../../commercial/IlaPlanningEngine";
 import { authorityModeConfidence, type ConstraintValue, type ConstraintAuthorityMode } from "../../commercial/ConstraintAuthority";
-import { listCommercialOpportunities, listProposalDrafts, saveCommercialOpportunity, saveProposalDraft } from "../../api/teralinxRuntime";
+import {
+  archiveCommercialOpportunity,
+  assembleDraftIofPackageFromProposal,
+  approveProposalRuntimeObject,
+  assignCommercialOpportunity,
+  archiveProposalRuntimeObject,
+  certifyDraftIofPackage,
+  certifyIofUnit,
+  cloneCommercialOpportunity,
+  commentProposalRuntimeObject,
+  createDraftIofPackageFromProposal,
+  createProposalRevision,
+  duplicateProposalRuntimeObject,
+  listCommercialOpportunities,
+  listEngineeringReviewQueue,
+  listProposalDrafts,
+  openDraftIofPackageForCertification,
+  openCommercialOpportunity,
+  requestProposalChanges,
+  saveCommercialOpportunity,
+  shareCommercialOpportunity,
+  saveProposalDraft,
+  submitProposalToCustomer,
+  uploadProposalEvidence,
+  type DraftIofPackageRuntime,
+  type EngineeringReviewQueueItem,
+  type ProposalRuntimeObject,
+} from "../../api/teralinxRuntime";
 import { useDALState } from "../../dal/DALState";
 import { useTeralinxAuth } from "../../identity/TeralinxAuth";
-import { attachPricedDraftToImportedRoute, markImportedRoutePromoted } from "../../translate/CustomerDesignImportEngine";
+import { attachPricedDraftToImportedRoute, markImportedRoutePromoted, parseCustomerDesignFile } from "../../translate/CustomerDesignImportEngine";
 import type { CustomerDesignImport, ImportedCustomerRoute } from "../../translate/CustomerDesignImport";
+import { buildRuntimeCommitFromExistingInventoryImport, type RuntimeTranslationCommitRequest } from "../../runtime/RuntimeObjectModel";
+import { commitRuntimeTranslation } from "../../api/runtimeFoundation";
 import { googleHeliumBidPlanFixture, googleHeliumRfpOpportunity } from "../../rfp/fixtures/googleHeliumRfpFixtures";
 import { buildGoogleBidPackagePreview } from "../../rfp/GoogleBidPackagePreview";
 import { buildGoogleRfpBidPlanWithOsrm, rebuildGoogleRfpBidPlanFromRoutePlans } from "../../rfp/GoogleRfpResponseEngine";
@@ -248,11 +277,49 @@ interface AcceptedProposal {
 
 interface CommercialOpportunityRecord {
   opportunityId: string;
+  objectId?: string;
+  runtimeObjectId?: string;
+  objectType?: "OPPORTUNITY";
   accountId: string;
   name: string;
   status: CommercialOpportunityStatus;
+  owner?: string;
+  ownerId?: string;
+  createdBy?: string;
+  createdById?: string;
+  assignedTo?: string[];
+  assignment?: {
+    owner: string;
+    contributors: string[];
+    reviewers: string[];
+    approvers: string[];
+    executives: string[];
+  };
+  organization?: string;
+  organizationId?: string;
+  workspace?: string;
+  workspaceId?: string;
+  visibility?: "PRIVATE" | "SHARED" | "ORGANIZATION" | "PUBLIC";
+  authority?: {
+    owner: string;
+    contributors: string[];
+    reviewers: string[];
+    approvers: string[];
+    executives: string[];
+    sharedWith?: string[];
+  };
+  lifecycleState?: string;
+  version?: number;
+  evidenceLinks?: string[];
+  relationshipLinks?: string[];
+  createdDate?: string;
+  modifiedDate?: string;
   createdAt: string;
   updatedAt: string;
+  lastOpenedBy?: string;
+  lastOpenedById?: string;
+  lastOpenedAt?: string;
+  archivedAt?: string;
   selectedImportId?: string;
   selectedRouteId?: string;
   selectedScopeId: string;
@@ -279,6 +346,27 @@ const COMMERCIAL_WORKFLOW: Array<{ id: CommercialWorkspaceView; label: string; s
   { id: "review", label: "Customer Review", summary: "Comments, revision intake, and approval state" },
   { id: "handoff", label: "Engineering Handoff", summary: "Accepted proposal package for Route Engineering" },
 ];
+
+const RUNTIME_USER_LABELS: Record<string, string> = {
+  "teralinx-user-ryan": "Ryan",
+  "teralinx-user-fran": "Fran",
+  "teralinx-user-kyle": "Kyle",
+};
+
+function runtimeUserLabel(userId: string | undefined) {
+  if (!userId) return "Unassigned";
+  return RUNTIME_USER_LABELS[userId] ?? userId;
+}
+
+function opportunityAssignedTo(record: CommercialOpportunityRecord) {
+  return [
+    ...(record.assignedTo ?? []),
+    ...(record.authority?.contributors ?? []),
+    ...(record.authority?.reviewers ?? []),
+    ...(record.authority?.approvers ?? []),
+    ...(record.authority?.executives ?? []),
+  ].filter((value, index, list) => value && list.indexOf(value) === index);
+}
 
 const COMMERCIAL_ACCOUNTS: CommercialAccountFixture[] = [
   {
@@ -1020,6 +1108,16 @@ function sourceLabel(source: LiveProposalRouteSource) {
   return source.replaceAll("_", " ");
 }
 
+function customerIdForAccount(accountId: string) {
+  if (accountId === "google") return "customer-google";
+  if (accountId.startsWith("customer-")) return accountId;
+  return `customer-${accountId}`;
+}
+
+function proposalRuntimeStatusLabel(status: string | undefined) {
+  return status ? status.replaceAll("_", " ") : "No runtime proposal";
+}
+
 function displayTimestamp(value: string | null | undefined) {
   if (!value) return "Not recalculated in this session";
   return new Date(value).toLocaleString();
@@ -1364,10 +1462,11 @@ function buildCommercialMapLayers(args: {
       diversityConstraint: twinLayer.routeUse === "DIVERSITY_CONSTRAINT",
     };
     const domain = twinLayer.domain === "CUSTOMER_PROPOSED" ? "CUSTOMER_PROPOSED_NETWORK" : "CUSTOMER_INVENTORY";
+    const laneLabel = twinLayer.domain === "CUSTOMER_PROPOSED" ? "Customer Design Request" : "Existing Inventory";
     const renderState = layerState.activeReference ? "ACTIVE" : "REFERENCE";
     layers.push({
       id: `${twinLayer.layerId}:objects`,
-      label: `${twinLayer.label} Objects`,
+      label: `${laneLabel} Objects - ${twinLayer.label}`,
       domain: "CUSTOMER_INVENTORY",
       accountId: twinLayer.accountId,
       authority: "Customer",
@@ -1385,7 +1484,7 @@ function buildCommercialMapLayers(args: {
     });
     layers.push({
       id: `${twinLayer.layerId}:routes`,
-      label: twinLayer.label,
+      label: `${laneLabel} - ${twinLayer.label}`,
       domain,
       accountId: twinLayer.accountId,
       authority: "Customer",
@@ -1407,7 +1506,7 @@ function buildCommercialMapLayers(args: {
   const salesDraftNetwork = args.networks.find((network) => network.networkCategory === "COMMERCIAL_DRAFT" && resolveNetworkLayerState(network, args.layerStates).activeReference);
   layers.push({
     id: "customer-design:active-imported-baseline",
-    label: args.importedDesignLabel ?? "Customer Design",
+    label: args.importedDesignLabel ? `Customer Design Request - ${args.importedDesignLabel}` : "Customer Design Request",
     domain: "CUSTOMER_PROPOSED_NETWORK",
     accountId: args.account.accountId,
     authority: "Customer",
@@ -1416,7 +1515,7 @@ function buildCommercialMapLayers(args: {
     lockState: "LOCKED",
     renderState: args.importedDesignActive ? "ACTIVE" : "INACTIVE",
     zIndex: commercialMapZIndex("CUSTOMER_PROPOSED_NETWORK", "ROUTES"),
-    source: args.importedDesignActive ? "Customer Design Library" : "No imported design selected",
+    source: args.importedDesignActive ? "Customer Design Request Library" : "No design request selected",
     refreshMode: "SESSION_FROZEN",
     featureScope: "ROUTES",
     featureCount: args.importedDesignActive ? 1 : 0,
@@ -1425,7 +1524,7 @@ function buildCommercialMapLayers(args: {
 
   layers.push({
     id: "sales-commercial-draft:active-corridor",
-    label: salesDraftNetwork?.name ?? "Sales Commercial Draft",
+    label: salesDraftNetwork?.name ? `Commercial Opportunity - ${salesDraftNetwork.name}` : "Commercial Opportunity",
     domain: "SALES_COMMERCIAL_DRAFT",
     accountId: args.account.accountId,
     authority: "Sales",
@@ -1443,7 +1542,7 @@ function buildCommercialMapLayers(args: {
 
   layers.push({
     id: "customer-draft:active-review-route",
-    label: "Customer Draft",
+    label: "Customer Design Request Draft",
     domain: "CUSTOMER_DRAFT",
     accountId: args.account.accountId,
     authority: "Customer",
@@ -1477,7 +1576,7 @@ function buildCommercialMapLayers(args: {
 
   layers.push({
     id: "accepted-proposal:engineering-handoff",
-    label: "Accepted Proposal",
+    label: "Accepted Design",
     domain: "ACCEPTED_PROPOSAL",
     accountId: args.account.accountId,
     authority: "Commercial Review",
@@ -1490,6 +1589,57 @@ function buildCommercialMapLayers(args: {
     refreshMode: "REVIEW_ONLY",
     featureScope: "CORRIDOR",
     featureCount: args.acceptedProposal ? 1 : 0,
+  });
+
+  layers.push({
+    id: "engineering-draft:runtime-handoff",
+    label: "Engineering Draft",
+    domain: "ENGINEERING_DRAFT",
+    accountId: args.account.accountId,
+    authority: "Engineering",
+    owner: "Engineering",
+    visibility: "HIDDEN",
+    lockState: "LOCKED",
+    renderState: args.acceptedProposal ? "REFERENCE" : "INACTIVE",
+    zIndex: commercialMapZIndex("ENGINEERING_DRAFT", "CORRIDOR"),
+    source: args.acceptedProposal?.acceptedProposalId ?? "No engineering draft selected",
+    refreshMode: "REVIEW_ONLY",
+    featureScope: "CORRIDOR",
+    featureCount: args.acceptedProposal ? 1 : 0,
+  });
+
+  layers.push({
+    id: "field-certified:future-runtime",
+    label: "Field Certified",
+    domain: "FIELD_CERTIFIED",
+    accountId: args.account.accountId,
+    authority: "Field",
+    owner: "Field",
+    visibility: "HIDDEN",
+    lockState: "LOCKED",
+    renderState: "INACTIVE",
+    zIndex: commercialMapZIndex("FIELD_CERTIFIED", "CORRIDOR"),
+    source: "Field certification runtime lane",
+    refreshMode: "REVIEW_ONLY",
+    featureScope: "CORRIDOR",
+    featureCount: 0,
+  });
+
+  layers.push({
+    id: "operational:future-runtime",
+    label: "Operational",
+    domain: "OPERATIONAL",
+    accountId: args.account.accountId,
+    authority: "Operations",
+    owner: "Operations",
+    visibility: "HIDDEN",
+    lockState: "LOCKED",
+    renderState: "INACTIVE",
+    zIndex: commercialMapZIndex("OPERATIONAL", "CORRIDOR"),
+    source: "Operational Intelligence runtime lane",
+    refreshMode: "REVIEW_ONLY",
+    featureScope: "CORRIDOR",
+    featureCount: 0,
   });
 
   return sortCommercialMapLayers(layers);
@@ -2428,6 +2578,9 @@ export default function GoogleRfpWorkspace() {
   } = useDALState();
   const { session, runtimeInfo, activity, recordActivity, can } = useTeralinxAuth();
   const currentUserName = session?.user.name ?? "Teralinx";
+  const currentUserId = session?.user.userId ?? "teralinx-user-system";
+  const currentWorkspaceId = session?.user.workspaceId ?? session?.workspace?.workspaceId ?? "workspace-teralinx-system";
+  const currentOrganizationId = session?.user.organizationId ?? session?.workspace?.organizationId ?? "org-teralinx";
   const [bidPlan, setBidPlan] = useState(googleHeliumBidPlanFixture);
   const defaultAssumptionState = useMemo(() => createDefaultBudgetAssumptionState(), []);
   const [assumptionStates, setAssumptionStates] = useState<BudgetAssumptionState[]>([defaultAssumptionState]);
@@ -2440,6 +2593,13 @@ export default function GoogleRfpWorkspace() {
   const [verificationStatus, setVerificationStatus] = useState<"PENDING" | "RUNNING" | "COMPLETE" | "FAILED">("PENDING");
   const [commercialRecalculationPending, setCommercialRecalculationPending] = useState(false);
   const [proposalSnapshots, setProposalSnapshots] = useState<LiveProposalSnapshot[]>([]);
+  const [proposalRuntimeRecords, setProposalRuntimeRecords] = useState<ProposalRuntimeObject[]>([]);
+  const [proposalRuntimeNotice, setProposalRuntimeNotice] = useState("Proposal Runtime Library is waiting for a governed proposal object.");
+  const [proposalRuntimeActionPending, setProposalRuntimeActionPending] = useState(false);
+  const [engineeringReviewQueue, setEngineeringReviewQueue] = useState<EngineeringReviewQueueItem[]>([]);
+  const [activeDraftIofPackage, setActiveDraftIofPackage] = useState<DraftIofPackageRuntime | null>(null);
+  const [engineeringCertificationNotice, setEngineeringCertificationNotice] = useState("Engineering Certification queue is waiting for a Draft IOF Package.");
+  const [engineeringCertificationPending, setEngineeringCertificationPending] = useState(false);
   const [customerDrafts, setCustomerDrafts] = useState<CustomerDraftRecord[]>([]);
   const [customerReviewStatus, setCustomerReviewStatus] = useState<CustomerReviewStatus>("NOT_STARTED");
   const [acceptedProposal, setAcceptedProposal] = useState<AcceptedProposal | null>(null);
@@ -2477,6 +2637,8 @@ export default function GoogleRfpWorkspace() {
   const [customerNetworkGraph, setCustomerNetworkGraph] = useState<CustomerNetworkGraph | null>(null);
   const [customerInventoryLoadStatus, setCustomerInventoryLoadStatus] = useState<CustomerInventoryParsedStatus>("PENDING");
   const [customerInventoryDiagnostics, setCustomerInventoryDiagnostics] = useState<string[]>([]);
+  const [existingInventoryImportStatus, setExistingInventoryImportStatus] = useState<"IDLE" | "PARSING" | "COMMITTING" | "READY" | "ERROR">("IDLE");
+  const [existingInventoryImportNotice, setExistingInventoryImportNotice] = useState("Import KMZ, KML, GeoJSON, CSV, or Runtime Inventory JSON to create organization-owned Customer Inventory Runtime Objects.");
   const [inventoryRefreshNonce, setInventoryRefreshNonce] = useState(0);
   const [networkLayerStates, setNetworkLayerStates] = useState<Record<string, NetworkLayerState>>(() =>
     Object.fromEntries(COMMERCIAL_NETWORKS.map((network) => [network.networkId, defaultNetworkLayerState(network)])),
@@ -2610,6 +2772,43 @@ export default function GoogleRfpWorkspace() {
     [engineeringDrafts, selectedAccount.accountId, selectedAccount.name],
   );
   const activeCommercialOpportunity = accountCommercialOpportunities.find((record) => record.opportunityId === activeCommercialOpportunityId) ?? null;
+  const visibleRuntimeOpportunities = useMemo(
+    () => commercialOpportunities.filter((record) => record.status !== "ARCHIVED"),
+    [commercialOpportunities],
+  );
+  const myRuntimeOpportunities = useMemo(
+    () => visibleRuntimeOpportunities.filter((record) => record.ownerId === currentUserId),
+    [currentUserId, visibleRuntimeOpportunities],
+  );
+  const assignedRuntimeWork = useMemo(
+    () => visibleRuntimeOpportunities.filter((record) => record.ownerId !== currentUserId && opportunityAssignedTo(record).includes(currentUserId)),
+    [currentUserId, visibleRuntimeOpportunities],
+  );
+  const pendingRuntimeApprovals = useMemo(
+    () => visibleRuntimeOpportunities.filter((record) => (
+      record.authority?.reviewers?.includes(currentUserId) ||
+      record.authority?.approvers?.includes(currentUserId) ||
+      record.authority?.executives?.includes(currentUserId)
+    )),
+    [currentUserId, visibleRuntimeOpportunities],
+  );
+  const runtimeNotifications = useMemo(
+    () => [
+      ...assignedRuntimeWork.map((record) => `${record.name} assigned by ${record.owner ?? runtimeUserLabel(record.ownerId)}`),
+      ...pendingRuntimeApprovals.map((record) => `${record.name} awaiting ${record.authority?.executives?.includes(currentUserId) ? "executive review" : "review"}`),
+    ].slice(0, 5),
+    [assignedRuntimeWork, currentUserId, pendingRuntimeApprovals],
+  );
+  const canModifyActiveOpportunity = Boolean(activeCommercialOpportunity && (
+    activeCommercialOpportunity.ownerId === currentUserId ||
+    activeCommercialOpportunity.authority?.contributors?.includes(currentUserId) ||
+    activeCommercialOpportunity.authority?.approvers?.includes(currentUserId)
+  ));
+  const canGovernActiveOpportunity = Boolean(activeCommercialOpportunity && (
+    activeCommercialOpportunity.ownerId === currentUserId ||
+    activeCommercialOpportunity.authority?.approvers?.includes(currentUserId)
+  ));
+  const executiveDashboardEnabled = Boolean(session?.user.dashboard?.executiveOverview);
   const selectedImportedCustomerDesignEntry = useMemo(
     () => {
       if (!selectedCustomerDesignImportId || !selectedCustomerDesignRouteId) return null;
@@ -2669,6 +2868,22 @@ export default function GoogleRfpWorkspace() {
   const accountSnapshots = proposalSnapshots.filter((snapshot) => snapshot.accountId === selectedAccount.accountId);
   const accountCustomerDrafts = customerDrafts.filter((draft) => draft.accountId === selectedAccount.accountId);
   const accountAcceptedProposal = acceptedProposal?.accountId === selectedAccount.accountId ? acceptedProposal : null;
+  const accountProposalRuntimeRecords = useMemo(
+    () => proposalRuntimeRecords
+      .filter((record) => (
+        record.accountId === selectedAccount.accountId ||
+        record.customerId === customerIdForAccount(selectedAccount.accountId) ||
+        record.customerId === selectedAccount.accountId
+      ))
+      .sort((a, b) => String(b.updatedAt ?? b.createdAt).localeCompare(String(a.updatedAt ?? a.createdAt))),
+    [proposalRuntimeRecords, selectedAccount.accountId],
+  );
+  const activeProposalRuntime = accountProposalRuntimeRecords[0] ?? null;
+  const isCustomerParticipant = session?.user.role === "CUSTOMER_PARTICIPANT";
+  const canManageProposalRuntime = Boolean(session && can("proposal.manage"));
+  const canReviewProposalRuntime = Boolean(session && can("proposal.review"));
+  const canReadEngineeringCertification = Boolean(session && (can("workspace.engineering.read") || can("workspace.engineering.write") || can("scopeversion.authority")));
+  const canWriteEngineeringCertification = Boolean(session && (can("workspace.engineering.write") || can("scopeversion.authority")));
   const accountNetworkInventory = useMemo(
     () => [
       ...accountNetworkRecords,
@@ -2965,7 +3180,7 @@ export default function GoogleRfpWorkspace() {
   useEffect(() => {
     let cancelled = false;
     setCommercialLibraryLoaded(false);
-    listCommercialOpportunities<CommercialOpportunityRecord>()
+    listCommercialOpportunities<CommercialOpportunityRecord>(session)
       .then((records) => {
         if (cancelled) return;
         setCommercialOpportunities(records.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
@@ -2980,11 +3195,11 @@ export default function GoogleRfpWorkspace() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [session?.token]);
 
   useEffect(() => {
     let cancelled = false;
-    listProposalDrafts<any>()
+    listProposalDrafts<any>(session)
       .then((records) => {
         if (cancelled) return;
         const snapshots = records
@@ -2997,14 +3212,414 @@ export default function GoogleRfpWorkspace() {
           .map(({ proposalRecordId: _proposalRecordId, proposalRecordType: _proposalRecordType, organization: _organization, createdAt: _createdAt, updatedAt: _updatedAt, ...proposal }) => proposal as AcceptedProposal);
         setProposalSnapshots(snapshots);
         setAcceptedProposal(accepted[0] ?? null);
+        setProposalRuntimeRecords(records.filter((record) => record?.proposalId || record?.objectType === "PROPOSAL" || record?.readiness) as ProposalRuntimeObject[]);
+        setProposalRuntimeNotice(records.length ? "Proposal Runtime Library loaded." : "No governed proposal runtime objects are visible in this workspace.");
       })
       .catch((error) => {
         console.warn("Proposal Library load failed", error instanceof Error ? error.message : String(error));
+        setProposalRuntimeNotice(`Proposal Runtime Library unavailable: ${error instanceof Error ? error.message : String(error)}`);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [session?.token]);
+
+  useEffect(() => {
+    if (!canReadEngineeringCertification) {
+      setEngineeringReviewQueue([]);
+      setActiveDraftIofPackage(null);
+      return;
+    }
+    let cancelled = false;
+    listEngineeringReviewQueue(session)
+      .then((queue) => {
+        if (cancelled) return;
+        setEngineeringReviewQueue(queue);
+        setEngineeringCertificationNotice(queue.length ? "Engineering Review Queue loaded." : "No Draft IOF Packages are waiting for Engineering certification.");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setEngineeringCertificationNotice(`Engineering Review Queue unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canReadEngineeringCertification, session?.token]);
+
+  function upsertProposalRuntimeRecord(record: ProposalRuntimeObject) {
+    setProposalRuntimeRecords((prev) => [
+      record,
+      ...prev.filter((item) => item.proposalId !== record.proposalId && item.proposalRecordId !== record.proposalRecordId),
+    ]);
+  }
+
+  async function refreshProposalRuntimeLibrary(nextNotice?: string) {
+    const records = await listProposalDrafts<any>(session);
+    setProposalRuntimeRecords(records.filter((record) => record?.proposalId || record?.objectType === "PROPOSAL" || record?.readiness) as ProposalRuntimeObject[]);
+    if (nextNotice) setProposalRuntimeNotice(nextNotice);
+  }
+
+  async function refreshEngineeringReviewQueue(nextNotice?: string) {
+    if (!canReadEngineeringCertification) return;
+    const queue = await listEngineeringReviewQueue(session);
+    setEngineeringReviewQueue(queue);
+    if (nextNotice) setEngineeringCertificationNotice(nextNotice);
+  }
+
+  async function saveCurrentRuntimeProposal(status: ProposalRuntimeObject["status"] = "COMMERCIAL_DRAFT") {
+    if (!canManageProposalRuntime) {
+      setProposalRuntimeNotice("Only commercial proposal authority may create or update Proposal Runtime Objects.");
+      return null;
+    }
+    const routePlan = activeLiveSession?.routePlan ?? selectedRoutePlans[0];
+    if (!routePlan) {
+      setProposalRuntimeNotice("No route requirement is selected for proposal runtime creation.");
+      return null;
+    }
+    setProposalRuntimeActionPending(true);
+    try {
+      const timestamp = new Date().toISOString();
+      const geometry = activeLiveSession?.activeEditableRouteGeometry ?? routePlan.stationedCorridor?.centerlineRoute.geometry ?? routePlan.proposedGraph?.centerlineRoute?.geometry ?? [];
+      const proposalId = activeProposalRuntime?.proposalId ?? `PROPOSAL-${selectedAccount.accountId}-${Date.now()}`;
+      const proposalRecord = {
+        ...(activeProposalRuntime ?? {}),
+        proposalId,
+        proposalRecordId: proposalId,
+        proposalRecordType: "PROPOSAL_RUNTIME_OBJECT",
+        proposalNumber: activeProposalRuntime?.proposalNumber,
+        customerId: customerIdForAccount(selectedAccount.accountId),
+        accountId: selectedAccount.accountId,
+        opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId || routePlan.routeRequirement.routeRequirementId,
+        organizationId: currentOrganizationId,
+        workspaceId: currentWorkspaceId,
+        commercialOwnerId: activeProposalRuntime?.commercialOwnerId ?? currentUserId,
+        ownerId: activeProposalRuntime?.ownerId ?? currentUserId,
+        createdById: activeProposalRuntime?.createdById ?? currentUserId,
+        assignedCustomerUsers: activeProposalRuntime?.assignedCustomerUsers?.length ? activeProposalRuntime.assignedCustomerUsers : ["google-participant-001"],
+        visibility: activeProposalRuntime?.visibility ?? "PRIVATE",
+        status,
+        title: `${selectedAccount.name} ${routePlan.routeRequirement.bidSegmentName} Commercial Proposal`,
+        summary: `Commercial proposal for ${routePlan.routeRequirement.bidSegmentName}.`,
+        executiveSummary: preview.executiveSummary,
+        pricingSummary: selectedPricingSummary.reconciliation,
+        marginSummary: {
+          grossMarginDollars: selectedPricingSummary.reconciliation.grossMarginDollars,
+          grossMarginPercent: selectedPricingSummary.reconciliation.grossMarginPercent,
+        },
+        confidenceSummary: {
+          commercialReadiness: activeFinancialDraft?.transparentEstimate.commercialReadiness.score ?? 0,
+          pricingStatus: selectedPricingSummary.reconciliation.combinedAwardAdjustmentStatus,
+        },
+        commercialAssumptionIds: [selectedAssumptionState.stateId],
+        dealPointIds: selectedScope.routeRequirementIds,
+        runtimeObjectIds: [
+          activeCommercialOpportunity?.runtimeObjectId,
+          selectedImportedCustomerDesignImport?.designImportId,
+          ...activeCommercialDraftNetworks.map((network) => network.networkId),
+        ].filter(Boolean),
+        runtimeRelationshipIds: [
+          activeCommercialOpportunity?.opportunityId ? `DERIVED_FROM:${activeCommercialOpportunity.opportunityId}` : "",
+          routePlan.routeRequirement.routeRequirementId ? `PROPOSES_ROUTE:${routePlan.routeRequirement.routeRequirementId}` : "",
+        ].filter(Boolean),
+        runtimeEvidenceIds: activeProposalRuntime?.runtimeEvidenceIds ?? [],
+        existingInventoryReferences: activeExistingReferenceNetworkIds,
+        customerDesignReferences: selectedImportedCustomerDesignImport ? [selectedImportedCustomerDesignImport.designId] : [],
+        customerTwinReference: accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
+        geometryReferences: [routePlan.routeRequirement.routeRequirementId, ...geometry.map((coordinate, index) => `${proposalId}:geometry:${index}:${coordinate.join(",")}`)].slice(0, 20),
+        proposalDocumentReferences: ["Executive summary", "Commercial pricing summary", "Interactive proposal map"],
+        attachments: activeProposalRuntime?.attachments ?? [],
+        comments: activeProposalRuntime?.comments ?? [],
+        reviewers: activeProposalRuntime?.reviewers ?? [],
+        approvalState: activeProposalRuntime?.approvalState ?? "NOT_SUBMITTED",
+        version: activeProposalRuntime?.version ?? 1,
+        createdAt: activeProposalRuntime?.createdAt ?? timestamp,
+        updatedAt: timestamp,
+        noScopeVersionCreation: true,
+        noInventoryMutation: true,
+      };
+      const saved = await saveProposalDraft<any>(proposalRecord, session) as ProposalRuntimeObject;
+      upsertProposalRuntimeRecord(saved);
+      setProposalRuntimeNotice(`${saved.proposalNumber} saved as ${proposalRuntimeStatusLabel(saved.status)}.`);
+      return saved;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setProposalRuntimeNotice(`Proposal Runtime save failed: ${message}`);
+      return null;
+    } finally {
+      setProposalRuntimeActionPending(false);
+    }
+  }
+
+  async function handleSaveRuntimeProposal() {
+    await saveCurrentRuntimeProposal(activeProposalRuntime?.status ?? "COMMERCIAL_DRAFT");
+  }
+
+  async function handleSubmitRuntimeProposalToCustomer() {
+    const proposal = activeProposalRuntime ?? await saveCurrentRuntimeProposal("COMMERCIAL_DRAFT");
+    if (!proposal) return;
+    setProposalRuntimeActionPending(true);
+    try {
+      const saved = await submitProposalToCustomer(proposal.proposalId, { assignedCustomerUsers: ["google-participant-001"] }, session);
+      upsertProposalRuntimeRecord(saved);
+      setProposalRuntimeNotice(`${saved.proposalNumber} submitted to customer review.`);
+    } catch (error) {
+      setProposalRuntimeNotice(`Customer review submit failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setProposalRuntimeActionPending(false);
+    }
+  }
+
+  async function handleCreateRuntimeProposalRevision() {
+    if (!activeProposalRuntime) return;
+    const reason = window.prompt("Revision reason", "Commercial revision after customer feedback.") ?? "";
+    if (!reason.trim()) return;
+    setProposalRuntimeActionPending(true);
+    try {
+      const saved = await createProposalRevision(activeProposalRuntime.proposalId, {
+        reason,
+        proposal: {
+          pricingSummary: selectedPricingSummary.reconciliation as unknown as Record<string, unknown>,
+          marginSummary: {
+            grossMarginDollars: selectedPricingSummary.reconciliation.grossMarginDollars,
+            grossMarginPercent: selectedPricingSummary.reconciliation.grossMarginPercent,
+          },
+        },
+        changes: {
+          changedRuntimeObjectIds: activeProposalRuntime.runtimeObjectIds,
+          changedDealPointIds: selectedScope.routeRequirementIds,
+          changedPricingFields: ["pricingSummary", "marginSummary"],
+          changedGeometryReferences: activeProposalRuntime.geometryReferences,
+        },
+      }, session);
+      upsertProposalRuntimeRecord(saved);
+      setProposalRuntimeNotice(`${saved.proposalNumber} revision v${saved.version} created.`);
+    } catch (error) {
+      setProposalRuntimeNotice(`Revision failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setProposalRuntimeActionPending(false);
+    }
+  }
+
+  async function handleDuplicateRuntimeProposal() {
+    if (!activeProposalRuntime) return;
+    setProposalRuntimeActionPending(true);
+    try {
+      const saved = await duplicateProposalRuntimeObject(activeProposalRuntime.proposalId, session);
+      upsertProposalRuntimeRecord(saved);
+      setProposalRuntimeNotice(`${saved.proposalNumber} duplicated as a private commercial draft.`);
+    } catch (error) {
+      setProposalRuntimeNotice(`Duplicate failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setProposalRuntimeActionPending(false);
+    }
+  }
+
+  async function handleArchiveRuntimeProposal() {
+    if (!activeProposalRuntime) return;
+    setProposalRuntimeActionPending(true);
+    try {
+      const saved = await archiveProposalRuntimeObject(activeProposalRuntime.proposalId, session);
+      upsertProposalRuntimeRecord(saved);
+      setProposalRuntimeNotice(`${saved.proposalNumber} archived.`);
+    } catch (error) {
+      setProposalRuntimeNotice(`Archive failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setProposalRuntimeActionPending(false);
+    }
+  }
+
+  async function handleCustomerRuntimeProposalComment() {
+    if (!activeProposalRuntime) return;
+    const comment = window.prompt("Customer comment", "Please revise the commercial assumptions for review.") ?? "";
+    if (!comment.trim()) return;
+    setProposalRuntimeActionPending(true);
+    try {
+      const saved = await commentProposalRuntimeObject(activeProposalRuntime.proposalId, { comment }, session);
+      upsertProposalRuntimeRecord(saved);
+      setProposalRuntimeNotice("Customer comment recorded in Runtime History.");
+    } catch (error) {
+      setProposalRuntimeNotice(`Comment failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setProposalRuntimeActionPending(false);
+    }
+  }
+
+  async function handleCustomerRuntimeProposalEvidence() {
+    if (!activeProposalRuntime) return;
+    const sourceName = window.prompt("Evidence source name", "Customer approval note") ?? "";
+    if (!sourceName.trim()) return;
+    setProposalRuntimeActionPending(true);
+    try {
+      const result = await uploadProposalEvidence(activeProposalRuntime.proposalId, {
+        sourceName,
+        sourceType: "CUSTOMER_UPLOAD",
+        metadata: { uploadedFrom: "Customer Proposal Dashboard" },
+      }, session);
+      upsertProposalRuntimeRecord(result.proposal);
+      setProposalRuntimeNotice(`${sourceName} registered in Runtime Evidence.`);
+    } catch (error) {
+      setProposalRuntimeNotice(`Evidence upload failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setProposalRuntimeActionPending(false);
+    }
+  }
+
+  async function handleCustomerRuntimeProposalChanges() {
+    if (!activeProposalRuntime) return;
+    const comment = window.prompt("Requested change", "Please revise and resubmit.") ?? "";
+    if (!comment.trim()) return;
+    setProposalRuntimeActionPending(true);
+    try {
+      const saved = await requestProposalChanges(activeProposalRuntime.proposalId, { comment }, session);
+      upsertProposalRuntimeRecord(saved);
+      setProposalRuntimeNotice("Customer change request recorded.");
+    } catch (error) {
+      setProposalRuntimeNotice(`Request changes failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setProposalRuntimeActionPending(false);
+    }
+  }
+
+  async function handleCustomerRuntimeProposalApproval() {
+    if (!activeProposalRuntime) return;
+    const comment = window.prompt("Approval comment", "Approved for Draft IOF package readiness.") ?? "";
+    setProposalRuntimeActionPending(true);
+    try {
+      const saved = await approveProposalRuntimeObject(activeProposalRuntime.proposalId, { comment }, session);
+      upsertProposalRuntimeRecord(saved);
+      setProposalRuntimeNotice(`${saved.proposalNumber} approved by customer.`);
+    } catch (error) {
+      setProposalRuntimeNotice(`Approval failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setProposalRuntimeActionPending(false);
+    }
+  }
+
+  async function handleExposeDraftIofSource() {
+    if (!activeProposalRuntime) return;
+    setProposalRuntimeActionPending(true);
+    try {
+      const result = await createDraftIofPackageFromProposal(activeProposalRuntime.proposalId, session);
+      upsertProposalRuntimeRecord(result.proposal);
+      setProposalRuntimeNotice(result.ready ? "Draft IOF source references exposed. No IOF package was assembled." : "Draft IOF source is not ready.");
+    } catch (error) {
+      setProposalRuntimeNotice(`Draft IOF readiness failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setProposalRuntimeActionPending(false);
+    }
+  }
+
+  async function handleAssembleDraftIofForEngineering() {
+    if (!activeProposalRuntime) {
+      setEngineeringCertificationNotice("Customer-approved Proposal Runtime Object is required before Draft IOF Package assembly.");
+      return;
+    }
+    if (!activeProposalRuntime.readiness?.canCreateDraftIofPackage && activeProposalRuntime.approvalState !== "APPROVED") {
+      setEngineeringCertificationNotice("Engineering can only assemble from a customer-approved and runtime-valid Proposal.");
+      return;
+    }
+    setEngineeringCertificationPending(true);
+    try {
+      const draft = await assembleDraftIofPackageFromProposal({
+        proposalId: activeProposalRuntime.proposalId,
+        assignedEngineerId: currentUserId,
+        assignedEngineer: currentUserName,
+        priority: "NORMAL",
+      }, session);
+      setActiveDraftIofPackage(draft);
+      await refreshEngineeringReviewQueue(`${draft.packageId} assembled and queued for Engineering certification.`);
+    } catch (error) {
+      setEngineeringCertificationNotice(`Draft IOF assembly failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setEngineeringCertificationPending(false);
+    }
+  }
+
+  async function handleOpenEngineeringDraftPackage(packageId: string) {
+    setEngineeringCertificationPending(true);
+    try {
+      const draft = await openDraftIofPackageForCertification(packageId, session);
+      setActiveDraftIofPackage(draft);
+      setEngineeringCertificationNotice(`${draft.packageId} opened for Engineering review.`);
+    } catch (error) {
+      setEngineeringCertificationNotice(`Open Draft IOF Package failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setEngineeringCertificationPending(false);
+    }
+  }
+
+  async function handleCertifyFirstIofUnit() {
+    const unit = activeDraftIofPackage?.proposedIofUnits?.find((item) => item.status !== "CERTIFIED");
+    if (!activeDraftIofPackage || !unit) return;
+    setEngineeringCertificationPending(true);
+    try {
+      const result = await certifyIofUnit(activeDraftIofPackage.packageId, unit.unitId, {
+        engineeringNote: "Certified from Engineering Review Queue.",
+        engineeringConfidence: 92,
+        engineeringRisk: "ACCEPTED",
+        engineeringComments: ["Engineering unit certification complete."],
+      }, session);
+      setActiveDraftIofPackage(result.iofPackage);
+      await refreshEngineeringReviewQueue(`${unit.unitId} certified.`);
+    } catch (error) {
+      setEngineeringCertificationNotice(`Unit certification failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setEngineeringCertificationPending(false);
+    }
+  }
+
+  async function handleCertifyAllIofUnits() {
+    if (!activeDraftIofPackage) return;
+    setEngineeringCertificationPending(true);
+    try {
+      let draft = activeDraftIofPackage;
+      for (const unit of activeDraftIofPackage.proposedIofUnits.filter((item) => item.status !== "CERTIFIED")) {
+        const result = await certifyIofUnit(draft.packageId, unit.unitId, {
+          engineeringNote: "Certified during package review.",
+          engineeringConfidence: 94,
+          engineeringRisk: "ACCEPTED",
+          engineeringComments: ["Batch-certified by Engineering."],
+        }, session);
+        draft = result.iofPackage;
+      }
+      setActiveDraftIofPackage(draft);
+      await refreshEngineeringReviewQueue(`${draft.packageId} units certified.`);
+    } catch (error) {
+      setEngineeringCertificationNotice(`Batch unit certification failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setEngineeringCertificationPending(false);
+    }
+  }
+
+  async function handleCertifyEngineeringPackage() {
+    if (!activeDraftIofPackage) return;
+    setEngineeringCertificationPending(true);
+    try {
+      const result = await certifyDraftIofPackage(activeDraftIofPackage.packageId, {
+        checklist: {
+          geometryComplete: true,
+          existingInventoryValidated: true,
+          customerDesignReviewed: true,
+          relationshipsValidated: true,
+          dependenciesValidated: true,
+          evidencePresent: true,
+          commercialAssumptionsReviewed: true,
+          unitQuantitiesVerified: true,
+          engineeringStandardsMet: true,
+          riskAccepted: true,
+          packageComplete: true,
+          certificationConfidence: 94,
+          engineeringNotes: "Engineering certification completed. Execution stops at ScopeVersion.",
+        },
+      }, session);
+      setActiveDraftIofPackage(result.draftPackage);
+      await refreshEngineeringReviewQueue(`${result.certifiedIofPackage.certifiedPackageId} certified. ScopeVersion ${String(result.scopeVersion.scopeVersionId)} generated.`);
+    } catch (error) {
+      setEngineeringCertificationNotice(`Package certification failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setEngineeringCertificationPending(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -3043,6 +3658,273 @@ export default function GoogleRfpWorkspace() {
     setCommercialRouteResult(null);
     setCommercialRoutingStatus("IDLE");
   }, [activeDesignMode, commercialDraftType, opportunityScoutCandidate?.candidateId, selectedAccount.accountId]);
+
+  function buildRuntimeInventoryJsonCommit(input: any, fileName: string): RuntimeTranslationCommitRequest {
+    const timestamp = new Date().toISOString();
+    const sourceEvidenceId = `EVIDENCE-RUNTIME-INVENTORY-${selectedAccount.accountId}-${Date.now()}`;
+    const sourceEvidence = {
+      evidenceId: sourceEvidenceId,
+      sourceType: "JSON_RUNTIME_INVENTORY",
+      sourceName: fileName,
+      sourceSystem: "Commercial Planning Existing Inventory",
+      authority: "CUSTOMER_EVIDENCE" as const,
+      validationStatus: "PENDING" as const,
+      collectedAt: timestamp,
+      ingestedAt: timestamp,
+      lineage: {
+        accountId: selectedAccount.accountId,
+        customerName: selectedAccount.name,
+        sourceFileName: fileName,
+      },
+      metadata: {
+        accountId: selectedAccount.accountId,
+        customerName: selectedAccount.name,
+        owner: selectedAccount.name,
+        organizationId: currentOrganizationId,
+        workspaceId: currentWorkspaceId,
+      },
+    };
+    const inputInventoryRecords = input.inventories ?? input.runtimeInventories ?? input.inventory;
+    const firstInputInventory = Array.isArray(inputInventoryRecords) ? inputInventoryRecords[0] : inputInventoryRecords;
+    const inventoryId = String(input.inventoryId ?? firstInputInventory?.inventoryId ?? `RUNTIME-INVENTORY-CUSTOMER-${selectedAccount.accountId}-${Date.now()}`);
+    const runtimeObjects = ((input.runtimeObjects ?? input.objects ?? []) as any[]).map((object, index) => {
+      const runtimeId = String(object.runtimeId ?? object.objectId ?? `RUNTIME-OBJECT-${selectedAccount.accountId}-${Date.now()}-${index + 1}`);
+      const evidenceIds = Array.isArray(object.evidenceIds) ? object.evidenceIds : [sourceEvidenceId];
+      const relationshipIds = Array.isArray(object.relationshipIds) ? object.relationshipIds : [];
+      return {
+        ...object,
+        runtimeId,
+        objectId: String(object.objectId ?? runtimeId),
+        objectType: object.objectType ?? "UNKNOWN",
+        name: object.name ?? runtimeId,
+        owner: object.owner ?? selectedAccount.name,
+        createdBy: object.createdBy ?? currentUserName,
+        assignedTo: Array.isArray(object.assignedTo) ? object.assignedTo : [],
+        organization: object.organization ?? currentOrganizationId,
+        organizationId: object.organizationId ?? currentOrganizationId,
+        workspace: object.workspace ?? currentWorkspaceId,
+        workspaceId: object.workspaceId ?? currentWorkspaceId,
+        inventoryId: object.inventoryId ?? inventoryId,
+        inventoryAuthorityType: object.inventoryAuthorityType ?? "EXISTING_CUSTOMER_INVENTORY",
+        sourceType: object.sourceType ?? "JSON_RUNTIME_INVENTORY",
+        sourceFilename: object.sourceFilename ?? fileName,
+        customerId: object.customerId ?? selectedAccount.accountId,
+        ownerUserId: object.ownerUserId ?? currentUserId,
+        validationStatus: object.validationStatus ?? "PENDING",
+        scopeVersion: object.scopeVersion ?? "NO_SCOPEVERSION",
+        customer: object.customer ?? selectedAccount.name,
+        source: object.source ?? fileName,
+        classification: object.classification ?? object.objectType ?? "UNKNOWN",
+        confidence: Number(object.confidence ?? object.metadata?.confidence ?? 72),
+        visibility: object.visibility ?? "ORGANIZATION",
+        authority: object.authority ?? "CUSTOMER_EVIDENCE",
+        lifecycleState: object.lifecycleState ?? "ACTIVE",
+        version: Number(object.version ?? 1),
+        evidenceIds,
+        evidenceLinks: Array.isArray(object.evidenceLinks) ? object.evidenceLinks : evidenceIds,
+        relationshipIds,
+        relationshipLinks: Array.isArray(object.relationshipLinks) ? object.relationshipLinks : relationshipIds,
+        createdAt: object.createdAt ?? timestamp,
+        updatedAt: timestamp,
+        metadata: {
+          ...(object.metadata ?? {}),
+          lane: "EXISTING_INVENTORY",
+          inventoryId,
+          inventoryAuthorityType: "EXISTING_CUSTOMER_INVENTORY",
+          accountId: selectedAccount.accountId,
+          customerName: selectedAccount.name,
+          sourceFileName: fileName,
+        },
+      };
+    });
+    const inventories = (inputInventoryRecords ? (Array.isArray(inputInventoryRecords) ? inputInventoryRecords : [inputInventoryRecords]) : []) as any[];
+    const normalizedInventories = inventories.length ? inventories.map((inventory) => ({
+      ...inventory,
+      inventoryId: String(inventory.inventoryId ?? inventoryId),
+      inventoryType: inventory.inventoryType ?? "CUSTOMER",
+      owner: inventory.owner ?? selectedAccount.name,
+      name: inventory.name ?? `${selectedAccount.name} Customer Inventory`,
+      organization: inventory.organization ?? currentOrganizationId,
+      workspace: inventory.workspace ?? currentWorkspaceId,
+      visibility: inventory.visibility ?? "ORGANIZATION",
+      authority: inventory.authority ?? "CUSTOMER_EVIDENCE",
+      lifecycleState: inventory.lifecycleState ?? inventory.status ?? "ACTIVE",
+      customer: inventory.customer ?? selectedAccount.name,
+      customerId: inventory.customerId ?? selectedAccount.accountId,
+      source: inventory.source ?? fileName,
+      sourceType: inventory.sourceType ?? "JSON_RUNTIME_INVENTORY",
+      sourceFilename: inventory.sourceFilename ?? fileName,
+      inventoryAuthorityType: inventory.inventoryAuthorityType ?? "EXISTING_CUSTOMER_INVENTORY",
+      ownerUserId: inventory.ownerUserId ?? currentUserId,
+      validationStatus: inventory.validationStatus ?? "PENDING",
+      runtimeObjectIds: Array.isArray(inventory.runtimeObjectIds) ? inventory.runtimeObjectIds : runtimeObjects.map((object) => object.runtimeId),
+      version: Number(inventory.version ?? 1),
+      status: inventory.status ?? "ACTIVE",
+      evidenceIds: Array.isArray(inventory.evidenceIds) ? inventory.evidenceIds : [sourceEvidenceId],
+      objectIds: Array.isArray(inventory.objectIds) ? inventory.objectIds : runtimeObjects.map((object) => object.runtimeId),
+      relationshipIds: Array.isArray(inventory.relationshipIds) ? inventory.relationshipIds : [],
+      createdAt: inventory.createdAt ?? timestamp,
+      updatedAt: timestamp,
+      metadata: {
+        ...(inventory.metadata ?? {}),
+        lane: "EXISTING_INVENTORY",
+        inventoryAuthorityType: "EXISTING_CUSTOMER_INVENTORY",
+        accountId: selectedAccount.accountId,
+        customerName: selectedAccount.name,
+        sourceFileName: fileName,
+        organizationId: currentOrganizationId,
+        workspaceId: currentWorkspaceId,
+      },
+    })) : [{
+      inventoryId,
+      inventoryType: "CUSTOMER" as const,
+      owner: selectedAccount.name,
+      name: `${selectedAccount.name} Customer Inventory`,
+      organization: currentOrganizationId,
+      workspace: currentWorkspaceId,
+      visibility: "ORGANIZATION" as const,
+      authority: "CUSTOMER_EVIDENCE" as const,
+      lifecycleState: "ACTIVE" as const,
+      customer: selectedAccount.name,
+      customerId: selectedAccount.accountId,
+      source: fileName,
+      sourceType: "JSON_RUNTIME_INVENTORY",
+      sourceFilename: fileName,
+      inventoryAuthorityType: "EXISTING_CUSTOMER_INVENTORY",
+      ownerUserId: currentUserId,
+      validationStatus: "PENDING",
+      runtimeObjectIds: runtimeObjects.map((object) => object.runtimeId),
+      version: 1,
+      status: "ACTIVE" as const,
+      evidenceIds: [sourceEvidenceId],
+      objectIds: runtimeObjects.map((object) => object.runtimeId),
+      relationshipIds: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      metadata: {
+        lane: "EXISTING_INVENTORY",
+        inventoryAuthorityType: "EXISTING_CUSTOMER_INVENTORY",
+        accountId: selectedAccount.accountId,
+        customerName: selectedAccount.name,
+        sourceFileName: fileName,
+        organizationId: currentOrganizationId,
+        workspaceId: currentWorkspaceId,
+      },
+    }];
+    return {
+      commitId: String(input.commitId ?? `RUNTIME-COMMIT-${selectedAccount.accountId}-${Date.now()}`),
+      sourceWorkspace: "CommercialPlanning",
+      sourceImportId: String(input.sourceImportId ?? inventoryId),
+      actor: currentUserName,
+      committedAt: timestamp,
+      evidence: [sourceEvidence, ...((input.evidence ?? input.evidenceRecords ?? []) as any[])],
+      inventories: normalizedInventories,
+      runtimeObjects,
+      relationships: Array.isArray(input.relationships) ? input.relationships : [],
+      validationReports: Array.isArray(input.validationReports) ? input.validationReports : [],
+      history: Array.isArray(input.history) ? input.history : [],
+      connectors: Array.isArray(input.connectors) ? input.connectors : [],
+      metadata: {
+        ...(input.metadata ?? {}),
+        lane: "EXISTING_INVENTORY",
+        accountId: selectedAccount.accountId,
+        customerName: selectedAccount.name,
+        sourceFileName: fileName,
+        organizationId: currentOrganizationId,
+        workspaceId: currentWorkspaceId,
+      },
+    };
+  }
+
+  async function handleExistingInventoryFile(file: File | null) {
+    if (!file) return;
+    const lowerName = file.name.toLowerCase();
+    if (lowerName.endsWith(".zip") || lowerName.endsWith(".shp")) {
+      setExistingInventoryImportStatus("ERROR");
+      setExistingInventoryImportNotice("Shapefile import is staged as a future-ready interface. Convert Shapefile to GeoJSON or Runtime Inventory JSON for this sprint.");
+      return;
+    }
+
+    try {
+      setExistingInventoryImportStatus("PARSING");
+      setExistingInventoryImportNotice(`Parsing ${file.name} for ${selectedAccount.name} Existing Inventory...`);
+      let runtimeCommit: RuntimeTranslationCommitRequest;
+
+      if (lowerName.endsWith(".json")) {
+        const jsonText = await file.text();
+        const parsed = JSON.parse(jsonText);
+        if (parsed?.type === "FeatureCollection" || parsed?.type === "Feature" || parsed?.type === "GeometryCollection") {
+          const geoJsonFile = new File([jsonText], file.name.replace(/\.json$/i, ".geojson"), { type: "application/geo+json" });
+          const imported = await parseCustomerDesignFile({
+            file: geoJsonFile,
+            accountId: selectedAccount.accountId,
+            customerName: selectedAccount.name,
+            uploadedBy: currentUserName,
+          });
+          const governedImport = {
+            ...imported,
+            owner: selectedAccount.name,
+            organizationId: currentOrganizationId,
+            workspaceId: currentWorkspaceId,
+            ownerUserId: currentUserId,
+          } as CustomerDesignImport & Record<string, unknown>;
+          runtimeCommit = buildRuntimeCommitFromExistingInventoryImport(governedImport, null, currentUserName);
+        } else {
+          runtimeCommit = parsed?.runtimeCommit ?? parsed?.commit ?? buildRuntimeInventoryJsonCommit(parsed, file.name);
+          runtimeCommit = {
+            ...runtimeCommit,
+            sourceWorkspace: runtimeCommit.sourceWorkspace ?? "CommercialPlanning",
+            actor: runtimeCommit.actor ?? currentUserName,
+            metadata: {
+              ...(runtimeCommit.metadata ?? {}),
+              lane: "EXISTING_INVENTORY",
+              accountId: selectedAccount.accountId,
+              customerName: selectedAccount.name,
+              organizationId: currentOrganizationId,
+              workspaceId: currentWorkspaceId,
+            },
+          };
+        }
+      } else {
+        const imported = await parseCustomerDesignFile({
+          file,
+          accountId: selectedAccount.accountId,
+          customerName: selectedAccount.name,
+          uploadedBy: currentUserName,
+        });
+        const governedImport = {
+          ...imported,
+          owner: selectedAccount.name,
+          organizationId: currentOrganizationId,
+          workspaceId: currentWorkspaceId,
+          ownerUserId: currentUserId,
+        } as CustomerDesignImport & Record<string, unknown>;
+        runtimeCommit = buildRuntimeCommitFromExistingInventoryImport(governedImport, null, currentUserName);
+      }
+
+      setExistingInventoryImportStatus("COMMITTING");
+      const response = await commitRuntimeTranslation(runtimeCommit, session);
+      setExistingInventoryImportStatus("READY");
+      setExistingInventoryImportNotice(
+        `Committed ${response.counts.runtimeObjects.toLocaleString()} Runtime Object(s), ${response.counts.relationships.toLocaleString()} relationship(s), and ${response.counts.evidence.toLocaleString()} evidence record(s).`,
+      );
+      setCustomerInventoryLoadStatus("PARSING");
+      setInventoryRefreshNonce((nonce) => nonce + 1);
+      void recordActivity({
+        action: "imported existing inventory",
+        objectType: "Customer Inventory",
+        objectId: response.commit.inventoryIds[0] ?? response.commit.commitId,
+        objectName: file.name,
+        revision: "Runtime Object Library",
+        customerId: selectedAccount.accountId,
+        details: `${response.counts.runtimeObjects} runtime objects committed for ${selectedAccount.name}.`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setExistingInventoryImportStatus("ERROR");
+      setExistingInventoryImportNotice(`Existing Inventory import failed: ${message}`);
+    }
+  }
 
   function commitAssumptionState(label: string, patch: Partial<Pick<BudgetAssumptionState, "civilMix" | "borePricing" | "slack" | "waste" | "splicing">>) {
     const next = cloneBudgetAssumptionState({
@@ -3437,11 +4319,46 @@ export default function GoogleRfpWorkspace() {
     const selectedCustomerDesignLabel = selectedImportedCustomerDesignImport && selectedImportedCustomerRoute
       ? `${selectedImportedCustomerDesignImport.sourceFileName} / ${selectedImportedCustomerRoute.name}`
       : undefined;
+    const opportunityId = existing?.opportunityId ?? `COMMERCIAL-OPPORTUNITY-${selectedAccount.accountId}-${Date.now()}`;
     return {
-      opportunityId: existing?.opportunityId ?? `COMMERCIAL-OPPORTUNITY-${selectedAccount.accountId}-${Date.now()}`,
+      opportunityId,
+      objectId: existing?.objectId ?? opportunityId,
+      runtimeObjectId: existing?.runtimeObjectId ?? `RUNTIME-OPPORTUNITY-${opportunityId}`,
+      objectType: "OPPORTUNITY",
       accountId: selectedAccount.accountId,
       name: existing?.name ?? selectedCustomerDesignLabel ?? `${selectedAccount.name} Opportunity ${accountCommercialOpportunities.length + 1}`,
       status,
+      owner: existing?.owner ?? currentUserName,
+      ownerId: existing?.ownerId ?? currentUserId,
+      createdBy: existing?.createdBy ?? currentUserName,
+      createdById: existing?.createdById ?? currentUserId,
+      assignedTo: existing?.assignedTo ?? [],
+      assignment: existing?.assignment ?? {
+        owner: currentUserId,
+        contributors: [],
+        reviewers: [],
+        approvers: [],
+        executives: [],
+      },
+      organization: existing?.organization ?? "Teralinx",
+      organizationId: existing?.organizationId ?? currentOrganizationId,
+      workspace: existing?.workspace ?? currentWorkspaceId,
+      workspaceId: existing?.workspaceId ?? currentWorkspaceId,
+      visibility: existing?.visibility ?? "PRIVATE",
+      authority: existing?.authority ?? {
+        owner: currentUserId,
+        contributors: [],
+        reviewers: [],
+        approvers: [],
+        executives: [],
+        sharedWith: [],
+      },
+      lifecycleState: status === "ARCHIVED" ? "ARCHIVED" : "ACTIVE",
+      version: existing?.version ?? 1,
+      evidenceLinks: existing?.evidenceLinks ?? [],
+      relationshipLinks: existing?.relationshipLinks ?? [],
+      createdDate: existing?.createdDate ?? timestamp,
+      modifiedDate: timestamp,
       createdAt: existing?.createdAt ?? timestamp,
       updatedAt: timestamp,
       selectedImportId: selectedImportedCustomerDesignImport?.importId,
@@ -3472,9 +4389,12 @@ export default function GoogleRfpWorkspace() {
     const sharedRecord = {
       ...record,
       organization: "Teralinx",
+      organizationId: currentOrganizationId,
+      workspaceId: record.workspaceId ?? currentWorkspaceId,
       savedBy: currentUserName,
+      savedById: currentUserId,
     };
-    void saveCommercialOpportunity(sharedRecord).then((saved) => {
+    void saveCommercialOpportunity(sharedRecord, session).then((saved) => {
       setCommercialOpportunities((prev) => [saved, ...prev.filter((candidate) => candidate.opportunityId !== saved.opportunityId)]);
       void recordActivity({
         action: record.status === "ARCHIVED" ? "archived opportunity" : "saved opportunity",
@@ -3499,6 +4419,10 @@ export default function GoogleRfpWorkspace() {
   }
 
   function handleSaveCommercialOpportunity() {
+    if (activeCommercialOpportunity && !canModifyActiveOpportunity) {
+      setOpportunityNotice("You cannot modify this Opportunity unless you own it or have contributor/approver authority.");
+      return;
+    }
     upsertCommercialOpportunity(buildCommercialOpportunityRecord("SAVED"));
   }
 
@@ -3508,14 +4432,100 @@ export default function GoogleRfpWorkspace() {
 
   function handleArchiveCommercialOpportunity() {
     if (!activeCommercialOpportunity) return;
-    const archived = {
-      ...activeCommercialOpportunity,
-      status: "ARCHIVED" as const,
-      updatedAt: new Date().toISOString(),
-    };
-    upsertCommercialOpportunity(archived);
-    resetCommercialOpportunityWorkingState();
-    setOpportunityNotice(`${archived.name} archived. Customer Twin remains visible.`);
+    if (!canGovernActiveOpportunity) {
+      setOpportunityNotice("Only the Opportunity owner or an approver can archive this Runtime Object.");
+      return;
+    }
+    void archiveCommercialOpportunity<CommercialOpportunityRecord>(activeCommercialOpportunity.opportunityId, session).then((archived) => {
+      setCommercialOpportunities((prev) => [archived, ...prev.filter((candidate) => candidate.opportunityId !== archived.opportunityId)]);
+      resetCommercialOpportunityWorkingState();
+      setOpportunityNotice(`${archived.name} archived. Customer Twin remains visible.`);
+      void recordActivity({
+        action: "archived opportunity",
+        objectType: "Opportunity",
+        objectId: archived.opportunityId,
+        objectName: archived.name,
+        revision: `v${archived.version ?? 1}`,
+        opportunityId: archived.opportunityId,
+        customerId: archived.accountId,
+      });
+    }).catch((error) => {
+      setOpportunityNotice(`Archive blocked: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+
+  function handleCloneCommercialOpportunity() {
+    if (!activeCommercialOpportunity) return;
+    void cloneCommercialOpportunity<CommercialOpportunityRecord>(activeCommercialOpportunity.opportunityId, session).then((cloned) => {
+      setCommercialOpportunities((prev) => [cloned, ...prev.filter((candidate) => candidate.opportunityId !== cloned.opportunityId)]);
+      setActiveCommercialOpportunityId(cloned.opportunityId);
+      setOpportunityNotice(`${cloned.name} cloned into ${currentUserName}'s private workspace responsibility.`);
+      void recordActivity({
+        action: "cloned opportunity",
+        objectType: "Opportunity",
+        objectId: cloned.opportunityId,
+        objectName: cloned.name,
+        revision: `from ${activeCommercialOpportunity.opportunityId}`,
+        opportunityId: cloned.opportunityId,
+        customerId: cloned.accountId,
+      });
+    }).catch((error) => {
+      setOpportunityNotice(`Clone blocked: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+
+  function handleShareCommercialOpportunityWithKyle() {
+    if (!activeCommercialOpportunity) return;
+    if (!canGovernActiveOpportunity) {
+      setOpportunityNotice("Only the Opportunity owner or an approver can share this Runtime Object.");
+      return;
+    }
+    void shareCommercialOpportunity<CommercialOpportunityRecord>(
+      activeCommercialOpportunity.opportunityId,
+      { userId: "teralinx-user-kyle", role: "executives" },
+      session,
+    ).then((shared) => {
+      setCommercialOpportunities((prev) => [shared, ...prev.filter((candidate) => candidate.opportunityId !== shared.opportunityId)]);
+      setOpportunityNotice(`${shared.name} shared with Kyle for executive review.`);
+      void recordActivity({
+        action: "shared opportunity",
+        objectType: "Opportunity",
+        objectId: shared.opportunityId,
+        objectName: shared.name,
+        revision: "Kyle executive authority",
+        opportunityId: shared.opportunityId,
+        customerId: shared.accountId,
+      });
+    }).catch((error) => {
+      setOpportunityNotice(`Share blocked: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
+
+  function handleAssignCommercialOpportunityToFran() {
+    if (!activeCommercialOpportunity) return;
+    if (!canGovernActiveOpportunity) {
+      setOpportunityNotice("Only the Opportunity owner or an approver can assign this Runtime Object.");
+      return;
+    }
+    void assignCommercialOpportunity<CommercialOpportunityRecord>(
+      activeCommercialOpportunity.opportunityId,
+      { assignedTo: ["teralinx-user-fran"], reviewers: ["teralinx-user-fran"] },
+      session,
+    ).then((assigned) => {
+      setCommercialOpportunities((prev) => [assigned, ...prev.filter((candidate) => candidate.opportunityId !== assigned.opportunityId)]);
+      setOpportunityNotice(`${assigned.name} assigned to Fran as reviewer.`);
+      void recordActivity({
+        action: "assigned opportunity",
+        objectType: "Opportunity",
+        objectId: assigned.opportunityId,
+        objectName: assigned.name,
+        revision: "Fran reviewer authority",
+        opportunityId: assigned.opportunityId,
+        customerId: assigned.accountId,
+      });
+    }).catch((error) => {
+      setOpportunityNotice(`Assign blocked: ${error instanceof Error ? error.message : String(error)}`);
+    });
   }
 
   function handleCloseCommercialOpportunity() {
@@ -3544,8 +4554,11 @@ export default function GoogleRfpWorkspace() {
   }
 
   function handleOpenCommercialOpportunity(opportunityId: string) {
-    const record = accountCommercialOpportunities.find((candidate) => candidate.opportunityId === opportunityId);
+    const record = commercialOpportunities.find((candidate) => candidate.opportunityId === opportunityId);
     if (!record) return;
+    if (record.accountId !== selectedAccountId) {
+      selectAccount(record.accountId);
+    }
     resetCommercialOpportunityWorkingState({ preserveActiveOpportunity: true });
     setActiveCommercialOpportunityId(record.opportunityId);
     if (record.liveSession) setLiveCommercialSession(record.liveSession);
@@ -3568,7 +4581,9 @@ export default function GoogleRfpWorkspace() {
       candidate.opportunityId === record.opportunityId ? openedRecord : candidate
     )));
     if (openedRecord.status !== "ARCHIVED") {
-      void saveCommercialOpportunity({ ...openedRecord, lastOpenedBy: currentUserName }).catch((error) => {
+      void openCommercialOpportunity<CommercialOpportunityRecord>(openedRecord.opportunityId, session).then((saved) => {
+        setCommercialOpportunities((prev) => [saved, ...prev.filter((candidate) => candidate.opportunityId !== saved.opportunityId)]);
+      }).catch((error) => {
         console.warn("Opportunity Library recent update failed", error instanceof Error ? error.message : String(error));
       });
       void recordActivity({
@@ -4353,11 +5368,51 @@ export default function GoogleRfpWorkspace() {
     setAcceptedProposal(accepted);
     void saveProposalDraft({
       ...(accepted as any),
+      proposalId: accepted.acceptedProposalId,
       proposalRecordId: accepted.acceptedProposalId,
       proposalRecordType: "ACCEPTED_PROPOSAL",
+      customerId: customerIdForAccount(selectedAccount.accountId),
       opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId,
+      organizationId: currentOrganizationId,
+      workspaceId: currentWorkspaceId,
+      commercialOwnerId: currentUserId,
+      ownerId: currentUserId,
+      assignedCustomerUsers: ["google-participant-001"],
+      visibility: "SHARED",
+      status: "CUSTOMER_APPROVED",
+      approvalState: "APPROVED",
+      title: `${accepted.accountName} Accepted Commercial Proposal`,
+      summary: `Customer accepted ${routePlan.routeRequirement.bidSegmentName}.`,
+      executiveSummary: preview.executiveSummary,
+      pricingSummary: selectedPricingSummary.reconciliation,
+      marginSummary: {
+        grossMarginDollars: selectedPricingSummary.reconciliation.grossMarginDollars,
+        grossMarginPercent: selectedPricingSummary.reconciliation.grossMarginPercent,
+      },
+      confidenceSummary: {
+        pricingStatus: selectedPricingSummary.reconciliation.combinedAwardAdjustmentStatus,
+      },
+      commercialAssumptionIds: [selectedAssumptionState.stateId],
+      dealPointIds: selectedScope.routeRequirementIds,
+      runtimeObjectIds: [
+        activeCommercialOpportunity?.runtimeObjectId,
+        ...activeCommercialDraftNetworks.map((network) => network.networkId),
+      ].filter(Boolean),
+      runtimeRelationshipIds: [
+        activeCommercialOpportunity?.opportunityId ? `DERIVED_FROM:${activeCommercialOpportunity.opportunityId}` : "",
+        routePlan.routeRequirement.routeRequirementId ? `PROPOSES_ROUTE:${routePlan.routeRequirement.routeRequirementId}` : "",
+      ].filter(Boolean),
+      runtimeEvidenceIds: [],
+      existingInventoryReferences: activeExistingReferenceNetworkIds,
+      customerDesignReferences: selectedImportedCustomerDesignImport ? [selectedImportedCustomerDesignImport.designId] : [],
+      customerTwinReference: accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
+      geometryReferences: [routePlan.routeRequirement.routeRequirementId],
+      proposalDocumentReferences: accepted.attachments,
       organization: "Teralinx",
-    }).then(() => recordActivity({
+    }, session).then((saved) => {
+      upsertProposalRuntimeRecord(saved as unknown as ProposalRuntimeObject);
+      setProposalRuntimeNotice("Accepted proposal persisted as an approved Proposal Runtime Object.");
+      return recordActivity({
       action: "accepted proposal",
       objectType: "Proposal",
       objectId: accepted.acceptedProposalId,
@@ -4366,7 +5421,8 @@ export default function GoogleRfpWorkspace() {
       opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId,
       customerId: accepted.accountId,
       details: "Accepted proposal persisted to the shared Teralinx Proposal Library. No ScopeVersion or service order created.",
-    })).catch((error) => {
+    });
+    }).catch((error) => {
       console.warn("Accepted proposal shared save failed", error instanceof Error ? error.message : String(error));
     });
     setCustomerReviewStatus("ACCEPTED");
@@ -4398,7 +5454,7 @@ export default function GoogleRfpWorkspace() {
       : prev));
   }
 
-  const compactOwner = accountAcceptedProposal ? "Engineering" : activeLiveSession?.currentOwner ?? "Sales";
+  const compactOwner = activeCommercialOpportunity?.owner ?? (accountAcceptedProposal ? "Engineering" : activeLiveSession?.currentOwner ?? "Sales");
   const currentDraftLabel = selectedImportedCustomerRoute
     ? `Customer Design / ${selectedImportedCustomerRoute.name}`
     : activeCommercialDraftNetworks.length
@@ -4534,13 +5590,22 @@ export default function GoogleRfpWorkspace() {
               </optgroup>
             ) : null}
           </select>
-          <button className="dal-button secondary" type="button" onClick={handleSaveCommercialOpportunity}>
+          <button className="dal-button secondary" type="button" onClick={handleSaveCommercialOpportunity} disabled={Boolean(activeCommercialOpportunity && !canModifyActiveOpportunity)}>
             Save
           </button>
           <button className="dal-button secondary" type="button" onClick={handleSaveAsCommercialOpportunity}>
             Save As
           </button>
-          <button className="dal-button secondary" type="button" onClick={handleArchiveCommercialOpportunity} disabled={!activeCommercialOpportunity}>
+          <button className="dal-button secondary" type="button" onClick={handleCloneCommercialOpportunity} disabled={!activeCommercialOpportunity}>
+            Clone
+          </button>
+          <button className="dal-button secondary" type="button" onClick={handleShareCommercialOpportunityWithKyle} disabled={!canGovernActiveOpportunity}>
+            Share Kyle
+          </button>
+          <button className="dal-button secondary" type="button" onClick={handleAssignCommercialOpportunityToFran} disabled={!canGovernActiveOpportunity}>
+            Assign Fran
+          </button>
+          <button className="dal-button secondary" type="button" onClick={handleArchiveCommercialOpportunity} disabled={!canGovernActiveOpportunity}>
             Archive
           </button>
           <button className="dal-button secondary" type="button" onClick={handleCloseCommercialOpportunity}>
@@ -4562,6 +5627,160 @@ export default function GoogleRfpWorkspace() {
       </div>
 
       <div className="dal-status commercial-opportunity-notice">{opportunityNotice}</div>
+
+      <section className="runtime-workspace-dashboard" aria-label="Runtime workspace dashboard">
+        <div className="runtime-dashboard-title">
+          <div>
+            <span>Workspace</span>
+            <b>{session?.user.workspace?.name ?? `${currentUserName} Workspace`}</b>
+          </div>
+          <div>
+            <span>Workspace ID</span>
+            <b>{currentWorkspaceId}</b>
+          </div>
+          <div>
+            <span>User ID</span>
+            <b>{currentUserId}</b>
+          </div>
+          <div>
+            <span>Organization ID</span>
+            <b>{currentOrganizationId}</b>
+          </div>
+        </div>
+        <div className="runtime-dashboard-grid">
+          <div>
+            <b>My Opportunities</b>
+            <strong>{myRuntimeOpportunities.length}</strong>
+            {myRuntimeOpportunities.slice(0, 3).map((record) => (
+              <button key={`my-${record.opportunityId}`} type="button" onClick={() => handleOpenCommercialOpportunity(record.opportunityId)}>
+                <span>{record.name}</span>
+                <small>{record.visibility ?? "PRIVATE"} / v{record.version ?? 1}</small>
+              </button>
+            ))}
+          </div>
+          <div>
+            <b>Assigned Work</b>
+            <strong>{assignedRuntimeWork.length}</strong>
+            {assignedRuntimeWork.slice(0, 3).map((record) => (
+              <button key={`assigned-${record.opportunityId}`} type="button" onClick={() => handleOpenCommercialOpportunity(record.opportunityId)}>
+                <span>{record.name}</span>
+                <small>Owner {record.owner ?? runtimeUserLabel(record.ownerId)}</small>
+              </button>
+            ))}
+          </div>
+          <div>
+            <b>Pending Approvals</b>
+            <strong>{pendingRuntimeApprovals.length}</strong>
+            {pendingRuntimeApprovals.slice(0, 3).map((record) => (
+              <button key={`approval-${record.opportunityId}`} type="button" onClick={() => handleOpenCommercialOpportunity(record.opportunityId)}>
+                <span>{record.name}</span>
+                <small>{record.lifecycleState ?? record.status}</small>
+              </button>
+            ))}
+          </div>
+          <div>
+            <b>Notifications</b>
+            <strong>{runtimeNotifications.length}</strong>
+            {runtimeNotifications.length ? runtimeNotifications.map((item) => <span key={item}>{item}</span>) : <span>No notifications</span>}
+          </div>
+          {executiveDashboardEnabled ? (
+            <div className="executive">
+              <b>Executive Overview</b>
+              <strong>{visibleRuntimeOpportunities.length}</strong>
+              <span>Organization Pipeline: {visibleRuntimeOpportunities.length} visible Runtime Objects</span>
+              <span>Revenue: {activeFinancialAuthority ? money(activeFinancialAuthority.lifecycleRevenue) : "No active revenue model"}</span>
+              <span>Operational Intelligence: {runtimeInfo?.runtimeStatus ?? "loading"}</span>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section className="existing-inventory-runtime-section" aria-label="Existing Inventory runtime import">
+        <div className="dal-panel-title-row">
+          <div>
+            <h3>Existing Inventory</h3>
+            <span>Already-built infrastructure. Imports create Runtime Inventory and Customer Twin source data only.</span>
+          </div>
+          <span className={`dal-badge ${existingInventoryImportStatus === "READY" ? "pass" : existingInventoryImportStatus === "ERROR" ? "fail" : "warning"}`}>
+            {existingInventoryImportStatus}
+          </span>
+        </div>
+        <div className="existing-inventory-runtime-grid">
+          <label className="existing-inventory-import-control">
+            <span>Import Existing Network</span>
+            <input
+              type="file"
+              accept=".kmz,.kml,.geojson,.json,.csv,.zip,.shp"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0] ?? null;
+                event.currentTarget.value = "";
+                void handleExistingInventoryFile(file);
+              }}
+            />
+          </label>
+          <div>
+            <b>Supported Now</b>
+            <span>KMZ</span>
+            <span>KML</span>
+            <span>GeoJSON</span>
+            <span>CSV</span>
+            <span>JSON Runtime Inventory</span>
+          </div>
+          <div>
+            <b>Future Ready</b>
+            <span>Shapefile interface present</span>
+            <span>Use converted GeoJSON during this recovery sprint</span>
+          </div>
+          <div>
+            <b>Inventory Authority</b>
+            <span>Runtime Inventory / Customer Twin</span>
+            <span>Raw files remain evidence</span>
+          </div>
+          <div>
+            <b>Inventory Status</b>
+            <span>{existingInventoryImportNotice}</span>
+          </div>
+        </div>
+        <div className="existing-inventory-runtime-summary">
+          <div><span>Customer Twin</span><b>{accountCustomerTwin?.customerTwinId ?? customerInventoryLoadStatus}</b></div>
+          <div><span>Routes</span><b>{accountRenderableCustomerTwin.routes.length.toLocaleString()}</b></div>
+          <div><span>Objects</span><b>{accountRenderableCustomerTwin.objects.length.toLocaleString()}</b></div>
+          <div><span>Stations</span><b>{accountRenderableCustomerTwin.stations.length.toLocaleString()}</b></div>
+          <div><span>Source Files</span><b>{accountCustomerNetworkGraph?.summary.sourceFiles.length.toLocaleString() ?? "0"}</b></div>
+          <div><span>Lifecycle</span><b>Organization Asset</b></div>
+        </div>
+      </section>
+
+      <section className="customer-design-request-section" aria-label="Customer Design Request ingestion">
+        <div className="dal-panel-title-row">
+          <div>
+            <h3>Customer Design Requests</h3>
+            <span>Requested or proposed builds. Imports create design intent, candidate ScopeVersions, and proposed-network views.</span>
+          </div>
+          <span className="dal-badge warning">Design Intent</span>
+        </div>
+        <div className="existing-inventory-runtime-grid">
+          <div className="existing-inventory-import-control">
+            <span>Import Customer KMZ</span>
+            <button type="button" onClick={() => handleBeginImportOpportunity("KMZ")}>Stage Customer Design Request</button>
+          </div>
+          <div>
+            <b>Customer Design Library</b>
+            <span>{accountCustomerDesignImports.length.toLocaleString()} request(s)</span>
+            <span>{accountImportedCustomerRoutes.length.toLocaleString()} proposed route(s)</span>
+          </div>
+          <div>
+            <b>Design Intent</b>
+            <span>{selectedImportedCustomerDesignImport?.designIntent ?? "No active design request"}</span>
+            <span>{selectedImportedCustomerDesignImport?.scopeVersionId ?? "No candidate ScopeVersion selected"}</span>
+          </div>
+          <div>
+            <b>Proposed Network</b>
+            <span>{selectedImportedCustomerRoute?.name ?? "No proposed route selected"}</span>
+            <span>{selectedImportedCustomerRoute ? formatRouteMiles(selectedImportedCustomerRoute.routeMiles) : "0 mi"}</span>
+          </div>
+        </div>
+      </section>
 
       <section className="teralinx-commercial-landing" aria-label="Teralinx Commercial Planning landing">
         <div className="teralinx-landing-summary">
@@ -4726,7 +5945,7 @@ export default function GoogleRfpWorkspace() {
           <div className="commercial-command-grid">
             <button type="button" onClick={handleBeginAzOpportunity}>Create New Graph / Corridor</button>
             <button type="button" onClick={handleBeginExtendExistingOpportunity} disabled={!accountRenderableCustomerTwin.routes.length && !accountRenderableCustomerTwin.objects.length}>Extend Existing Graph / Lateral</button>
-            <button type="button" onClick={() => handleBeginImportOpportunity("KMZ")}>Import KMZ / KML</button>
+            <button type="button" onClick={() => handleBeginImportOpportunity("KMZ")}>Import Customer Design Request</button>
             <button type="button" onClick={handleLoadSavedProposal}>Load Saved Proposal</button>
             <button type="button" onClick={handleLoadCustomerDraft}>Load Customer Draft</button>
           </div>
@@ -4741,6 +5960,145 @@ export default function GoogleRfpWorkspace() {
         <h3>Commercial Planning</h3>
         <span>Executive summary, map, imported design, commercial draft, proposal actions, and customer review.</span>
       </div>
+
+      <section className="dal-panel proposal-runtime-dashboard">
+        <div className="dal-panel-title-row">
+          <div>
+            <h3>{isCustomerParticipant ? "Customer Proposal Dashboard" : "Proposal Runtime Dashboard"}</h3>
+            <span>{activeProposalRuntime?.proposalNumber ?? proposalRuntimeNotice}</span>
+          </div>
+          <span className={`dal-badge ${activeProposalRuntime?.readiness?.canCreateDraftIofPackage ? "pass" : activeProposalRuntime ? "warning" : "fail"}`}>
+            {proposalRuntimeStatusLabel(activeProposalRuntime?.status)}
+          </span>
+        </div>
+        <div className="teralinx-summary-grid">
+          <div><span>Workspace</span><b>{session?.user.workspaceId ?? "Unauthenticated"}</b></div>
+          <div><span>Owner</span><b>{activeProposalRuntime?.commercialOwner ?? activeProposalRuntime?.owner ?? currentUserName}</b></div>
+          <div><span>Version</span><b>{activeProposalRuntime ? `v${activeProposalRuntime.version}` : "Not created"}</b></div>
+          <div><span>Visibility</span><b>{activeProposalRuntime?.visibility ?? "Private default"}</b></div>
+          <div><span>Approval</span><b>{activeProposalRuntime?.approvalState?.replaceAll("_", " ") ?? "Not submitted"}</b></div>
+          <div><span>Readiness</span><b>{activeProposalRuntime?.readiness?.status ?? "Blocked"}</b></div>
+          <div><span>Runtime Refs</span><b>{activeProposalRuntime?.runtimeObjectIds?.length.toLocaleString() ?? "0"}</b></div>
+          <div><span>Evidence</span><b>{activeProposalRuntime?.runtimeEvidenceIds?.length.toLocaleString() ?? "0"}</b></div>
+          <div><span>Comments</span><b>{activeProposalRuntime?.comments?.length.toLocaleString() ?? "0"}</b></div>
+          <div><span>Next Action</span><b>{activeProposalRuntime?.nextLifecycleAction?.replaceAll("_", " ") ?? "Save runtime proposal"}</b></div>
+        </div>
+        <div className="dal-actions">
+          {canManageProposalRuntime ? (
+            <>
+              <button type="button" onClick={handleSaveRuntimeProposal} disabled={proposalRuntimeActionPending}>Save Runtime Proposal</button>
+              <button type="button" onClick={handleSubmitRuntimeProposalToCustomer} disabled={proposalRuntimeActionPending}>Submit to Customer</button>
+              <button type="button" onClick={handleCreateRuntimeProposalRevision} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Create Revision</button>
+              <button type="button" onClick={handleDuplicateRuntimeProposal} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Duplicate</button>
+              <button type="button" onClick={handleArchiveRuntimeProposal} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Archive</button>
+              <button type="button" onClick={handleExposeDraftIofSource} disabled={!activeProposalRuntime?.readiness?.canCreateDraftIofPackage || proposalRuntimeActionPending}>Create Draft IOF Source</button>
+            </>
+          ) : null}
+          {canReviewProposalRuntime ? (
+            <>
+              <button type="button" onClick={handleCustomerRuntimeProposalComment} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Comment</button>
+              <button type="button" onClick={handleCustomerRuntimeProposalEvidence} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Upload Evidence</button>
+              <button type="button" onClick={handleCustomerRuntimeProposalChanges} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Request Changes</button>
+              <button type="button" onClick={handleCustomerRuntimeProposalApproval} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Approve</button>
+            </>
+          ) : null}
+          <button type="button" className="secondary" onClick={() => void refreshProposalRuntimeLibrary("Proposal Runtime Library refreshed.")} disabled={proposalRuntimeActionPending}>Refresh Proposals</button>
+        </div>
+        {activeProposalRuntime?.readiness?.blockingIssues?.length ? (
+          <div className="dal-status">{activeProposalRuntime.readiness.blockingIssues.join(" ")}</div>
+        ) : (
+          <div className="dal-status">{proposalRuntimeNotice}</div>
+        )}
+        <details>
+          <summary>Visible Proposal Runtime Objects - {accountProposalRuntimeRecords.length.toLocaleString()}</summary>
+          <div className="dal-list">
+            {accountProposalRuntimeRecords.length ? accountProposalRuntimeRecords.map((proposal) => (
+              <div className="dal-list-row teralinx-list-row" key={proposal.proposalId}>
+                <b>{proposal.proposalNumber}</b>
+                <span>{proposalRuntimeStatusLabel(proposal.status)}</span>
+                <small>
+                  {proposal.title}. Owner {proposal.owner ?? proposal.commercialOwner}. Version {proposal.version}. Updated {proposal.updatedAt ? new Date(proposal.updatedAt).toLocaleString() : "n/a"}.
+                </small>
+              </div>
+            )) : <div className="dal-status">No Proposal Runtime Objects are visible for this account workspace.</div>}
+          </div>
+        </details>
+      </section>
+
+      {canReadEngineeringCertification ? (
+        <section className="dal-panel engineering-certification-queue">
+          <div className="dal-panel-title-row">
+            <div>
+              <h3>Engineering Review Queue</h3>
+              <span>{activeDraftIofPackage?.packageId ?? engineeringCertificationNotice}</span>
+            </div>
+            <span className={`dal-badge ${activeDraftIofPackage?.status === "CERTIFIED" ? "pass" : activeDraftIofPackage ? "warning" : "fail"}`}>
+              {activeDraftIofPackage?.status ?? "No Draft Package"}
+            </span>
+          </div>
+          <div className="teralinx-summary-grid">
+            <div><span>Draft IOF Packages</span><b>{engineeringReviewQueue.length.toLocaleString()}</b></div>
+            <div><span>Package Readiness</span><b>{String((activeDraftIofPackage?.packageReadiness as any)?.status ?? "Not opened")}</b></div>
+            <div><span>Proposal Summary</span><b>{String((activeDraftIofPackage?.proposalSummary as any)?.proposalNumber ?? activeProposalRuntime?.proposalNumber ?? "No proposal")}</b></div>
+            <div><span>Commercial Confidence</span><b>{activeDraftIofPackage ? `${activeDraftIofPackage.commercialConfidence}%` : "n/a"}</b></div>
+            <div><span>Engineering Readiness</span><b>{activeDraftIofPackage?.engineeringReadiness ?? "Not opened"}</b></div>
+            <div><span>Package Status</span><b>{activeDraftIofPackage?.workflowStatus ?? "Waiting"}</b></div>
+            <div><span>Assigned Engineer</span><b>{activeDraftIofPackage?.assignedEngineer || currentUserName}</b></div>
+            <div><span>Priority</span><b>{activeDraftIofPackage?.priority ?? "NORMAL"}</b></div>
+            <div><span>Submission Date</span><b>{activeDraftIofPackage?.submittedAt ? new Date(activeDraftIofPackage.submittedAt).toLocaleString() : "n/a"}</b></div>
+            <div><span>Customer</span><b>{activeDraftIofPackage?.customerSummary?.name ? String(activeDraftIofPackage.customerSummary.name) : selectedAccount.name}</b></div>
+            <div><span>Opportunity</span><b>{activeDraftIofPackage?.opportunityId ?? activeCommercialOpportunity?.opportunityId ?? "No opportunity"}</b></div>
+            <div><span>Proposed IOF Units</span><b>{activeDraftIofPackage?.proposedIofUnits?.length.toLocaleString() ?? "0"}</b></div>
+          </div>
+          <div className="dal-actions">
+            <button type="button" onClick={handleAssembleDraftIofForEngineering} disabled={!canWriteEngineeringCertification || !activeProposalRuntime || engineeringCertificationPending}>Assemble Draft IOF</button>
+            <button type="button" onClick={handleCertifyFirstIofUnit} disabled={!canWriteEngineeringCertification || !activeDraftIofPackage || engineeringCertificationPending}>Certify Next Unit</button>
+            <button type="button" onClick={handleCertifyAllIofUnits} disabled={!canWriteEngineeringCertification || !activeDraftIofPackage || engineeringCertificationPending}>Certify All Units</button>
+            <button type="button" onClick={handleCertifyEngineeringPackage} disabled={!canWriteEngineeringCertification || !activeDraftIofPackage || engineeringCertificationPending}>Certify Draft IOF Package</button>
+            <button type="button" className="secondary" onClick={() => void refreshEngineeringReviewQueue("Engineering Review Queue refreshed.")} disabled={engineeringCertificationPending}>Refresh Queue</button>
+          </div>
+          <div className="dal-status">{engineeringCertificationNotice}</div>
+          <details>
+            <summary>Assembly Report / Proposed Units</summary>
+            <div className="dal-list">
+              {activeDraftIofPackage ? (
+                <>
+                  <div className="dal-list-row teralinx-list-row">
+                    <b>Assembly Report</b>
+                    <span>{String((activeDraftIofPackage.assemblyReport as any)?.assembledFrom ?? "Runtime references")}</span>
+                    <small>
+                      Runtime Objects {String((activeDraftIofPackage.assemblyReport as any)?.runtimeObjectCount ?? activeDraftIofPackage.runtimeObjectIds.length)} /
+                      Relationships {String((activeDraftIofPackage.assemblyReport as any)?.relationshipCount ?? activeDraftIofPackage.runtimeRelationshipIds.length)} /
+                      Evidence {String((activeDraftIofPackage.assemblyReport as any)?.evidenceCount ?? activeDraftIofPackage.runtimeEvidenceIds.length)}
+                    </small>
+                  </div>
+                  {activeDraftIofPackage.proposedIofUnits.map((unit) => (
+                    <div className="dal-list-row teralinx-list-row" key={unit.unitId}>
+                      <b>{unit.name}</b>
+                      <span>{unit.status}</span>
+                      <small>{unit.unitType}. Confidence {unit.engineeringConfidence ?? 0}. Risk {unit.engineeringRisk ?? "UNREVIEWED"}.</small>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <div className="dal-status">Open a Draft IOF Package from the queue or assemble one from an approved Proposal.</div>
+              )}
+            </div>
+          </details>
+          <details>
+            <summary>Queued Draft IOF Packages - {engineeringReviewQueue.length.toLocaleString()}</summary>
+            <div className="dal-list">
+              {engineeringReviewQueue.length ? engineeringReviewQueue.map((item) => (
+                <button className="dal-list-row teralinx-list-row" type="button" key={item.packageId} onClick={() => void handleOpenEngineeringDraftPackage(item.packageId)}>
+                  <b>{item.packageId}</b>
+                  <span>{item.packageStatus} / {item.priority}</span>
+                  <small>{item.customer} / {item.opportunityId}. Units {item.certifiedUnitCount}/{item.proposedUnitCount}. Submitted {item.submissionDate ? new Date(item.submissionDate).toLocaleString() : "n/a"}.</small>
+                </button>
+              )) : <div className="dal-status">No Draft IOF Packages are currently queued.</div>}
+            </div>
+          </details>
+        </section>
+      ) : null}
 
       <section className="commercial-orchestrator-shell" aria-label="Commercial Planning domain orchestrator">
         <aside className="commercial-orchestrator-nav">
@@ -4952,8 +6310,8 @@ export default function GoogleRfpWorkspace() {
           ) : null}
           {opportunityWorkflowState === "AWAITING_IMPORT" ? (
             <div className="commercial-inspector-card">
-              <b>{pendingImportSource === "CSV" ? "Import CSV" : "Import KMZ / KML"}</b>
-              <span>Upload, preview, then choose the state. Nothing renders before confirmation.</span>
+              <b>{pendingImportSource === "CSV" ? "Customer Design Request CSV" : "Customer Design Request KMZ / KML"}</b>
+              <span>Upload, preview, and keep this as proposed-build intent separate from Existing Inventory.</span>
               <input
                 type="file"
                 accept={pendingImportSource === "CSV" ? ".csv" : ".kmz,.kml"}
@@ -4969,7 +6327,7 @@ export default function GoogleRfpWorkspace() {
                   <option value="SALES_COMMERCIAL_DRAFT">Sales Commercial Draft</option>
                 </select>
               </label>
-              <button type="button" onClick={handleConfirmImportPreview} disabled={!pendingImportFileName.trim()}>Confirm {importDispositionLabel(pendingImportDisposition)}</button>
+              <button type="button" onClick={handleConfirmImportPreview} disabled={!pendingImportFileName.trim()}>Confirm Customer Design Request</button>
             </div>
           ) : null}
           {opportunityScoutCandidate ? (
@@ -5168,7 +6526,7 @@ export default function GoogleRfpWorkspace() {
             <div className="commercial-inspector-card">
               <b>Customer Review</b>
               <span>{accountCustomerReviewStatus.replaceAll("_", " ")}</span>
-              <button type="button" onClick={() => handleBeginImportOpportunity("KMZ")}>Stage KMZ Draft</button>
+              <button type="button" onClick={() => handleBeginImportOpportunity("KMZ")}>Stage Customer Design Request</button>
               <button type="button" onClick={handleStartSharedReview}>Start Customer Review</button>
               <button type="button" onClick={handleAcceptProposal} disabled={!activeCommercialDraftNetworks.length}>Accept Proposal</button>
             </div>

@@ -1,4 +1,5 @@
 import { DAL_API } from "../config/dalApi";
+import { withStoredAuth } from "./authHeaders";
 import type { CustomerDesignImport, CustomerDesignLayerVisibility, CustomerDesignLineageEvent } from "../translate/CustomerDesignImport";
 
 const DEFAULT_LAYER_VISIBILITY: CustomerDesignLayerVisibility = {
@@ -91,7 +92,7 @@ function apiUrl(path: string) {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(apiUrl(path), init);
+  const response = await fetch(apiUrl(path), withStoredAuth(init));
   const text = await response.text().catch(() => "");
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}${text ? `: ${text}` : ""}`);
   return (text ? JSON.parse(text) : {}) as T;

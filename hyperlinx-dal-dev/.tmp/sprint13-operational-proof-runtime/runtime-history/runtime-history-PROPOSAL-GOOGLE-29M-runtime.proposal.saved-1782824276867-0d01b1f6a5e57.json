@@ -1,0 +1,36 @@
+{
+  "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-runtime.proposal.saved-1782824276867-0d01b1f6a5e57",
+  "eventType": "runtime.proposal.saved",
+  "actor": "Ryan",
+  "actorId": "teralinx-user-ryan",
+  "objectType": "Proposal",
+  "objectId": "PROPOSAL-GOOGLE-29M",
+  "objectName": "Google $29M Customer Review Proposal",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "timestamp": "2026-06-30T12:57:56.867Z",
+  "createdAt": "2026-06-30T12:57:56.867Z",
+  "updatedAt": "2026-06-30T12:57:56.867Z",
+  "details": "Proposal saved with owner, workspace, visibility, authority, lifecycle, evidence, and relationship metadata.",
+  "metadata": {
+    "status": "WAITING_CUSTOMER_REVIEW",
+    "approvalState": "CUSTOMER_REVIEW",
+    "visibility": "SHARED",
+    "lifecycleState": "IN_REVIEW",
+    "version": 1,
+    "authority": {
+      "owner": "teralinx-user-ryan",
+      "contributors": [],
+      "reviewers": [],
+      "approvers": [],
+      "executives": [],
+      "customerReviewers": [
+        "google-participant-001"
+      ],
+      "salesEngineering": [],
+      "sharedWith": [
+        "google-participant-001"
+      ]
+    }
+  }
+}

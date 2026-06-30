@@ -1,0 +1,28 @@
+{
+  "workspaceId": "workspace-google-customer",
+  "userId": "google-participant-001",
+  "organizationId": "org-teralinx",
+  "name": "Google Customer Workspace",
+  "preferences": {
+    "defaultWorkspace": "googleRfp",
+    "dashboardDensity": "participant"
+  },
+  "dashboard": {
+    "sections": [
+      "Assigned Work",
+      "Recent Activity",
+      "Pending Approvals",
+      "Notifications"
+    ],
+    "executiveOverview": false,
+    "organizationPipeline": false,
+    "revenue": false,
+    "operationalIntelligence": false
+  },
+  "recentActivity": [],
+  "assignments": [],
+  "notifications": [],
+  "pinnedObjects": [],
+  "createdAt": "2026-06-30T12:57:08.080Z",
+  "updatedAt": "2026-06-30T12:57:08.080Z"
+}

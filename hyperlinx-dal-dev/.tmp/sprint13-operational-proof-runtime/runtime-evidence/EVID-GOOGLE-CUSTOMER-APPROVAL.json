@@ -1,0 +1,11 @@
+{
+  "evidenceId": "EVID-GOOGLE-CUSTOMER-APPROVAL",
+  "sourceType": "CUSTOMER_APPROVAL",
+  "sourceName": "Google proposal approval",
+  "authority": "CUSTOMER_APPROVAL",
+  "validationStatus": "VALIDATED",
+  "collectedAt": "2026-06-30T12:57:56.880Z",
+  "ingestedAt": "2026-06-30T12:57:56.880Z",
+  "createdAt": "2026-06-30T12:57:56.880Z",
+  "updatedAt": "2026-06-30T12:57:56.880Z"
+}

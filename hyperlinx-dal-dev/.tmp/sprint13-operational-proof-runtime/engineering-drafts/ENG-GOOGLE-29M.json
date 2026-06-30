@@ -1,0 +1,28 @@
+{
+  "engineeringDraftId": "ENG-GOOGLE-29M",
+  "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+  "proposalRecordId": "PROPOSAL-GOOGLE-29M",
+  "customerId": "customer-google",
+  "customerName": "Google",
+  "ownerId": "teralinx-user-kyle",
+  "createdById": "teralinx-user-kyle",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-kyle",
+  "status": "ENGINEERING_DRAFT",
+  "evidenceLinks": [
+    "EVID-GOOGLE-KMZ-EXISTING",
+    "EVID-GOOGLE-RFP-DESIGN",
+    "EVID-GOOGLE-CUSTOMER-APPROVAL"
+  ],
+  "relationshipLinks": [
+    "GOOGLE-29M-OPPORTUNITY",
+    "PROPOSAL-GOOGLE-29M",
+    "RUNTIME-TWIN-GOOGLE-AUSTIN"
+  ],
+  "noScopeVersionCreation": true,
+  "noInventoryMutation": true,
+  "organization": "Teralinx",
+  "createdAt": "2026-06-30T12:57:56.889Z",
+  "updatedAt": "2026-06-30T12:57:56.889Z",
+  "noControlAuthority": true
+}

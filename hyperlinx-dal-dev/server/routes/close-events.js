@@ -1,4 +1,5 @@
-import { DIRS, handleJsonCollection, nowIso } from "./_shared.js";
+import { DIRS, handleJsonCollection, nowIso, routeMatch } from "./_shared.js";
+import { requireAnyPermission } from "./authority.js";
 
 export function normalizeCloseEvent(input = {}) {
   const raw = input.closeEvent ?? input;
@@ -14,6 +15,13 @@ export function normalizeCloseEvent(input = {}) {
 }
 
 export async function handleCloseEvents(req, res, pathname) {
+  const match = routeMatch(pathname, "/api/close-events");
+  if (!match) return false;
+  if (req.method === "GET") {
+    if (!requireAnyPermission(req, res, ["workspace.engineering.read", "workspace.engineering.write", "scopeversion.authority"], "You do not have authority to read Close Events.")) return true;
+  } else if (["POST", "PUT"].includes(String(req.method))) {
+    if (!requireAnyPermission(req, res, ["scopeversion.authority"], "Only close authority may create or update Close Events.")) return true;
+  }
   return handleJsonCollection(req, res, pathname, {
     basePath: "/api/close-events",
     dir: DIRS.closeEvents,

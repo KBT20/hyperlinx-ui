@@ -1,0 +1,39 @@
+{
+  "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.submitted.customer-1782824228172-9bad0e38d8a71",
+  "eventType": "runtime.proposal.submitted.customer",
+  "actor": "Ryan",
+  "actorId": "teralinx-user-ryan",
+  "objectType": "Proposal",
+  "objectId": "PROPOSAL-GOOGLE-29M-RUNTIME",
+  "objectName": "Google Austin 29M Commercial Proposal",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "timestamp": "2026-06-30T12:57:08.172Z",
+  "createdAt": "2026-06-30T12:57:08.172Z",
+  "updatedAt": "2026-06-30T12:57:08.172Z",
+  "details": "Proposal submitted for customer review.",
+  "metadata": {
+    "status": "WAITING_CUSTOMER_REVIEW",
+    "approvalState": "CUSTOMER_REVIEW",
+    "visibility": "SHARED",
+    "lifecycleState": "DRAFT",
+    "version": 2,
+    "authority": {
+      "owner": "teralinx-user-ryan",
+      "contributors": [],
+      "reviewers": [],
+      "approvers": [],
+      "executives": [],
+      "customerReviewers": [
+        "google-participant-001"
+      ],
+      "salesEngineering": [],
+      "sharedWith": [
+        "google-participant-001"
+      ]
+    },
+    "assignedCustomerUsers": [
+      "google-participant-001"
+    ]
+  }
+}

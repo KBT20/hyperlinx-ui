@@ -689,11 +689,142 @@ function parseCsvRows(ctx: ParseContext, text: string): ParsedKmlContent {
   return output;
 }
 
+function geoJsonFeatures(value: any): any[] {
+  if (!value || typeof value !== "object") return [];
+  if (value.type === "FeatureCollection" && Array.isArray(value.features)) return value.features;
+  if (value.type === "Feature") return [value];
+  if (value.type === "GeometryCollection" && Array.isArray(value.geometries)) {
+    return value.geometries.map((geometry: any, index: number) => ({
+      type: "Feature",
+      properties: { name: `Geometry ${index + 1}` },
+      geometry,
+    }));
+  }
+  if (value.type && value.coordinates) return [{ type: "Feature", properties: {}, geometry: value }];
+  return [];
+}
+
+function geoJsonName(feature: any, index: number) {
+  const properties = feature?.properties && typeof feature.properties === "object" ? feature.properties : {};
+  return String(properties.name ?? properties.Name ?? properties.title ?? properties.id ?? feature.id ?? `GeoJSON Feature ${index + 1}`);
+}
+
+function geoJsonCoordinates(value: unknown): DALCoordinate[] {
+  if (!Array.isArray(value)) return [];
+  const maybeCoordinate = value as DALCoordinate;
+  if (validCoordinate(maybeCoordinate)) return [cloneCoordinate(maybeCoordinate)];
+  return value.flatMap((item) => geoJsonCoordinates(item));
+}
+
+function parseGeoJsonText(ctx: ParseContext, jsonText: string): ParsedKmlContent {
+  const output: ParsedKmlContent = { routes: [], objects: [], polygons: [], folders: [], diagnostics: [], auditEvents: [] };
+  let parsed: any;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (error) {
+    output.diagnostics.push(diagnostic(ctx, {
+      severity: "ERROR",
+      code: "GEOJSON_PARSE_FAILED",
+      message: `GeoJSON parse failed: ${error instanceof Error ? error.message : String(error)}`,
+    }));
+    return output;
+  }
+
+  const features = geoJsonFeatures(parsed);
+  features.forEach((feature, index) => {
+    const geometry = feature?.geometry ?? feature;
+    const geometryType = String(geometry?.type ?? "");
+    const name = geoJsonName(feature, index);
+    if (geometryType === "LineString" || geometryType === "MultiLineString") {
+      const lineGroups = geometryType === "LineString" ? [geometry.coordinates] : geometry.coordinates;
+      lineGroups.forEach((coordinates: unknown, lineIndex: number) => {
+        const dalGeometry = geoJsonCoordinates(coordinates);
+        if (dalGeometry.length < 2) return;
+        const feet = routeFeet(dalGeometry);
+        const routeId = `IMPORT-ROUTE-${safeId(name, `geojson-line-${index + 1}`)}-${lineIndex + 1}`;
+        const state = classifyRouteState(name, undefined, ["GeoJSON"]);
+        output.routes.push({
+          routeId,
+          name,
+          folderPath: ["GeoJSON"],
+          geometry: dalGeometry.map((coordinate) => ({ longitude: coordinate[0], latitude: coordinate[1] })),
+          dalGeometry,
+          routeFeet: Math.round(feet),
+          routeMiles: Number((feet / 5280).toFixed(3)),
+          designState: state.designState === "UNKNOWN" ? "CUSTOMER_EXISTING" : state.designState,
+          pricingEligible: state.designState !== "CUSTOMER_EXISTING",
+          confidence: Math.max(72, state.confidence),
+          provenance: provenance(ctx, { folderPath: ["GeoJSON"], placemarkName: name, geometryType: "GEOJSON", parseConfidence: Math.max(72, state.confidence) }),
+        });
+        output.auditEvents.push(audit(ctx, "ROUTE_CLASSIFIED", `${name} classified from GeoJSON linework.`, routeId));
+      });
+      return;
+    }
+    if (geometryType === "Point" || geometryType === "MultiPoint") {
+      const points = geometryType === "Point" ? [geometry.coordinates] : geometry.coordinates;
+      points.forEach((coordinates: unknown, pointIndex: number) => {
+        const coordinate = geoJsonCoordinates(coordinates)[0];
+        if (!coordinate) return;
+        const classification = classifyObject(name);
+        output.objects.push({
+          objectId: `IMPORT-OBJECT-${safeId(name, `geojson-point-${index + 1}`)}-${pointIndex + 1}`,
+          name,
+          folderPath: ["GeoJSON"],
+          latitude: coordinate[1],
+          longitude: coordinate[0],
+          objectType: classification.objectType,
+          confidence: classification.confidence,
+          provenance: provenance(ctx, { folderPath: ["GeoJSON"], placemarkName: name, geometryType: "Point", parseConfidence: classification.confidence }),
+        });
+      });
+      return;
+    }
+    if (geometryType === "Polygon" || geometryType === "MultiPolygon") {
+      const polygons = geometryType === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+      polygons.forEach((coordinates: unknown, polygonIndex: number) => {
+        const rings = Array.isArray(coordinates)
+          ? coordinates.map((ring) => geoJsonCoordinates(ring)).filter((ring) => ring.length >= 3)
+          : [];
+        if (!rings.length) return;
+        output.polygons.push({
+          polygonId: `IMPORT-POLYGON-${safeId(name, `geojson-polygon-${index + 1}`)}-${polygonIndex + 1}`,
+          name,
+          folderPath: ["GeoJSON"],
+          rings,
+          confidence: 74,
+          provenance: provenance(ctx, { folderPath: ["GeoJSON"], placemarkName: name, geometryType: "Polygon", parseConfidence: 74 }),
+        });
+      });
+    }
+  });
+
+  output.objects.forEach((object) => addNearestRouteData(object, output.routes));
+  output.folders = [{
+    folderId: "FOLDER-GEOJSON",
+    name: "GeoJSON",
+    folderPath: ["GeoJSON"],
+    parentPath: [],
+    placemarkCount: features.length,
+    routeCount: output.routes.length,
+    objectCount: output.objects.length,
+    polygonCount: output.polygons.length,
+  }];
+  output.diagnostics.push(diagnostic(ctx, {
+    severity: output.routes.length || output.objects.length || output.polygons.length ? "INFO" : "WARNING",
+    code: "GEOJSON_PARSED",
+    message: `GeoJSON parsed with ${output.routes.length.toLocaleString()} route(s), ${output.objects.length.toLocaleString()} object(s), and ${output.polygons.length.toLocaleString()} polygon(s).`,
+  }));
+  return output;
+}
+
 function sourceTypeFromName(fileName: string): CustomerDesignSourceType {
   const lower = fileName.toLowerCase();
   if (lower.endsWith(".kmz")) return "KMZ";
   if (lower.endsWith(".kml")) return "KML";
+  if (lower.endsWith(".geojson")) return "GEOJSON";
   if (lower.endsWith(".csv")) return "CSV";
+  if (lower.endsWith(".zip") || lower.endsWith(".shp")) return "SHAPEFILE";
+  if (lower.endsWith(".json")) return "JSON_RUNTIME_INVENTORY";
   return "API";
 }
 
@@ -763,11 +894,21 @@ export async function parseCustomerDesignFile(args: {
     }
   } else if (sourceType === "KML") {
     output = parseKmlText(baseContext, await args.file.text());
+  } else if (sourceType === "GEOJSON") {
+    output = parseGeoJsonText(baseContext, await args.file.text());
   } else if (sourceType === "CSV") {
     output = parseCsvRows(baseContext, await args.file.text());
+  } else if (sourceType === "SHAPEFILE") {
+    output = { routes: [], objects: [], polygons: [], folders: [], auditEvents: [], diagnostics: [
+      diagnostic(baseContext, { severity: "ERROR", code: "SHAPEFILE_FUTURE_READY", message: "Shapefile inventory import is present as a future-ready interface; convert to GeoJSON or Runtime Inventory JSON for this sprint." }),
+    ] };
+  } else if (sourceType === "JSON_RUNTIME_INVENTORY") {
+    output = { routes: [], objects: [], polygons: [], folders: [], auditEvents: [], diagnostics: [
+      diagnostic(baseContext, { severity: "ERROR", code: "RUNTIME_JSON_DIRECT_COMMIT", message: "Runtime Inventory JSON should be committed directly through the Existing Inventory runtime import path." }),
+    ] };
   } else {
     output = { routes: [], objects: [], polygons: [], folders: [], auditEvents: [], diagnostics: [
-      diagnostic(baseContext, { severity: "ERROR", code: "UNSUPPORTED_SOURCE_TYPE", message: "Translate 2.0 supports KMZ, KML, and CSV in this phase." }),
+      diagnostic(baseContext, { severity: "ERROR", code: "UNSUPPORTED_SOURCE_TYPE", message: "Translate 2.0 supports KMZ, KML, GeoJSON, CSV, and Runtime Inventory JSON in this phase." }),
     ] };
   }
 

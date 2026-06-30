@@ -1,0 +1,132 @@
+{
+  "commitId": "COMMIT-GOOGLE-PROPOSAL-APPROVED",
+  "actor": "Google Customer",
+  "evidence": [
+    {
+      "evidenceId": "EVID-GOOGLE-COMMERCIAL-DRAFT",
+      "sourceType": "COMMERCIAL_DRAFT",
+      "sourceName": "Google $29M Commercial Draft",
+      "authority": "COMMERCIAL",
+      "validationStatus": "VALIDATED"
+    },
+    {
+      "evidenceId": "EVID-GOOGLE-CUSTOMER-APPROVAL",
+      "sourceType": "CUSTOMER_APPROVAL",
+      "sourceName": "Google proposal approval",
+      "authority": "CUSTOMER_APPROVAL",
+      "validationStatus": "VALIDATED"
+    }
+  ],
+  "runtimeObjects": [
+    {
+      "runtimeId": "PROPOSAL-GOOGLE-29M",
+      "objectId": "PROPOSAL-GOOGLE-29M",
+      "objectType": "PROPOSAL",
+      "name": "Google $29M Customer Approved Proposal",
+      "customerId": "customer-google",
+      "customer": "Google",
+      "owner": "teralinx-user-ryan",
+      "ownerId": "teralinx-user-ryan",
+      "createdBy": "teralinx-user-ryan",
+      "createdById": "teralinx-user-ryan",
+      "assignedTo": [
+        "google-participant-001",
+        "teralinx-user-kyle"
+      ],
+      "organization": "org-teralinx",
+      "organizationId": "org-teralinx",
+      "workspace": "workspace-teralinx-ryan",
+      "workspaceId": "workspace-teralinx-ryan",
+      "visibility": "SHARED",
+      "authority": "CUSTOMER_APPROVED_PROPOSAL",
+      "lifecycleState": "ACCEPTED",
+      "version": 1,
+      "evidenceIds": [
+        "EVID-GOOGLE-COMMERCIAL-DRAFT",
+        "EVID-GOOGLE-CUSTOMER-APPROVAL"
+      ],
+      "evidenceLinks": [
+        "EVID-GOOGLE-COMMERCIAL-DRAFT",
+        "EVID-GOOGLE-CUSTOMER-APPROVAL"
+      ],
+      "relationshipIds": [
+        "REL-GOOGLE-OPPORTUNITY-PROPOSAL"
+      ],
+      "relationshipLinks": [
+        "REL-GOOGLE-OPPORTUNITY-PROPOSAL"
+      ],
+      "source": "PROPOSAL_LIBRARY",
+      "classification": "proposal",
+      "confidence": 1,
+      "lifecycle": "ACCEPTED",
+      "createdDate": "2026-06-30T12:57:56.878Z",
+      "modifiedDate": "2026-06-30T12:57:56.878Z",
+      "createdAt": "2026-06-30T12:57:56.878Z",
+      "updatedAt": "2026-06-30T12:57:56.878Z",
+      "metadata": {
+        "noDuplicateRuntimeObject": true,
+        "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+        "amount": 29000000
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "REL-GOOGLE-OPPORTUNITY-PROPOSAL",
+      "relationshipType": "GENERATED_PROPOSAL",
+      "fromRuntimeId": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+      "toRuntimeId": "PROPOSAL-GOOGLE-29M",
+      "authority": "RUNTIME_GRAPH",
+      "organizationId": "org-teralinx",
+      "customerId": "customer-google",
+      "evidenceIds": [
+        "EVID-GOOGLE-COMMERCIAL-DRAFT"
+      ]
+    }
+  ],
+  "validationReports": [
+    {
+      "validationId": "VAL-GOOGLE-PROPOSAL-APPROVAL",
+      "status": "PASS",
+      "checks": [
+        "proposal_references_opportunity",
+        "customer_approval_persisted",
+        "no_scopeversion_before_approval"
+      ]
+    }
+  ],
+  "history": [
+    {
+      "historyId": "HIST-GOOGLE-PROPOSAL-APPROVED",
+      "eventType": "runtime.proposal.customer_approved",
+      "actor": "Google Customer",
+      "actorId": "google-participant-001",
+      "objectType": "Proposal",
+      "objectId": "PROPOSAL-GOOGLE-29M",
+      "organizationId": "org-teralinx",
+      "workspaceId": "workspace-google-customer"
+    }
+  ],
+  "status": "COMMITTED",
+  "committedAt": "2026-06-30T12:57:56.878Z",
+  "updatedAt": "2026-06-30T12:57:56.878Z",
+  "evidenceIds": [
+    "EVID-GOOGLE-COMMERCIAL-DRAFT",
+    "EVID-GOOGLE-CUSTOMER-APPROVAL"
+  ],
+  "inventoryIds": [],
+  "runtimeObjectIds": [
+    "PROPOSAL-GOOGLE-29M"
+  ],
+  "relationshipIds": [
+    "REL-GOOGLE-OPPORTUNITY-PROPOSAL"
+  ],
+  "validationReportIds": [
+    "VAL-GOOGLE-PROPOSAL-APPROVAL"
+  ],
+  "historyIds": [
+    "HIST-GOOGLE-PROPOSAL-APPROVED",
+    "COMMIT-GOOGLE-PROPOSAL-APPROVED-history"
+  ],
+  "connectorIds": []
+}

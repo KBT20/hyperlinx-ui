@@ -1,0 +1,20 @@
+{
+  "historyId": "COMMIT-GOOGLE-EXISTING-INVENTORY-history",
+  "eventType": "runtime.translation_committed",
+  "actor": "Google Customer",
+  "actorId": "google-participant-001",
+  "objectType": "RuntimeCommit",
+  "objectId": "COMMIT-GOOGLE-EXISTING-INVENTORY",
+  "timestamp": "2026-06-30T12:57:56.794Z",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-google-customer",
+  "payload": {
+    "evidenceCount": 1,
+    "inventoryCount": 1,
+    "objectCount": 3,
+    "relationshipCount": 2,
+    "connectorCount": 0
+  },
+  "createdAt": "2026-06-30T12:57:56.794Z",
+  "updatedAt": "2026-06-30T12:57:56.794Z"
+}

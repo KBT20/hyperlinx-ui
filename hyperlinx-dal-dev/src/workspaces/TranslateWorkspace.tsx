@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import { useEffect, useMemo, useState } from "react";
 import { saveInventoryGraph } from "../api/dalClient";
 import { commitRuntimeTranslation } from "../api/runtimeFoundation";
+import { createScopeVersion } from "../api/scopeVersionRepository";
 import { createDefaultBudgetAssumptionState } from "../commercial/BudgetAssumptionState";
 import {
   buildCommercialCorridorDraftFromImportedRoute,
@@ -20,6 +21,7 @@ import {
 import { useTeralinxAuth } from "../identity/TeralinxAuth";
 import { buildRuntimeCommitFromCustomerDesign } from "../runtime/RuntimeObjectModel";
 import { runUniversalTranslationPipeline, type UniversalTranslationAdapter } from "../runtime/UniversalTranslatorFramework";
+import { createScopeVersionFromCustomerDesignImport } from "../scopeversion/scopeVersionUtils";
 import type { DALCoordinate, InventoryEdge, InventoryGraph, InventoryNode, InventoryRoute, InventoryStation, ValidationStatus } from "../types/dal";
 
 type SourceType = "CSV" | "KML" | "KMZ" | "GeoJSON";
@@ -564,8 +566,11 @@ function buildInventoryGraph(parseResult: ParseResult): BuiltGraph {
 }
 
 function parseResultFromCustomerDesignImport(record: CustomerDesignImport): ParseResult {
+  const sourceType: SourceType = record.sourceType === "KMZ" || record.sourceType === "KML" || record.sourceType === "CSV"
+    ? record.sourceType
+    : "GeoJSON";
   return {
-    sourceType: record.sourceType === "API" ? "GeoJSON" : record.sourceType,
+    sourceType,
     sourceFile: record.sourceFileName,
     sourceRoutes: record.routes.map((route) => ({
       routeId: route.routeId,
@@ -794,6 +799,22 @@ export default function TranslateWorkspace() {
     setStatus(`${selectedImportedRoute.name} marked ${designState}.`);
   }
 
+  function withDesignRequestFields(record: CustomerDesignImport): CustomerDesignImport {
+    const activeRouteId = selectedImportedRoute?.routeId ?? selectedRouteId ?? record.activeRouteId ?? record.routes[0]?.routeId ?? "";
+    const activeRoute = record.routes.find((route) => route.routeId === activeRouteId) ?? record.routes[0];
+    return {
+      ...record,
+      designImportId: record.designImportId ?? record.importId,
+      designIntent: record.designIntent ?? "CUSTOMER_DESIGN_REQUEST",
+      scopeVersionId: record.scopeVersionId ?? `SV-CDR-${record.designId}`,
+      proposedGeometry: record.proposedGeometry?.length
+        ? record.proposedGeometry
+        : activeRoute?.dalGeometry?.length
+          ? activeRoute.dalGeometry
+          : record.previewGeometry,
+    };
+  }
+
   function stageImport(record = customerImport) {
     if (!record) return null;
     const activeRouteId = selectedImportedRoute?.routeId ?? selectedRouteId ?? record.activeRouteId ?? record.routes[0]?.routeId ?? "";
@@ -804,12 +825,13 @@ export default function TranslateWorkspace() {
       previewGeometry: activeRoute?.dalGeometry?.length ? activeRoute.dalGeometry : record.previewGeometry,
     };
     const recordWithGraph = graph && !recordWithActiveRoute.inventoryGraph ? attachInventoryGraphToCustomerDesignImport(recordWithActiveRoute, graph.payload) : recordWithActiveRoute;
-    const staged = recordWithGraph.status === "STAGED" || recordWithGraph.status === "PRICED" ? recordWithGraph : stageCustomerDesignImport(recordWithGraph);
+    const recordWithIntent = withDesignRequestFields(recordWithGraph);
+    const staged = recordWithIntent.status === "STAGED" || recordWithIntent.status === "PRICED" ? recordWithIntent : stageCustomerDesignImport(recordWithIntent);
     setCustomerImport(staged);
     upsertCustomerDesignImport(staged);
     setSelectedCustomerDesignImportId(staged.importId);
     setSelectedCustomerDesignRouteId(activeRouteId);
-    setStatus(`${staged.sourceFileName} staged as non-authoritative customer design evidence.`);
+    setStatus(`${staged.sourceFileName} staged as Customer Design Request ${staged.scopeVersionId}.`);
     return staged;
   }
 
@@ -820,66 +842,77 @@ export default function TranslateWorkspace() {
     try {
       setRuntimeCommitting(true);
       setRuntimeCommitStatus("Preparing runtime commit...");
-      const graphPayload = graph?.payload ?? staged.inventoryGraph ?? null;
+      const scopeVersion = await createScopeVersion(createScopeVersionFromCustomerDesignImport(staged));
+      const stagedWithScope = withDesignRequestFields({
+        ...staged,
+        scopeVersionId: scopeVersion.scopeVersionId,
+        designIntent: staged.designIntent ?? "CUSTOMER_DESIGN_REQUEST",
+        proposedGeometry: staged.proposedGeometry?.length ? staged.proposedGeometry : scopeVersion.geometry,
+      });
+      setCustomerImport(stagedWithScope);
+      upsertCustomerDesignImport(stagedWithScope);
+      const graphPayload = graph?.payload ?? stagedWithScope.inventoryGraph ?? null;
       const adapter: UniversalTranslationAdapter<CustomerDesignImport> = {
         adapterId: "customer-design-import-adapter",
-        domain: "CUSTOMER_INVENTORY",
+        domain: "CUSTOMER_DESIGN_REQUEST",
         sourceTypes: ["KMZ", "KML", "CSV", "API"],
         normalize: (input, context) => buildRuntimeCommitFromCustomerDesign(input, graphPayload, context.actor),
       };
-      const pipeline = await runUniversalTranslationPipeline(adapter, staged, {
-        actor: session?.user.name ?? staged.uploadedBy ?? "Teralinx",
-        domain: "CUSTOMER_INVENTORY",
+      const pipeline = await runUniversalTranslationPipeline(adapter, stagedWithScope, {
+        actor: session?.user.name ?? stagedWithScope.uploadedBy ?? "Teralinx",
+        domain: "CUSTOMER_DESIGN_REQUEST",
         commitToRuntime: true,
         evidence: {
-          sourceType: staged.sourceType,
-          sourceName: staged.sourceFileName,
+          sourceType: stagedWithScope.sourceType,
+          sourceName: stagedWithScope.sourceFileName,
           sourceSystem: "Translate",
-          collectedAt: staged.uploadedAt,
-          submittedBy: staged.uploadedBy,
-          customerName: staged.customerName,
-          accountId: staged.accountId,
+          collectedAt: stagedWithScope.uploadedAt,
+          submittedBy: stagedWithScope.uploadedBy,
+          customerName: stagedWithScope.customerName,
+          accountId: stagedWithScope.accountId,
         },
       });
       if (!pipeline.canCommit) {
         throw new Error("Runtime validation failed. Commit was not sent.");
       }
-      const response = await commitRuntimeTranslation(pipeline.commit);
+      const response = await commitRuntimeTranslation(pipeline.commit, session);
       const committedAt = response.commit.committedAt ?? new Date().toISOString();
       const committed: CustomerDesignImport = {
-        ...staged,
+        ...stagedWithScope,
         runtimeCommitId: response.commit.commitId,
-        runtimeInventoryId: response.commit.inventoryIds[0],
+        runtimeInventoryId: undefined,
         runtimeEvidenceIds: response.commit.evidenceIds,
         runtimeObjectIds: response.commit.runtimeObjectIds,
         runtimeRelationshipIds: response.commit.relationshipIds,
         runtimeValidationReportIds: response.commit.validationReportIds,
         runtimeCommittedAt: committedAt,
+        evidenceIds: response.commit.evidenceIds,
+        relationshipIds: response.commit.relationshipIds,
         auditEvents: [
-          ...staged.auditEvents,
+          ...stagedWithScope.auditEvents,
           {
             eventId: `CUSTOMER-DESIGN-AUDIT-RUNTIME-${staged.importId}-${Date.now()}`,
             eventType: "RUNTIME_COMMITTED",
-            message: `${staged.sourceFileName} committed to the shared runtime object layer.`,
+            message: `${stagedWithScope.sourceFileName} committed to the Customer Design Request runtime lane.`,
             createdAt: committedAt,
-            actor: session?.user.name ?? staged.uploadedBy ?? "Teralinx",
+            actor: session?.user.name ?? stagedWithScope.uploadedBy ?? "Teralinx",
           },
         ],
       };
       setCustomerImport(committed);
       upsertCustomerDesignImport(committed);
       setRuntimeCommitStatus(
-        `Runtime committed: ${response.counts.evidence.toLocaleString()} evidence, ${response.counts.runtimeObjects.toLocaleString()} objects, ${response.counts.relationships.toLocaleString()} relationships.`,
+        `Customer Design Request committed: ${scopeVersion.scopeVersionId}, ${response.counts.evidence.toLocaleString()} evidence, ${response.counts.runtimeObjects.toLocaleString()} objects, ${response.counts.relationships.toLocaleString()} relationships.`,
       );
-      setStatus(`${staged.sourceFileName} committed to Runtime Object Layer.`);
+      setStatus(`${stagedWithScope.sourceFileName} committed as Customer Design Request ${scopeVersion.scopeVersionId}.`);
       void recordActivity({
-        action: "committed translation to runtime",
-        objectType: "Runtime Translation Commit",
+        action: "committed customer design request",
+        objectType: "Customer Design Request",
         objectId: response.commit.commitId,
-        objectName: staged.sourceFileName,
-        revision: "Runtime Object Layer",
-        customerId: staged.accountId,
-        details: `${response.counts.runtimeObjects} runtime objects and ${response.counts.relationships} relationships persisted from customer evidence.`,
+        objectName: stagedWithScope.sourceFileName,
+        revision: scopeVersion.scopeVersionId,
+        customerId: stagedWithScope.accountId,
+        details: `${response.counts.runtimeObjects} design runtime objects persisted without Existing Inventory mutation.`,
       });
       return response;
     } catch (err: any) {
@@ -967,7 +1000,22 @@ export default function TranslateWorkspace() {
 
       <div className="dal-grid">
         <div className="dal-panel">
-          <h3>Customer Design Upload</h3>
+          <h3>Existing Inventory</h3>
+          <div className="dal-metrics compact">
+            <span>Lane: Runtime Inventory</span>
+            <span>Authority: Customer Twin source</span>
+            <span>ScopeVersion: none</span>
+          </div>
+          <div className="dal-actions">
+            <button type="button" onClick={() => setWorkspace("googleRfp")}>Import Existing Network</button>
+          </div>
+          <div className="dal-callout">
+            Existing Inventory is operational infrastructure that already exists. It is imported through Commercial Planning and builds Customer Twin source data.
+          </div>
+        </div>
+
+        <div className="dal-panel">
+          <h3>Customer Design Requests</h3>
           <input
             type="file"
             accept=".csv,.kml,.kmz,text/csv"
@@ -979,12 +1027,12 @@ export default function TranslateWorkspace() {
           />
           <div className="dal-status">{status}</div>
           <div className="dal-callout">
-            KMZ, KML, and CSV imports preserve folder/source provenance and remain customer evidence until explicitly promoted through Commercial Planning or Engineering.
+            KMZ, KML, and CSV imports preserve folder/source provenance as proposed-build intent, candidate ScopeVersion, and Customer Design Library evidence.
           </div>
         </div>
 
         <div className="dal-panel">
-          <h3>Parse Status</h3>
+          <h3>Design Request Status</h3>
           {customerImport ? (
             <div className="dal-metrics compact">
               <span>Status: {customerImport.status}</span>
@@ -1109,7 +1157,7 @@ export default function TranslateWorkspace() {
                   <span>Feet: {formatFeet(selectedImportedRoute.routeFeet)}</span>
                   <span>Folder: {selectedImportedRoute.folderPath.join(" / ") || "Root"}</span>
                   <span>Runtime Commit: {customerImport.runtimeCommitId ?? "Not committed"}</span>
-                  <span>Runtime Inventory: {customerImport.runtimeInventoryId ?? "Not committed"}</span>
+                  <span>Candidate ScopeVersion: {customerImport.scopeVersionId ?? "Not created"}</span>
                 </div>
                 <div className="dal-actions">
                   <button type="button" onClick={() => setRouteState("CUSTOMER_PROPOSED")}>

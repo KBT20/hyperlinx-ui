@@ -1,0 +1,15 @@
+{
+  "relationshipId": "REL-GOOGLE-TWIN-INCLUDES-DESIGN",
+  "relationshipType": "INCLUDES_CUSTOMER_REQUEST",
+  "fromRuntimeId": "RUNTIME-TWIN-GOOGLE-AUSTIN",
+  "toRuntimeId": "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001",
+  "authority": "RUNTIME_GRAPH",
+  "organizationId": "org-teralinx",
+  "customerId": "customer-google",
+  "evidenceIds": [
+    "EVID-GOOGLE-RFP-DESIGN"
+  ],
+  "version": 1,
+  "createdAt": "2026-06-30T12:57:56.835Z",
+  "updatedAt": "2026-06-30T12:57:56.835Z"
+}

@@ -1,0 +1,48 @@
+{
+  "runtimeId": "RUNTIME-SCOPEVERSION-SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+  "objectId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+  "objectType": "SCOPE_VERSION",
+  "name": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+  "owner": "Kyle",
+  "ownerId": "teralinx-user-kyle",
+  "createdBy": "Kyle",
+  "createdById": "teralinx-user-kyle",
+  "assignedTo": [
+    "teralinx-user-kyle"
+  ],
+  "organization": "org-teralinx",
+  "organizationId": "org-teralinx",
+  "workspace": "workspace-teralinx-kyle",
+  "workspaceId": "workspace-teralinx-kyle",
+  "customerId": "customer-google",
+  "visibility": "ORGANIZATION",
+  "authority": "TERALINX_RUNTIME",
+  "lifecycleState": "APPROVED",
+  "version": 1,
+  "evidenceIds": [
+    "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+    "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
+  ],
+  "evidenceLinks": [
+    "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+    "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
+  ],
+  "relationshipIds": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+  ],
+  "relationshipLinks": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+  ],
+  "sourceId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+  "createdAt": "2026-06-30T12:57:08.265Z",
+  "updatedAt": "2026-06-30T12:57:08.283Z",
+  "metadata": {
+    "certifiedIofPackageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+    "proposalId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
+    "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+    "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+    "noDuplicateRuntimeObjects": true
+  }
+}

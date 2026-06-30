@@ -1,0 +1,300 @@
+{
+  "packageId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+  "packageType": "ENGINEERING",
+  "status": "CERTIFIED",
+  "workflowStatus": "CERTIFIED_IOF_PACKAGE",
+  "proposalId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
+  "customerId": "customer-google",
+  "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+  "assignedEngineerId": "teralinx-user-kyle",
+  "assignedEngineer": "Kyle",
+  "priority": "HIGH",
+  "submittedAt": "2026-06-30T12:57:08.200Z",
+  "proposalSummary": {
+    "title": "Google Austin 29M Certified Execution Proposal",
+    "proposalNumber": "PROP-GOOGLE-29M-CERTIFICATION",
+    "version": 1,
+    "readiness": {
+      "proposalId": "PROPOSAL-GOOGLE-29M-CERTIFICATION",
+      "status": "READY",
+      "canCreateDraftIofPackage": true,
+      "customerApproved": true,
+      "proposalComplete": true,
+      "runtimeValid": true,
+      "commercial": {
+        "status": "PASS",
+        "missingInformation": [],
+        "dealPointCount": 2,
+        "pricingSummaryPresent": true
+      },
+      "customer": {
+        "status": "APPROVED",
+        "assignedCustomerUsers": [
+          "google-participant-001"
+        ],
+        "comments": 0,
+        "attachments": 0
+      },
+      "engineering": {
+        "status": "READY_FOR_DRAFT_IOF",
+        "runtimeObjectCount": 2,
+        "relationshipCount": 2,
+        "geometryReferenceCount": 1
+      },
+      "marketplace": {
+        "status": "REFERENCE_ONLY",
+        "recommendation": "Use approved Proposal references as Sprint 13.3 Draft IOF source input."
+      },
+      "runtimeHealth": {
+        "status": "PASS",
+        "evidenceCount": 2,
+        "existingInventoryReferences": 1,
+        "customerTwinReference": "CUSTOMER-TWIN-GOOGLE-AUSTIN",
+        "duplicateObjectsCreated": false
+      },
+      "confidence": 100,
+      "missingInformation": [],
+      "blockingIssues": [],
+      "recommendation": "Expose Create Draft IOF Package source references without assembling a package."
+    }
+  },
+  "commercialSummary": {
+    "pricingSummary": {
+      "budgetCost": 11800000,
+      "sellPriceIru": 17700000,
+      "routeMiles": 29
+    },
+    "marginSummary": {
+      "grossMarginDollars": 5900000,
+      "grossMarginPercent": 33.3
+    },
+    "confidenceSummary": {
+      "commercialReadiness": 90,
+      "runtimeHealth": "PASS"
+    },
+    "commercialAssumptionIds": [
+      "ASSUMPTION-GOOGLE-AUSTIN-CIVIL-MIX"
+    ],
+    "dealPointIds": [
+      "DEALPOINT-GOOGLE-IRU",
+      "DEALPOINT-GOOGLE-SLA"
+    ]
+  },
+  "customerSummary": {
+    "customerId": "customer-google",
+    "name": "customer-google",
+    "approvalState": "APPROVED",
+    "approvedAt": "2026-06-30T12:57:08.178Z"
+  },
+  "assemblyReport": {
+    "assembledFrom": "APPROVED_PROPOSAL_RUNTIME_OBJECT",
+    "noScopeVersionCreated": true,
+    "noMarketplaceCreated": true,
+    "noDuplicateRuntimeObjects": true,
+    "runtimeObjectCount": 2,
+    "relationshipCount": 2,
+    "evidenceCount": 2,
+    "proposedUnitCount": 2
+  },
+  "proposedIofUnits": [
+    {
+      "unitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+      "sourceRuntimeObjectId": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+      "runtimeObjectIds": [
+        "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY"
+      ],
+      "geometryReferences": [
+        "GEOMETRY-GOOGLE-AUSTIN-29M"
+      ],
+      "runtimeRelationshipIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+      ],
+      "runtimeEvidenceIds": [
+        "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
+      ],
+      "unitType": "RUNTIME_REFERENCE_UNIT",
+      "name": "Proposed IOF Unit 1",
+      "status": "CERTIFIED",
+      "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+      "dependencyIds": [],
+      "engineeringNote": "Certified DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+      "engineeringConfidence": 94,
+      "engineeringRisk": "ACCEPTED",
+      "engineeringComments": [
+        "Certified by Kyle."
+      ],
+      "immutable": true,
+      "createdAt": "2026-06-30T12:57:08.200Z",
+      "updatedAt": "2026-06-30T12:57:08.221Z",
+      "certifiedBy": "Kyle",
+      "certifiedById": "teralinx-user-kyle",
+      "certifiedAt": "2026-06-30T12:57:08.221Z"
+    },
+    {
+      "unitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
+      "sourceRuntimeObjectId": "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+      "runtimeObjectIds": [
+        "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+      ],
+      "geometryReferences": [
+        "GEOMETRY-GOOGLE-AUSTIN-29M"
+      ],
+      "runtimeRelationshipIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+      ],
+      "runtimeEvidenceIds": [
+        "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
+      ],
+      "unitType": "RUNTIME_REFERENCE_UNIT",
+      "name": "Proposed IOF Unit 2",
+      "status": "CERTIFIED",
+      "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
+      "dependencyIds": [],
+      "engineeringNote": "Certified DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
+      "engineeringConfidence": 94,
+      "engineeringRisk": "ACCEPTED",
+      "engineeringComments": [
+        "Certified by Kyle."
+      ],
+      "immutable": true,
+      "createdAt": "2026-06-30T12:57:08.200Z",
+      "updatedAt": "2026-06-30T12:57:08.231Z",
+      "certifiedBy": "Kyle",
+      "certifiedById": "teralinx-user-kyle",
+      "certifiedAt": "2026-06-30T12:57:08.231Z"
+    }
+  ],
+  "runtimeObjectIds": [
+    "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+    "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+  ],
+  "runtimeRelationshipIds": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+  ],
+  "runtimeEvidenceIds": [
+    "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+    "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
+  ],
+  "existingInventoryReferences": [
+    "RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+  ],
+  "customerDesignReferences": [
+    "CUSTOMER-DESIGN-GOOGLE-29M"
+  ],
+  "customerTwinReference": "CUSTOMER-TWIN-GOOGLE-AUSTIN",
+  "geometryReferences": [
+    "GEOMETRY-GOOGLE-AUSTIN-29M"
+  ],
+  "sourceProposalVersion": 1,
+  "draftPackageId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+  "packageReadiness": {
+    "status": "READY_FOR_PACKAGE_CERTIFICATION",
+    "missingInformation": [],
+    "proposedUnitCount": 2,
+    "certifiedUnitCount": 2,
+    "certificationPercent": 100
+  },
+  "engineeringReadiness": "READY_FOR_ENGINEERING_REVIEW",
+  "commercialConfidence": 0,
+  "route": [],
+  "stations": [],
+  "objects": [
+    {
+      "unitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+      "sourceRuntimeObjectId": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+      "runtimeObjectIds": [
+        "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY"
+      ],
+      "geometryReferences": [
+        "GEOMETRY-GOOGLE-AUSTIN-29M"
+      ],
+      "runtimeRelationshipIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+      ],
+      "runtimeEvidenceIds": [
+        "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
+      ],
+      "unitType": "RUNTIME_REFERENCE_UNIT",
+      "name": "Proposed IOF Unit 1",
+      "status": "CERTIFIED",
+      "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+      "dependencyIds": [],
+      "engineeringNote": "Certified DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:001",
+      "engineeringConfidence": 94,
+      "engineeringRisk": "ACCEPTED",
+      "engineeringComments": [
+        "Certified by Kyle."
+      ],
+      "immutable": true,
+      "createdAt": "2026-06-30T12:57:08.200Z",
+      "updatedAt": "2026-06-30T12:57:08.221Z",
+      "certifiedBy": "Kyle",
+      "certifiedById": "teralinx-user-kyle",
+      "certifiedAt": "2026-06-30T12:57:08.221Z"
+    },
+    {
+      "unitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
+      "sourceRuntimeObjectId": "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001",
+      "runtimeObjectIds": [
+        "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+      ],
+      "geometryReferences": [
+        "GEOMETRY-GOOGLE-AUSTIN-29M"
+      ],
+      "runtimeRelationshipIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+      ],
+      "runtimeEvidenceIds": [
+        "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "EVIDENCE-GOOGLE-CUSTOMER-APPROVAL"
+      ],
+      "unitType": "RUNTIME_REFERENCE_UNIT",
+      "name": "Proposed IOF Unit 2",
+      "status": "CERTIFIED",
+      "sourceUnitId": "DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
+      "dependencyIds": [],
+      "engineeringNote": "Certified DRAFT-IOF-GOOGLE-29M-CERTIFICATION:unit:002",
+      "engineeringConfidence": 94,
+      "engineeringRisk": "ACCEPTED",
+      "engineeringComments": [
+        "Certified by Kyle."
+      ],
+      "immutable": true,
+      "createdAt": "2026-06-30T12:57:08.200Z",
+      "updatedAt": "2026-06-30T12:57:08.231Z",
+      "certifiedBy": "Kyle",
+      "certifiedById": "teralinx-user-kyle",
+      "certifiedAt": "2026-06-30T12:57:08.231Z"
+    }
+  ],
+  "relationships": [],
+  "evidence": [],
+  "historyIds": [
+    "runtime-history-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-runtime.iof_package.assembled_from_proposal-1782824228202-aa66c3cd876c7",
+    "runtime-history-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-runtime.iof_unit.certify-1782824228222-845ecfbfe9d7f",
+    "runtime-history-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-runtime.iof_unit.certify-1782824228231-cdc69570a9548",
+    "runtime-history-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-runtime.iof_package.certified-1782824228254-d971a121d3be2",
+    "runtime-history-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-runtime.iof_package.execution_authorized-1782824228287-f0307f8d462d2"
+  ],
+  "createdAt": "2026-06-30T12:57:08.201Z",
+  "updatedAt": "2026-06-30T12:57:08.287Z",
+  "noMarketplaceCreation": true,
+  "noContractCreation": true,
+  "noSofCreation": true,
+  "noSowCreation": true,
+  "certifiedPackageId": "CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION",
+  "certifiedAt": "2026-06-30T12:57:08.247Z",
+  "certifiedBy": "Kyle",
+  "certifiedById": "teralinx-user-kyle",
+  "immutable": true,
+  "scopeVersionId": "SV-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION-1782824228265",
+  "executionAuthorizationCertificateId": "EXEC-AUTH-CERT-IOF-DRAFT-IOF-GOOGLE-29M-CERTIFICATION"
+}

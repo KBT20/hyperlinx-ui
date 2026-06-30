@@ -1,0 +1,33 @@
+{
+  "workspaceId": "workspace-teralinx-kyle",
+  "userId": "teralinx-user-kyle",
+  "organizationId": "org-teralinx",
+  "name": "Kyle Workspace",
+  "preferences": {
+    "defaultWorkspace": "googleRfp",
+    "dashboardDensity": "executive"
+  },
+  "dashboard": {
+    "sections": [
+      "My Opportunities",
+      "Assigned Work",
+      "Recent Activity",
+      "Pending Approvals",
+      "Notifications",
+      "Executive Overview",
+      "Organization Pipeline",
+      "Revenue",
+      "Operational Intelligence"
+    ],
+    "executiveOverview": true,
+    "organizationPipeline": true,
+    "revenue": true,
+    "operationalIntelligence": true
+  },
+  "recentActivity": [],
+  "assignments": [],
+  "notifications": [],
+  "pinnedObjects": [],
+  "createdAt": "2026-06-30T12:57:08.372Z",
+  "updatedAt": "2026-06-30T12:57:08.372Z"
+}

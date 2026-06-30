@@ -1,0 +1,37 @@
+{
+  "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.customer.approved-1782824228182-03fe84e87a535",
+  "eventType": "runtime.proposal.customer.approved",
+  "actor": "Google Customer",
+  "actorId": "google-participant-001",
+  "objectType": "Proposal",
+  "objectId": "PROPOSAL-GOOGLE-29M-RUNTIME",
+  "objectName": "Google Austin 29M Commercial Proposal",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "timestamp": "2026-06-30T12:57:08.182Z",
+  "createdAt": "2026-06-30T12:57:08.182Z",
+  "updatedAt": "2026-06-30T12:57:08.182Z",
+  "details": "Customer approved the commercial proposal. Draft IOF readiness may now be evaluated.",
+  "metadata": {
+    "status": "CUSTOMER_APPROVED",
+    "approvalState": "APPROVED",
+    "visibility": "SHARED",
+    "lifecycleState": "DRAFT",
+    "version": 2,
+    "authority": {
+      "owner": "teralinx-user-ryan",
+      "contributors": [],
+      "reviewers": [],
+      "approvers": [],
+      "executives": [],
+      "customerReviewers": [
+        "google-participant-001"
+      ],
+      "salesEngineering": [],
+      "sharedWith": [
+        "google-participant-001"
+      ]
+    },
+    "approvalId": "proposal-approval-1782824228181-ec6e98a465715"
+  }
+}

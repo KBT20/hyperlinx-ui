@@ -1,0 +1,14 @@
+{
+  "validationId": "VAL-GOOGLE-EXISTING-INVENTORY",
+  "status": "PASS",
+  "checks": [
+    "owner_present",
+    "geometry_present",
+    "classification_present",
+    "confidence_present",
+    "lifecycle_present"
+  ],
+  "validatedAt": "2026-06-30T12:57:56.804Z",
+  "createdAt": "2026-06-30T12:57:56.804Z",
+  "updatedAt": "2026-06-30T12:57:56.804Z"
+}

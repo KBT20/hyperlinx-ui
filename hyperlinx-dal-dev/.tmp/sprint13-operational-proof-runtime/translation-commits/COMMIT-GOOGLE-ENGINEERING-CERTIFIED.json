@@ -1,0 +1,136 @@
+{
+  "commitId": "COMMIT-GOOGLE-ENGINEERING-CERTIFIED",
+  "actor": "Kyle",
+  "evidence": [
+    {
+      "evidenceId": "EVID-GOOGLE-ENG-CERT",
+      "sourceType": "ENGINEERING_CERTIFICATION",
+      "sourceName": "Google $29M route certification",
+      "authority": "ENGINEERING",
+      "validationStatus": "VALIDATED"
+    }
+  ],
+  "runtimeObjects": [
+    {
+      "runtimeId": "ENG-GOOGLE-29M",
+      "objectId": "ENG-GOOGLE-29M",
+      "objectType": "ENGINEERING_DRAFT",
+      "name": "Google $29M Engineering Draft",
+      "customerId": "customer-google",
+      "customer": "Google",
+      "owner": "teralinx-user-kyle",
+      "ownerId": "teralinx-user-kyle",
+      "createdBy": "teralinx-user-kyle",
+      "createdById": "teralinx-user-kyle",
+      "assignedTo": [
+        "teralinx-user-ryan"
+      ],
+      "organization": "org-teralinx",
+      "organizationId": "org-teralinx",
+      "workspace": "workspace-teralinx-kyle",
+      "workspaceId": "workspace-teralinx-kyle",
+      "visibility": "SHARED",
+      "authority": "ENGINEERING",
+      "lifecycleState": "CERTIFIED",
+      "version": 1,
+      "evidenceIds": [
+        "EVID-GOOGLE-ENG-CERT"
+      ],
+      "evidenceLinks": [
+        "EVID-GOOGLE-ENG-CERT"
+      ],
+      "relationshipIds": [
+        "REL-GOOGLE-PROPOSAL-ENGINEERING",
+        "REL-GOOGLE-ENGINEERING-CERTIFIED-ROUTE"
+      ],
+      "relationshipLinks": [
+        "REL-GOOGLE-PROPOSAL-ENGINEERING",
+        "REL-GOOGLE-ENGINEERING-CERTIFIED-ROUTE"
+      ],
+      "source": "ENGINEERING_LIBRARY",
+      "classification": "engineering_draft",
+      "confidence": 0.96,
+      "lifecycle": "CERTIFIED",
+      "createdDate": "2026-06-30T12:57:56.895Z",
+      "modifiedDate": "2026-06-30T12:57:56.895Z",
+      "createdAt": "2026-06-30T12:57:56.895Z",
+      "updatedAt": "2026-06-30T12:57:56.895Z",
+      "metadata": {
+        "noDuplicateRuntimeObject": true,
+        "proposalRecordId": "PROPOSAL-GOOGLE-29M",
+        "certifiedRouteId": "CR-GOOGLE-29M"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "REL-GOOGLE-PROPOSAL-ENGINEERING",
+      "relationshipType": "CREATED_ENGINEERING_DRAFT",
+      "fromRuntimeId": "PROPOSAL-GOOGLE-29M",
+      "toRuntimeId": "ENG-GOOGLE-29M",
+      "authority": "RUNTIME_GRAPH",
+      "organizationId": "org-teralinx",
+      "customerId": "customer-google",
+      "evidenceIds": [
+        "EVID-GOOGLE-CUSTOMER-APPROVAL"
+      ]
+    },
+    {
+      "relationshipId": "REL-GOOGLE-ENGINEERING-CERTIFIED-ROUTE",
+      "relationshipType": "CERTIFIED_ROUTE",
+      "fromRuntimeId": "ENG-GOOGLE-29M",
+      "toRuntimeId": "CR-GOOGLE-29M",
+      "authority": "RUNTIME_GRAPH",
+      "organizationId": "org-teralinx",
+      "customerId": "customer-google",
+      "evidenceIds": [
+        "EVID-GOOGLE-ENG-CERT"
+      ]
+    }
+  ],
+  "validationReports": [
+    {
+      "validationId": "VAL-GOOGLE-ENGINEERING-CERTIFIED",
+      "status": "PASS",
+      "checks": [
+        "engineering_after_customer_approval",
+        "certified_route_required",
+        "route_not_direct_fallback"
+      ]
+    }
+  ],
+  "history": [
+    {
+      "historyId": "HIST-GOOGLE-ENGINEERING-CERTIFIED",
+      "eventType": "runtime.engineering.certified",
+      "actor": "Kyle",
+      "actorId": "teralinx-user-kyle",
+      "objectType": "EngineeringDraft",
+      "objectId": "ENG-GOOGLE-29M",
+      "organizationId": "org-teralinx",
+      "workspaceId": "workspace-teralinx-kyle"
+    }
+  ],
+  "status": "COMMITTED",
+  "committedAt": "2026-06-30T12:57:56.896Z",
+  "updatedAt": "2026-06-30T12:57:56.896Z",
+  "evidenceIds": [
+    "EVID-GOOGLE-ENG-CERT"
+  ],
+  "inventoryIds": [],
+  "runtimeObjectIds": [
+    "ENG-GOOGLE-29M"
+  ],
+  "relationshipIds": [
+    "REL-GOOGLE-PROPOSAL-ENGINEERING",
+    "REL-GOOGLE-ENGINEERING-CERTIFIED-ROUTE"
+  ],
+  "validationReportIds": [
+    "VAL-GOOGLE-ENGINEERING-CERTIFIED"
+  ],
+  "historyIds": [
+    "HIST-GOOGLE-ENGINEERING-CERTIFIED",
+    "COMMIT-GOOGLE-ENGINEERING-CERTIFIED-history"
+  ],
+  "connectorIds": []
+}

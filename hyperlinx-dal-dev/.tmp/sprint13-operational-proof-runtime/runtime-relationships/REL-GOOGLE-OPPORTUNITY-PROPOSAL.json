@@ -1,0 +1,15 @@
+{
+  "relationshipId": "REL-GOOGLE-OPPORTUNITY-PROPOSAL",
+  "relationshipType": "GENERATED_PROPOSAL",
+  "fromRuntimeId": "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+  "toRuntimeId": "PROPOSAL-GOOGLE-29M",
+  "authority": "RUNTIME_GRAPH",
+  "organizationId": "org-teralinx",
+  "customerId": "customer-google",
+  "evidenceIds": [
+    "EVID-GOOGLE-COMMERCIAL-DRAFT"
+  ],
+  "version": 1,
+  "createdAt": "2026-06-30T12:57:56.882Z",
+  "updatedAt": "2026-06-30T12:57:56.882Z"
+}

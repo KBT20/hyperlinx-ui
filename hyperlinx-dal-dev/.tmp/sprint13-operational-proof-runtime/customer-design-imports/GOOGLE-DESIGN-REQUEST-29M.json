@@ -1,0 +1,73 @@
+{
+  "importId": "GOOGLE-DESIGN-REQUEST-29M",
+  "designId": "GOOGLE-DESIGN-REQUEST-29M",
+  "accountId": "customer-google",
+  "customerName": "Google",
+  "sourceFileName": "google_29m_design_request.geojson",
+  "uploadedBy": "google-participant-001",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-google-customer",
+  "routes": [
+    {
+      "routeId": "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001",
+      "name": "Google $29M Requested Extension",
+      "geometry": [
+        {
+          "longitude": -97.7421,
+          "latitude": 30.2672
+        },
+        {
+          "longitude": -97.7218,
+          "latitude": 30.2824
+        },
+        {
+          "longitude": -97.7011,
+          "latitude": 30.2978
+        },
+        {
+          "longitude": -97.6813,
+          "latitude": 30.3142
+        }
+      ],
+      "dalGeometry": [
+        [
+          -97.7421,
+          30.2672
+        ],
+        [
+          -97.7218,
+          30.2824
+        ],
+        [
+          -97.7011,
+          30.2978
+        ],
+        [
+          -97.6813,
+          30.3142
+        ]
+      ],
+      "folderPath": [
+        "Google",
+        "Design Requests"
+      ]
+    }
+  ],
+  "objects": [],
+  "polygons": [],
+  "runtimeEvidenceIds": [
+    "EVID-GOOGLE-RFP-DESIGN"
+  ],
+  "runtimeObjectIds": [
+    "RUNTIME-DESIGN-ROUTE-GOOGLE-AZ-001"
+  ],
+  "runtimeRelationshipIds": [
+    "REL-GOOGLE-DESIGN-EXTENDS-EXISTING"
+  ],
+  "noScopeVersionCreation": true,
+  "noInventoryMutation": true,
+  "noCertifiedRouteAuthority": true,
+  "uploadedAt": "2026-06-30T12:57:56.821Z",
+  "createdAt": "2026-06-30T12:57:56.821Z",
+  "updatedAt": "2026-06-30T12:57:56.821Z"
+}

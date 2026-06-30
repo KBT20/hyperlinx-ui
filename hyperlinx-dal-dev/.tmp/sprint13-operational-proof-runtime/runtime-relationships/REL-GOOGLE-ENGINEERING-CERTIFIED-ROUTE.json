@@ -1,0 +1,15 @@
+{
+  "relationshipId": "REL-GOOGLE-ENGINEERING-CERTIFIED-ROUTE",
+  "relationshipType": "CERTIFIED_ROUTE",
+  "fromRuntimeId": "ENG-GOOGLE-29M",
+  "toRuntimeId": "CR-GOOGLE-29M",
+  "authority": "RUNTIME_GRAPH",
+  "organizationId": "org-teralinx",
+  "customerId": "customer-google",
+  "evidenceIds": [
+    "EVID-GOOGLE-ENG-CERT"
+  ],
+  "version": 1,
+  "createdAt": "2026-06-30T12:57:56.900Z",
+  "updatedAt": "2026-06-30T12:57:56.900Z"
+}

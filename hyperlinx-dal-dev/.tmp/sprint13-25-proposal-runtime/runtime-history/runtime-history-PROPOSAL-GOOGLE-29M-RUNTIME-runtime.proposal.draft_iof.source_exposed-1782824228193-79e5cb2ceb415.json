@@ -1,0 +1,72 @@
+{
+  "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.draft_iof.source_exposed-1782824228193-79e5cb2ceb415",
+  "eventType": "runtime.proposal.draft_iof.source_exposed",
+  "actor": "Ryan",
+  "actorId": "teralinx-user-ryan",
+  "objectType": "Proposal",
+  "objectId": "PROPOSAL-GOOGLE-29M-RUNTIME",
+  "objectName": "Google Austin 29M Commercial Proposal",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "timestamp": "2026-06-30T12:57:08.193Z",
+  "createdAt": "2026-06-30T12:57:08.193Z",
+  "updatedAt": "2026-06-30T12:57:08.193Z",
+  "details": "Approved Proposal references exposed for Sprint 13.3 Draft IOF package assembly. No IOF package was created.",
+  "metadata": {
+    "status": "READY_FOR_IOF_PACKAGE",
+    "approvalState": "APPROVED",
+    "visibility": "SHARED",
+    "lifecycleState": "DRAFT",
+    "version": 2,
+    "authority": {
+      "owner": "teralinx-user-ryan",
+      "contributors": [],
+      "reviewers": [],
+      "approvers": [],
+      "executives": [],
+      "customerReviewers": [
+        "google-participant-001"
+      ],
+      "salesEngineering": [],
+      "sharedWith": [
+        "google-participant-001"
+      ]
+    },
+    "source": {
+      "sourceType": "APPROVED_PROPOSAL_RUNTIME_OBJECT",
+      "proposalId": "PROPOSAL-GOOGLE-29M-RUNTIME",
+      "proposalNumber": "PROP-GOOGLE-29M-001",
+      "customerId": "customer-google",
+      "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+      "version": 2,
+      "runtimeObjectId": "RUNTIME-PROPOSAL-PROPOSAL-GOOGLE-29M-RUNTIME",
+      "runtimeObjectIds": [
+        "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+        "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+      ],
+      "runtimeRelationshipIds": [
+        "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+        "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+      ],
+      "runtimeEvidenceIds": [
+        "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+        "proposal-evidence-1782824228140-bd87adafaa9ff"
+      ],
+      "existingInventoryReferences": [
+        "RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+      ],
+      "customerDesignReferences": [
+        "CUSTOMER-DESIGN-GOOGLE-29M"
+      ],
+      "customerTwinReference": "CUSTOMER-TWIN-GOOGLE-AUSTIN",
+      "geometryReferences": [
+        "GEOMETRY-GOOGLE-AUSTIN-29M"
+      ],
+      "proposalDocumentReferences": [
+        "DOC-GOOGLE-COMMERCIAL-PREVIEW"
+      ],
+      "noIofPackageCreated": true,
+      "sprint13_3AssemblyRequired": true
+    }
+  }
+}

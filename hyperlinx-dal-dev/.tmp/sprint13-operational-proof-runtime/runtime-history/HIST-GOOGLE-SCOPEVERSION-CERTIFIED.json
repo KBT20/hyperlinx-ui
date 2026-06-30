@@ -1,0 +1,19 @@
+{
+  "historyId": "HIST-GOOGLE-SCOPEVERSION-CERTIFIED",
+  "eventType": "runtime.scopeversion.certified",
+  "actor": "Kyle",
+  "actorId": "teralinx-user-kyle",
+  "objectType": "ScopeVersion",
+  "objectId": "SV-GOOGLE-29M-PRODUCTION",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-kyle",
+  "payload": {
+    "productionTruth": true,
+    "marketplaceReady": true,
+    "controlReady": true,
+    "fieldReady": true
+  },
+  "timestamp": "2026-06-30T12:57:56.917Z",
+  "createdAt": "2026-06-30T12:57:56.917Z",
+  "updatedAt": "2026-06-30T12:57:56.917Z"
+}

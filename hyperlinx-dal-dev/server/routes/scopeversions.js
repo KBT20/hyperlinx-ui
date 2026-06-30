@@ -14,6 +14,7 @@ import {
   unwrapBody,
 } from "./_shared.js";
 import { calculateCompletionProjection } from "../kernel/completion-engine.js";
+import { requireAnyPermission } from "./authority.js";
 
 function normalizeScopeVersion(input = {}) {
   const raw = input.scopeVersion ?? input;
@@ -552,6 +553,12 @@ export async function handleScopeVersions(req, res, pathname) {
   const match = routeMatch(pathname, "/api/scopeversions");
   if (!match) return false;
   if (handleOptions(req, res)) return true;
+
+  if (req.method === "GET") {
+    if (!requireAnyPermission(req, res, ["workspace.commercial", "workspace.proposal", "workspace.engineering.read", "workspace.engineering.write", "scopeversion.authority", "proposal.read"], "You do not have authority to read ScopeVersions.")) return true;
+  } else if (["POST", "PUT", "DELETE"].includes(String(req.method)) || match.action === "certify" || match.action === "closures") {
+    if (!requireAnyPermission(req, res, ["scopeversion.authority"], "Only ScopeVersion authority may create or mutate ScopeVersions.")) return true;
+  }
 
   if (match.base && req.method === "GET") {
     jsonResponse(res, 200, { scopeVersions: sortedByUpdated((await listRecords(DIRS.scopeVersions)).map(normalizeScopeVersion)) });

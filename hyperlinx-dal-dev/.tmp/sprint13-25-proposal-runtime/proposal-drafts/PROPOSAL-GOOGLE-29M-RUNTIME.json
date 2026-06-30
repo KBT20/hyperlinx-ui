@@ -1,0 +1,478 @@
+{
+  "proposalId": "PROPOSAL-GOOGLE-29M-RUNTIME",
+  "proposalRecordId": "PROPOSAL-GOOGLE-29M-RUNTIME",
+  "proposalRecordType": "PROPOSAL_RUNTIME_OBJECT",
+  "proposalNumber": "PROP-GOOGLE-29M-001",
+  "customerId": "customer-google",
+  "accountId": "google",
+  "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-teralinx-ryan",
+  "ownerId": "teralinx-user-ryan",
+  "commercialOwnerId": "teralinx-user-ryan",
+  "assignedCustomerUsers": [
+    "google-participant-001"
+  ],
+  "visibility": "SHARED",
+  "status": "READY_FOR_IOF_PACKAGE",
+  "title": "Google Austin 29M Commercial Proposal",
+  "summary": "Commercial proposal for the Google Austin 29 mile network extension.",
+  "executiveSummary": "Proposal is assembled from Runtime references and customer inventory evidence.",
+  "pricingSummary": {
+    "budgetCost": 11900000,
+    "sellPriceIru": 17800000,
+    "routeMiles": 29
+  },
+  "marginSummary": {
+    "grossMarginDollars": 5900000,
+    "grossMarginPercent": 33.3
+  },
+  "confidenceSummary": {
+    "commercialReadiness": 88,
+    "runtimeHealth": "PASS"
+  },
+  "commercialAssumptionIds": [
+    "ASSUMPTION-GOOGLE-AUSTIN-CIVIL-MIX"
+  ],
+  "dealPointIds": [
+    "DEALPOINT-GOOGLE-IRU",
+    "DEALPOINT-GOOGLE-SLA"
+  ],
+  "runtimeObjectIds": [
+    "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+    "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+  ],
+  "runtimeRelationshipIds": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+  ],
+  "runtimeEvidenceIds": [
+    "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+    "proposal-evidence-1782824228140-bd87adafaa9ff"
+  ],
+  "existingInventoryReferences": [
+    "RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+  ],
+  "customerDesignReferences": [
+    "CUSTOMER-DESIGN-GOOGLE-29M"
+  ],
+  "customerTwinReference": "CUSTOMER-TWIN-GOOGLE-AUSTIN",
+  "geometryReferences": [
+    "GEOMETRY-GOOGLE-AUSTIN-29M"
+  ],
+  "proposalDocumentReferences": [
+    "DOC-GOOGLE-COMMERCIAL-PREVIEW"
+  ],
+  "attachments": [
+    {
+      "attachmentId": "proposal-attachment-1782824228145-bd5f9b4ff5856",
+      "evidenceId": "proposal-evidence-1782824228140-bd87adafaa9ff",
+      "sourceName": "Google review notes.pdf",
+      "uploadedById": "google-participant-001",
+      "uploadedBy": "Google Customer",
+      "uploadedAt": "2026-06-30T12:57:08.140Z",
+      "metadata": {
+        "reviewRound": 1
+      }
+    }
+  ],
+  "comments": [
+    {
+      "commentId": "proposal-comment-1782824228127-cd702e7a1f842",
+      "authorId": "google-participant-001",
+      "author": "Google Customer",
+      "authorRole": "CUSTOMER_PARTICIPANT",
+      "customerId": "customer-google",
+      "text": "Customer requests SLA clarification.",
+      "createdAt": "2026-06-30T12:57:08.127Z",
+      "updatedAt": "2026-06-30T12:57:08.127Z",
+      "visibility": "SHARED",
+      "resolved": false
+    },
+    {
+      "commentId": "proposal-comment-1782824228155-0918b52fa6029",
+      "authorId": "google-participant-001",
+      "author": "Google Customer",
+      "authorRole": "CUSTOMER_PARTICIPANT",
+      "customerId": "customer-google",
+      "text": "Revise diversity assumption and resubmit.",
+      "createdAt": "2026-06-30T12:57:08.155Z",
+      "updatedAt": "2026-06-30T12:57:08.155Z",
+      "visibility": "SHARED",
+      "resolved": false,
+      "action": "REQUEST_CHANGES"
+    }
+  ],
+  "reviewers": [],
+  "approvalState": "APPROVED",
+  "version": 2,
+  "noScopeVersionCreation": true,
+  "noInventoryMutation": true,
+  "objectId": "PROPOSAL-GOOGLE-29M-RUNTIME",
+  "objectType": "PROPOSAL",
+  "customer": "customer-google",
+  "organization": "Teralinx",
+  "workspace": "workspace-teralinx-ryan",
+  "owner": "Ryan",
+  "commercialOwner": "Ryan",
+  "createdBy": "Ryan",
+  "createdById": "teralinx-user-ryan",
+  "assignedTo": [
+    "google-participant-001"
+  ],
+  "assignment": {
+    "owner": "teralinx-user-ryan",
+    "contributors": [],
+    "reviewers": [],
+    "approvers": [],
+    "executives": [],
+    "customerReviewers": [
+      "google-participant-001"
+    ],
+    "salesEngineering": []
+  },
+  "authority": {
+    "owner": "teralinx-user-ryan",
+    "contributors": [],
+    "reviewers": [],
+    "approvers": [],
+    "executives": [],
+    "customerReviewers": [
+      "google-participant-001"
+    ],
+    "salesEngineering": [],
+    "sharedWith": [
+      "google-participant-001"
+    ]
+  },
+  "lifecycleState": "DRAFT",
+  "runtimeObjectId": "RUNTIME-PROPOSAL-PROPOSAL-GOOGLE-29M-RUNTIME",
+  "relationshipLinks": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+  ],
+  "relationshipIds": [
+    "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+    "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+  ],
+  "evidenceLinks": [
+    "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+    "proposal-evidence-1782824228140-bd87adafaa9ff"
+  ],
+  "evidenceIds": [
+    "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+    "proposal-evidence-1782824228140-bd87adafaa9ff"
+  ],
+  "approvals": [
+    {
+      "approvalId": "proposal-approval-1782824228181-ec6e98a465715",
+      "approverId": "google-participant-001",
+      "approver": "Google Customer",
+      "customerId": "customer-google",
+      "decision": "APPROVED",
+      "comment": "Approved for Draft IOF package readiness.",
+      "createdAt": "2026-06-30T12:57:08.181Z"
+    }
+  ],
+  "history": [
+    {
+      "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.saved-1782824228090-b9fba71c6c25",
+      "eventType": "runtime.proposal.saved",
+      "actorId": "teralinx-user-ryan",
+      "actor": "Ryan",
+      "timestamp": "2026-06-30T12:57:08.089Z",
+      "details": "Proposal saved with owner, workspace, visibility, authority, lifecycle, evidence, and relationship metadata.",
+      "metadata": {}
+    },
+    {
+      "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.submitted.customer-1782824228114-fd8d889308d2e",
+      "eventType": "runtime.proposal.submitted.customer",
+      "actorId": "teralinx-user-ryan",
+      "actor": "Ryan",
+      "timestamp": "2026-06-30T12:57:08.114Z",
+      "details": "Proposal submitted for customer review.",
+      "metadata": {
+        "assignedCustomerUsers": [
+          "google-participant-001"
+        ]
+      }
+    },
+    {
+      "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.comment.created-1782824228128-a722f92fbe8f1",
+      "eventType": "runtime.proposal.comment.created",
+      "actorId": "google-participant-001",
+      "actor": "Google Customer",
+      "timestamp": "2026-06-30T12:57:08.128Z",
+      "details": "Proposal collaboration comment recorded as Runtime History.",
+      "metadata": {
+        "commentId": "proposal-comment-1782824228127-cd702e7a1f842"
+      }
+    },
+    {
+      "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.evidence.uploaded-1782824228146-2394604698adc",
+      "eventType": "runtime.proposal.evidence.uploaded",
+      "actorId": "google-participant-001",
+      "actor": "Google Customer",
+      "timestamp": "2026-06-30T12:57:08.146Z",
+      "details": "Proposal evidence uploaded and registered in the Runtime Evidence Registry.",
+      "metadata": {
+        "evidenceId": "proposal-evidence-1782824228140-bd87adafaa9ff",
+        "attachmentId": "proposal-attachment-1782824228145-bd5f9b4ff5856"
+      }
+    },
+    {
+      "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.customer.requested_changes-1782824228155-1ad7ca60b6149",
+      "eventType": "runtime.proposal.customer.requested_changes",
+      "actorId": "google-participant-001",
+      "actor": "Google Customer",
+      "timestamp": "2026-06-30T12:57:08.155Z",
+      "details": "Customer requested proposal changes.",
+      "metadata": {
+        "commentId": "proposal-comment-1782824228155-0918b52fa6029"
+      }
+    },
+    {
+      "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.revision.created-1782824228164-a2306f63fe339",
+      "eventType": "runtime.proposal.revision.created",
+      "actorId": "teralinx-user-ryan",
+      "actor": "Ryan",
+      "timestamp": "2026-06-30T12:57:08.164Z",
+      "details": "v2 addresses customer diversity assumption.",
+      "metadata": {
+        "version": 2
+      }
+    },
+    {
+      "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.submitted.customer-1782824228172-9bad0e38d8a71",
+      "eventType": "runtime.proposal.submitted.customer",
+      "actorId": "teralinx-user-ryan",
+      "actor": "Ryan",
+      "timestamp": "2026-06-30T12:57:08.172Z",
+      "details": "Proposal submitted for customer review.",
+      "metadata": {
+        "assignedCustomerUsers": [
+          "google-participant-001"
+        ]
+      }
+    },
+    {
+      "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.customer.approved-1782824228182-03fe84e87a535",
+      "eventType": "runtime.proposal.customer.approved",
+      "actorId": "google-participant-001",
+      "actor": "Google Customer",
+      "timestamp": "2026-06-30T12:57:08.182Z",
+      "details": "Customer approved the commercial proposal. Draft IOF readiness may now be evaluated.",
+      "metadata": {
+        "approvalId": "proposal-approval-1782824228181-ec6e98a465715"
+      }
+    },
+    {
+      "historyId": "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.draft_iof.source_exposed-1782824228193-79e5cb2ceb415",
+      "eventType": "runtime.proposal.draft_iof.source_exposed",
+      "actorId": "teralinx-user-ryan",
+      "actor": "Ryan",
+      "timestamp": "2026-06-30T12:57:08.193Z",
+      "details": "Approved Proposal references exposed for Sprint 13.3 Draft IOF package assembly. No IOF package was created.",
+      "metadata": {
+        "source": {
+          "sourceType": "APPROVED_PROPOSAL_RUNTIME_OBJECT",
+          "proposalId": "PROPOSAL-GOOGLE-29M-RUNTIME",
+          "proposalNumber": "PROP-GOOGLE-29M-001",
+          "customerId": "customer-google",
+          "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+          "version": 2,
+          "runtimeObjectId": "RUNTIME-PROPOSAL-PROPOSAL-GOOGLE-29M-RUNTIME",
+          "runtimeObjectIds": [
+            "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+            "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+          ],
+          "runtimeRelationshipIds": [
+            "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+            "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+          ],
+          "runtimeEvidenceIds": [
+            "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+            "proposal-evidence-1782824228140-bd87adafaa9ff"
+          ],
+          "existingInventoryReferences": [
+            "RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+          ],
+          "customerDesignReferences": [
+            "CUSTOMER-DESIGN-GOOGLE-29M"
+          ],
+          "customerTwinReference": "CUSTOMER-TWIN-GOOGLE-AUSTIN",
+          "geometryReferences": [
+            "GEOMETRY-GOOGLE-AUSTIN-29M"
+          ],
+          "proposalDocumentReferences": [
+            "DOC-GOOGLE-COMMERCIAL-PREVIEW"
+          ],
+          "noIofPackageCreated": true,
+          "sprint13_3AssemblyRequired": true
+        }
+      }
+    }
+  ],
+  "historyIds": [
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.saved-1782824228090-b9fba71c6c25",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.submitted.customer-1782824228114-fd8d889308d2e",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.comment.created-1782824228128-a722f92fbe8f1",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.evidence.uploaded-1782824228146-2394604698adc",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.customer.requested_changes-1782824228155-1ad7ca60b6149",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.revision.created-1782824228164-a2306f63fe339",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.submitted.customer-1782824228172-9bad0e38d8a71",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.customer.approved-1782824228182-03fe84e87a535",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.draft_iof.source_exposed-1782824228193-79e5cb2ceb415"
+  ],
+  "notifications": [
+    {
+      "notificationId": "proposal-notification-1782824228114-0df21cfbca80c",
+      "userId": "google-participant-001",
+      "type": "PROPOSAL_CUSTOMER_REVIEW",
+      "message": "Google Austin 29M Commercial Proposal is ready for customer review.",
+      "createdAt": "2026-06-30T12:57:08.114Z",
+      "read": false
+    },
+    {
+      "notificationId": "proposal-notification-1782824228172-25f1713a2d10c",
+      "userId": "google-participant-001",
+      "type": "PROPOSAL_CUSTOMER_REVIEW",
+      "message": "Google Austin 29M Commercial Proposal is ready for customer review.",
+      "createdAt": "2026-06-30T12:57:08.172Z",
+      "read": false
+    }
+  ],
+  "createdDate": "2026-06-30T12:57:08.087Z",
+  "modifiedDate": "2026-06-30T12:57:08.193Z",
+  "createdAt": "2026-06-30T12:57:08.087Z",
+  "updatedAt": "2026-06-30T12:57:08.193Z",
+  "versions": [
+    {
+      "versionId": "PROPOSAL-GOOGLE-29M-RUNTIME-v1",
+      "version": 1,
+      "authorId": "teralinx-user-ryan",
+      "author": "Ryan",
+      "reason": "Initial commercial proposal runtime version.",
+      "changedRuntimeObjectIds": [],
+      "changedDealPointIds": [],
+      "changedPricingFields": [],
+      "changedGeometryReferences": [],
+      "createdAt": "2026-06-30T12:57:08.089Z",
+      "timestamp": "2026-06-30T12:57:08.089Z"
+    },
+    {
+      "versionId": "PROPOSAL-GOOGLE-29M-RUNTIME-v2",
+      "version": 2,
+      "authorId": "teralinx-user-ryan",
+      "author": "Ryan",
+      "reason": "v2 addresses customer diversity assumption.",
+      "changedRuntimeObjectIds": [
+        "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+      ],
+      "changedDealPointIds": [
+        "DEALPOINT-GOOGLE-SLA"
+      ],
+      "changedPricingFields": [
+        "pricingSummary"
+      ],
+      "changedGeometryReferences": [
+        "GEOMETRY-GOOGLE-AUSTIN-29M"
+      ],
+      "createdAt": "2026-06-30T12:57:08.164Z",
+      "timestamp": "2026-06-30T12:57:08.164Z"
+    }
+  ],
+  "readiness": {
+    "proposalId": "PROPOSAL-GOOGLE-29M-RUNTIME",
+    "status": "READY",
+    "canCreateDraftIofPackage": true,
+    "customerApproved": true,
+    "proposalComplete": true,
+    "runtimeValid": true,
+    "commercial": {
+      "status": "PASS",
+      "missingInformation": [],
+      "dealPointCount": 2,
+      "pricingSummaryPresent": true
+    },
+    "customer": {
+      "status": "APPROVED",
+      "assignedCustomerUsers": [
+        "google-participant-001"
+      ],
+      "comments": 2,
+      "attachments": 1
+    },
+    "engineering": {
+      "status": "READY_FOR_DRAFT_IOF",
+      "runtimeObjectCount": 2,
+      "relationshipCount": 2,
+      "geometryReferenceCount": 1
+    },
+    "marketplace": {
+      "status": "REFERENCE_ONLY",
+      "recommendation": "Use approved Proposal references as Sprint 13.3 Draft IOF source input."
+    },
+    "runtimeHealth": {
+      "status": "PASS",
+      "evidenceCount": 2,
+      "existingInventoryReferences": 1,
+      "customerTwinReference": "CUSTOMER-TWIN-GOOGLE-AUSTIN",
+      "duplicateObjectsCreated": false
+    },
+    "confidence": 100,
+    "missingInformation": [],
+    "blockingIssues": [],
+    "recommendation": "Expose Create Draft IOF Package source references without assembling a package."
+  },
+  "nextLifecycleAction": "CREATE_DRAFT_IOF_PACKAGE",
+  "activityHistory": [
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.saved-1782824228090-b9fba71c6c25",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.submitted.customer-1782824228114-fd8d889308d2e",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.comment.created-1782824228128-a722f92fbe8f1",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.evidence.uploaded-1782824228146-2394604698adc",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.customer.requested_changes-1782824228155-1ad7ca60b6149",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.revision.created-1782824228164-a2306f63fe339",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.submitted.customer-1782824228172-9bad0e38d8a71",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.customer.approved-1782824228182-03fe84e87a535",
+    "runtime-history-PROPOSAL-GOOGLE-29M-RUNTIME-runtime.proposal.draft_iof.source_exposed-1782824228193-79e5cb2ceb415"
+  ],
+  "submittedAt": "2026-06-30T12:57:08.172Z",
+  "approvedAt": "2026-06-30T12:57:08.181Z",
+  "draftIofPackageSource": {
+    "sourceType": "APPROVED_PROPOSAL_RUNTIME_OBJECT",
+    "proposalId": "PROPOSAL-GOOGLE-29M-RUNTIME",
+    "proposalNumber": "PROP-GOOGLE-29M-001",
+    "customerId": "customer-google",
+    "opportunityId": "GOOGLE-29M-OPPORTUNITY",
+    "version": 2,
+    "runtimeObjectId": "RUNTIME-PROPOSAL-PROPOSAL-GOOGLE-29M-RUNTIME",
+    "runtimeObjectIds": [
+      "RUNTIME-OPPORTUNITY-GOOGLE-29M-OPPORTUNITY",
+      "RUNTIME-ROUTE-GOOGLE-AUSTIN-EXISTING-001"
+    ],
+    "runtimeRelationshipIds": [
+      "DERIVED_FROM:GOOGLE-29M-OPPORTUNITY",
+      "REFERENCES_INVENTORY:RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+    ],
+    "runtimeEvidenceIds": [
+      "EVIDENCE-GOOGLE-COMMERCIAL-DRAFT",
+      "proposal-evidence-1782824228140-bd87adafaa9ff"
+    ],
+    "existingInventoryReferences": [
+      "RUNTIME-INVENTORY-CUSTOMER-GOOGLE-AUSTIN"
+    ],
+    "customerDesignReferences": [
+      "CUSTOMER-DESIGN-GOOGLE-29M"
+    ],
+    "customerTwinReference": "CUSTOMER-TWIN-GOOGLE-AUSTIN",
+    "geometryReferences": [
+      "GEOMETRY-GOOGLE-AUSTIN-29M"
+    ],
+    "proposalDocumentReferences": [
+      "DOC-GOOGLE-COMMERCIAL-PREVIEW"
+    ],
+    "noIofPackageCreated": true,
+    "sprint13_3AssemblyRequired": true
+  }
+}

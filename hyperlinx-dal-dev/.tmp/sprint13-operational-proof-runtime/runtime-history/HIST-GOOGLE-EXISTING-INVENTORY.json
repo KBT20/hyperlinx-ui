@@ -1,0 +1,13 @@
+{
+  "historyId": "HIST-GOOGLE-EXISTING-INVENTORY",
+  "eventType": "runtime.inventory.imported",
+  "actor": "Google Customer",
+  "actorId": "google-participant-001",
+  "objectType": "RuntimeInventory",
+  "objectId": "INV-GOOGLE-AUSTIN-EXISTING",
+  "organizationId": "org-teralinx",
+  "workspaceId": "workspace-google-customer",
+  "timestamp": "2026-06-30T12:57:56.816Z",
+  "createdAt": "2026-06-30T12:57:56.816Z",
+  "updatedAt": "2026-06-30T12:57:56.816Z"
+}

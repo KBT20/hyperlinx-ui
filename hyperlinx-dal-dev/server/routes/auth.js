@@ -1,13 +1,36 @@
-import { errorResponse, handleOptions, jsonResponse, nowIso, readRequestJson } from "./_shared.js";
+import { DIRS, errorResponse, handleOptions, jsonResponse, nowIso, persistRecord, readRequestJson } from "./_shared.js";
 
-const ALPHA_USERS = [
+export const TERALINX_ORGANIZATION_ID = "org-teralinx";
+
+function workspaceFor(user) {
+  const timestamp = nowIso();
+  return {
+    workspaceId: user.workspaceId,
+    userId: user.userId,
+    organizationId: user.organizationId,
+    name: `${user.name} Workspace`,
+    preferences: user.preferences ?? {},
+    dashboard: user.dashboard ?? {},
+    recentActivity: [],
+    assignments: [],
+    notifications: user.notifications ?? [],
+    pinnedObjects: user.pinnedObjects ?? [],
+    createdAt: user.workspaceCreatedAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+export const ALPHA_USERS = [
   {
     userId: "teralinx-user-kyle",
+    organizationId: TERALINX_ORGANIZATION_ID,
+    workspaceId: "workspace-teralinx-kyle",
     username: "kyle",
     password: "kyle-alpha",
     name: "Kyle",
     title: "Administrator / COO",
     role: "ADMINISTRATOR_COO",
+    participantType: "EXECUTIVE",
     organization: "Teralinx",
     permissions: [
       "platform.admin",
@@ -24,14 +47,31 @@ const ALPHA_USERS = [
       "opportunity.manage",
       "proposal.manage",
     ],
+    preferences: {
+      defaultWorkspace: "googleRfp",
+      dashboardDensity: "executive",
+    },
+    dashboard: {
+      sections: ["My Opportunities", "Assigned Work", "Recent Activity", "Pending Approvals", "Notifications", "Executive Overview", "Organization Pipeline", "Revenue", "Operational Intelligence"],
+      executiveOverview: true,
+      organizationPipeline: true,
+      revenue: true,
+      operationalIntelligence: true,
+    },
+    assignments: [],
+    notifications: [],
+    pinnedObjects: [],
   },
   {
     userId: "teralinx-user-ryan",
+    organizationId: TERALINX_ORGANIZATION_ID,
+    workspaceId: "workspace-teralinx-ryan",
     username: "ryan",
     password: "ryan-alpha",
     name: "Ryan",
     title: "CRO",
     role: "CRO",
+    participantType: "COMMERCIAL",
     organization: "Teralinx",
     permissions: [
       "workspace.translate",
@@ -42,14 +82,31 @@ const ALPHA_USERS = [
       "opportunity.manage",
       "proposal.manage",
     ],
+    preferences: {
+      defaultWorkspace: "googleRfp",
+      dashboardDensity: "commercial",
+    },
+    dashboard: {
+      sections: ["My Opportunities", "Assigned Work", "Recent Activity", "Pending Approvals", "Notifications"],
+      executiveOverview: false,
+      organizationPipeline: false,
+      revenue: false,
+      operationalIntelligence: false,
+    },
+    assignments: [],
+    notifications: [],
+    pinnedObjects: [],
   },
   {
     userId: "teralinx-user-fran",
+    organizationId: TERALINX_ORGANIZATION_ID,
+    workspaceId: "workspace-teralinx-fran",
     username: "fran",
     password: "fran-alpha",
     name: "Fran",
     title: "CEO",
     role: "CEO",
+    participantType: "EXECUTIVE",
     organization: "Teralinx",
     permissions: [
       "workspace.commercial",
@@ -60,12 +117,65 @@ const ALPHA_USERS = [
       "opportunity.read",
       "proposal.read",
     ],
+    preferences: {
+      defaultWorkspace: "googleRfp",
+      dashboardDensity: "review",
+    },
+    dashboard: {
+      sections: ["My Opportunities", "Assigned Work", "Recent Activity", "Pending Approvals", "Notifications"],
+      executiveOverview: false,
+      organizationPipeline: false,
+      revenue: false,
+      operationalIntelligence: false,
+    },
+    assignments: [],
+    notifications: [],
+    pinnedObjects: [],
+  },
+  {
+    userId: "google-participant-001",
+    organizationId: TERALINX_ORGANIZATION_ID,
+    workspaceId: "workspace-google-customer",
+    username: "google",
+    password: "google-alpha",
+    name: "Google Customer",
+    title: "Hyperscaler Participant",
+    role: "CUSTOMER_PARTICIPANT",
+    participantType: "CUSTOMER",
+    organization: "Teralinx",
+    customerId: "customer-google",
+    customerName: "Google",
+    permissions: [
+      "workspace.commercial",
+      "workspace.proposal",
+      "customerDesign.manage",
+      "opportunity.read",
+      "proposal.read",
+      "proposal.review",
+    ],
+    preferences: {
+      defaultWorkspace: "googleRfp",
+      dashboardDensity: "participant",
+    },
+    dashboard: {
+      sections: ["Assigned Work", "Recent Activity", "Pending Approvals", "Notifications"],
+      executiveOverview: false,
+      organizationPipeline: false,
+      revenue: false,
+      operationalIntelligence: false,
+    },
+    assignments: [],
+    notifications: [],
+    pinnedObjects: [],
   },
 ];
 
 function publicUser(user) {
   const { password, ...safe } = user;
-  return safe;
+  return {
+    ...safe,
+    workspace: workspaceFor(user),
+  };
 }
 
 function tokenFor(user) {
@@ -78,7 +188,7 @@ function tokenFor(user) {
   return Buffer.from(payload).toString("base64url");
 }
 
-function userFromBearerToken(req) {
+export function userFromBearerToken(req) {
   const authorization = String(req.headers.authorization ?? "");
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   if (!match) return null;
@@ -88,6 +198,22 @@ function userFromBearerToken(req) {
   } catch {
     return null;
   }
+}
+
+export function canAdministerRuntime(user) {
+  return Boolean(user?.permissions?.includes("platform.admin"));
+}
+
+export function userHasPermission(user, permission) {
+  return Boolean(user?.permissions?.includes(permission) || canAdministerRuntime(user));
+}
+
+export function runtimeWorkspaceForUser(user) {
+  return workspaceFor(user);
+}
+
+export function findAlphaUserById(userId) {
+  return ALPHA_USERS.find((user) => user.userId === userId) ?? null;
 }
 
 export async function handleAuth(req, res, pathname) {
@@ -104,9 +230,11 @@ export async function handleAuth(req, res, pathname) {
       errorResponse(res, 401, "Invalid Teralinx alpha credentials.");
       return true;
     }
+    await persistRecord(DIRS.runtimeWorkspaces, user.workspaceId, workspaceFor(user));
     jsonResponse(res, 200, {
       token: tokenFor(user),
       user: publicUser(user),
+      workspace: workspaceFor(user),
       authenticatedAt: nowIso(),
       provider: "TERALINX_ALPHA_INTERNAL",
     });
@@ -131,7 +259,25 @@ export async function handleAuth(req, res, pathname) {
     jsonResponse(res, 200, {
       authenticated: true,
       user: publicUser(user),
+      workspace: workspaceFor(user),
       provider: "TERALINX_ALPHA_INTERNAL",
+    });
+    return true;
+  }
+
+  if (normalizedPath === "/api/auth/workspace" && req.method === "GET") {
+    const user = userFromBearerToken(req);
+    if (!user) {
+      errorResponse(res, 401, "Authentication token is missing or invalid.");
+      return true;
+    }
+    jsonResponse(res, 200, {
+      workspace: workspaceFor(user),
+      hierarchy: {
+        tenant: user.organizationId,
+        user: user.userId,
+        workspace: user.workspaceId,
+      },
     });
     return true;
   }
