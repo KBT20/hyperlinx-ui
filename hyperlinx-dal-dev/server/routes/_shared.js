@@ -6,7 +6,7 @@ export const ROUTES_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const SERVER_ROOT = path.resolve(ROUTES_DIR, "..");
 export const PROJECT_ROOT = path.resolve(SERVER_ROOT, "..");
 
-export const PORT = Number(process.env.DAL_PORT ?? process.env.PORT ?? 0);
+export const PORT = Number(process.env.DAL_PORT ?? process.env.PORT ?? 3001);
 export const DATA_ROOT = process.env.DAL_DATA_ROOT
   ? path.resolve(process.env.DAL_DATA_ROOT)
   : path.join(SERVER_ROOT, "data");
