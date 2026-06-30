@@ -45,6 +45,7 @@ import type { IlaPlanningControls } from "../../commercial/IlaPlanningEngine";
 import { authorityModeConfidence, type ConstraintValue, type ConstraintAuthorityMode } from "../../commercial/ConstraintAuthority";
 import {
   archiveCommercialOpportunity,
+  advanceRuntimeLifecycleBridge,
   assembleDraftIofPackageFromProposal,
   approveProposalRuntimeObject,
   assignDraftIofPackageEngineer,
@@ -72,6 +73,7 @@ import {
   type DraftIofPackageRuntime,
   type EngineeringReviewQueueItem,
   type ProposalRuntimeObject,
+  type RuntimeLifecycleBridgeState,
 } from "../../api/teralinxRuntime";
 import { useDALState } from "../../dal/DALState";
 import { useTeralinxAuth } from "../../identity/TeralinxAuth";
@@ -2633,6 +2635,9 @@ export default function GoogleRfpWorkspace() {
   const [activeDraftIofPackage, setActiveDraftIofPackage] = useState<DraftIofPackageRuntime | null>(null);
   const [engineeringCertificationNotice, setEngineeringCertificationNotice] = useState("Engineering Certification queue is waiting for a Draft IOF Package.");
   const [engineeringCertificationPending, setEngineeringCertificationPending] = useState(false);
+  const [runtimeLifecycleState, setRuntimeLifecycleState] = useState<RuntimeLifecycleBridgeState | null>(null);
+  const [runtimeLifecycleNotice, setRuntimeLifecycleNotice] = useState("Runtime lifecycle bridge is waiting for a quote-ready commercial path.");
+  const [runtimeLifecyclePending, setRuntimeLifecyclePending] = useState(false);
   const [customerDrafts, setCustomerDrafts] = useState<CustomerDraftRecord[]>([]);
   const [customerReviewStatus, setCustomerReviewStatus] = useState<CustomerReviewStatus>("NOT_STARTED");
   const [acceptedProposal, setAcceptedProposal] = useState<AcceptedProposal | null>(null);
@@ -3299,6 +3304,102 @@ export default function GoogleRfpWorkspace() {
     if (nextNotice) setEngineeringCertificationNotice(nextNotice);
   }
 
+  function runtimeLifecycleBridgeInput(trigger = "QUOTE_READY_FOR_CUSTOMER", overrides: Record<string, unknown> = {}) {
+    const routePlan = activeLiveSession?.routePlan ?? selectedRoutePlans[0];
+    const geometry = activeLiveSession?.activeEditableRouteGeometry ?? routePlan?.stationedCorridor?.centerlineRoute.geometry ?? routePlan?.proposedGraph?.centerlineRoute?.geometry ?? [];
+    return {
+      trigger,
+      accountId: selectedAccount.accountId,
+      customerId: customerIdForAccount(selectedAccount.accountId),
+      customerName: selectedAccount.name,
+      organizationId: currentOrganizationId,
+      workspaceId: currentWorkspaceId,
+      ownerId: activeCommercialOpportunity?.ownerId ?? currentUserId,
+      opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId || routePlan?.routeRequirement.routeRequirementId || `COMMERCIAL-OPPORTUNITY-${selectedAccount.accountId}-QUOTE-READY`,
+      opportunity: activeCommercialOpportunity ?? {
+        name: `${selectedAccount.name} Runtime Lifecycle Opportunity`,
+        selectedScopeId: selectedScope.scopeId,
+        commercialDraftType,
+      },
+      commercialDraftId: activeCommercialOpportunity?.runtimeObjectId ? `COMMERCIAL-DRAFT-${activeCommercialOpportunity.opportunityId}` : undefined,
+      commercialDraft: selectedImportedCommercialDraft ?? commercialCorridorDraft ?? loadedCommercialDraftSnapshot ?? {
+        revision: accountSnapshots.length + 1,
+        routeId: routePlan?.routeRequirement.routeRequirementId,
+        draftType: commercialDraftType,
+      },
+      proposalId: activeProposalRuntime?.proposalId,
+      proposalNumber: activeProposalRuntime?.proposalNumber,
+      proposal: activeProposalRuntime ?? undefined,
+      title: activeProposalRuntime?.title ?? `${selectedAccount.name} ${routePlan?.routeRequirement.bidSegmentName ?? "Commercial"} Proposal`,
+      summary: activeProposalRuntime?.summary ?? `Runtime lifecycle bridge proposal for ${selectedAccount.name}.`,
+      executiveSummary: activeProposalRuntime?.executiveSummary ?? preview.executiveSummary,
+      pricingSummary: activeProposalRuntime?.pricingSummary ?? selectedPricingSummary.reconciliation,
+      marginSummary: activeProposalRuntime?.marginSummary ?? {
+        grossMarginDollars: selectedPricingSummary.reconciliation.grossMarginDollars,
+        grossMarginPercent: selectedPricingSummary.reconciliation.grossMarginPercent,
+      },
+      confidenceSummary: activeProposalRuntime?.confidenceSummary ?? {
+        commercialReadiness: selectedImportedCommercialDraft?.transparentEstimate.commercialReadiness.score ?? commercialCorridorDraft?.transparentEstimate.commercialReadiness.score ?? loadedCommercialDraftSnapshot?.transparentEstimate.commercialReadiness.score ?? opportunityScoutQuickQuote?.confidence ?? 0,
+      },
+      commercialAssumptionIds: activeProposalRuntime?.commercialAssumptionIds ?? [selectedAssumptionState.stateId],
+      dealPointIds: activeProposalRuntime?.dealPointIds ?? selectedScope.routeRequirementIds,
+      runtimeObjectIds: [
+        activeCommercialOpportunity?.runtimeObjectId,
+        selectedImportedCustomerDesignImport?.designImportId,
+        ...activeCommercialDraftNetworks.map((network) => network.networkId),
+        ...(activeProposalRuntime?.runtimeObjectIds ?? []),
+      ].filter(Boolean),
+      runtimeRelationshipIds: [
+        activeCommercialOpportunity?.opportunityId ? `DERIVED_FROM:${activeCommercialOpportunity.opportunityId}` : "",
+        routePlan?.routeRequirement.routeRequirementId ? `PROPOSES_ROUTE:${routePlan.routeRequirement.routeRequirementId}` : "",
+        ...(activeProposalRuntime?.runtimeRelationshipIds ?? []),
+      ].filter(Boolean),
+      runtimeEvidenceIds: activeProposalRuntime?.runtimeEvidenceIds ?? [],
+      existingInventoryReferences: activeProposalRuntime?.existingInventoryReferences ?? activeExistingReferenceNetworkIds,
+      customerDesignReferences: activeProposalRuntime?.customerDesignReferences ?? (selectedImportedCustomerDesignImport ? [selectedImportedCustomerDesignImport.designId] : []),
+      customerTwinReference: activeProposalRuntime?.customerTwinReference ?? accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
+      geometryReferences: activeProposalRuntime?.geometryReferences ?? [routePlan?.routeRequirement.routeRequirementId, ...geometry.map((coordinate, index) => `lifecycle-geometry:${index}:${coordinate.join(",")}`)].filter(Boolean).slice(0, 20),
+      proposalDocumentReferences: activeProposalRuntime?.proposalDocumentReferences ?? ["Runtime lifecycle proposal", "Commercial pricing summary"],
+      assignedCustomerUsers: activeProposalRuntime?.assignedCustomerUsers?.length ? activeProposalRuntime.assignedCustomerUsers : ["google-participant-001"],
+      assignedEngineerId: activeDraftIofPackage?.assignedEngineerId ?? "teralinx-user-kyle",
+      assignedEngineer: activeDraftIofPackage?.assignedEngineer ?? "Kyle",
+      priority: activeDraftIofPackage?.priority ?? "NORMAL",
+      ...overrides,
+    };
+  }
+
+  async function handleAdvanceRuntimeLifecycleBridge(trigger = "QUOTE_READY_FOR_CUSTOMER", overrides: Record<string, unknown> = {}) {
+    setRuntimeLifecyclePending(true);
+    try {
+      const result = await advanceRuntimeLifecycleBridge(runtimeLifecycleBridgeInput(trigger, overrides), session);
+      setRuntimeLifecycleState(result.lifecycle);
+      if (result.opportunity) {
+        const opportunity = result.opportunity as unknown as CommercialOpportunityRecord;
+        setCommercialOpportunities((prev) => [opportunity, ...prev.filter((candidate) => candidate.opportunityId !== opportunity.opportunityId)]);
+        setActiveCommercialOpportunityId(opportunity.opportunityId);
+      }
+      if (result.proposal) upsertProposalRuntimeRecord(result.proposal);
+      if (result.draftPackage) setActiveDraftIofPackage(result.draftPackage);
+      if (result.engineeringQueueItem || result.draftPackage) await refreshEngineeringReviewQueue("Engineering Review Queue refreshed from Runtime lifecycle bridge.");
+      setRuntimeLifecycleNotice(`${result.lifecycle.status.replaceAll("_", " ")} via ${result.lifecycle.currentRuntimeObject || "Runtime lifecycle bridge"}.`);
+    } catch (error) {
+      setRuntimeLifecycleNotice(`Runtime lifecycle bridge failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setRuntimeLifecyclePending(false);
+    }
+  }
+
+  useEffect(() => {
+    if (
+      opportunityWorkflowState !== "QUICK_QUOTE_READY" ||
+      runtimeLifecycleState ||
+      runtimeLifecyclePending ||
+      !session ||
+      !canManageProposalRuntime
+    ) return;
+    void handleAdvanceRuntimeLifecycleBridge("QUOTE_READY_FOR_CUSTOMER");
+  }, [opportunityWorkflowState, runtimeLifecycleState?.lifecycleId, runtimeLifecyclePending, session?.token, canManageProposalRuntime]);
+
   async function saveCurrentRuntimeProposal(status: ProposalRuntimeObject["status"] = "COMMERCIAL_DRAFT") {
     if (!canManageProposalRuntime) {
       setProposalRuntimeNotice("Only commercial proposal authority may create or update Proposal Runtime Objects.");
@@ -3521,6 +3622,7 @@ export default function GoogleRfpWorkspace() {
       const saved = await approveProposalRuntimeObject(activeProposalRuntime.proposalId, { comment }, session);
       upsertProposalRuntimeRecord(saved);
       setProposalRuntimeNotice(`${saved.proposalNumber} approved by customer.`);
+      await handleAdvanceRuntimeLifecycleBridge("CUSTOMER_APPROVED", { proposalId: saved.proposalId, proposal: saved });
     } catch (error) {
       setProposalRuntimeNotice(`Approval failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -5693,6 +5795,56 @@ export default function GoogleRfpWorkspace() {
       </div>
 
       <div className="dal-status commercial-opportunity-notice">{opportunityNotice}</div>
+
+      <section className="dal-panel runtime-lifecycle-bridge-panel">
+        <div className="dal-panel-title-row">
+          <div>
+            <h3>Runtime Lifecycle Bridge</h3>
+            <span>{runtimeLifecycleNotice}</span>
+          </div>
+          <span className={`dal-badge ${runtimeLifecycleState?.status === "ENGINEERING_REVIEW_QUEUED" ? "pass" : runtimeLifecycleState ? "warning" : "fail"}`}>
+            {runtimeLifecycleState?.status?.replaceAll("_", " ") ?? "Not synced"}
+          </span>
+        </div>
+        <div className="teralinx-summary-grid">
+          <div><span>Lifecycle Progress</span><b>{runtimeLifecycleState ? `${runtimeLifecycleState.lifecycleProgress.filter((item) => item.complete).length}/${runtimeLifecycleState.lifecycleProgress.length}` : "0/10"}</b></div>
+          <div><span>Current Authority</span><b>{runtimeLifecycleState?.currentAuthority?.replaceAll("_", " ") ?? "Commercial Planning"}</b></div>
+          <div><span>Current Owner</span><b>{runtimeLifecycleState?.currentOwner ?? compactOwner}</b></div>
+          <div><span>Current Workspace</span><b>{runtimeLifecycleState?.currentWorkspace ?? currentWorkspaceId}</b></div>
+          <div><span>Runtime Object</span><b>{runtimeLifecycleState?.currentRuntimeObject || activeCommercialOpportunity?.runtimeObjectId || "Not bridged"}</b></div>
+          <div><span>Current Proposal</span><b>{runtimeLifecycleState?.currentProposal || activeProposalRuntime?.proposalId || "Not generated"}</b></div>
+          <div><span>Current IOF Package</span><b>{runtimeLifecycleState?.currentIofPackage || activeDraftIofPackage?.packageId || "Not assembled"}</b></div>
+          <div><span>Engineering Status</span><b>{runtimeLifecycleState?.currentEngineeringStatus?.replaceAll("_", " ") ?? "Not queued"}</b></div>
+        </div>
+        <div className="dal-actions">
+          <button type="button" onClick={() => void handleAdvanceRuntimeLifecycleBridge("QUOTE_READY_FOR_CUSTOMER")} disabled={!session || runtimeLifecyclePending}>
+            Sync Lifecycle
+          </button>
+          <button type="button" className="secondary" onClick={() => void handleAdvanceRuntimeLifecycleBridge("CUSTOMER_APPROVED")} disabled={!session || !activeProposalRuntime || runtimeLifecyclePending}>
+            Refresh Approval Bridge
+          </button>
+        </div>
+        <div className="dal-list">
+          {(runtimeLifecycleState?.lifecycleProgress ?? [
+            "CUSTOMER_TWIN_READY",
+            "COMMERCIAL_OPPORTUNITY_CREATED",
+            "COMMERCIAL_DRAFT_CREATED",
+            "PROPOSAL_CREATED",
+            "PROPOSAL_SUBMITTED",
+            "PROPOSAL_ASSIGNED",
+            "CUSTOMER_REVIEW_STARTED",
+            "CUSTOMER_APPROVED",
+            "DRAFT_IOF_PACKAGE_CREATED",
+            "ENGINEERING_REVIEW_QUEUED",
+          ].map((eventType) => ({ eventType, complete: false, timestamp: "", objectId: "" }))).map((item) => (
+            <div className="dal-list-row teralinx-list-row" key={item.eventType}>
+              <b>{item.eventType.replaceAll("_", " ")}</b>
+              <span>{item.complete ? "Complete" : "Waiting"}</span>
+              <small>{item.objectId || item.timestamp || "Runtime will reconnect or create this stage when authority exists."}</small>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="runtime-workspace-dashboard" aria-label="Runtime workspace dashboard">
         <div className="runtime-dashboard-title">

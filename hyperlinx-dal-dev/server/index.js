@@ -21,6 +21,7 @@ import { handleOpportunitySeeds } from "./routes/opportunity-seeds.js";
 import { handleProposalDrafts } from "./routes/proposal-drafts.js";
 import { handleRuntime } from "./routes/runtime.js";
 import { handleRuntimeFoundation } from "./routes/runtime-foundation.js";
+import { handleRuntimeLifecycleBridge } from "./routes/runtime-lifecycle-bridge.js";
 import { handleScopeVersions } from "./routes/scopeversions.js";
 import { handleTwinState } from "./routes/twin-state.js";
 
@@ -37,6 +38,7 @@ const routes = [
   handleEngineeringCertification,
   handleProposalDrafts,
   handleRuntimeFoundation,
+  handleRuntimeLifecycleBridge,
   handleCandidateSites,
   handleOpportunitySeeds,
   handleInventoryGraphs,
@@ -112,6 +114,7 @@ const server = http.createServer(async (req, res) => {
           runtimeHistory: true,
           runtimeSearch: true,
           runtimeConnectors: true,
+          runtimeLifecycleBridge: true,
           translationCommits: true,
           activity: true,
           customerDesignImports: true,

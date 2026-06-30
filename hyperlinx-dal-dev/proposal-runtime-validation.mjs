@@ -319,6 +319,7 @@ expectStatus("runtime:history:list", response, 200);
 const history = response.json.history ?? [];
 assertProof("runtime:history:comment-event", history.some((item) => item.eventType === "runtime.proposal.comment.created"), { historyCount: history.length });
 assertProof("runtime:history:approval-event", history.some((item) => item.eventType === "runtime.proposal.customer.approved"), { historyCount: history.length });
+assertProof("runtime:history:lifecycle-approval-event", history.some((item) => item.eventType === "CUSTOMER_APPROVED"), { historyCount: history.length });
 assertProof("runtime:history:source-exposed-event", history.some((item) => item.eventType === "runtime.proposal.draft_iof.source_exposed"), { historyCount: history.length });
 
 response = await runtimeRequest("GET", "/api/runtime/evidence", undefined, ryan);
@@ -327,8 +328,8 @@ const evidence = response.json.evidence ?? [];
 assertProof("runtime:evidence:customer-upload-registered", evidence.some((item) => item.sourceName === "Google review notes.pdf" && item.authority === "CUSTOMER_EVIDENCE"), { evidence });
 
 response = await runtimeRequest("GET", "/api/iof-packages", undefined, kyle);
-expectStatus("iof:list:kyle:no-packages-created", response, 200);
-assertProof("iof:no-package-created-by-proposal-endpoint", (response.json.iofPackages ?? []).length === 0, response.json);
+expectStatus("iof:list:kyle:approval-package-created", response, 200);
+assertProof("iof:package-created-by-approval-bridge", (response.json.iofPackages ?? []).filter((item) => item.proposalId === IDS.proposal).length === 1, response.json);
 
 response = await runtimeRequest("GET", "/api/scopeversions", undefined, kyle);
 expectStatus("scopeversion:list:kyle:no-scopeversions-created", response, 200);

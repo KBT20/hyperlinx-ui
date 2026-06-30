@@ -402,6 +402,39 @@ export type DraftIofPackageRuntime = {
   [key: string]: unknown;
 };
 
+export type RuntimeLifecycleProgressItem = {
+  eventType: string;
+  complete: boolean;
+  timestamp: string;
+  objectId: string;
+};
+
+export type RuntimeLifecycleBridgeState = {
+  lifecycleId: string;
+  status: string;
+  lifecycleProgress: RuntimeLifecycleProgressItem[];
+  currentAuthority: string;
+  currentOwner: string;
+  currentWorkspace: string;
+  currentRuntimeObject: string;
+  currentProposal: string;
+  currentIofPackage: string;
+  currentEngineeringStatus: string;
+  events?: Array<Record<string, unknown>>;
+};
+
+export type RuntimeLifecycleBridgeResult = {
+  ok: boolean;
+  trigger: string;
+  lifecycle: RuntimeLifecycleBridgeState;
+  customerTwin?: Record<string, unknown>;
+  opportunity?: Record<string, unknown>;
+  commercialDraft?: Record<string, unknown>;
+  proposal?: ProposalRuntimeObject;
+  draftPackage?: DraftIofPackageRuntime | null;
+  engineeringQueueItem?: EngineeringReviewQueueItem | null;
+};
+
 export type CertifiedIofPackageRuntime = DraftIofPackageRuntime & {
   certifiedPackageId: string;
   sourcePackageId: string;
@@ -726,6 +759,17 @@ export async function createDraftIofPackageFromProposal(proposalId: string, sess
   }>(`/api/proposals/${encodeURIComponent(proposalId)}/create-draft-iof-package`, {
     method: "POST",
     headers: authHeaders(session, { "Content-Type": "application/json" }),
+  });
+}
+
+export async function advanceRuntimeLifecycleBridge(
+  input: Record<string, unknown>,
+  session?: TeralinxAuthSession | null,
+) {
+  return requestJson<RuntimeLifecycleBridgeResult>("/api/runtime/lifecycle/advance", {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
   });
 }
 

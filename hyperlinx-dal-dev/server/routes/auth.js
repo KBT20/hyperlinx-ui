@@ -1,4 +1,4 @@
-import { DIRS, errorResponse, handleOptions, jsonResponse, nowIso, persistRecord, readRequestJson } from "./_shared.js";
+import { DIRS, errorResponse, handleOptions, jsonResponse, loadRecord, nowIso, persistRecord, readRequestJson } from "./_shared.js";
 
 export const TERALINX_ORGANIZATION_ID = "org-teralinx";
 
@@ -17,6 +17,27 @@ function workspaceFor(user) {
     pinnedObjects: user.pinnedObjects ?? [],
     createdAt: user.workspaceCreatedAt ?? timestamp,
     updatedAt: timestamp,
+  };
+}
+
+function unique(values) {
+  return [...new Set((Array.isArray(values) ? values : []).filter(Boolean).map(String))];
+}
+
+async function persistedWorkspaceFor(user) {
+  const base = workspaceFor(user);
+  const existing = await loadRecord(DIRS.runtimeWorkspaces, user.workspaceId).catch(() => null);
+  if (!existing) return base;
+  return {
+    ...base,
+    ...existing,
+    preferences: { ...base.preferences, ...(existing.preferences ?? {}) },
+    dashboard: { ...base.dashboard, ...(existing.dashboard ?? {}) },
+    assignments: unique([...(base.assignments ?? []), ...(existing.assignments ?? [])]),
+    notifications: Array.isArray(existing.notifications) ? existing.notifications : base.notifications,
+    pinnedObjects: unique([...(base.pinnedObjects ?? []), ...(existing.pinnedObjects ?? [])]),
+    recentActivity: unique([...(existing.recentActivity ?? []), ...(base.recentActivity ?? [])]),
+    updatedAt: nowIso(),
   };
 }
 
@@ -230,11 +251,12 @@ export async function handleAuth(req, res, pathname) {
       errorResponse(res, 401, "Invalid Teralinx alpha credentials.");
       return true;
     }
-    await persistRecord(DIRS.runtimeWorkspaces, user.workspaceId, workspaceFor(user));
+    const workspace = await persistedWorkspaceFor(user);
+    await persistRecord(DIRS.runtimeWorkspaces, user.workspaceId, workspace);
     jsonResponse(res, 200, {
       token: tokenFor(user),
       user: publicUser(user),
-      workspace: workspaceFor(user),
+      workspace,
       authenticatedAt: nowIso(),
       provider: "TERALINX_ALPHA_INTERNAL",
     });
@@ -256,10 +278,11 @@ export async function handleAuth(req, res, pathname) {
       errorResponse(res, 401, "Authentication token is missing or invalid.");
       return true;
     }
+    const workspace = await persistedWorkspaceFor(user);
     jsonResponse(res, 200, {
       authenticated: true,
       user: publicUser(user),
-      workspace: workspaceFor(user),
+      workspace,
       provider: "TERALINX_ALPHA_INTERNAL",
     });
     return true;
@@ -271,8 +294,9 @@ export async function handleAuth(req, res, pathname) {
       errorResponse(res, 401, "Authentication token is missing or invalid.");
       return true;
     }
+    const workspace = await persistedWorkspaceFor(user);
     jsonResponse(res, 200, {
-      workspace: workspaceFor(user),
+      workspace,
       hierarchy: {
         tenant: user.organizationId,
         user: user.userId,

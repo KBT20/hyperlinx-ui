@@ -110,7 +110,7 @@ function lifecycleForStatus(status) {
   return "ACTIVE";
 }
 
-function normalizeCommercialOpportunity(record = {}, user, existing = null, options = {}) {
+export function normalizeCommercialOpportunity(record = {}, user, existing = null, options = {}) {
   const timestamp = options.timestamp ?? nowIso();
   const creating = !existing;
   const opportunityId = String(record.opportunityId ?? existing?.opportunityId ?? createId("commercial-opportunity"));
@@ -226,7 +226,7 @@ async function persistRuntimeMirror(record) {
   });
 }
 
-async function readOpportunity(id) {
+export async function readOpportunity(id) {
   return loadRecord(DIRS.commercialOpportunities, id);
 }
 
@@ -255,7 +255,7 @@ function runtimeHistoryEvent(record, user, eventType, details = "") {
   };
 }
 
-async function saveOpportunity(record, user, eventType = "runtime.opportunity.saved", details = "Opportunity saved to the governed Runtime Object Library.") {
+export async function saveOpportunity(record, user, eventType = "runtime.opportunity.saved", details = "Opportunity saved to the governed Runtime Object Library.") {
   const history = runtimeHistoryEvent(record, user, eventType, details);
   await persistRecord(DIRS.runtimeHistory, history.historyId, history);
   const recordWithHistory = {

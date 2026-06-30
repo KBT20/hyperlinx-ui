@@ -598,15 +598,15 @@ async function persistRuntimeMirror(record, user, type, sourceId, metadata = {})
     objectId: sourceId,
     objectType: type === "SCOPEVERSION" ? "SCOPE_VERSION" : "ENGINEERING",
     name: record.name ?? sourceId,
-    owner: user.name,
-    ownerId: user.userId,
-    createdBy: user.name,
-    createdById: user.userId,
+    owner: record.owner ?? user.name,
+    ownerId: record.ownerId ?? user.userId,
+    createdBy: record.createdBy ?? user.name,
+    createdById: record.createdById ?? user.userId,
     assignedTo: unique([record.assignedEngineerId, user.userId]),
-    organization: user.organizationId,
-    organizationId: user.organizationId,
-    workspace: user.workspaceId,
-    workspaceId: user.workspaceId,
+    organization: record.organizationId ?? user.organizationId,
+    organizationId: record.organizationId ?? user.organizationId,
+    workspace: record.workspaceId ?? user.workspaceId,
+    workspaceId: record.workspaceId ?? user.workspaceId,
     customerId: record.customerId,
     visibility: "ORGANIZATION",
     authority: type === "SCOPEVERSION" ? "TERALINX_RUNTIME" : "ENGINEERING_REVIEW",
@@ -692,7 +692,7 @@ function packageQueueItem(record) {
   };
 }
 
-async function listReviewQueue() {
+export async function listReviewQueue() {
   const records = await listRecords(DIRS.iofPackages);
   return sortedByUpdated(records
     .map(normalizeDraftPackage)
@@ -727,27 +727,39 @@ function unitsFromProposal(proposal, packageId) {
   }, packageId, index));
 }
 
-async function handleAssembleFromProposal(req, res, user) {
-  const body = await readRequestJson(req);
+function runtimeError(status, message) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+export async function assembleDraftIofPackageFromProposal(input = {}, user, options = {}) {
+  const body = input ?? {};
   const proposalId = String(body.proposalId ?? body.proposal?.proposalId ?? "");
   if (!proposalId) {
-    errorResponse(res, 400, "proposalId is required.");
-    return;
+    throw runtimeError(400, "proposalId is required.");
   }
   const proposal = await loadRecord(DIRS.proposalDrafts, proposalId).catch(() => null);
   if (!proposal) {
-    errorResponse(res, 404, `Proposal not found: ${proposalId}`);
-    return;
+    throw runtimeError(404, `Proposal not found: ${proposalId}`);
   }
   if (!(proposal.approvalState === "APPROVED" || ["CUSTOMER_APPROVED", "READY_FOR_IOF_PACKAGE"].includes(proposal.status))) {
-    errorResponse(res, 409, "Draft IOF Package assembly requires a customer-approved Proposal.");
-    return;
+    throw runtimeError(409, "Draft IOF Package assembly requires a customer-approved Proposal.");
   }
-  const packageId = String(body.packageId ?? `DRAFT-IOF-${proposalId}-${Date.now()}`);
+  const packageId = String(body.packageId ?? `DRAFT-IOF-${proposalId}`);
+  const existing = await loadRecord(DIRS.iofPackages, packageId).catch(() => null)
+    ?? (await listRecords(DIRS.iofPackages)).find((record) => record?.proposalId === proposalId && !["ARCHIVED", "CLOSED"].includes(String(record?.status ?? "")));
+  if (existing && options.idempotent !== false) {
+    return {
+      created: false,
+      iofPackage: await decorateDraftPackageForResponse(existing),
+      draftPackage: await decorateDraftPackageForResponse(existing),
+      proposal,
+    };
+  }
   const proposedIofUnits = unitsFromProposal(proposal, packageId);
   if (!proposedIofUnits.length) {
-    errorResponse(res, 409, "Approved Proposal has no runtime or geometry references to assemble.");
-    return;
+    throw runtimeError(409, "Approved Proposal has no runtime or geometry references to assemble.");
   }
   const draft = await persistDraftPackage({
     packageId,
@@ -832,7 +844,32 @@ async function handleAssembleFromProposal(req, res, user) {
     proposalId,
     packageId: draft.packageId,
   });
-  jsonResponse(res, 201, { iofPackage: draft, draftPackage: draft });
+  const createdEvent = await appendHistory(draft, user, "DRAFT_IOF_PACKAGE_CREATED", "Draft IOF Package created by the Runtime lifecycle bridge.", {
+    proposalId,
+    packageId: draft.packageId,
+  });
+  const queuedEvent = await appendHistory(draft, user, "ENGINEERING_REVIEW_QUEUED", "Draft IOF Package queued for Engineering review.", {
+    proposalId,
+    packageId: draft.packageId,
+    assignedEngineerId: draft.assignedEngineerId,
+  });
+  const finalDraft = normalizeDraftPackage({
+    ...draft,
+    historyIds: unique([...draft.historyIds, createdEvent.historyId, queuedEvent.historyId]),
+    updatedAt: queuedEvent.timestamp,
+  });
+  await persistRecord(DIRS.iofPackages, finalDraft.packageId, finalDraft);
+  return { created: true, iofPackage: finalDraft, draftPackage: finalDraft, proposal };
+}
+
+async function handleAssembleFromProposal(req, res, user) {
+  const body = await readRequestJson(req);
+  try {
+    const result = await assembleDraftIofPackageFromProposal(body, user, { idempotent: true });
+    jsonResponse(res, result.created ? 201 : 200, result);
+  } catch (error) {
+    errorResponse(res, error.status ?? 500, error.message ?? "Draft IOF Package assembly failed.");
+  }
 }
 
 async function handleAssignEngineer(req, res, user, packageId) {

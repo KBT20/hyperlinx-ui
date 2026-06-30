@@ -14,6 +14,7 @@ import {
   unwrapBody,
 } from "./_shared.js";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
+import { assembleDraftIofPackageFromProposal } from "./engineering-certification.js";
 
 const ROLE_KEYS = ["contributors", "reviewers", "approvers", "executives", "customerReviewers", "salesEngineering"];
 const CUSTOMER_USER_BY_CUSTOMER = {
@@ -198,7 +199,7 @@ function normalizeVersionEntry(record, user, reason = "Initial commercial propos
   };
 }
 
-function computeProposalReadiness(record = {}) {
+export function computeProposalReadiness(record = {}) {
   const missingInformation = [];
   const blockingIssues = [];
   const runtimeObjectIds = unique(asArray(record.runtimeObjectIds));
@@ -273,7 +274,7 @@ function computeProposalReadiness(record = {}) {
   };
 }
 
-function normalizeProposalRecord(record = {}, user, existing = null, options = {}) {
+export function normalizeProposalRecord(record = {}, user, existing = null, options = {}) {
   const timestamp = options.timestamp ?? nowIso();
   const creating = !existing;
   const proposalId = String(proposalRecordIdFrom({ ...existing, ...record }));
@@ -478,7 +479,7 @@ function runtimeHistoryEvent(record, user, eventType, details = "", metadata = {
   };
 }
 
-async function saveProposal(record, user, eventType = "runtime.proposal.saved", details = "Proposal saved to the governed Runtime Object Library.", metadata = {}) {
+export async function saveProposal(record, user, eventType = "runtime.proposal.saved", details = "Proposal saved to the governed Runtime Object Library.", metadata = {}) {
   const history = runtimeHistoryEvent(record, user, eventType, details, metadata);
   await persistRecord(DIRS.runtimeHistory, history.historyId, history);
   const recordWithHistory = {
@@ -516,7 +517,7 @@ function requireUser(req, res) {
   return user;
 }
 
-async function readProposal(id) {
+export async function readProposal(id) {
   return loadRecord(DIRS.proposalDrafts, id);
 }
 
@@ -922,7 +923,24 @@ async function handleApprove(req, res, id, user) {
     approvedAt: timestamp,
     visibility: "SHARED",
   }, user, record);
-  jsonResponse(res, 200, { proposal: await saveProposal(approved, user, "runtime.proposal.customer.approved", "Customer approved the commercial proposal. Draft IOF readiness may now be evaluated.", { approvalId: approval.approvalId }) });
+  const saved = await saveProposal(approved, user, "runtime.proposal.customer.approved", "Customer approved the commercial proposal. Draft IOF readiness may now be evaluated.", { approvalId: approval.approvalId });
+  const lifecycleApproval = runtimeHistoryEvent(saved, user, "CUSTOMER_APPROVED", "Customer approval advanced the Runtime lifecycle bridge.", { approvalId: approval.approvalId });
+  await persistRecord(DIRS.runtimeHistory, lifecycleApproval.historyId, lifecycleApproval);
+  const defaultEngineer = findAlphaUserById("teralinx-user-kyle");
+  let draftPackage = null;
+  let draftIofAssemblyError = "";
+  try {
+    const assembly = await assembleDraftIofPackageFromProposal({
+      proposalId: saved.proposalId,
+      assignedEngineerId: body.assignedEngineerId ?? defaultEngineer?.userId,
+      assignedEngineer: body.assignedEngineer ?? defaultEngineer?.name,
+      priority: body.priority ?? "NORMAL",
+    }, user, { idempotent: true });
+    draftPackage = assembly.draftPackage;
+  } catch (error) {
+    draftIofAssemblyError = error instanceof Error ? error.message : String(error);
+  }
+  jsonResponse(res, 200, { proposal: saved, draftPackage, iofPackage: draftPackage, draftIofAssemblyError });
 }
 
 async function handleReject(req, res, id, user) {
