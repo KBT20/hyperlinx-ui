@@ -15,6 +15,7 @@ import {
 } from "./_shared.js";
 import { requireAnyPermission } from "./authority.js";
 import { persistScopeVersion } from "./scopeversions.js";
+import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 
 const BASE_PATH = "/api/engineering/certification";
 const CHECKLIST_KEYS = [
@@ -1417,11 +1418,37 @@ async function handleCertifyPackage(req, res, user, packageId) {
     scopeVersionId: generated.scopeVersion.scopeVersionId,
     executionAuthorizationCertificateId: generated.certificate.certificateId,
   }, user, "runtime.iof_package.execution_authorized", "Certified IOF Package authorized executable ScopeVersion creation.");
+  const workspaceSession = await updateRuntimeWorkspaceSession({
+    accountId: generated.certifiedPackage.accountId,
+    customerId: generated.certifiedPackage.customerId,
+    sessionUserId: generated.certifiedPackage.ownerId ?? generated.certifiedPackage.commercialOwnerId,
+    sessionUserName: generated.certifiedPackage.owner ?? generated.certifiedPackage.commercialOwner,
+    workspaceId: generated.certifiedPackage.workspaceId,
+    organizationId: generated.certifiedPackage.organizationId,
+    opportunityId: generated.certifiedPackage.opportunityId,
+    productId: generated.certifiedPackage.productId,
+    fulfillmentPlanId: generated.certifiedPackage.fulfillmentPlanId,
+    proposalId: generated.certifiedPackage.proposalId,
+    packageId: finalDraft.packageId,
+    certifiedPackageId: generated.certifiedPackage.certifiedPackageId,
+    scopeVersionId: generated.scopeVersion.scopeVersionId,
+    currentRuntimeObject: generated.scopeVersion.scopeVersionId,
+    currentAuthority: "EXECUTION",
+    currentLifecycleStage: "EXECUTION_AUTHORIZED",
+    selectedRoute: asArray(generated.certifiedPackage.geometryReferences)[0],
+    selectedGraph: asArray(generated.certifiedPackage.runtimeObjectIds)[0],
+    selectedPackage: finalDraft.packageId,
+    selectedProposalRevision: generated.certifiedPackage.sourceProposalVersion,
+    engineeringRevision: finalDraft.packageRevision,
+    sessionState: "ACTIVE",
+    lastActivity: "EXECUTION_AUTHORIZED",
+  }, user, "AUTHORITY_TRANSFER_ENGINEERING_TO_EXECUTION", "Engineering certification persisted WorkspaceSession execution authority.");
   jsonResponse(res, 200, {
     draftPackage: finalDraft,
     certifiedIofPackage: generated.certifiedPackage,
     executionAuthorizationCertificate: generated.certificate,
     scopeVersion: generated.scopeVersion,
+    workspaceSession,
   });
 }
 
@@ -1440,7 +1467,32 @@ async function handleGenerateScopeVersion(res, user, certifiedPackageId) {
     : null;
   const nextCertificate = certificate ?? createExecutionCertificate(certified, certified.engineeringChecklist ?? {}, user);
   const generated = await generateScopeVersion(certified, nextCertificate, user);
-  jsonResponse(res, 200, generated);
+  const workspaceSession = await updateRuntimeWorkspaceSession({
+    accountId: generated.certifiedPackage.accountId,
+    customerId: generated.certifiedPackage.customerId,
+    sessionUserId: generated.certifiedPackage.ownerId ?? generated.certifiedPackage.commercialOwnerId,
+    sessionUserName: generated.certifiedPackage.owner ?? generated.certifiedPackage.commercialOwner,
+    workspaceId: generated.certifiedPackage.workspaceId,
+    organizationId: generated.certifiedPackage.organizationId,
+    opportunityId: generated.certifiedPackage.opportunityId,
+    productId: generated.certifiedPackage.productId,
+    fulfillmentPlanId: generated.certifiedPackage.fulfillmentPlanId,
+    proposalId: generated.certifiedPackage.proposalId,
+    packageId: generated.certifiedPackage.sourcePackageId,
+    certifiedPackageId: generated.certifiedPackage.certifiedPackageId,
+    scopeVersionId: generated.scopeVersion.scopeVersionId,
+    currentRuntimeObject: generated.scopeVersion.scopeVersionId,
+    currentAuthority: "EXECUTION",
+    currentLifecycleStage: "EXECUTION_AUTHORIZED",
+    selectedRoute: asArray(generated.certifiedPackage.geometryReferences)[0],
+    selectedGraph: asArray(generated.certifiedPackage.runtimeObjectIds)[0],
+    selectedPackage: generated.certifiedPackage.sourcePackageId,
+    selectedProposalRevision: generated.certifiedPackage.sourceProposalVersion,
+    engineeringRevision: generated.certifiedPackage.packageRevision,
+    sessionState: "ACTIVE",
+    lastActivity: "EXECUTION_AUTHORIZED",
+  }, user, "AUTHORITY_TRANSFER_ENGINEERING_TO_EXECUTION", "Manual ScopeVersion generation persisted WorkspaceSession execution authority.");
+  jsonResponse(res, 200, { ...generated, workspaceSession });
 }
 
 async function handleCertifiedList(res) {

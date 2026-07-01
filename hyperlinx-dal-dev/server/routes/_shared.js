@@ -41,6 +41,7 @@ export const DIRS = {
   runtimeValidation: path.join(DATA_ROOT, "runtime-validation"),
   runtimeHistory: path.join(DATA_ROOT, "runtime-history"),
   runtimeConnectors: path.join(DATA_ROOT, "runtime-connectors"),
+  runtimeWorkspaceSessions: path.join(DATA_ROOT, "runtime-workspace-sessions"),
   translationCommits: path.join(DATA_ROOT, "translation-commits"),
 };
 

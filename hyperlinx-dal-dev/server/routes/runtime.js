@@ -74,6 +74,8 @@ export async function handleRuntime(req, res, pathname) {
         runtimeObjectLibrary: true,
         relationshipGraph: true,
         workspaceLibrary: true,
+        workspaceSessionLibrary: true,
+        runtimeRehydration: true,
         tenantRegistry: true,
         validationPipeline: true,
         connectorRegistry: true,

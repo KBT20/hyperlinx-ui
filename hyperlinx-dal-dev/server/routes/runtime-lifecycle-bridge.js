@@ -14,6 +14,7 @@ import { findAlphaUserById, runtimeWorkspaceForUser, userFromBearerToken, userHa
 import { normalizeCommercialOpportunity, readOpportunity, saveOpportunity } from "./commercial-opportunities.js";
 import { normalizeProposalRecord, readProposal, saveProposal } from "./proposal-drafts.js";
 import { ensureProductFulfillment } from "./product-fulfillment.js";
+import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 import { assembleDraftIofPackageFromProposal, listReviewQueue } from "./engineering-certification.js";
 
 const BASE_PATH = "/api/runtime/lifecycle";
@@ -759,6 +760,21 @@ async function advanceLifecycle(input, user) {
     draftPackage: assembly.draftPackage,
     engineeringQueueItem: assembly.engineeringQueueItem,
   });
+  const workspaceSession = await updateRuntimeWorkspaceSession({
+    ...lifecycleInput,
+    lifecycle: state,
+    sessionState: "ACTIVE",
+    currentAuthority: state.currentAuthority,
+    currentLifecycleStage: state.status,
+    currentRuntimeObject: state.currentRuntimeObject,
+    proposalId: proposal.proposalId,
+    packageId: assembly.draftPackage?.packageId,
+    selectedRoute: asArray(lifecycleInput.geometryReferences)[0] ?? lifecycleInput.commercialDraft?.routeId,
+    selectedGraph: asArray(lifecycleInput.runtimeObjectIds)[0],
+    selectedPackage: assembly.draftPackage?.packageId,
+    engineeringRevision: assembly.draftPackage?.packageRevision,
+    lastActivity: "RUNTIME_LIFECYCLE_ADVANCED",
+  }, user, "RUNTIME_LIFECYCLE_ADVANCED", "Runtime lifecycle advanced and WorkspaceSession persisted.");
   return {
     ok: true,
     trigger: input.trigger ?? "QUOTE_READY_FOR_CUSTOMER",
@@ -771,6 +787,7 @@ async function advanceLifecycle(input, user) {
     proposal,
     draftPackage: assembly.draftPackage,
     engineeringQueueItem: assembly.engineeringQueueItem,
+    workspaceSession,
   };
 }
 

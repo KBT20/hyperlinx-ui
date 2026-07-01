@@ -15,6 +15,7 @@ import {
 } from "./_shared.js";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
 import { assembleDraftIofPackageFromProposal } from "./engineering-certification.js";
+import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 
 const ROLE_KEYS = ["contributors", "reviewers", "approvers", "executives", "customerReviewers", "salesEngineering"];
 const CUSTOMER_USER_BY_CUSTOMER = {
@@ -993,7 +994,29 @@ async function handleApprove(req, res, id, user) {
   } catch (error) {
     draftIofAssemblyError = error instanceof Error ? error.message : String(error);
   }
-  jsonResponse(res, 200, { proposal: saved, draftPackage, iofPackage: draftPackage, draftIofAssemblyError });
+  const workspaceSession = await updateRuntimeWorkspaceSession({
+    accountId: saved.accountId,
+    customerId: saved.customerId,
+    sessionUserId: saved.commercialOwnerId ?? saved.ownerId,
+    sessionUserName: saved.commercialOwner ?? saved.owner,
+    workspaceId: saved.workspaceId,
+    organizationId: saved.organizationId,
+    opportunityId: saved.opportunityId,
+    productId: saved.productId,
+    fulfillmentPlanId: saved.fulfillmentPlanId,
+    proposalId: saved.proposalId,
+    packageId: draftPackage?.packageId,
+    currentRuntimeObject: draftPackage?.packageId ?? saved.runtimeObjectId,
+    currentAuthority: draftPackage ? "ENGINEERING_REVIEW" : "CUSTOMER_REVIEW",
+    currentLifecycleStage: draftPackage ? "ENGINEERING_REVIEW_QUEUED" : "CUSTOMER_APPROVED",
+    selectedRoute: asArray(saved.geometryReferences)[0],
+    selectedGraph: asArray(saved.runtimeObjectIds)[0],
+    selectedPackage: draftPackage?.packageId,
+    selectedProposalRevision: saved.version,
+    sessionState: "ACTIVE",
+    lastActivity: "CUSTOMER_APPROVED",
+  }, user, "AUTHORITY_TRANSFER_CUSTOMER_TO_ENGINEERING", "Customer approval persisted WorkspaceSession authority transfer.");
+  jsonResponse(res, 200, { proposal: saved, draftPackage, iofPackage: draftPackage, draftIofAssemblyError, workspaceSession });
 }
 
 async function handleReject(req, res, id, user) {

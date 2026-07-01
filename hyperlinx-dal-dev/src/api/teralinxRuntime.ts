@@ -96,6 +96,8 @@ export type TeralinxRuntimeInfo = {
     runtimeObjectLibrary: boolean;
     relationshipGraph: boolean;
     workspaceLibrary: boolean;
+    workspaceSessionLibrary?: boolean;
+    runtimeRehydration?: boolean;
     tenantRegistry: boolean;
   };
 };
@@ -460,6 +462,64 @@ export type RuntimeLifecycleBridgeResult = {
   proposal?: ProposalRuntimeObject;
   draftPackage?: DraftIofPackageRuntime | null;
   engineeringQueueItem?: EngineeringReviewQueueItem | null;
+  workspaceSession?: RuntimeWorkspaceSession;
+};
+
+export type RuntimeWorkspaceSession = {
+  sessionId: string;
+  workspaceSessionId: string;
+  runtimeObjectId: string;
+  objectType: "WORKSPACE_SESSION" | string;
+  userId: string;
+  workspaceId: string;
+  organizationId: string;
+  accountId: string;
+  customerId?: string;
+  opportunityId?: string;
+  productId?: string;
+  fulfillmentPlanId?: string;
+  proposalId?: string;
+  packageId?: string;
+  certifiedPackageId?: string;
+  scopeVersionId?: string;
+  currentRuntimeObject?: string;
+  currentAuthority?: string;
+  currentLifecycleStage?: string;
+  selectedGraph?: string;
+  selectedRoute?: string;
+  selectedCustomerDesign?: string;
+  selectedInventory?: string[];
+  selectedPackage?: string;
+  selectedProposalRevision?: string;
+  engineeringRevision?: string;
+  resumeToken?: string;
+  sessionState?: string;
+  lastActivity?: string;
+  lastSaved?: string;
+  [key: string]: unknown;
+};
+
+export type RuntimeRehydrationState = {
+  workspaceSession: RuntimeWorkspaceSession;
+  restored: Record<string, unknown>;
+  account?: Record<string, unknown> | null;
+  contacts?: Array<Record<string, unknown>>;
+  opportunity?: Record<string, unknown> | null;
+  product?: Record<string, unknown> | null;
+  fulfillmentPlan?: Record<string, unknown> | null;
+  proposal?: ProposalRuntimeObject | null;
+  draftPackage?: DraftIofPackageRuntime | null;
+  certifiedPackage?: CertifiedIofPackageRuntime | null;
+  scopeVersion?: Record<string, unknown> | null;
+  currentRuntimeObject?: string;
+  currentAuthority?: string;
+  currentLifecycleStage?: string;
+  route?: Record<string, unknown>;
+  graph?: Record<string, unknown>;
+  runtimeObjects?: Array<Record<string, unknown>>;
+  runtimeHistory?: Array<Record<string, unknown>>;
+  twinRestore?: Record<string, unknown>;
+  runtimeIsSingleSourceOfTruth?: boolean;
 };
 
 export type ProposalCustomerRecipientInput = {
@@ -544,6 +604,21 @@ export async function loginTeralinxUser(username: string, password: string) {
 
 export async function loadTeralinxRuntimeInfo() {
   return requestJson<TeralinxRuntimeInfo>("/api/runtime");
+}
+
+export async function loadRuntimeRehydration(session?: TeralinxAuthSession | null) {
+  return requestJson<RuntimeRehydrationState>("/api/runtime/rehydrate", {
+    headers: authHeaders(session),
+  });
+}
+
+export async function saveRuntimeWorkspaceSession(input: Partial<RuntimeWorkspaceSession>, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/runtime/workspace-session", {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ workspaceSession: input }),
+  });
+  return (data.workspaceSession ?? data.session ?? data) as RuntimeWorkspaceSession;
 }
 
 export async function listTeralinxActivity() {

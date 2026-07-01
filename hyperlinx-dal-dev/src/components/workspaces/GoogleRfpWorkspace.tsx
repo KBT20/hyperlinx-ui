@@ -58,6 +58,7 @@ import {
   createDraftIofPackageFromProposal,
   createProposalRevision,
   duplicateProposalRuntimeObject,
+  loadRuntimeRehydration,
   listCommercialOpportunities,
   listEngineeringReviewQueue,
   listProposalDrafts,
@@ -73,6 +74,7 @@ import {
   type DraftIofPackageRuntime,
   type EngineeringReviewQueueItem,
   type ProposalRuntimeObject,
+  type RuntimeRehydrationState,
   type RuntimeLifecycleBridgeState,
 } from "../../api/teralinxRuntime";
 import { useDALState } from "../../dal/DALState";
@@ -2763,6 +2765,8 @@ export default function GoogleRfpWorkspace() {
   const [runtimeLifecycleState, setRuntimeLifecycleState] = useState<RuntimeLifecycleBridgeState | null>(null);
   const [runtimeLifecycleNotice, setRuntimeLifecycleNotice] = useState("Runtime lifecycle bridge is waiting for a quote-ready commercial path.");
   const [runtimeLifecyclePending, setRuntimeLifecyclePending] = useState(false);
+  const [runtimeRehydrationState, setRuntimeRehydrationState] = useState<RuntimeRehydrationState | null>(null);
+  const [runtimeRehydrationNotice, setRuntimeRehydrationNotice] = useState("Runtime rehydration has not run for this workspace.");
   const [customerDrafts, setCustomerDrafts] = useState<CustomerDraftRecord[]>([]);
   const [customerReviewStatus, setCustomerReviewStatus] = useState<CustomerReviewStatus>("NOT_STARTED");
   const [acceptedProposal, setAcceptedProposal] = useState<AcceptedProposal | null>(null);
@@ -2903,6 +2907,39 @@ export default function GoogleRfpWorkspace() {
         if (cancelled) return;
         setAccountLibraryLoaded(true);
         setAccountNotice(`Account Library load failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.token]);
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    loadRuntimeRehydration(session)
+      .then((rehydration) => {
+        if (cancelled) return;
+        setRuntimeRehydrationState(rehydration);
+        const workspaceSession = rehydration.workspaceSession;
+        if (workspaceSession?.accountId) setSelectedAccountId(workspaceSession.accountId);
+        if (workspaceSession?.productId) setSelectedProductId(workspaceSession.productId);
+        if (workspaceSession?.opportunityId) setActiveCommercialOpportunityId(workspaceSession.opportunityId);
+        if (rehydration.opportunity) {
+          const opportunity = rehydration.opportunity as unknown as CommercialOpportunityRecord;
+          setCommercialOpportunities((prev) => [opportunity, ...prev.filter((candidate) => candidate.opportunityId !== opportunity.opportunityId)]);
+        }
+        if (rehydration.proposal) upsertProposalRuntimeRecord(rehydration.proposal);
+        if (rehydration.draftPackage) setActiveDraftIofPackage(rehydration.draftPackage);
+        if (workspaceSession?.selectedRoute && bidPlan.routePlans.some((route) => route.routeRequirement.routeRequirementId === workspaceSession.selectedRoute)) {
+          setSelectedScopeId(workspaceSession.selectedRoute);
+        }
+        setRuntimeRehydrationNotice(workspaceSession?.proposalId
+          ? `Runtime restored ${workspaceSession.proposalId} at ${workspaceSession.currentLifecycleStage ?? "current lifecycle"}.`
+          : "Runtime session loaded; no governed Proposal has been selected yet.");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setRuntimeRehydrationNotice(`Runtime rehydration unavailable: ${error instanceof Error ? error.message : String(error)}`);
       });
     return () => {
       cancelled = true;
@@ -6366,6 +6403,13 @@ export default function GoogleRfpWorkspace() {
           <div><span>Current IOF Package</span><b>{runtimeLifecycleState?.currentIofPackage || activeDraftIofPackage?.packageId || "Not assembled"}</b></div>
           <div><span>Engineering Status</span><b>{runtimeLifecycleState?.currentEngineeringStatus?.replaceAll("_", " ") ?? "Not queued"}</b></div>
         </div>
+        <div className="teralinx-summary-grid">
+          <div><span>Runtime Restore</span><b>{runtimeRehydrationState?.workspaceSession?.sessionState ?? "Not loaded"}</b></div>
+          <div><span>Resume Token</span><b>{runtimeRehydrationState?.workspaceSession?.resumeToken ?? "Pending"}</b></div>
+          <div><span>Restored Authority</span><b>{runtimeRehydrationState?.currentAuthority ?? runtimeRehydrationState?.workspaceSession?.currentAuthority ?? "Runtime"}</b></div>
+          <div><span>Restored ScopeVersion</span><b>{runtimeRehydrationState?.workspaceSession?.scopeVersionId ?? "None"}</b></div>
+        </div>
+        <div className="dal-status">{runtimeRehydrationNotice}</div>
         <div className="dal-actions">
           <button type="button" onClick={() => void handleAdvanceRuntimeLifecycleBridge("QUOTE_READY_FOR_CUSTOMER")} disabled={!session || runtimeLifecyclePending}>
             Sync Lifecycle

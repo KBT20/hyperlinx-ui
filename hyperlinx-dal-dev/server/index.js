@@ -24,6 +24,7 @@ import { handleProductFulfillment } from "./routes/product-fulfillment.js";
 import { handleRuntime } from "./routes/runtime.js";
 import { handleRuntimeFoundation } from "./routes/runtime-foundation.js";
 import { handleRuntimeLifecycleBridge } from "./routes/runtime-lifecycle-bridge.js";
+import { handleRuntimeWorkspaceSession } from "./routes/runtime-workspace-session.js";
 import { handleScopeVersions } from "./routes/scopeversions.js";
 import { handleTwinState } from "./routes/twin-state.js";
 
@@ -43,6 +44,7 @@ const routes = [
   handleProductFulfillment,
   handleRuntimeFoundation,
   handleRuntimeLifecycleBridge,
+  handleRuntimeWorkspaceSession,
   handleCandidateSites,
   handleOpportunitySeeds,
   handleInventoryGraphs,
@@ -119,6 +121,8 @@ const server = http.createServer(async (req, res) => {
           runtimeSearch: true,
           runtimeConnectors: true,
           runtimeLifecycleBridge: true,
+          runtimeWorkspaceSession: true,
+          runtimeRehydration: true,
           translationCommits: true,
           activity: true,
           accountLibrary: true,
