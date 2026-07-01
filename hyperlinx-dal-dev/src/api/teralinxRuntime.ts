@@ -378,6 +378,11 @@ export type DraftIofPackageRuntime = {
   proposalSummary: Record<string, unknown>;
   commercialSummary: Record<string, unknown>;
   customerSummary: Record<string, unknown>;
+  proposalRecipientContactIds?: string[];
+  customerReviewContactIds?: string[];
+  approvalAuthorityContactIds?: string[];
+  sofRecipientContactIds?: string[];
+  customerContactEmails?: string[];
   packageReadiness: Record<string, unknown>;
   engineeringReadiness: string;
   commercialConfidence: number;
@@ -455,6 +460,17 @@ export type RuntimeLifecycleBridgeResult = {
   proposal?: ProposalRuntimeObject;
   draftPackage?: DraftIofPackageRuntime | null;
   engineeringQueueItem?: EngineeringReviewQueueItem | null;
+};
+
+export type ProposalCustomerRecipientInput = {
+  assignedCustomerUsers?: string[];
+  customerUsers?: string[];
+  customerReviewers?: string[];
+  proposalRecipientContactIds?: string[];
+  customerReviewContactIds?: string[];
+  approvalAuthorityContactIds?: string[];
+  sofRecipientContactIds?: string[];
+  customerContactEmails?: string[];
 };
 
 export type CertifiedIofPackageRuntime = DraftIofPackageRuntime & {
@@ -674,10 +690,8 @@ export async function openProposalRuntimeObject<T extends ProposalRuntimeObject 
 
 export async function assignProposalRuntimeObject<T extends ProposalRuntimeObject = ProposalRuntimeObject>(
   proposalId: string,
-  input: {
+  input: ProposalCustomerRecipientInput & {
     assignedTo?: string[];
-    assignedCustomerUsers?: string[];
-    customerUsers?: string[];
     contributors?: string[];
     reviewers?: string[];
     approvers?: string[];
@@ -691,7 +705,7 @@ export async function assignProposalRuntimeObject<T extends ProposalRuntimeObjec
 
 export async function submitProposalToCustomer<T extends ProposalRuntimeObject = ProposalRuntimeObject>(
   proposalId: string,
-  input: { assignedCustomerUsers?: string[]; customerUsers?: string[]; customerReviewers?: string[] } = {},
+  input: ProposalCustomerRecipientInput = {},
   session?: TeralinxAuthSession | null,
 ) {
   return proposalAction<T>(proposalId, "submit-customer", input, session);

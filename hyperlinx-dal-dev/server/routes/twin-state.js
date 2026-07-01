@@ -267,7 +267,7 @@ async function buildProjection(scopeVersionId) {
   const allFieldClosures = await listRecords(DIRS.fieldClosures);
   const runtimeObjects = await listRecords(DIRS.runtimeObjects);
   const commercialRuntimeObjects = dedupeById(
-    runtimeObjects.filter((record) => ["ACCOUNT", "OPPORTUNITY", "CUSTOMER_TWIN", "PRODUCT", "FULFILLMENT_PLAN", "PROPOSAL"].includes(String(record?.objectType ?? ""))),
+    runtimeObjects.filter((record) => ["ACCOUNT", "CONTACT", "OPPORTUNITY", "CUSTOMER_TWIN", "PRODUCT", "FULFILLMENT_PLAN", "PROPOSAL"].includes(String(record?.objectType ?? ""))),
     "runtimeId"
   ).sort((a, b) => String(b.updatedAt ?? b.createdAt ?? "").localeCompare(String(a.updatedAt ?? a.createdAt ?? ""))).slice(0, 24);
   if (!scopeVersionId) {

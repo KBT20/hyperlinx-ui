@@ -55,6 +55,12 @@ export type GovernedContact = {
   email: string;
   phone?: string;
   status: string;
+  recipientWorkflows?: string[];
+  proposalRecipient?: boolean;
+  customerReviewRecipient?: boolean;
+  approvalAuthority?: boolean;
+  sofRecipient?: boolean;
+  serviceOrderRecipient?: boolean;
   organization?: string;
   organizationId?: string;
   workspace?: string;

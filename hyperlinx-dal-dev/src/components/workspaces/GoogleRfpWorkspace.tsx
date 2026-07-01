@@ -2850,6 +2850,26 @@ export default function GoogleRfpWorkspace() {
     () => LAYER_1_PRODUCT_OPTIONS.find((product) => product.productId === selectedProductId) ?? LAYER_1_PRODUCT_OPTIONS[0],
     [selectedProductId],
   );
+  const proposalRecipientContactIds = useMemo(
+    () => governedContactsForSelectedAccount.filter((contact) => contact.proposalRecipient !== false).map((contact) => contact.contactId),
+    [governedContactsForSelectedAccount],
+  );
+  const customerReviewContactIds = useMemo(
+    () => governedContactsForSelectedAccount.filter((contact) => contact.customerReviewRecipient !== false).map((contact) => contact.contactId),
+    [governedContactsForSelectedAccount],
+  );
+  const approvalAuthorityContactIds = useMemo(
+    () => governedContactsForSelectedAccount.filter((contact) => contact.approvalAuthority !== false).map((contact) => contact.contactId),
+    [governedContactsForSelectedAccount],
+  );
+  const sofRecipientContactIds = useMemo(
+    () => governedContactsForSelectedAccount.filter((contact) => contact.sofRecipient !== false || contact.serviceOrderRecipient !== false).map((contact) => contact.contactId),
+    [governedContactsForSelectedAccount],
+  );
+  const customerContactEmails = useMemo(
+    () => governedContactsForSelectedAccount.map((contact) => contact.email).filter(Boolean),
+    [governedContactsForSelectedAccount],
+  );
   async function refreshAccountLibrary(nextNotice?: string) {
     const [accounts, contacts, history] = await Promise.all([
       listGovernedAccounts(),
@@ -2906,7 +2926,16 @@ export default function GoogleRfpWorkspace() {
   function handleEditSelectedAccount() {
     setAccountEditorMode("edit");
     setAccountDraft(accountEditorFromAccount(selectedAccount));
+    setContactDraft(contactEditorDefaults());
     setAccountEditorOpen((value) => !value);
+  }
+
+  function updateAccountDraftField<K extends keyof AccountEditorState>(field: K, value: AccountEditorState[K]) {
+    setAccountDraft((prev) => ({ ...(prev ?? emptyAccountEditor(currentUserName)), [field]: value }));
+  }
+
+  function updateContactDraftField<K extends keyof ContactEditorState>(field: K, value: ContactEditorState[K]) {
+    setContactDraft((prev) => ({ ...(prev ?? contactEditorDefaults()), [field]: value }));
   }
 
   async function handleSaveAccountDraft() {
@@ -2969,7 +2998,8 @@ export default function GoogleRfpWorkspace() {
       setAccountNotice("Save an Account before adding Contacts.");
       return;
     }
-    const name = contactDraft.name.trim();
+    const nextContactDraft = contactDraft ?? contactEditorDefaults();
+    const name = nextContactDraft.name.trim();
     if (!name) {
       setAccountNotice("Contact name is required.");
       return;
@@ -2979,11 +3009,17 @@ export default function GoogleRfpWorkspace() {
       const saved = await saveGovernedContact({
         accountId: selectedAccount.accountId,
         name,
-        title: contactDraft.title,
-        role: contactDraft.role,
-        email: contactDraft.email,
-        phone: contactDraft.phone,
+        title: nextContactDraft.title,
+        role: nextContactDraft.role,
+        email: nextContactDraft.email,
+        phone: nextContactDraft.phone,
         status: "Active",
+        recipientWorkflows: ["PROPOSAL_RECIPIENT", "CUSTOMER_REVIEW", "CUSTOMER_APPROVAL", "SOF_RECIPIENT"],
+        proposalRecipient: true,
+        customerReviewRecipient: true,
+        approvalAuthority: true,
+        sofRecipient: true,
+        serviceOrderRecipient: true,
         organizationId: currentOrganizationId,
         workspaceId: currentWorkspaceId,
         ownerId: selectedGovernedAccount?.ownerId ?? currentUserId,
@@ -3711,6 +3747,11 @@ export default function GoogleRfpWorkspace() {
       geometryReferences: activeProposalRuntime?.geometryReferences ?? [routePlan?.routeRequirement.routeRequirementId, ...geometry.map((coordinate, index) => `lifecycle-geometry:${index}:${coordinate.join(",")}`)].filter(Boolean).slice(0, 20),
       proposalDocumentReferences: activeProposalRuntime?.proposalDocumentReferences ?? ["Runtime lifecycle proposal", "Commercial pricing summary"],
       assignedCustomerUsers: activeProposalRuntime?.assignedCustomerUsers?.length ? activeProposalRuntime.assignedCustomerUsers : ["google-participant-001"],
+      proposalRecipientContactIds,
+      customerReviewContactIds,
+      approvalAuthorityContactIds,
+      sofRecipientContactIds,
+      customerContactEmails,
       assignedEngineerId: activeDraftIofPackage?.assignedEngineerId ?? "teralinx-user-kyle",
       assignedEngineer: activeDraftIofPackage?.assignedEngineer ?? "Kyle",
       priority: activeDraftIofPackage?.priority ?? "NORMAL",
@@ -3780,6 +3821,11 @@ export default function GoogleRfpWorkspace() {
         ownerId: activeProposalRuntime?.ownerId ?? currentUserId,
         createdById: activeProposalRuntime?.createdById ?? currentUserId,
         assignedCustomerUsers: activeProposalRuntime?.assignedCustomerUsers?.length ? activeProposalRuntime.assignedCustomerUsers : ["google-participant-001"],
+        proposalRecipientContactIds,
+        customerReviewContactIds,
+        approvalAuthorityContactIds,
+        sofRecipientContactIds,
+        customerContactEmails,
         visibility: activeProposalRuntime?.visibility ?? "PRIVATE",
         status,
         title: `${selectedAccount.name} ${routePlan.routeRequirement.bidSegmentName} Commercial Proposal`,
@@ -3843,7 +3889,13 @@ export default function GoogleRfpWorkspace() {
     if (!proposal) return;
     setProposalRuntimeActionPending(true);
     try {
-      const saved = await submitProposalToCustomer(proposal.proposalId, { assignedCustomerUsers: ["google-participant-001"] }, session);
+      const saved = await submitProposalToCustomer(proposal.proposalId, {
+        assignedCustomerUsers: ["google-participant-001"],
+        proposalRecipientContactIds,
+        customerReviewContactIds,
+        approvalAuthorityContactIds,
+        customerContactEmails,
+      }, session);
       upsertProposalRuntimeRecord(saved);
       setProposalRuntimeNotice(`${saved.proposalNumber} submitted to customer review.`);
     } catch (error) {
@@ -5900,6 +5952,11 @@ export default function GoogleRfpWorkspace() {
       commercialOwnerId: currentUserId,
       ownerId: currentUserId,
       assignedCustomerUsers: ["google-participant-001"],
+      proposalRecipientContactIds,
+      customerReviewContactIds,
+      approvalAuthorityContactIds,
+      sofRecipientContactIds,
+      customerContactEmails,
       visibility: "SHARED",
       status: "CUSTOMER_APPROVED",
       approvalState: "APPROVED",
@@ -6207,35 +6264,35 @@ export default function GoogleRfpWorkspace() {
           <div className="account-workspace-editor">
             <label>
               <span>Account ID</span>
-              <input value={accountDraft.accountId} onChange={(event) => setAccountDraft((prev) => ({ ...prev, accountId: cleanAccountId(event.currentTarget.value) }))} placeholder="google" />
+              <input value={accountDraft.accountId} onChange={(event) => updateAccountDraftField("accountId", cleanAccountId(event.currentTarget.value))} placeholder="google" />
             </label>
             <label>
               <span>Name</span>
-              <input value={accountDraft.name} onChange={(event) => setAccountDraft((prev) => ({ ...prev, name: event.currentTarget.value }))} placeholder="Google" />
+              <input value={accountDraft.name} onChange={(event) => updateAccountDraftField("name", event.currentTarget.value)} placeholder="Google" />
             </label>
             <label>
               <span>Type</span>
-              <input value={accountDraft.accountType} onChange={(event) => setAccountDraft((prev) => ({ ...prev, accountType: event.currentTarget.value }))} placeholder="Hyperscaler" />
+              <input value={accountDraft.accountType} onChange={(event) => updateAccountDraftField("accountType", event.currentTarget.value)} placeholder="Hyperscaler" />
             </label>
             <label>
               <span>Status</span>
-              <input value={accountDraft.status} onChange={(event) => setAccountDraft((prev) => ({ ...prev, status: event.currentTarget.value }))} placeholder="Active RFP" />
+              <input value={accountDraft.status} onChange={(event) => updateAccountDraftField("status", event.currentTarget.value)} placeholder="Active RFP" />
             </label>
             <label>
               <span>Sales Owner</span>
-              <input value={accountDraft.salesOwner} onChange={(event) => setAccountDraft((prev) => ({ ...prev, salesOwner: event.currentTarget.value }))} />
+              <input value={accountDraft.salesOwner} onChange={(event) => updateAccountDraftField("salesOwner", event.currentTarget.value)} />
             </label>
             <label>
               <span>Engineering Contact</span>
-              <input value={accountDraft.primaryEngineeringContact} onChange={(event) => setAccountDraft((prev) => ({ ...prev, primaryEngineeringContact: event.currentTarget.value }))} />
+              <input value={accountDraft.primaryEngineeringContact} onChange={(event) => updateAccountDraftField("primaryEngineeringContact", event.currentTarget.value)} />
             </label>
             <label>
               <span>Procurement Contact</span>
-              <input value={accountDraft.procurementContact} onChange={(event) => setAccountDraft((prev) => ({ ...prev, procurementContact: event.currentTarget.value }))} />
+              <input value={accountDraft.procurementContact} onChange={(event) => updateAccountDraftField("procurementContact", event.currentTarget.value)} />
             </label>
             <label className="wide">
               <span>Notes</span>
-              <input value={accountDraft.notes} onChange={(event) => setAccountDraft((prev) => ({ ...prev, notes: event.currentTarget.value }))} />
+              <input value={accountDraft.notes} onChange={(event) => updateAccountDraftField("notes", event.currentTarget.value)} />
             </label>
             <button type="button" className="primary" onClick={() => void handleSaveAccountDraft()} disabled={accountPersistencePending}>
               Save Account
@@ -6247,10 +6304,10 @@ export default function GoogleRfpWorkspace() {
           <div>
             <b>Contacts</b>
             <div className="account-contact-form">
-              <input value={contactDraft.name} onChange={(event) => setContactDraft((prev) => ({ ...prev, name: event.currentTarget.value }))} placeholder="Contact name" aria-label="Contact name" />
-              <input value={contactDraft.title} onChange={(event) => setContactDraft((prev) => ({ ...prev, title: event.currentTarget.value }))} placeholder="Title" aria-label="Contact title" />
-              <input value={contactDraft.role} onChange={(event) => setContactDraft((prev) => ({ ...prev, role: event.currentTarget.value }))} placeholder="Role" aria-label="Contact role" />
-              <input value={contactDraft.email} onChange={(event) => setContactDraft((prev) => ({ ...prev, email: event.currentTarget.value }))} placeholder="Email" aria-label="Contact email" />
+              <input value={contactDraft.name} onChange={(event) => updateContactDraftField("name", event.currentTarget.value)} placeholder="Contact name" aria-label="Contact name" />
+              <input value={contactDraft.title} onChange={(event) => updateContactDraftField("title", event.currentTarget.value)} placeholder="Title" aria-label="Contact title" />
+              <input value={contactDraft.role} onChange={(event) => updateContactDraftField("role", event.currentTarget.value)} placeholder="Role" aria-label="Contact role" />
+              <input value={contactDraft.email} onChange={(event) => updateContactDraftField("email", event.currentTarget.value)} placeholder="Email" aria-label="Contact email" />
               <button type="button" onClick={() => void handleSaveContactDraft()} disabled={accountPersistencePending || !selectedGovernedAccount}>
                 Add Contact
               </button>

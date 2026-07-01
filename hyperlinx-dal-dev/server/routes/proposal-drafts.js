@@ -355,6 +355,11 @@ export function normalizeProposalRecord(record = {}, user, existing = null, opti
     createdById,
     assignedTo,
     assignedCustomerUsers,
+    proposalRecipientContactIds: unique([...asArray(existing?.proposalRecipientContactIds), ...asArray(record.proposalRecipientContactIds)]),
+    customerReviewContactIds: unique([...asArray(existing?.customerReviewContactIds), ...asArray(record.customerReviewContactIds)]),
+    approvalAuthorityContactIds: unique([...asArray(existing?.approvalAuthorityContactIds), ...asArray(record.approvalAuthorityContactIds)]),
+    sofRecipientContactIds: unique([...asArray(existing?.sofRecipientContactIds), ...asArray(record.sofRecipientContactIds)]),
+    customerContactEmails: unique([...asArray(existing?.customerContactEmails), ...asArray(record.customerContactEmails)]),
     assignment: assignmentFromAuthority(authority),
     reviewers: unique([...asArray(record.reviewers ?? existing?.reviewers), ...authority.reviewers]),
     approvalState: record.approvalState ?? existing?.approvalState ?? (status === "CUSTOMER_APPROVED" ? "APPROVED" : "NOT_SUBMITTED"),
@@ -453,6 +458,11 @@ async function persistRuntimeMirror(record) {
       fulfillmentMix: record.fulfillmentMix,
       status: record.status,
       approvalState: record.approvalState,
+      proposalRecipientContactIds: record.proposalRecipientContactIds,
+      customerReviewContactIds: record.customerReviewContactIds,
+      approvalAuthorityContactIds: record.approvalAuthorityContactIds,
+      sofRecipientContactIds: record.sofRecipientContactIds,
+      customerContactEmails: record.customerContactEmails,
       nextLifecycleAction: record.nextLifecycleAction,
       existingInventoryReferences: record.existingInventoryReferences,
       customerDesignReferences: record.customerDesignReferences,
@@ -624,6 +634,11 @@ async function handleAssign(req, res, id, user) {
   }
   const body = await readRequestJson(req);
   const customerUsers = normalizeUserIds(body.assignedCustomerUsers ?? body.customerUsers ?? body.customerReviewers);
+  const proposalRecipientContactIds = unique([...asArray(existing.proposalRecipientContactIds), ...asArray(body.proposalRecipientContactIds)]);
+  const customerReviewContactIds = unique([...asArray(existing.customerReviewContactIds), ...asArray(body.customerReviewContactIds)]);
+  const approvalAuthorityContactIds = unique([...asArray(existing.approvalAuthorityContactIds), ...asArray(body.approvalAuthorityContactIds)]);
+  const sofRecipientContactIds = unique([...asArray(existing.sofRecipientContactIds), ...asArray(body.sofRecipientContactIds)]);
+  const customerContactEmails = unique([...asArray(existing.customerContactEmails), ...asArray(body.customerContactEmails)]);
   const authority = normalizeAuthority(existing, existing.ownerId ?? existing.commercialOwnerId, existing.assignedCustomerUsers);
   for (const key of ROLE_KEYS) {
     authority[key] = unique([...asArray(authority[key]), ...normalizeUserIds(body[key])]);
@@ -637,6 +652,11 @@ async function handleAssign(req, res, id, user) {
     authority,
     assignedTo,
     assignedCustomerUsers: unique([...asArray(existing.assignedCustomerUsers), ...customerUsers]),
+    proposalRecipientContactIds,
+    customerReviewContactIds,
+    approvalAuthorityContactIds,
+    sofRecipientContactIds,
+    customerContactEmails,
   }, user, existing);
   jsonResponse(res, 200, { proposal: await saveProposal(assigned, user, "runtime.proposal.assigned", "Proposal assignment and authority updated.") });
 }
@@ -654,6 +674,11 @@ async function handleSubmitCustomer(req, res, id, user) {
   const body = await readRequestJson(req);
   const explicitCustomerUsers = normalizeUserIds(body.assignedCustomerUsers ?? body.customerUsers ?? body.customerReviewers);
   const customerUsers = unique([...asArray(existing.assignedCustomerUsers), ...explicitCustomerUsers, ...defaultCustomerUserIds(existing.customerId)]);
+  const proposalRecipientContactIds = unique([...asArray(existing.proposalRecipientContactIds), ...asArray(body.proposalRecipientContactIds)]);
+  const customerReviewContactIds = unique([...asArray(existing.customerReviewContactIds), ...asArray(body.customerReviewContactIds)]);
+  const approvalAuthorityContactIds = unique([...asArray(existing.approvalAuthorityContactIds), ...asArray(body.approvalAuthorityContactIds)]);
+  const sofRecipientContactIds = unique([...asArray(existing.sofRecipientContactIds), ...asArray(body.sofRecipientContactIds)]);
+  const customerContactEmails = unique([...asArray(existing.customerContactEmails), ...asArray(body.customerContactEmails)]);
   if (!customerUsers.length) {
     errorResponse(res, 400, "At least one customer reviewer is required.");
     return;
@@ -664,6 +689,11 @@ async function handleSubmitCustomer(req, res, id, user) {
     approvalState: "CUSTOMER_REVIEW",
     visibility: "SHARED",
     assignedCustomerUsers: customerUsers,
+    proposalRecipientContactIds,
+    customerReviewContactIds,
+    approvalAuthorityContactIds,
+    sofRecipientContactIds,
+    customerContactEmails,
     assignedTo: unique([...asArray(existing.assignedTo), ...customerUsers]),
     submittedAt: nowIso(),
     notifications: [
