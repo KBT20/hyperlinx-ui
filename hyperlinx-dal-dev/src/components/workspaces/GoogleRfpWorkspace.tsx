@@ -32,6 +32,7 @@ import {
   type CommercialCorridorDraft,
   type CommercialDraftType,
 } from "../../commercial/CommercialCorridorDraftEngine";
+import { assembleDraftIofPackage } from "../../commercial/IOFPackageAssemblyEngine";
 import { routeCommercialCorridorWithOsrm, type CommercialRouteRequest, type CommercialRouteResult } from "../../commercial/CommercialOsrmRoutingEngine";
 import {
   DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS,
@@ -46,7 +47,6 @@ import { authorityModeConfidence, type ConstraintValue, type ConstraintAuthority
 import {
   archiveCommercialOpportunity,
   advanceRuntimeLifecycleBridge,
-  assembleDraftIofPackageFromProposal,
   approveProposalRuntimeObject,
   assignDraftIofPackageEngineer,
   assignCommercialOpportunity,
@@ -67,6 +67,7 @@ import {
   requestProposalChanges,
   returnDraftIofPackageToCommercial,
   saveCommercialOpportunity,
+  saveCommercialDraftIofPackage,
   shareCommercialOpportunity,
   saveProposalDraft,
   submitProposalToCustomer,
@@ -2760,6 +2761,7 @@ export default function GoogleRfpWorkspace() {
   const [proposalRuntimeActionPending, setProposalRuntimeActionPending] = useState(false);
   const [engineeringReviewQueue, setEngineeringReviewQueue] = useState<EngineeringReviewQueueItem[]>([]);
   const [activeDraftIofPackage, setActiveDraftIofPackage] = useState<DraftIofPackageRuntime | null>(null);
+  const [commercialDraftIofPackage, setCommercialDraftIofPackage] = useState<DraftIofPackageRuntime | null>(null);
   const [engineeringCertificationNotice, setEngineeringCertificationNotice] = useState("Engineering Certification queue is waiting for a Draft IOF Package.");
   const [engineeringCertificationPending, setEngineeringCertificationPending] = useState(false);
   const [runtimeLifecycleState, setRuntimeLifecycleState] = useState<RuntimeLifecycleBridgeState | null>(null);
@@ -4092,18 +4094,42 @@ export default function GoogleRfpWorkspace() {
       setEngineeringCertificationNotice("Engineering can only assemble from a customer-approved and runtime-valid Proposal.");
       return;
     }
+    if (!commercialDraftIofPackagePreview) {
+      setEngineeringCertificationNotice("Commercial Draft IOF Package JSON is required before Engineering handoff.");
+      return;
+    }
     setEngineeringCertificationPending(true);
     try {
-      const draft = await assembleDraftIofPackageFromProposal({
-        proposalId: activeProposalRuntime.proposalId,
-        assignedEngineerId: currentUserId,
-        assignedEngineer: currentUserName,
-        priority: "NORMAL",
-      }, session);
+      const draft = await saveCommercialDraftIofPackage(commercialDraftIofPackagePreview, session);
+      setCommercialDraftIofPackage(draft);
       setActiveDraftIofPackage(draft);
-      await refreshEngineeringReviewQueue(`${draft.packageId} assembled and queued for Engineering certification.`);
+      await refreshEngineeringReviewQueue(`${draft.packageId} saved from Commercial package JSON and queued for Engineering certification.`);
+      setProposalRuntimeNotice(`${draft.packageId} saved as the Draft IOF Package source for Engineering review.`);
     } catch (error) {
       setEngineeringCertificationNotice(`Draft IOF assembly failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setEngineeringCertificationPending(false);
+    }
+  }
+
+  async function handleSaveCommercialDraftIofPackage() {
+    if (!activeProposalRuntime) {
+      setProposalRuntimeNotice("Save a governed Proposal Runtime Object before preserving Draft IOF Package JSON.");
+      return;
+    }
+    if (!commercialDraftIofPackagePreview) {
+      setProposalRuntimeNotice("Commercial package assembly needs proposal, design, pricing, and validation inputs.");
+      return;
+    }
+    setEngineeringCertificationPending(true);
+    try {
+      const draft = await saveCommercialDraftIofPackage(commercialDraftIofPackagePreview, session);
+      setCommercialDraftIofPackage(draft);
+      setActiveDraftIofPackage(draft);
+      setProposalRuntimeNotice(`${draft.packageId} saved as deterministic Draft IOF Package JSON.`);
+      await refreshEngineeringReviewQueue(`${draft.packageId} is available for Engineering review.`);
+    } catch (error) {
+      setProposalRuntimeNotice(`Commercial Draft IOF Package save failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setEngineeringCertificationPending(false);
     }
@@ -5412,17 +5438,22 @@ export default function GoogleRfpWorkspace() {
     return slot === "A" ? opportunityScoutAzOrigin : opportunityScoutAzDestination;
   }
 
-  function handleResolveAzTextLocation(slot: AzLocationSlot) {
+  function resolveAzTextInput(slot: AzLocationSlot) {
     const input = azInputForSlot(slot).trim();
-    if (!input) return;
+    if (!input) return null;
     const coordinateParts = input.split(",").map((part) => Number(part.trim()));
-    const location = coordinateParts.length === 2 &&
+    return coordinateParts.length === 2 &&
       Number.isFinite(coordinateParts[0]) &&
       Number.isFinite(coordinateParts[1]) &&
       Math.abs(coordinateParts[0]) <= 90 &&
       Math.abs(coordinateParts[1]) <= 180
       ? createLatLngResolvedLocation(selectedAccount.accountId, coordinateParts[0], coordinateParts[1])
       : createAddressResolvedLocation(selectedAccount.accountId, input);
+  }
+
+  function handleResolveAzTextLocation(slot: AzLocationSlot) {
+    const location = resolveAzTextInput(slot);
+    if (!location) return;
     setAzLocation(slot, location);
   }
 
@@ -5548,10 +5579,15 @@ export default function GoogleRfpWorkspace() {
   }
 
   function handleRunAzBuilderScout() {
-    if (opportunityWorkflowState !== "AWAITING_AZ_INPUT" || !azOriginLocation || !azDestinationLocation) return;
-    setCommercialDraftType(commercialDraftType ?? "NEW_GRAPH_CORRIDOR");
-    setActiveDesignMode(commercialDraftType === "EXISTING_GRAPH_EXTENSION" ? "EXTEND_EXISTING_NETWORK" : "NEW_INDEPENDENT_GRAPH");
-    setOpportunityScoutCandidate(createAzBuilderScoutCandidateFromResolvedLocations(selectedAccount.accountId, azOriginLocation, azDestinationLocation));
+    const originLocation = azOriginLocation ?? resolveAzTextInput("A");
+    const destinationLocation = azDestinationLocation ?? resolveAzTextInput("Z");
+    if (opportunityWorkflowState !== "AWAITING_AZ_INPUT" || !originLocation || !destinationLocation) return;
+    const draftType = commercialDraftType ?? "NEW_GRAPH_CORRIDOR";
+    setAzOriginLocation(originLocation);
+    setAzDestinationLocation(destinationLocation);
+    setCommercialDraftType(draftType);
+    setActiveDesignMode(draftType === "EXISTING_GRAPH_EXTENSION" ? "EXTEND_EXISTING_NETWORK" : "NEW_INDEPENDENT_GRAPH");
+    setOpportunityScoutCandidate(createAzBuilderScoutCandidateFromResolvedLocations(selectedAccount.accountId, originLocation, destinationLocation));
     setOpportunityWorkflowState("SITE_DECISION_READY");
   }
 
@@ -6132,6 +6168,147 @@ export default function GoogleRfpWorkspace() {
   const unsavedChanges = Boolean(activeLiveSession?.dirty || (commercialCorridorDraft && !opportunityScoutCandidate?.lockedIntoCommercialDraft));
   const activeFinancialDraft = selectedImportedCommercialDraft ?? commercialCorridorDraft ?? loadedCommercialDraftSnapshot;
   const activeFinancialAuthority = activeFinancialDraft?.financialAuthority ?? null;
+  const commercialDraftIofPackagePreview = useMemo(() => {
+    const routePlan = activeLiveSession?.routePlan ?? selectedRoutePlans[0];
+    if (!routePlan && !activeProposalRuntime && !activeFinancialDraft && !opportunityScoutQuickQuote) return null;
+    const proposalId = activeProposalRuntime?.proposalId ?? `PROPOSAL-${selectedAccount.accountId}-${routePlan?.routeRequirement.routeRequirementId ?? selectedScope.scopeId}`;
+    const geometry = activeLiveSession?.activeEditableRouteGeometry ?? routePlan?.stationedCorridor?.centerlineRoute.geometry ?? routePlan?.proposedGraph?.centerlineRoute?.geometry ?? activeFinancialDraft?.geometry ?? opportunityScoutQuickQuote?.geometry ?? [];
+    const proposalSource = {
+      ...(activeProposalRuntime ?? {}),
+      proposalId,
+      proposalRecordId: activeProposalRuntime?.proposalRecordId ?? proposalId,
+      proposalNumber: activeProposalRuntime?.proposalNumber ?? proposalId,
+      customerId: activeProposalRuntime?.customerId ?? customerIdForAccount(selectedAccount.accountId),
+      accountId: selectedAccount.accountId,
+      customerName: selectedAccount.name,
+      opportunityId: activeProposalRuntime?.opportunityId ?? (activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId || routePlan?.routeRequirement.routeRequirementId || `${proposalId}:OPPORTUNITY`),
+      organizationId: activeProposalRuntime?.organizationId ?? currentOrganizationId,
+      workspaceId: activeProposalRuntime?.workspaceId ?? currentWorkspaceId,
+      owner: activeProposalRuntime?.owner ?? currentUserName,
+      ownerId: activeProposalRuntime?.ownerId ?? currentUserId,
+      commercialOwner: activeProposalRuntime?.commercialOwner ?? currentUserName,
+      commercialOwnerId: activeProposalRuntime?.commercialOwnerId ?? currentUserId,
+      productId: activeProposalRuntime?.productId ?? selectedProductOption.productId,
+      productName: activeProposalRuntime?.productName ?? selectedProductOption.productName,
+      title: activeProposalRuntime?.title ?? `${selectedAccount.name} ${routePlan?.routeRequirement.bidSegmentName ?? "Commercial"} Proposal`,
+      summary: activeProposalRuntime?.summary ?? `Commercial proposal for ${routePlan?.routeRequirement.bidSegmentName ?? selectedScope.label}.`,
+      executiveSummary: activeProposalRuntime?.executiveSummary ?? preview.executiveSummary,
+      status: activeProposalRuntime?.status ?? "COMMERCIAL_DRAFT",
+      approvalState: activeProposalRuntime?.approvalState ?? "NOT_SUBMITTED",
+      version: activeProposalRuntime?.version ?? 1,
+      pricingSummary: activeProposalRuntime?.pricingSummary ?? selectedPricingSummary.reconciliation,
+      marginSummary: activeProposalRuntime?.marginSummary ?? {
+        grossMarginDollars: selectedPricingSummary.reconciliation.grossMarginDollars,
+        grossMarginPercent: selectedPricingSummary.reconciliation.grossMarginPercent,
+      },
+      confidenceSummary: activeProposalRuntime?.confidenceSummary ?? {
+        commercialReadiness: activeFinancialDraft?.transparentEstimate.commercialReadiness.score ?? opportunityScoutQuickQuote?.confidence ?? 0,
+        pricingStatus: selectedPricingSummary.reconciliation.combinedAwardAdjustmentStatus,
+      },
+      commercialAssumptionIds: activeProposalRuntime?.commercialAssumptionIds ?? [selectedAssumptionState.stateId],
+      dealPointIds: activeProposalRuntime?.dealPointIds ?? selectedScope.routeRequirementIds,
+      runtimeObjectIds: activeProposalRuntime?.runtimeObjectIds ?? [
+        activeCommercialOpportunity?.runtimeObjectId,
+        selectedImportedCustomerDesignImport?.designImportId,
+        ...activeCommercialDraftNetworks.map((network) => network.networkId),
+      ].filter(Boolean),
+      runtimeRelationshipIds: activeProposalRuntime?.runtimeRelationshipIds ?? [
+        activeCommercialOpportunity?.opportunityId ? `DERIVED_FROM:${activeCommercialOpportunity.opportunityId}` : "",
+        routePlan?.routeRequirement.routeRequirementId ? `PROPOSES_ROUTE:${routePlan.routeRequirement.routeRequirementId}` : "",
+      ].filter(Boolean),
+      runtimeEvidenceIds: activeProposalRuntime?.runtimeEvidenceIds ?? [],
+      existingInventoryReferences: activeProposalRuntime?.existingInventoryReferences ?? activeExistingReferenceNetworkIds,
+      customerDesignReferences: activeProposalRuntime?.customerDesignReferences ?? (selectedImportedCustomerDesignImport ? [selectedImportedCustomerDesignImport.designId] : []),
+      customerTwinReference: activeProposalRuntime?.customerTwinReference ?? accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
+      geometryReferences: activeProposalRuntime?.geometryReferences ?? [routePlan?.routeRequirement.routeRequirementId, ...geometry.map((coordinate, index) => `${proposalId}:geometry:${index}:${coordinate.join(",")}`)].filter(Boolean).slice(0, 20),
+      proposalDocumentReferences: activeProposalRuntime?.proposalDocumentReferences ?? ["Executive summary", "Commercial pricing summary", "Interactive proposal map"],
+      proposalRecipientContactIds,
+      customerReviewContactIds,
+      approvalAuthorityContactIds,
+      sofRecipientContactIds,
+      customerContactEmails,
+      createdAt: activeProposalRuntime?.createdAt ?? "2026-07-01T00:00:00.000Z",
+      updatedAt: activeProposalRuntime?.updatedAt ?? "2026-07-01T00:00:00.000Z",
+      noScopeVersionCreation: true,
+      noInventoryMutation: true,
+    } as Partial<ProposalRuntimeObject> & { proposalId: string; customerId: string; opportunityId?: string };
+    return assembleDraftIofPackage({
+      proposal: proposalSource,
+      customerName: selectedAccount.name,
+      accountId: selectedAccount.accountId,
+      commercialCandidate: (activeFinancialDraft ?? opportunityScoutQuickQuote ?? activeCommercialOpportunity ?? null) as Record<string, unknown> | null,
+      commercialDraft: activeFinancialDraft,
+      quickQuote: opportunityScoutQuickQuote,
+      designArtifacts: [
+        selectedImportedCustomerDesignImport,
+        selectedImportedCustomerRoute,
+        activeCommercialOpportunity,
+        routePlan,
+      ].filter(Boolean),
+      graph: importedCustomerDesignGraph ?? accountCustomerNetworkGraph ?? accountCustomerTwin,
+      stationing: activeFinancialDraft?.routeSegments ?? [],
+      objectInventory: accountNetworkInventory,
+      pricing: {
+        pricingSummary: selectedPricingSummary.reconciliation,
+        financialAuthority: activeFinancialAuthority,
+        transparentEstimate: activeFinancialDraft?.transparentEstimate,
+      },
+      validation: commercialDraftValidation,
+      selectedRoutePlans,
+      assignedEngineerId: currentUserId,
+      assignedEngineer: currentUserName,
+      priority: "NORMAL",
+      generatedAt: activeProposalRuntime?.updatedAt ?? "2026-07-01T00:00:00.000Z",
+      ownerId: activeProposalRuntime?.ownerId ?? currentUserId,
+      owner: activeProposalRuntime?.owner ?? currentUserName,
+      organizationId: currentOrganizationId,
+      workspaceId: currentWorkspaceId,
+      runtimeObjectIds: activeProposalRuntime?.runtimeObjectIds,
+      runtimeRelationshipIds: activeProposalRuntime?.runtimeRelationshipIds,
+      runtimeEvidenceIds: activeProposalRuntime?.runtimeEvidenceIds,
+      existingInventoryReferences: activeProposalRuntime?.existingInventoryReferences,
+      customerDesignReferences: activeProposalRuntime?.customerDesignReferences,
+      customerTwinReference: activeProposalRuntime?.customerTwinReference ?? accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
+      geometryReferences: activeProposalRuntime?.geometryReferences,
+    });
+  }, [
+    accountCustomerNetworkGraph,
+    accountCustomerTwin,
+    accountNetworkInventory,
+    activeCommercialDraftNetworks,
+    activeCommercialOpportunity,
+    activeCommercialOpportunityId,
+    activeFinancialAuthority,
+    activeFinancialDraft,
+    activeLiveSession,
+    activeProposalRuntime,
+    approvalAuthorityContactIds,
+    commercialDraftValidation,
+    currentOrganizationId,
+    currentUserId,
+    currentUserName,
+    currentWorkspaceId,
+    customerContactEmails,
+    customerReviewContactIds,
+    importedCustomerDesignGraph,
+    opportunityScoutQuickQuote,
+    preview.executiveSummary,
+    proposalRecipientContactIds,
+    selectedAccount.accountId,
+    selectedAccount.name,
+    selectedAssumptionState.stateId,
+    activeExistingReferenceNetworkIds,
+    selectedImportedCustomerDesignImport,
+    selectedImportedCustomerRoute,
+    selectedPricingSummary,
+    selectedProductOption,
+    selectedRoutePlans,
+    selectedScope.label,
+    selectedScope.routeRequirementIds,
+    selectedScope.scopeId,
+    sofRecipientContactIds,
+  ]);
+  const displayedDraftIofPackage = commercialDraftIofPackage ?? commercialDraftIofPackagePreview ?? activeDraftIofPackage;
 
   return (
     <section className="dal-workspace wide">
@@ -6840,6 +7017,47 @@ export default function GoogleRfpWorkspace() {
         </details>
       </section>
 
+      <section className="dal-panel commercial-iof-package-json">
+        <div className="dal-panel-title-row">
+          <div>
+            <h3>Draft IOF Package JSON</h3>
+            <span>{displayedDraftIofPackage?.packageId ?? "Commercial assembly is waiting for proposal/design evidence."}</span>
+          </div>
+          <span className={`dal-badge ${displayedDraftIofPackage?.packageReadiness?.status === "READY_FOR_ENGINEERING_REVIEW" ? "pass" : displayedDraftIofPackage ? "warning" : "fail"}`}>
+            {String(displayedDraftIofPackage?.packageReadiness?.status ?? "Not Assembled").replaceAll("_", " ")}
+          </span>
+        </div>
+        <div className="teralinx-summary-grid">
+          <div><span>Assembler</span><b>{String(displayedDraftIofPackage?.assemblyReport?.assembledBy ?? "IOFPackageAssemblyEngine")}</b></div>
+          <div><span>Proposal</span><b>{displayedDraftIofPackage?.proposalId ?? activeProposalRuntime?.proposalId ?? "Save proposal first"}</b></div>
+          <div><span>Units</span><b>{displayedDraftIofPackage?.proposedIofUnits?.length.toLocaleString() ?? "0"}</b></div>
+          <div><span>Stations</span><b>{displayedDraftIofPackage?.stations?.length.toLocaleString() ?? "0"}</b></div>
+          <div><span>Geometry Refs</span><b>{displayedDraftIofPackage?.geometryReferences?.length.toLocaleString() ?? "0"}</b></div>
+          <div><span>Validation</span><b>{String(displayedDraftIofPackage?.validation?.status ?? "Missing")}</b></div>
+          <div><span>ScopeVersion</span><b>{displayedDraftIofPackage?.noScopeVersionCreation ? "Not created" : "Blocked"}</b></div>
+          <div><span>Engineering</span><b>{displayedDraftIofPackage?.engineeringReadiness?.replaceAll("_", " ") ?? "Not ready"}</b></div>
+        </div>
+        <div className="dal-actions">
+          <button type="button" onClick={handleSaveCommercialDraftIofPackage} disabled={!canManageProposalRuntime || !activeProposalRuntime || !commercialDraftIofPackagePreview || engineeringCertificationPending}>
+            Save Draft IOF JSON
+          </button>
+          <button type="button" onClick={handleAssembleDraftIofForEngineering} disabled={!canManageProposalRuntime || !activeProposalRuntime || !commercialDraftIofPackagePreview || engineeringCertificationPending}>
+            Handoff to Engineering
+          </button>
+        </div>
+        <div className="dal-status">
+          {activeProposalRuntime
+            ? "Commercial assembles one Draft IOF Package artifact here. Engineering opens this persisted JSON and certifies it without regenerating from Proposal state."
+            : "Save a Proposal Runtime Object before preserving or handing off the Draft IOF Package JSON."}
+        </div>
+        <details open>
+          <summary>Commercial-Assembled Draft IOF Package JSON</summary>
+          <pre style={{ maxHeight: 420, overflow: "auto", whiteSpace: "pre-wrap" }}>
+            {displayedDraftIofPackage ? JSON.stringify(displayedDraftIofPackage, null, 2) : "No Draft IOF Package JSON is available yet."}
+          </pre>
+        </details>
+      </section>
+
       {canReadEngineeringCertification ? (
         <section className="dal-panel engineering-certification-queue">
           <div className="dal-panel-title-row">
@@ -6871,7 +7089,7 @@ export default function GoogleRfpWorkspace() {
             <div><span>Queue</span><b>{engineeringReviewQueue.length.toLocaleString()}</b></div>
           </div>
           <div className="dal-actions">
-            <button type="button" onClick={handleAssembleDraftIofForEngineering} disabled={!canWriteEngineeringCertification || !activeProposalRuntime || engineeringCertificationPending}>Assemble Draft IOF</button>
+            <button type="button" onClick={handleAssembleDraftIofForEngineering} disabled={!canWriteEngineeringCertification || !activeProposalRuntime || !commercialDraftIofPackagePreview || engineeringCertificationPending}>Use Commercial Draft IOF</button>
             <button type="button" onClick={() => activeDraftIofPackage ? void handleOpenEngineeringDraftPackage(activeDraftIofPackage.packageId) : undefined} disabled={!activeDraftIofPackage || engineeringCertificationPending}>Open Package</button>
             <button type="button" onClick={handleAssignActiveDraftIofPackageToMe} disabled={!canWriteEngineeringCertification || !activeDraftIofPackage || engineeringCertificationPending}>Assign Engineer</button>
             <button type="button" className="secondary" onClick={handleReturnActiveDraftIofToCommercial} disabled={!canWriteEngineeringCertification || !activeDraftIofPackage || engineeringCertificationPending}>Return to Commercial</button>

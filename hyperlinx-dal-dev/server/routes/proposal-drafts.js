@@ -14,7 +14,7 @@ import {
   unwrapBody,
 } from "./_shared.js";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
-import { assembleDraftIofPackageFromProposal } from "./engineering-certification.js";
+import { loadCommercialDraftIofPackageForProposal } from "./commercial-iof-packages.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 
 const ROLE_KEYS = ["contributors", "reviewers", "approvers", "executives", "customerReviewers", "salesEngineering"];
@@ -980,17 +980,11 @@ async function handleApprove(req, res, id, user) {
   const saved = await saveProposal(approved, user, "runtime.proposal.customer.approved", "Customer approved the commercial proposal. Draft IOF readiness may now be evaluated.", { approvalId: approval.approvalId });
   const lifecycleApproval = runtimeHistoryEvent(saved, user, "CUSTOMER_APPROVED", "Customer approval advanced the Runtime lifecycle bridge.", { approvalId: approval.approvalId });
   await persistRecord(DIRS.runtimeHistory, lifecycleApproval.historyId, lifecycleApproval);
-  const defaultEngineer = findAlphaUserById("teralinx-user-kyle");
   let draftPackage = null;
   let draftIofAssemblyError = "";
   try {
-    const assembly = await assembleDraftIofPackageFromProposal({
-      proposalId: saved.proposalId,
-      assignedEngineerId: body.assignedEngineerId ?? defaultEngineer?.userId,
-      assignedEngineer: body.assignedEngineer ?? defaultEngineer?.name,
-      priority: body.priority ?? "NORMAL",
-    }, user, { idempotent: true });
-    draftPackage = assembly.draftPackage;
+    draftPackage = await loadCommercialDraftIofPackageForProposal(saved.proposalId);
+    if (!draftPackage) draftIofAssemblyError = "Commercial Draft IOF Package JSON has not been assembled for this Proposal.";
   } catch (error) {
     draftIofAssemblyError = error instanceof Error ? error.message : String(error);
   }

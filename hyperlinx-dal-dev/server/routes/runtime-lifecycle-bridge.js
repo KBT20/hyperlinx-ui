@@ -15,7 +15,8 @@ import { normalizeCommercialOpportunity, readOpportunity, saveOpportunity } from
 import { normalizeProposalRecord, readProposal, saveProposal } from "./proposal-drafts.js";
 import { ensureProductFulfillment } from "./product-fulfillment.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
-import { assembleDraftIofPackageFromProposal, listReviewQueue } from "./engineering-certification.js";
+import { listReviewQueue } from "./engineering-certification.js";
+import { loadCommercialDraftIofPackageForProposal } from "./commercial-iof-packages.js";
 
 const BASE_PATH = "/api/runtime/lifecycle";
 const LIFECYCLE_EVENTS = [
@@ -588,18 +589,12 @@ async function assembleIfApproved(input, user, lifecycleId, proposal) {
   if (!(proposal.approvalState === "APPROVED" || ["CUSTOMER_APPROVED", "READY_FOR_IOF_PACKAGE"].includes(proposal.status))) {
     return { draftPackage: null, engineeringQueueItem: null };
   }
-  const engineer = defaultEngineer(input);
-  const assembly = await assembleDraftIofPackageFromProposal({
-    proposalId: proposal.proposalId,
-    packageId: input.packageId,
-    assignedEngineerId: engineer.assignedEngineerId,
-    assignedEngineer: engineer.assignedEngineer,
-    priority: input.priority ?? "NORMAL",
-  }, user, { idempotent: true });
+  const draftPackage = await loadCommercialDraftIofPackageForProposal(proposal.proposalId);
+  if (!draftPackage) return { draftPackage: null, engineeringQueueItem: null };
   const queue = await listReviewQueue();
   return {
-    draftPackage: assembly.draftPackage,
-    engineeringQueueItem: queue.find((item) => item.packageId === assembly.draftPackage.packageId) ?? null,
+    draftPackage,
+    engineeringQueueItem: queue.find((item) => item.packageId === draftPackage.packageId) ?? null,
   };
 }
 

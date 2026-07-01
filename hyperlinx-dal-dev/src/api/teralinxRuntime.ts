@@ -903,6 +903,18 @@ export async function assembleDraftIofPackageFromProposal(
   return (data.draftPackage ?? data.iofPackage ?? data) as DraftIofPackageRuntime;
 }
 
+export async function saveCommercialDraftIofPackage(
+  draftPackage: DraftIofPackageRuntime,
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>("/api/commercial/iof-packages", {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ draftPackage }),
+  });
+  return (data.draftPackage ?? data.iofPackage ?? data) as DraftIofPackageRuntime;
+}
+
 export async function openDraftIofPackageForCertification(packageId: string, session?: TeralinxAuthSession | null) {
   const data = await requestJson<any>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}`, {
     headers: authHeaders(session),

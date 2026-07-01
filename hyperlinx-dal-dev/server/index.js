@@ -8,6 +8,7 @@ import { handleAuth } from "./routes/auth.js";
 import { handleCandidateSites } from "./routes/candidate-sites.js";
 import { handleCertifiedRoutes } from "./routes/certified-routes.js";
 import { handleCloseEvents } from "./routes/close-events.js";
+import { handleCommercialIofPackages } from "./routes/commercial-iof-packages.js";
 import { handleCommercialOpportunities } from "./routes/commercial-opportunities.js";
 import { handleControlWorkItems } from "./routes/control-work-items.js";
 import { handleCustomerDesignImports } from "./routes/customer-design-imports.js";
@@ -38,6 +39,7 @@ const routes = [
   handleScopeVersions,
   handleCustomerDesignImports,
   handleCommercialOpportunities,
+  handleCommercialIofPackages,
   handleEngineeringDrafts,
   handleEngineeringCertification,
   handleProposalDrafts,
