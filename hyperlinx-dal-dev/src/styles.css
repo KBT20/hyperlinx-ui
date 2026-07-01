@@ -1330,6 +1330,141 @@ textarea {
   max-width: 150px;
 }
 
+.commercial-compact-actions input {
+  max-width: 160px;
+  min-height: 34px;
+  padding: 7px 9px;
+}
+
+.account-workspace-dashboard {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(34, 197, 94, 0.24);
+  border-radius: 8px;
+  background: #071b22;
+}
+
+.account-workspace-summary,
+.account-product-fulfillment,
+.account-workspace-editor,
+.account-workspace-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.account-workspace-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.account-workspace-summary div,
+.account-workspace-grid > div {
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.account-workspace-summary div {
+  padding: 7px 8px;
+}
+
+.account-workspace-summary span,
+.account-workspace-grid small {
+  color: #9fbed8;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.account-workspace-summary b {
+  color: #e5f1ff;
+  display: block;
+  font-size: 12px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-product-fulfillment {
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.6fr);
+  align-items: stretch;
+}
+
+.account-product-fulfillment label,
+.account-fulfillment-mix {
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.account-product-fulfillment label {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+}
+
+.account-product-fulfillment label span,
+.account-fulfillment-mix span {
+  color: #9fbed8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.account-fulfillment-mix {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 8px;
+}
+
+.account-fulfillment-mix div {
+  min-width: 0;
+}
+
+.account-fulfillment-mix b {
+  color: #e5f1ff;
+  display: block;
+  font-size: 13px;
+}
+
+.account-workspace-editor {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.account-workspace-editor label,
+.account-contact-form {
+  display: grid;
+  gap: 4px;
+}
+
+.account-workspace-editor label.wide {
+  grid-column: span 3;
+}
+
+.account-workspace-editor span {
+  color: #9fbed8;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.account-workspace-grid {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.account-workspace-grid > div {
+  align-content: start;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.account-contact-form {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .runtime-workspace-dashboard {
   display: grid;
   gap: 10px;
@@ -3081,6 +3216,11 @@ textarea {
   }
 
   .commercial-compact-header-grid,
+  .account-workspace-summary,
+  .account-product-fulfillment,
+  .account-workspace-editor,
+  .account-workspace-grid,
+  .account-contact-form,
   .runtime-dashboard-title,
   .runtime-dashboard-grid,
   .existing-inventory-runtime-grid,
@@ -3135,6 +3275,18 @@ textarea {
     grid-column: span 2;
   }
 
+  .account-product-fulfillment {
+    grid-template-columns: 1fr;
+  }
+
+  .account-fulfillment-mix {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .account-workspace-editor label.wide {
+    grid-column: span 2;
+  }
+
   .commercial-design-mode-grid,
   .commercial-query-lists {
     grid-template-columns: 1fr;
@@ -3171,6 +3323,11 @@ textarea {
 
 @media (max-width: 640px) {
   .commercial-compact-header-grid,
+  .account-workspace-summary,
+  .account-product-fulfillment,
+  .account-workspace-editor,
+  .account-workspace-grid,
+  .account-contact-form,
   .runtime-dashboard-title,
   .runtime-dashboard-grid,
   .existing-inventory-runtime-grid,
@@ -3195,6 +3352,10 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .account-fulfillment-mix {
+    grid-template-columns: 1fr;
+  }
+
   .transparent-calibration-heading {
     align-items: stretch;
     display: grid;
@@ -3205,6 +3366,10 @@ textarea {
   }
 
   .runtime-dashboard-grid > div.executive {
+    grid-column: auto;
+  }
+
+  .account-workspace-editor label.wide {
     grid-column: auto;
   }
 

@@ -13,12 +13,16 @@ import {
 import { findAlphaUserById, runtimeWorkspaceForUser, userFromBearerToken, userHasPermission } from "./auth.js";
 import { normalizeCommercialOpportunity, readOpportunity, saveOpportunity } from "./commercial-opportunities.js";
 import { normalizeProposalRecord, readProposal, saveProposal } from "./proposal-drafts.js";
+import { ensureProductFulfillment } from "./product-fulfillment.js";
 import { assembleDraftIofPackageFromProposal, listReviewQueue } from "./engineering-certification.js";
 
 const BASE_PATH = "/api/runtime/lifecycle";
 const LIFECYCLE_EVENTS = [
   "CUSTOMER_TWIN_READY",
   "COMMERCIAL_OPPORTUNITY_CREATED",
+  "PRODUCT_SELECTED",
+  "INVENTORY_RESOLVED",
+  "FULFILLMENT_PLAN_CREATED",
   "COMMERCIAL_DRAFT_CREATED",
   "PROPOSAL_CREATED",
   "PROPOSAL_SUBMITTED",
@@ -51,6 +55,14 @@ function routeParts(pathname) {
 
 function customerIdFor(input = {}) {
   return String(input.customerId ?? input.account?.customerId ?? (input.accountId === "google" ? "customer-google" : input.accountId) ?? "customer-google");
+}
+
+function inputAccountId(input = {}) {
+  const explicit = input.accountId ?? input.account?.accountId ?? input.opportunity?.accountId ?? input.proposal?.accountId;
+  if (explicit) return String(explicit);
+  const customerId = customerIdFor(input);
+  if (customerId === "customer-google") return "google";
+  return customerId.startsWith("customer-") ? customerId.slice("customer-".length) : customerId;
 }
 
 function lifecycleIdFor(input = {}) {
@@ -97,6 +109,7 @@ async function appendLifecycleEvent(eventType, user, context = {}, details = "",
     objectType: context.objectType ?? "RuntimeLifecycle",
     objectId,
     objectName: context.objectName ?? objectId,
+    accountId: context.accountId ?? inputAccountId(context),
     organizationId: context.organizationId ?? user.organizationId,
     workspaceId: context.workspaceId ?? user.workspaceId,
     timestamp,
@@ -105,6 +118,7 @@ async function appendLifecycleEvent(eventType, user, context = {}, details = "",
     details,
     metadata: {
       lifecycleId,
+      accountId: context.accountId ?? inputAccountId(context),
       customerId: context.customerId,
       opportunityId: context.opportunityId,
       proposalId: context.proposalId,
@@ -174,7 +188,7 @@ async function persistEvidenceOnce(input = {}) {
 
 async function ensureCustomerTwin(input, user, lifecycleId) {
   const customerId = customerIdFor(input);
-  const accountId = String(input.accountId ?? input.account?.accountId ?? customerId);
+  const accountId = inputAccountId(input);
   const twinId = String(input.customerTwinReference ?? input.customerTwinId ?? `CUSTOMER-TWIN-${accountId}`);
   const runtimeId = twinId.startsWith("RUNTIME-") ? twinId : `RUNTIME-CUSTOMER-TWIN-${cleanId(twinId)}`;
   const existing = await loadRecord(DIRS.runtimeObjects, runtimeId).catch(() => null);
@@ -194,6 +208,7 @@ async function ensureCustomerTwin(input, user, lifecycleId) {
     organizationId: input.organizationId ?? user.organizationId,
     workspace: input.workspaceId ?? user.workspaceId,
     workspaceId: input.workspaceId ?? user.workspaceId,
+    accountId,
     customerId,
     visibility: "ORGANIZATION",
     authority: "CUSTOMER_TWIN_RUNTIME",
@@ -227,7 +242,7 @@ async function ensureCustomerTwin(input, user, lifecycleId) {
 
 async function ensureOpportunity(input, user, lifecycleId, customerTwin) {
   const customerId = customerIdFor(input);
-  const accountId = String(input.accountId ?? input.account?.accountId ?? customerId);
+  const accountId = inputAccountId(input);
   const requestedId = String(input.opportunityId ?? input.opportunity?.opportunityId ?? `COMMERCIAL-OPPORTUNITY-${accountId}-QUOTE-READY`);
   const existing = await readOpportunity(requestedId).catch(() => null)
     ?? (await listRecords(DIRS.commercialOpportunities)).find((record) => record?.accountId === accountId && record?.status !== "ARCHIVED");
@@ -294,6 +309,7 @@ async function ensureCommercialDraft(input, user, lifecycleId, opportunity, cust
     workspace: opportunity.workspaceId,
     workspaceId: opportunity.workspaceId,
     customerId: customerIdFor(input),
+    accountId: opportunity.accountId,
     visibility: opportunity.visibility,
     authority: "COMMERCIAL_REVIEW",
     lifecycleState: "ACTIVE",
@@ -307,10 +323,19 @@ async function ensureCommercialDraft(input, user, lifecycleId, opportunity, cust
     parentOpportunityId: opportunity.opportunityId,
     revision: Number(input.commercialDraft?.revision ?? input.revision ?? 1),
     sourceProposal: input.proposalId ?? input.proposal?.proposalId ?? "",
+    productId: input.productId ?? "",
+    productName: input.productName ?? "",
+    fulfillmentPlanId: input.fulfillmentPlanId ?? "",
+    fulfillmentStrategy: input.fulfillmentStrategy ?? "",
     commercialAssumptions: unique(input.commercialAssumptionIds),
     proposalInputs: input.proposalInputs ?? input.commercialDraft ?? {},
     metadata: {
       lifecycleId,
+      accountId: opportunity.accountId,
+      productId: input.productId ?? "",
+      productName: input.productName ?? "",
+      fulfillmentPlanId: input.fulfillmentPlanId ?? "",
+      fulfillmentStrategy: input.fulfillmentStrategy ?? "",
       parentOpportunityId: opportunity.opportunityId,
       customerTwinReference: customerTwin.runtimeId,
       customerDesignReferences: unique(input.customerDesignReferences),
@@ -362,6 +387,11 @@ async function ensureProposal(input, user, lifecycleId, opportunity, commercialD
     customerId: customerIdFor(input),
     accountId: input.accountId ?? input.account?.accountId,
     opportunityId: opportunity.opportunityId,
+    productId: input.productId ?? input.productDefinitionId,
+    productName: input.productName ?? input.product?.productName,
+    fulfillmentPlanId: input.fulfillmentPlanId,
+    fulfillmentStrategy: input.fulfillmentStrategy,
+    fulfillmentPlan: input.fulfillmentPlan,
     organizationId: opportunity.organizationId,
     workspaceId: opportunity.workspaceId,
     commercialOwnerId: opportunity.ownerId,
@@ -381,11 +411,14 @@ async function ensureProposal(input, user, lifecycleId, opportunity, commercialD
       opportunity.runtimeObjectId,
       commercialDraft.runtimeId,
       customerTwin.runtimeId,
+      input.productRuntimeObjectId,
+      input.fulfillmentRuntimeObjectId,
       ...asArray(input.runtimeObjectIds),
     ]),
     runtimeRelationshipIds: unique([
       `PARENT_OF:${opportunity.runtimeObjectId}:${commercialDraft.runtimeId}`,
       `GENERATES_PROPOSAL:${commercialDraft.runtimeId}:${requestedId}`,
+      input.fulfillmentPlanId && input.productId ? `FULFILLS_PRODUCT:${input.fulfillmentPlanId}:${input.productId}` : "",
       ...asArray(input.runtimeRelationshipIds),
     ]),
     runtimeEvidenceIds: unique([evidence.evidenceId, ...asArray(input.runtimeEvidenceIds)]),
@@ -476,6 +509,7 @@ async function submitAndAssignProposal(input, user, lifecycleId, proposal) {
       organizationId: current.organizationId,
       workspace: findAlphaUserById(customerUserId)?.workspaceId ?? current.workspaceId,
       workspaceId: findAlphaUserById(customerUserId)?.workspaceId ?? current.workspaceId,
+      accountId: current.accountId,
       customerId: current.customerId,
       visibility: "SHARED",
       authority: "CUSTOMER_REVIEW",
@@ -486,7 +520,7 @@ async function submitAndAssignProposal(input, user, lifecycleId, proposal) {
       sourceId: current.proposalId,
       createdAt: timestamp,
       updatedAt: timestamp,
-      metadata: { lifecycleId, proposalId: current.proposalId, noDuplicateObjects: true },
+      metadata: { lifecycleId, accountId: current.accountId, proposalId: current.proposalId, noDuplicateObjects: true },
     };
     await persistRecord(DIRS.runtimeObjects, taskId, task);
     await persistRelationshipOnce({
@@ -561,6 +595,8 @@ async function lifecycleState(input, user, records = {}) {
   const events = (await listRecords(DIRS.runtimeHistory))
     .filter((event) => event?.metadata?.lifecycleId === lifecycleId || [
       records.opportunity?.opportunityId,
+      records.product?.productId,
+      records.fulfillmentPlan?.fulfillmentPlanId,
       records.proposal?.proposalId,
       records.draftPackage?.packageId,
     ].includes(event?.objectId))
@@ -573,6 +609,9 @@ async function lifecycleState(input, user, records = {}) {
     lifecycleProgress: lifecycleProgress(events, {
       CUSTOMER_TWIN_READY: records.customerTwin?.objectId,
       COMMERCIAL_OPPORTUNITY_CREATED: records.opportunity?.opportunityId,
+      PRODUCT_SELECTED: records.product?.productId,
+      INVENTORY_RESOLVED: records.fulfillmentPlan?.fulfillmentPlanId,
+      FULFILLMENT_PLAN_CREATED: records.fulfillmentPlan?.fulfillmentPlanId,
       COMMERCIAL_DRAFT_CREATED: records.commercialDraft?.objectId,
       PROPOSAL_CREATED: proposal?.proposalId,
       PROPOSAL_SUBMITTED: proposal?.proposalId,
@@ -586,6 +625,8 @@ async function lifecycleState(input, user, records = {}) {
     currentOwner: draftPackage?.assignedEngineer || proposal?.owner || records.opportunity?.owner || user.name,
     currentWorkspace: draftPackage?.workspaceId ?? proposal?.workspaceId ?? records.opportunity?.workspaceId ?? user.workspaceId,
     currentRuntimeObject: draftPackage?.packageId ?? proposal?.runtimeObjectId ?? records.commercialDraft?.runtimeId ?? records.opportunity?.runtimeObjectId ?? records.customerTwin?.runtimeId ?? "",
+    currentProduct: records.product?.productId ?? proposal?.productId ?? "",
+    currentFulfillmentPlan: records.fulfillmentPlan?.fulfillmentPlanId ?? proposal?.fulfillmentPlanId ?? "",
     currentProposal: proposal?.proposalId ?? "",
     currentIofPackage: draftPackage?.packageId ?? "",
     currentEngineeringStatus: records.engineeringQueueItem ? "QUEUED" : draftPackage ? draftPackage.workflowStatus : "NOT_QUEUED",
@@ -600,15 +641,95 @@ async function advanceLifecycle(input, user) {
   const lifecycleId = lifecycleIdFor(input);
   const customerTwin = await ensureCustomerTwin(input, user, lifecycleId);
   const opportunity = await ensureOpportunity(input, user, lifecycleId, customerTwin);
-  const commercialDraft = await ensureCommercialDraft(input, user, lifecycleId, opportunity, customerTwin);
-  let proposal = await ensureProposal(input, user, lifecycleId, opportunity, commercialDraft, customerTwin);
-  proposal = await submitAndAssignProposal(input, user, lifecycleId, proposal);
+  const productFulfillment = await ensureProductFulfillment({
+    ...input,
+    lifecycleId,
+    opportunityId: opportunity.opportunityId,
+    accountId: opportunity.accountId,
+    customerId: customerIdFor(input),
+    ownerId: opportunity.ownerId,
+    organizationId: opportunity.organizationId,
+    workspaceId: opportunity.workspaceId,
+  }, user);
+  await appendLifecycleEvent("PRODUCT_SELECTED", user, {
+    ...input,
+    lifecycleId,
+    objectType: "Product",
+    objectId: productFulfillment.product.productId,
+    objectName: productFulfillment.product.productName,
+    accountId: opportunity.accountId,
+    customerId: customerIdFor(input),
+    opportunityId: opportunity.opportunityId,
+  }, "Product selected before pricing, engineering, or execution.");
+  await appendLifecycleEvent("INVENTORY_RESOLVED", user, {
+    ...input,
+    lifecycleId,
+    objectType: "FulfillmentPlan",
+    objectId: productFulfillment.fulfillmentPlan.fulfillmentPlanId,
+    objectName: productFulfillment.fulfillmentPlan.productName,
+    accountId: opportunity.accountId,
+    customerId: customerIdFor(input),
+    opportunityId: opportunity.opportunityId,
+  }, "Carrier-neutral governed inventory resolved for Product fulfillment.");
+  await appendLifecycleEvent("FULFILLMENT_PLAN_CREATED", user, {
+    ...input,
+    lifecycleId,
+    objectType: "FulfillmentPlan",
+    objectId: productFulfillment.fulfillmentPlan.fulfillmentPlanId,
+    objectName: productFulfillment.fulfillmentPlan.productName,
+    accountId: opportunity.accountId,
+    customerId: customerIdFor(input),
+    opportunityId: opportunity.opportunityId,
+  }, "Fulfillment Plan established as the governed operational object.", {
+    fulfillmentStrategy: productFulfillment.fulfillmentPlan.fulfillmentStrategy,
+    fulfillmentMix: productFulfillment.fulfillmentPlan.fulfillmentMix,
+  });
+  await persistRelationshipOnce({
+    fromObjectId: productFulfillment.fulfillmentPlan.runtimeObjectId,
+    fromObjectType: "FULFILLMENT_PLAN",
+    toObjectId: productFulfillment.product.runtimeObjectId,
+    toObjectType: "PRODUCT",
+    relationshipType: "FULFILLS_PRODUCT",
+    organizationId: opportunity.organizationId,
+    workspaceId: opportunity.workspaceId,
+    metadata: {
+      lifecycleId,
+      productId: productFulfillment.product.productId,
+      fulfillmentPlanId: productFulfillment.fulfillmentPlan.fulfillmentPlanId,
+      ownershipIsMetadata: true,
+    },
+  });
+  const lifecycleInput = {
+    ...input,
+    lifecycleId,
+    productId: productFulfillment.product.productId,
+    productName: productFulfillment.product.productName,
+    productRuntimeObjectId: productFulfillment.product.runtimeObjectId,
+    fulfillmentPlanId: productFulfillment.fulfillmentPlan.fulfillmentPlanId,
+    fulfillmentStrategy: productFulfillment.fulfillmentPlan.fulfillmentStrategy,
+    fulfillmentPlan: productFulfillment.fulfillmentPlan,
+    fulfillmentRuntimeObjectId: productFulfillment.fulfillmentPlan.runtimeObjectId,
+    runtimeObjectIds: unique([
+      productFulfillment.product.runtimeObjectId,
+      productFulfillment.fulfillmentPlan.runtimeObjectId,
+      ...asArray(input.runtimeObjectIds),
+    ]),
+    runtimeRelationshipIds: unique([
+      `FULFILLS_PRODUCT:${productFulfillment.fulfillmentPlan.fulfillmentPlanId}:${productFulfillment.product.productId}`,
+      ...asArray(input.runtimeRelationshipIds),
+    ]),
+  };
+  const commercialDraft = await ensureCommercialDraft(lifecycleInput, user, lifecycleId, opportunity, customerTwin);
+  let proposal = await ensureProposal(lifecycleInput, user, lifecycleId, opportunity, commercialDraft, customerTwin);
+  proposal = await submitAndAssignProposal(lifecycleInput, user, lifecycleId, proposal);
   const approvalCandidate = await readProposal(proposal.proposalId).catch(() => proposal);
   proposal = normalizeProposalRecord(approvalCandidate, user, approvalCandidate);
-  const assembly = await assembleIfApproved(input, user, lifecycleId, proposal);
-  const state = await lifecycleState(input, user, {
+  const assembly = await assembleIfApproved(lifecycleInput, user, lifecycleId, proposal);
+  const state = await lifecycleState(lifecycleInput, user, {
     customerTwin,
     opportunity,
+    product: productFulfillment.product,
+    fulfillmentPlan: productFulfillment.fulfillmentPlan,
     commercialDraft,
     proposal,
     draftPackage: assembly.draftPackage,
@@ -620,6 +741,8 @@ async function advanceLifecycle(input, user) {
     lifecycle: state,
     customerTwin,
     opportunity,
+    product: productFulfillment.product,
+    fulfillmentPlan: productFulfillment.fulfillmentPlan,
     commercialDraft,
     proposal,
     draftPackage: assembly.draftPackage,
@@ -667,4 +790,3 @@ export async function handleRuntimeLifecycleBridge(req, res, pathname) {
   errorResponse(res, 405, "Runtime Lifecycle Bridge method not allowed.");
   return true;
 }
-

@@ -265,6 +265,11 @@ function timelineFor(scopeVersion, workItems, closures) {
 async function buildProjection(scopeVersionId) {
   const allWorkItems = await listRecords(DIRS.controlWorkItems);
   const allFieldClosures = await listRecords(DIRS.fieldClosures);
+  const runtimeObjects = await listRecords(DIRS.runtimeObjects);
+  const commercialRuntimeObjects = dedupeById(
+    runtimeObjects.filter((record) => ["ACCOUNT", "OPPORTUNITY", "CUSTOMER_TWIN", "PRODUCT", "FULFILLMENT_PLAN", "PROPOSAL"].includes(String(record?.objectType ?? ""))),
+    "runtimeId"
+  ).sort((a, b) => String(b.updatedAt ?? b.createdAt ?? "").localeCompare(String(a.updatedAt ?? a.createdAt ?? ""))).slice(0, 24);
   if (!scopeVersionId) {
     const metrics = {
       openWorkItems: allWorkItems.filter((item) => !["COMPLETE", "CANCELLED"].includes(item.status)).length,
@@ -285,9 +290,11 @@ async function buildProjection(scopeVersionId) {
       completionProjection: metrics.completionProjection,
       lifecycleViolations: [],
       graphContext: { matched: null },
+      commercialRuntimeObjects,
       totals: {
         workItemsLoaded: allWorkItems.length,
         closuresLoaded: allFieldClosures.length,
+        runtimeObjectsLoaded: runtimeObjects.length,
       },
     };
   }
@@ -326,9 +333,11 @@ async function buildProjection(scopeVersionId) {
     completionProjection: metrics.completionProjection,
     lifecycleViolations: violations,
     graphContext: graphContext(scopeVersion),
+    commercialRuntimeObjects,
     totals: {
       workItemsLoaded: allWorkItems.length,
       closuresLoaded: allFieldClosures.length,
+      runtimeObjectsLoaded: runtimeObjects.length,
     },
   };
 }

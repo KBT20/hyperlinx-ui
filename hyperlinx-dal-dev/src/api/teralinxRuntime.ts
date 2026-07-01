@@ -161,6 +161,12 @@ export type ProposalRuntimeObject = {
   proposalNumber: string;
   customerId: string;
   opportunityId: string;
+  productId?: string;
+  productName?: string;
+  fulfillmentPlanId?: string;
+  fulfillmentStrategy?: string;
+  fulfillmentPlan?: Record<string, unknown> | null;
+  fulfillmentMix?: Array<Record<string, unknown>>;
   organizationId: string;
   workspaceId: string;
   owner: string;
@@ -190,6 +196,9 @@ export type ProposalRuntimeObject = {
   runtimeEvidenceIds: string[];
   existingInventoryReferences: string[];
   customerDesignReferences: string[];
+  partnerInventoryReferences?: string[];
+  marketplaceAssetReferences?: string[];
+  newInfrastructureRequired?: string[];
   customerTwinReference: string;
   geometryReferences: string[];
   proposalDocumentReferences: string[];
@@ -356,6 +365,12 @@ export type DraftIofPackageRuntime = {
   proposalId: string;
   customerId: string;
   opportunityId: string;
+  productId?: string;
+  productName?: string;
+  fulfillmentPlanId?: string;
+  fulfillmentStrategy?: string;
+  fulfillmentPlan?: Record<string, unknown> | null;
+  fulfillmentMix?: Array<Record<string, unknown>>;
   assignedEngineerId: string;
   assignedEngineer: string;
   priority: string;
@@ -394,6 +409,9 @@ export type DraftIofPackageRuntime = {
   runtimeEvidenceIds: string[];
   existingInventoryReferences: string[];
   customerDesignReferences: string[];
+  partnerInventoryReferences?: string[];
+  marketplaceAssetReferences?: string[];
+  newInfrastructureRequired?: string[];
   customerTwinReference: string;
   geometryReferences: string[];
   historyIds: string[];
@@ -417,6 +435,8 @@ export type RuntimeLifecycleBridgeState = {
   currentOwner: string;
   currentWorkspace: string;
   currentRuntimeObject: string;
+  currentProduct?: string;
+  currentFulfillmentPlan?: string;
   currentProposal: string;
   currentIofPackage: string;
   currentEngineeringStatus: string;
@@ -429,6 +449,8 @@ export type RuntimeLifecycleBridgeResult = {
   lifecycle: RuntimeLifecycleBridgeState;
   customerTwin?: Record<string, unknown>;
   opportunity?: Record<string, unknown>;
+  product?: Record<string, unknown>;
+  fulfillmentPlan?: Record<string, unknown>;
   commercialDraft?: Record<string, unknown>;
   proposal?: ProposalRuntimeObject;
   draftPackage?: DraftIofPackageRuntime | null;

@@ -139,6 +139,9 @@ export default function TwinWorkspace() {
   };
   const completionProjection = twinState?.completionProjection ?? projectionMetrics.completionProjection;
   const projectionTimeline = twinState?.timeline ?? [];
+  const commercialRuntimeObjects = Array.isArray((twinState as any)?.commercialRuntimeObjects)
+    ? (twinState as any).commercialRuntimeObjects as Array<Record<string, any>>
+    : [];
   const graphContext = twinState?.graphContext;
   const expectedInventoryId = graphContext?.inventoryId ?? projectionScopeVersion?.inventoryId ?? projectionScopeVersion?.sourceInventoryId ?? (projectionScopeVersion?.canonicalTruth as any)?.graphReference?.inventoryId;
   const expectedGraphId = graphContext?.graphId ?? projectionScopeVersion?.graphId ?? (projectionScopeVersion?.canonicalTruth as any)?.graphReference?.graphId;
@@ -270,6 +273,28 @@ export default function TwinWorkspace() {
       </div>
 
       <ScopeVersionLifecycleRibbon scopeVersion={projectionScopeVersion} />
+
+      <div className="dal-panel">
+        <h3>Commercial Runtime Objects</h3>
+        <div className="dal-metrics">
+          <span>Objects surfaced: {fmt(commercialRuntimeObjects.length)}</span>
+          <span>Source: Runtime Object Library</span>
+          <span>Duplicate storage: none</span>
+        </div>
+        {commercialRuntimeObjects.length ? (
+          <div className="dal-list">
+            {commercialRuntimeObjects.slice(0, 8).map((object) => (
+              <div key={String(object.runtimeId ?? object.objectId)} className="dal-list-row">
+                <span>{String(object.name ?? object.objectId)}</span>
+                <b>{String(object.objectType ?? "Runtime")}</b>
+                <small>{String(object.accountId ?? object.metadata?.accountId ?? object.customerId ?? "account pending")}</small>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="dal-status">No commercial runtime objects have been created yet.</div>
+        )}
+      </div>
 
       <div className="dal-grid">
         <div className="dal-panel">

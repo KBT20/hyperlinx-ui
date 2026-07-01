@@ -77,6 +77,16 @@ import {
 } from "../../api/teralinxRuntime";
 import { useDALState } from "../../dal/DALState";
 import { useTeralinxAuth } from "../../identity/TeralinxAuth";
+import {
+  listGovernedAccounts,
+  listGovernedContacts,
+  listRuntimeHistory,
+  saveGovernedAccount,
+  saveGovernedContact,
+  type GovernedAccount,
+  type GovernedContact,
+  type RuntimeHistoryEvent,
+} from "../../api/accountLibrary";
 import { attachPricedDraftToImportedRoute, markImportedRoutePromoted, parseCustomerDesignFile } from "../../translate/CustomerDesignImportEngine";
 import type { CustomerDesignImport, ImportedCustomerRoute } from "../../translate/CustomerDesignImport";
 import { buildRuntimeCommitFromExistingInventoryImport, type RuntimeTranslationCommitRequest } from "../../runtime/RuntimeObjectModel";
@@ -339,6 +349,33 @@ interface CommercialOpportunityRecord {
   noInventoryMutation: true;
 }
 
+type AccountEditorState = {
+  accountId: string;
+  name: string;
+  accountType: string;
+  status: string;
+  salesOwner: string;
+  primaryEngineeringContact: string;
+  procurementContact: string;
+  notes: string;
+};
+
+type ContactEditorState = {
+  name: string;
+  title: string;
+  role: string;
+  email: string;
+  phone: string;
+};
+
+type Layer1ProductOption = {
+  productId: string;
+  productName: string;
+  productFamily: string;
+  defaultTermYears: number;
+  protected: boolean;
+};
+
 const COMMERCIAL_WORKFLOW: Array<{ id: CommercialWorkspaceView; label: string; summary: string }> = [
   { id: "account", label: "CRM Account", summary: "Customer, contacts, and opportunity context" },
   { id: "engagement", label: "Engagement", summary: "Opportunity record, documents, reviews, and attachments" },
@@ -349,6 +386,26 @@ const COMMERCIAL_WORKFLOW: Array<{ id: CommercialWorkspaceView; label: string; s
   { id: "proposal", label: "Proposal Builder", summary: "Commercial plan, corridor map, pricing, KMZ, and vendor response" },
   { id: "review", label: "Customer Review", summary: "Comments, revision intake, and approval state" },
   { id: "handoff", label: "Engineering Handoff", summary: "Accepted proposal package for Route Engineering" },
+];
+
+const LAYER_1_PRODUCT_OPTIONS: Layer1ProductOption[] = [
+  { productId: "PRODUCT-L1-PROTECTED-DARK-FIBER-IRU", productName: "Protected Dark Fiber IRU", productFamily: "Infrastructure", defaultTermYears: 20, protected: true },
+  { productId: "PRODUCT-L1-UNPROTECTED-DARK-FIBER-IRU", productName: "Unprotected Dark Fiber IRU", productFamily: "Infrastructure", defaultTermYears: 20, protected: false },
+  { productId: "PRODUCT-L1-DARK-FIBER-LEASE", productName: "Dark Fiber Lease", productFamily: "Infrastructure", defaultTermYears: 5, protected: false },
+  { productId: "PRODUCT-L1-CONDUIT-AS-A-SERVICE", productName: "Conduit-as-a-Service", productFamily: "Infrastructure", defaultTermYears: 10, protected: false },
+  { productId: "PRODUCT-L1-LATERAL-FIBER-EXTENSION", productName: "Lateral Fiber Extension", productFamily: "Infrastructure", defaultTermYears: 10, protected: false },
+  { productId: "PRODUCT-L1-LONG-HAUL-ROUTE", productName: "Long-Haul Route", productFamily: "Transport Infrastructure", defaultTermYears: 20, protected: true },
+  { productId: "PRODUCT-L1-METRO-BACKBONE", productName: "Metro Backbone", productFamily: "Transport Infrastructure", defaultTermYears: 15, protected: true },
+  { productId: "PRODUCT-L1-DATA-CENTER-INTERCONNECT", productName: "Data Center Interconnect", productFamily: "Transport Infrastructure", defaultTermYears: 10, protected: true },
+  { productId: "PRODUCT-L1-CAMPUS-INTERCONNECT", productName: "Campus Interconnect", productFamily: "Transport Infrastructure", defaultTermYears: 10, protected: false },
+  { productId: "PRODUCT-L1-POINT-OF-PRESENCE", productName: "Point of Presence (POP)", productFamily: "Physical Facilities", defaultTermYears: 10, protected: false },
+];
+
+const CARRIER_NEUTRAL_FULFILLMENT_MIX = [
+  { ownershipClass: "CUSTOMER_OWNED", label: "Customer Existing Ring", percentage: 40 },
+  { ownershipClass: "TERALINX_OWNED", label: "Teralinx Backbone", percentage: 35 },
+  { ownershipClass: "PARTNER_OWNED", label: "Partner Longhaul", percentage: 15 },
+  { ownershipClass: "NEW_CONSTRUCTION", label: "New Construction", percentage: 10 },
 ];
 
 const RUNTIME_USER_LABELS: Record<string, string> = {
@@ -1147,6 +1204,74 @@ function customerIdForAccount(accountId: string) {
   if (accountId === "google") return "customer-google";
   if (accountId.startsWith("customer-")) return accountId;
   return `customer-${accountId}`;
+}
+
+function cleanAccountId(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+
+function emptyAccountEditor(currentUserName: string): AccountEditorState {
+  return {
+    accountId: "",
+    name: "",
+    accountType: "Prospect",
+    status: "Prospect",
+    salesOwner: currentUserName,
+    primaryEngineeringContact: "TBD",
+    procurementContact: "TBD",
+    notes: "Governed Account workspace root.",
+  };
+}
+
+function contactEditorDefaults(): ContactEditorState {
+  return {
+    name: "",
+    title: "",
+    role: "Commercial",
+    email: "",
+    phone: "",
+  };
+}
+
+function accountEditorFromAccount(account: CommercialAccountFixture): AccountEditorState {
+  return {
+    accountId: account.accountId,
+    name: account.name,
+    accountType: account.accountType,
+    status: account.status,
+    salesOwner: account.salesOwner,
+    primaryEngineeringContact: account.primaryEngineeringContact,
+    procurementContact: account.procurementContact,
+    notes: account.notes,
+  };
+}
+
+function commercialAccountFromGoverned(
+  account: GovernedAccount,
+  contacts: GovernedContact[],
+  fallback?: CommercialAccountFixture,
+): CommercialAccountFixture {
+  const contactNames = contacts.length
+    ? contacts.map((contact) => contact.name)
+    : (account.contacts?.length ? account.contacts : fallback?.contacts ?? []);
+  return {
+    accountId: account.accountId,
+    name: account.name,
+    accountType: account.accountType ?? fallback?.accountType ?? "Prospect",
+    status: account.status ?? fallback?.status ?? "Prospect",
+    salesOwner: account.salesOwner ?? fallback?.salesOwner ?? "Teralinx",
+    primaryEngineeringContact: account.primaryEngineeringContact ?? fallback?.primaryEngineeringContact ?? "TBD",
+    procurementContact: account.procurementContact ?? fallback?.procurementContact ?? "TBD",
+    contacts: contactNames,
+    activeOpportunities: account.activeOpportunities?.length ? account.activeOpportunities : fallback?.activeOpportunities ?? [],
+    existingNetworks: account.existingNetworks?.length ? account.existingNetworks : fallback?.existingNetworks ?? [],
+    operationalObjects: account.operationalObjects?.length ? account.operationalObjects : fallback?.operationalObjects ?? [],
+    commercialEngagements: account.commercialEngagements?.length ? account.commercialEngagements : fallback?.commercialEngagements ?? [],
+    proposalHistory: account.proposalHistory?.length ? account.proposalHistory : fallback?.proposalHistory ?? [],
+    customerReviewHistory: account.customerReviewHistory?.length ? account.customerReviewHistory : fallback?.customerReviewHistory ?? [],
+    engineeringHistory: account.engineeringHistory?.length ? account.engineeringHistory : fallback?.engineeringHistory ?? [],
+    notes: account.notes ?? fallback?.notes ?? "Governed Account workspace root.",
+  };
 }
 
 function proposalRuntimeStatusLabel(status: string | undefined) {
@@ -2641,7 +2766,19 @@ export default function GoogleRfpWorkspace() {
   const [customerDrafts, setCustomerDrafts] = useState<CustomerDraftRecord[]>([]);
   const [customerReviewStatus, setCustomerReviewStatus] = useState<CustomerReviewStatus>("NOT_STARTED");
   const [acceptedProposal, setAcceptedProposal] = useState<AcceptedProposal | null>(null);
+  const [governedAccounts, setGovernedAccounts] = useState<GovernedAccount[]>([]);
+  const [governedContacts, setGovernedContacts] = useState<GovernedContact[]>([]);
+  const [runtimeHistory, setRuntimeHistory] = useState<RuntimeHistoryEvent[]>([]);
+  const [accountLibraryLoaded, setAccountLibraryLoaded] = useState(false);
+  const [accountPersistencePending, setAccountPersistencePending] = useState(false);
+  const [accountNotice, setAccountNotice] = useState("Account Library is loading governed workspace roots.");
+  const [accountSearch, setAccountSearch] = useState("");
+  const [accountEditorOpen, setAccountEditorOpen] = useState(false);
+  const [accountEditorMode, setAccountEditorMode] = useState<"create" | "edit">("edit");
+  const [accountDraft, setAccountDraft] = useState<AccountEditorState>(() => emptyAccountEditor(currentUserName));
+  const [contactDraft, setContactDraft] = useState<ContactEditorState>(() => contactEditorDefaults());
   const [selectedAccountId, setSelectedAccountId] = useState("google");
+  const [selectedProductId, setSelectedProductId] = useState("PRODUCT-L1-PROTECTED-DARK-FIBER-IRU");
   const [activeView, setActiveView] = useState<CommercialWorkspaceView>("networks");
   const [activeDesignMode, setActiveDesignMode] = useState<CommercialDesignMode>("EXTEND_EXISTING_NETWORK");
   const [commercialDraftType, setCommercialDraftType] = useState<CommercialDraftType | null>(null);
@@ -2681,7 +2818,195 @@ export default function GoogleRfpWorkspace() {
   const [networkLayerStates, setNetworkLayerStates] = useState<Record<string, NetworkLayerState>>(() =>
     Object.fromEntries(COMMERCIAL_NETWORKS.map((network) => [network.networkId, defaultNetworkLayerState(network)])),
   );
-  const selectedAccount = COMMERCIAL_ACCOUNTS.find((account) => account.accountId === selectedAccountId) ?? COMMERCIAL_ACCOUNTS[0];
+  const governedContactsForSelectedAccount = useMemo(
+    () => governedContacts.filter((contact) => contact.accountId === selectedAccountId && contact.lifecycleState !== "ARCHIVED"),
+    [governedContacts, selectedAccountId],
+  );
+  const accountOptions = useMemo<CommercialAccountFixture[]>(() => {
+    const byId = new Map<string, CommercialAccountFixture>();
+    COMMERCIAL_ACCOUNTS.forEach((account) => byId.set(account.accountId, account));
+    governedAccounts.forEach((account) => {
+      const fallback = byId.get(account.accountId);
+      const contacts = governedContacts.filter((contact) => contact.accountId === account.accountId && contact.lifecycleState !== "ARCHIVED");
+      byId.set(account.accountId, commercialAccountFromGoverned(account, contacts, fallback));
+    });
+    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [governedAccounts, governedContacts]);
+  const filteredAccountOptions = useMemo(
+    () => accountOptions.filter((account) => {
+      const query = accountSearch.trim().toLowerCase();
+      if (!query) return true;
+      return [account.name, account.accountId, account.accountType, account.status]
+        .some((value) => value.toLowerCase().includes(query));
+    }),
+    [accountOptions, accountSearch],
+  );
+  const selectedAccount =
+    accountOptions.find((account) => account.accountId === selectedAccountId) ??
+    accountOptions.find((account) => account.accountId === "google") ??
+    COMMERCIAL_ACCOUNTS[0];
+  const selectedGovernedAccount = governedAccounts.find((account) => account.accountId === selectedAccount.accountId) ?? null;
+  const selectedProductOption = useMemo(
+    () => LAYER_1_PRODUCT_OPTIONS.find((product) => product.productId === selectedProductId) ?? LAYER_1_PRODUCT_OPTIONS[0],
+    [selectedProductId],
+  );
+  async function refreshAccountLibrary(nextNotice?: string) {
+    const [accounts, contacts, history] = await Promise.all([
+      listGovernedAccounts(),
+      listGovernedContacts(),
+      listRuntimeHistory(),
+    ]);
+    setGovernedAccounts(accounts);
+    setGovernedContacts(contacts);
+    setRuntimeHistory(history);
+    setAccountLibraryLoaded(true);
+    if (nextNotice) setAccountNotice(nextNotice);
+    else setAccountNotice(`${accounts.length.toLocaleString()} governed Accounts loaded.`);
+  }
+
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+    Promise.all([listGovernedAccounts(), listGovernedContacts(), listRuntimeHistory()])
+      .then(([accounts, contacts, history]) => {
+        if (cancelled) return;
+        setGovernedAccounts(accounts);
+        setGovernedContacts(contacts);
+        setRuntimeHistory(history);
+        setAccountLibraryLoaded(true);
+        setAccountNotice(`${accounts.length.toLocaleString()} governed Accounts loaded.`);
+        if (!accounts.some((account) => account.accountId === selectedAccountId) && accounts[0]?.accountId) {
+          setSelectedAccountId(accounts[0].accountId);
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setAccountLibraryLoaded(true);
+        setAccountNotice(`Account Library load failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.token]);
+
+  useEffect(() => {
+    if (!accountEditorOpen || accountEditorMode !== "edit") return;
+    setAccountDraft(accountEditorFromAccount(selectedAccount));
+  }, [accountEditorMode, accountEditorOpen, selectedAccount.accountId]);
+
+  function handleCreateAccountDraft() {
+    resetCommercialOpportunityWorkingState();
+    setAccountEditorMode("create");
+    setAccountDraft(emptyAccountEditor(currentUserName));
+    setContactDraft(contactEditorDefaults());
+    setAccountEditorOpen(true);
+    setAccountNotice("Create a governed Account workspace root before starting downstream work.");
+  }
+
+  function handleEditSelectedAccount() {
+    setAccountEditorMode("edit");
+    setAccountDraft(accountEditorFromAccount(selectedAccount));
+    setAccountEditorOpen((value) => !value);
+  }
+
+  async function handleSaveAccountDraft() {
+    const name = accountDraft.name.trim();
+    const accountId = cleanAccountId(accountDraft.accountId || name);
+    if (!name || !accountId) {
+      setAccountNotice("Account name is required.");
+      return;
+    }
+    setAccountPersistencePending(true);
+    try {
+      const existing = governedAccounts.find((account) => account.accountId === accountId);
+      const baseAccount = accountEditorMode === "edit" ? (existing ?? selectedGovernedAccount ?? {}) : (existing ?? {});
+      const saved = await saveGovernedAccount({
+        ...baseAccount,
+        accountId,
+        name,
+        customerId: customerIdForAccount(accountId),
+        accountType: accountDraft.accountType,
+        status: accountDraft.status,
+        salesOwner: accountDraft.salesOwner || currentUserName,
+        primaryEngineeringContact: accountDraft.primaryEngineeringContact || "TBD",
+        procurementContact: accountDraft.procurementContact || "TBD",
+        notes: accountDraft.notes,
+        organizationId: currentOrganizationId,
+        workspaceId: currentWorkspaceId,
+        ownerId: existing?.ownerId ?? currentUserId,
+        contactIds: (baseAccount as GovernedAccount).contactIds ?? [],
+        contacts: (baseAccount as GovernedAccount).contacts ?? [],
+        activeOpportunities: (baseAccount as GovernedAccount).activeOpportunities ?? [],
+        existingNetworks: (baseAccount as GovernedAccount).existingNetworks ?? [],
+        operationalObjects: (baseAccount as GovernedAccount).operationalObjects ?? [],
+        commercialEngagements: (baseAccount as GovernedAccount).commercialEngagements?.length ? (baseAccount as GovernedAccount).commercialEngagements : [`${name} commercial workspace`],
+        proposalHistory: (baseAccount as GovernedAccount).proposalHistory ?? [],
+        customerReviewHistory: (baseAccount as GovernedAccount).customerReviewHistory ?? [],
+        engineeringHistory: (baseAccount as GovernedAccount).engineeringHistory ?? [],
+      });
+      setGovernedAccounts((prev) => [saved, ...prev.filter((account) => account.accountId !== saved.accountId)]);
+      setSelectedAccountId(saved.accountId);
+      setAccountEditorOpen(false);
+      setAccountNotice(`${saved.name} Account saved as governed workspace root.`);
+      void recordActivity({
+        action: "saved account",
+        objectType: "Account",
+        objectId: saved.accountId,
+        objectName: saved.name,
+        customerId: saved.accountId,
+        details: "Account persisted to the governed Account Library and mirrored into Runtime Objects.",
+      });
+      await refreshAccountLibrary(`${saved.name} Account Library record refreshed.`);
+    } catch (error) {
+      setAccountNotice(`Account save failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setAccountPersistencePending(false);
+    }
+  }
+
+  async function handleSaveContactDraft() {
+    if (!selectedAccount.accountId) {
+      setAccountNotice("Save an Account before adding Contacts.");
+      return;
+    }
+    const name = contactDraft.name.trim();
+    if (!name) {
+      setAccountNotice("Contact name is required.");
+      return;
+    }
+    setAccountPersistencePending(true);
+    try {
+      const saved = await saveGovernedContact({
+        accountId: selectedAccount.accountId,
+        name,
+        title: contactDraft.title,
+        role: contactDraft.role,
+        email: contactDraft.email,
+        phone: contactDraft.phone,
+        status: "Active",
+        organizationId: currentOrganizationId,
+        workspaceId: currentWorkspaceId,
+        ownerId: selectedGovernedAccount?.ownerId ?? currentUserId,
+      });
+      setGovernedContacts((prev) => [saved, ...prev.filter((contact) => contact.contactId !== saved.contactId)]);
+      setContactDraft(contactEditorDefaults());
+      setAccountNotice(`${saved.name} added to ${selectedAccount.name}.`);
+      void recordActivity({
+        action: "saved contact",
+        objectType: "Contact",
+        objectId: saved.contactId,
+        objectName: saved.name,
+        customerId: saved.accountId,
+        details: "Contact persisted to the governed Contact Library and mirrored into Runtime Objects.",
+      });
+      await refreshAccountLibrary(`${saved.name} Contact Library record refreshed.`);
+    } catch (error) {
+      setAccountNotice(`Contact save failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setAccountPersistencePending(false);
+    }
+  }
+
   const googleFixtureIsActive = selectedAccount.accountId === "google";
   const accountNetworks = useMemo(
     () => COMMERCIAL_NETWORKS.filter((network) => (
@@ -2802,6 +3127,18 @@ export default function GoogleRfpWorkspace() {
       .filter((event) => !event.customerId || event.customerId === selectedAccount.accountId || event.objectType === "Runtime")
       .slice(0, 6),
     [activity, selectedAccount.accountId],
+  );
+  const accountRuntimeHistory = useMemo(
+    () => runtimeHistory
+      .filter((event) => (
+        event.accountId === selectedAccount.accountId ||
+        event.customerId === selectedAccount.accountId ||
+        event.customerId === customerIdForAccount(selectedAccount.accountId) ||
+        event.metadata?.accountId === selectedAccount.accountId ||
+        event.metadata?.customerId === customerIdForAccount(selectedAccount.accountId)
+      ))
+      .slice(0, 8),
+    [runtimeHistory, selectedAccount.accountId],
   );
   const recentEngineeringDrafts = useMemo(
     () => engineeringDrafts
@@ -3330,6 +3667,16 @@ export default function GoogleRfpWorkspace() {
       proposalId: activeProposalRuntime?.proposalId,
       proposalNumber: activeProposalRuntime?.proposalNumber,
       proposal: activeProposalRuntime ?? undefined,
+      productId: selectedProductOption.productId,
+      productName: selectedProductOption.productName,
+      productConfiguration: {
+        termYears: selectedProductOption.defaultTermYears,
+        protected: selectedProductOption.protected,
+        routeMiles: selectedPricingSummary.reconciliation.routeMiles,
+        selectedScopeId: selectedScope.scopeId,
+        designMode: activeDesignMode,
+      },
+      fulfillmentMix: CARRIER_NEUTRAL_FULFILLMENT_MIX,
       title: activeProposalRuntime?.title ?? `${selectedAccount.name} ${routePlan?.routeRequirement.bidSegmentName ?? "Commercial"} Proposal`,
       summary: activeProposalRuntime?.summary ?? `Runtime lifecycle bridge proposal for ${selectedAccount.name}.`,
       executiveSummary: activeProposalRuntime?.executiveSummary ?? preview.executiveSummary,
@@ -3357,6 +3704,9 @@ export default function GoogleRfpWorkspace() {
       runtimeEvidenceIds: activeProposalRuntime?.runtimeEvidenceIds ?? [],
       existingInventoryReferences: activeProposalRuntime?.existingInventoryReferences ?? activeExistingReferenceNetworkIds,
       customerDesignReferences: activeProposalRuntime?.customerDesignReferences ?? (selectedImportedCustomerDesignImport ? [selectedImportedCustomerDesignImport.designId] : []),
+      partnerInventoryReferences: googleFixtureIsActive ? ["PARTNER-LONGHAUL-GOOGLE-HELIUM"] : [],
+      marketplaceAssetReferences: [],
+      newInfrastructureRequired: activeCommercialDraftNetworks.map((network) => network.networkId),
       customerTwinReference: activeProposalRuntime?.customerTwinReference ?? accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
       geometryReferences: activeProposalRuntime?.geometryReferences ?? [routePlan?.routeRequirement.routeRequirementId, ...geometry.map((coordinate, index) => `lifecycle-geometry:${index}:${coordinate.join(",")}`)].filter(Boolean).slice(0, 20),
       proposalDocumentReferences: activeProposalRuntime?.proposalDocumentReferences ?? ["Runtime lifecycle proposal", "Commercial pricing summary"],
@@ -4415,7 +4765,11 @@ export default function GoogleRfpWorkspace() {
   }
 
   function selectAccount(accountId: string) {
+    if (!accountId) return;
     setSelectedAccountId(accountId);
+    setAccountSearch("");
+    setAccountEditorOpen(false);
+    setContactDraft(contactEditorDefaults());
     setActiveView("networks");
     setNewOpportunityDialogOpen(false);
     setOpportunityWorkflowState("IDLE");
@@ -5779,11 +6133,23 @@ export default function GoogleRfpWorkspace() {
           <button className="dal-button secondary" type="button" onClick={handleCloseCommercialOpportunity}>
             Close
           </button>
-          <select value={selectedAccountId} onChange={(event) => selectAccount(event.currentTarget.value)} aria-label="Account selector">
-            {COMMERCIAL_ACCOUNTS.map((account) => (
+          <input
+            value={accountSearch}
+            onChange={(event) => setAccountSearch(event.currentTarget.value)}
+            placeholder="Search accounts"
+            aria-label="Search accounts"
+          />
+          <select value={selectedAccount.accountId} onChange={(event) => selectAccount(event.currentTarget.value)} aria-label="Active account selector">
+            {filteredAccountOptions.map((account) => (
               <option key={account.accountId} value={account.accountId}>{account.name}</option>
             ))}
           </select>
+          <button className="dal-button secondary" type="button" onClick={handleCreateAccountDraft}>
+            New Account
+          </button>
+          <button className="dal-button secondary" type="button" onClick={handleEditSelectedAccount}>
+            Edit Account
+          </button>
           <span className="dal-badge warning">Budgetary only</span>
           <span className={`dal-badge ${verificationStatus === "COMPLETE" ? "pass" : verificationStatus === "RUNNING" ? "warning" : "fail"}`}>
             OSRM {verificationStatus}
@@ -5796,6 +6162,133 @@ export default function GoogleRfpWorkspace() {
 
       <div className="dal-status commercial-opportunity-notice">{opportunityNotice}</div>
 
+      <section className="account-workspace-dashboard" aria-label="Account workspace">
+        <div className="dal-panel-title-row">
+          <div>
+            <h3>Account Workspace</h3>
+            <span>{accountNotice}</span>
+          </div>
+          <span className={`dal-badge ${selectedGovernedAccount ? "pass" : accountLibraryLoaded ? "warning" : "fail"}`}>
+            {selectedGovernedAccount ? "Governed Account" : accountLibraryLoaded ? "Fixture fallback" : "Loading"}
+          </span>
+        </div>
+        <div className="account-workspace-summary">
+          <div><span>Account</span><b>{selectedAccount.name}</b></div>
+          <div><span>Account ID</span><b>{selectedAccount.accountId}</b></div>
+          <div><span>Customer ID</span><b>{customerIdForAccount(selectedAccount.accountId)}</b></div>
+          <div><span>Contacts</span><b>{governedContactsForSelectedAccount.length || selectedAccount.contacts.length}</b></div>
+          <div><span>Product</span><b>{selectedProductOption.productName}</b></div>
+          <div><span>Opportunities</span><b>{accountCommercialOpportunities.length}</b></div>
+          <div><span>Proposals</span><b>{accountProposalRuntimeRecords.length}</b></div>
+          <div><span>IOF Packages</span><b>{activeDraftIofPackage?.customerId === customerIdForAccount(selectedAccount.accountId) || activeDraftIofPackage?.accountId === selectedAccount.accountId ? "1" : "0"}</b></div>
+          <div><span>Runtime History</span><b>{accountRuntimeHistory.length}</b></div>
+        </div>
+
+        <div className="account-product-fulfillment">
+          <label>
+            <span>Product</span>
+            <select value={selectedProductId} onChange={(event) => setSelectedProductId(event.currentTarget.value)} aria-label="Product selector">
+              {LAYER_1_PRODUCT_OPTIONS.map((product) => (
+                <option key={product.productId} value={product.productId}>{product.productName}</option>
+              ))}
+            </select>
+          </label>
+          <div className="account-fulfillment-mix">
+            {CARRIER_NEUTRAL_FULFILLMENT_MIX.map((item) => (
+              <div key={item.ownershipClass}>
+                <span>{item.label}</span>
+                <b>{item.percentage}%</b>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {accountEditorOpen ? (
+          <div className="account-workspace-editor">
+            <label>
+              <span>Account ID</span>
+              <input value={accountDraft.accountId} onChange={(event) => setAccountDraft((prev) => ({ ...prev, accountId: cleanAccountId(event.currentTarget.value) }))} placeholder="google" />
+            </label>
+            <label>
+              <span>Name</span>
+              <input value={accountDraft.name} onChange={(event) => setAccountDraft((prev) => ({ ...prev, name: event.currentTarget.value }))} placeholder="Google" />
+            </label>
+            <label>
+              <span>Type</span>
+              <input value={accountDraft.accountType} onChange={(event) => setAccountDraft((prev) => ({ ...prev, accountType: event.currentTarget.value }))} placeholder="Hyperscaler" />
+            </label>
+            <label>
+              <span>Status</span>
+              <input value={accountDraft.status} onChange={(event) => setAccountDraft((prev) => ({ ...prev, status: event.currentTarget.value }))} placeholder="Active RFP" />
+            </label>
+            <label>
+              <span>Sales Owner</span>
+              <input value={accountDraft.salesOwner} onChange={(event) => setAccountDraft((prev) => ({ ...prev, salesOwner: event.currentTarget.value }))} />
+            </label>
+            <label>
+              <span>Engineering Contact</span>
+              <input value={accountDraft.primaryEngineeringContact} onChange={(event) => setAccountDraft((prev) => ({ ...prev, primaryEngineeringContact: event.currentTarget.value }))} />
+            </label>
+            <label>
+              <span>Procurement Contact</span>
+              <input value={accountDraft.procurementContact} onChange={(event) => setAccountDraft((prev) => ({ ...prev, procurementContact: event.currentTarget.value }))} />
+            </label>
+            <label className="wide">
+              <span>Notes</span>
+              <input value={accountDraft.notes} onChange={(event) => setAccountDraft((prev) => ({ ...prev, notes: event.currentTarget.value }))} />
+            </label>
+            <button type="button" className="primary" onClick={() => void handleSaveAccountDraft()} disabled={accountPersistencePending}>
+              Save Account
+            </button>
+          </div>
+        ) : null}
+
+        <div className="account-workspace-grid">
+          <div>
+            <b>Contacts</b>
+            <div className="account-contact-form">
+              <input value={contactDraft.name} onChange={(event) => setContactDraft((prev) => ({ ...prev, name: event.currentTarget.value }))} placeholder="Contact name" aria-label="Contact name" />
+              <input value={contactDraft.title} onChange={(event) => setContactDraft((prev) => ({ ...prev, title: event.currentTarget.value }))} placeholder="Title" aria-label="Contact title" />
+              <input value={contactDraft.role} onChange={(event) => setContactDraft((prev) => ({ ...prev, role: event.currentTarget.value }))} placeholder="Role" aria-label="Contact role" />
+              <input value={contactDraft.email} onChange={(event) => setContactDraft((prev) => ({ ...prev, email: event.currentTarget.value }))} placeholder="Email" aria-label="Contact email" />
+              <button type="button" onClick={() => void handleSaveContactDraft()} disabled={accountPersistencePending || !selectedGovernedAccount}>
+                Add Contact
+              </button>
+            </div>
+            <div className="dal-list">
+              {(governedContactsForSelectedAccount.length ? governedContactsForSelectedAccount : selectedAccount.contacts.map((name, index) => ({
+                contactId: `${selectedAccount.accountId}-fixture-contact-${index}`,
+                name,
+                title: "Fixture contact",
+                role: "Account",
+                email: "",
+                status: "Fixture",
+              } as GovernedContact))).slice(0, 5).map((contact) => (
+                <div className="dal-list-row teralinx-list-row" key={contact.contactId}>
+                  <b>{contact.name}</b>
+                  <span>{contact.role || contact.title || contact.status}</span>
+                  <small>{contact.email || contact.title || "Account scoped contact"}</small>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <b>Recent Governed Activity</b>
+            <div className="dal-list">
+              {accountRuntimeHistory.length ? accountRuntimeHistory.map((event) => (
+                <div className="dal-list-row teralinx-list-row" key={event.historyId}>
+                  <b>{event.eventType.replaceAll("_", " ")}</b>
+                  <span>{event.objectType ?? "Runtime"}</span>
+                  <small>{event.timestamp ? new Date(event.timestamp).toLocaleString() : event.details}</small>
+                </div>
+              )) : (
+                <div className="dal-status">No Runtime History events for this Account yet.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="dal-panel runtime-lifecycle-bridge-panel">
         <div className="dal-panel-title-row">
           <div>
@@ -5807,7 +6300,7 @@ export default function GoogleRfpWorkspace() {
           </span>
         </div>
         <div className="teralinx-summary-grid">
-          <div><span>Lifecycle Progress</span><b>{runtimeLifecycleState ? `${runtimeLifecycleState.lifecycleProgress.filter((item) => item.complete).length}/${runtimeLifecycleState.lifecycleProgress.length}` : "0/10"}</b></div>
+          <div><span>Lifecycle Progress</span><b>{runtimeLifecycleState ? `${runtimeLifecycleState.lifecycleProgress.filter((item) => item.complete).length}/${runtimeLifecycleState.lifecycleProgress.length}` : "0/13"}</b></div>
           <div><span>Current Authority</span><b>{runtimeLifecycleState?.currentAuthority?.replaceAll("_", " ") ?? "Commercial Planning"}</b></div>
           <div><span>Current Owner</span><b>{runtimeLifecycleState?.currentOwner ?? compactOwner}</b></div>
           <div><span>Current Workspace</span><b>{runtimeLifecycleState?.currentWorkspace ?? currentWorkspaceId}</b></div>
@@ -5828,6 +6321,9 @@ export default function GoogleRfpWorkspace() {
           {(runtimeLifecycleState?.lifecycleProgress ?? [
             "CUSTOMER_TWIN_READY",
             "COMMERCIAL_OPPORTUNITY_CREATED",
+            "PRODUCT_SELECTED",
+            "INVENTORY_RESOLVED",
+            "FULFILLMENT_PLAN_CREATED",
             "COMMERCIAL_DRAFT_CREATED",
             "PROPOSAL_CREATED",
             "PROPOSAL_SUBMITTED",

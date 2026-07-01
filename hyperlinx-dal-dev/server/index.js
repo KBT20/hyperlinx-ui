@@ -2,6 +2,7 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { DATA_ROOT, DIRS, PORT, PROJECT_ROOT, errorResponse, handleOptions, jsonResponse } from "./routes/_shared.js";
+import { handleAccounts } from "./routes/accounts.js";
 import { handleActivity } from "./routes/activity.js";
 import { handleAuth } from "./routes/auth.js";
 import { handleCandidateSites } from "./routes/candidate-sites.js";
@@ -19,6 +20,7 @@ import { handleIofPackages } from "./routes/iof-packages.js";
 import { handleMarketplaceQuotes } from "./routes/marketplace-quotes.js";
 import { handleOpportunitySeeds } from "./routes/opportunity-seeds.js";
 import { handleProposalDrafts } from "./routes/proposal-drafts.js";
+import { handleProductFulfillment } from "./routes/product-fulfillment.js";
 import { handleRuntime } from "./routes/runtime.js";
 import { handleRuntimeFoundation } from "./routes/runtime-foundation.js";
 import { handleRuntimeLifecycleBridge } from "./routes/runtime-lifecycle-bridge.js";
@@ -28,6 +30,7 @@ import { handleTwinState } from "./routes/twin-state.js";
 const routes = [
   handleAuth,
   handleRuntime,
+  handleAccounts,
   handleActivity,
   handleGeocode,
   handleCertifiedRoutes,
@@ -37,6 +40,7 @@ const routes = [
   handleEngineeringDrafts,
   handleEngineeringCertification,
   handleProposalDrafts,
+  handleProductFulfillment,
   handleRuntimeFoundation,
   handleRuntimeLifecycleBridge,
   handleCandidateSites,
@@ -117,11 +121,15 @@ const server = http.createServer(async (req, res) => {
           runtimeLifecycleBridge: true,
           translationCommits: true,
           activity: true,
+          accountLibrary: true,
+          contactLibrary: true,
           customerDesignImports: true,
           commercialOpportunities: true,
           engineeringDrafts: true,
           engineeringCertification: true,
           proposalDrafts: true,
+          productLibrary: true,
+          fulfillmentPlans: true,
           scopeVersions: true,
           candidateSites: true,
           opportunitySeeds: true,
