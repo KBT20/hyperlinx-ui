@@ -1,6 +1,6 @@
 import type { DraftIofPackageRuntime } from "../api/teralinxRuntime";
 import type { DALCoordinate } from "../types/dal";
-import type { MapKernelPrimitive, MapKernelRenderSpec } from "../mapkernel/MapLayerManager";
+import type { MapKernelGeoJsonFeature, MapKernelPrimitive, MapKernelRenderSpec } from "../mapkernel/MapLayerManager";
 
 export type EngineeringComplianceStatus = "PASS" | "WARNING" | "FAIL" | "PENDING";
 
@@ -156,41 +156,55 @@ function asNumber(value: unknown, fallback = 0) {
   return Number.isFinite(numeric) ? numeric : fallback;
 }
 
+function normalizeCoordinate(value: unknown): DALCoordinate | undefined {
+  if (!Array.isArray(value) || value.length < 2) return undefined;
+  const first = Number(value[0]);
+  const second = Number(value[1]);
+  if (!Number.isFinite(first) || !Number.isFinite(second)) return undefined;
+  const lonLatValid = Math.abs(first) <= 180 && Math.abs(second) <= 90;
+  const latLonValid = Math.abs(first) <= 90 && Math.abs(second) <= 180;
+  if (lonLatValid) return [first, second];
+  if (latLonValid) return [second, first];
+  return undefined;
+}
+
 function isCoordinate(value: unknown): value is DALCoordinate {
-  return (
-    Array.isArray(value) &&
-    value.length >= 2 &&
-    Number.isFinite(Number(value[0])) &&
-    Number.isFinite(Number(value[1])) &&
-    Math.abs(Number(value[0])) <= 180 &&
-    Math.abs(Number(value[1])) <= 90
-  );
+  return Boolean(normalizeCoordinate(value));
 }
 
 function coordinateFrom(value: unknown): DALCoordinate | undefined {
-  if (isCoordinate(value)) return [Number(value[0]), Number(value[1])];
+  const normalized = normalizeCoordinate(value);
+  if (normalized) return normalized;
   const record = asRecord(value);
-  const coordinateCandidate = record.coordinate ?? record.coordinates ?? record.location ?? record.point;
-  if (coordinateCandidate !== undefined) {
-    if (isCoordinate(coordinateCandidate)) return [Number(coordinateCandidate[0]), Number(coordinateCandidate[1])];
+  const coordinateCandidate = record.coordinate ?? record.coordinates ?? record.location ?? record.point ?? record.geometry;
+  if (coordinateCandidate !== undefined && coordinateCandidate !== value) {
     const nested = coordinateFrom(coordinateCandidate);
     if (nested) return nested;
   }
-  const lon = Number(record.lon ?? record.lng ?? record.longitude);
-  const lat = Number(record.lat ?? record.latitude);
-  return isCoordinate([lon, lat]) ? [lon, lat] : undefined;
+  const lon = Number(record.lon ?? record.lng ?? record.longitude ?? record.x);
+  const lat = Number(record.lat ?? record.latitude ?? record.y);
+  return normalizeCoordinate([lon, lat]);
 }
 
 function coordinatesFrom(value: unknown): DALCoordinate[] {
+  const normalized = normalizeCoordinate(value);
+  if (normalized) return [normalized];
   if (!Array.isArray(value)) {
     const record = asRecord(value);
+    const geometry = asRecord(record.geometry);
+    const centerline = asRecord(record.centerline);
     const candidates = [
       record.coordinates,
+      geometry.coordinates,
       record.geometry,
       record.routeGeometry,
       record.centerline,
+      centerline.coordinates,
+      centerline.geometry,
       record.path,
       record.points,
+      record.feature,
+      ...(String(record.type ?? "") === "FeatureCollection" ? asArray(record.features) : []),
     ].filter((candidate) => candidate !== undefined && candidate !== value);
     for (const candidate of candidates) {
       const coordinates = coordinatesFrom(candidate);
@@ -199,7 +213,9 @@ function coordinatesFrom(value: unknown): DALCoordinate[] {
     const coordinate = coordinateFrom(value);
     return coordinate ? [coordinate] : [];
   }
-  if (value.every(isCoordinate)) return value.map((coordinate) => [Number(coordinate[0]), Number(coordinate[1])] as DALCoordinate);
+  if (value.every((entry) => normalizeCoordinate(entry))) {
+    return value.map((coordinate) => normalizeCoordinate(coordinate)).filter((coordinate): coordinate is DALCoordinate => Boolean(coordinate));
+  }
   const nestedCoordinates = value.flatMap((entry) => coordinatesFrom(entry));
   if (nestedCoordinates.length > 1) return nestedCoordinates;
   return value.map(coordinateFrom).filter((coordinate): coordinate is DALCoordinate => Boolean(coordinate));
@@ -216,10 +232,12 @@ function firstCoordinateList(...values: unknown[]) {
 function coordinatesFromGeometryReferences(values: unknown): DALCoordinate[] {
   return asArray(values)
     .flatMap((value) => {
+      const embeddedCoordinates = coordinatesFrom(value);
+      if (embeddedCoordinates.length) return embeddedCoordinates;
       const matches = String(value ?? "").matchAll(/(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/g);
       return [...matches]
-        .map((match) => [Number(match[1]), Number(match[2])] as DALCoordinate)
-        .filter(isCoordinate);
+        .map((match) => normalizeCoordinate([Number(match[1]), Number(match[2])]))
+        .filter((coordinate): coordinate is DALCoordinate => Boolean(coordinate));
     });
 }
 
@@ -227,7 +245,7 @@ function coordinatesFromStations(values: unknown): DALCoordinate[] {
   return asArray(values).map(coordinateFrom).filter((coordinate): coordinate is DALCoordinate => Boolean(coordinate));
 }
 
-function coordinatesFromRouteSegments(values: unknown, stationCoordinates: DALCoordinate[] = []): DALCoordinate[] {
+function coordinatesFromRouteSegments(values: unknown): DALCoordinate[] {
   const segmentCoordinates = asArray(values)
     .flatMap((segment) => firstCoordinateList(
       asRecord(segment).geometry,
@@ -235,8 +253,7 @@ function coordinatesFromRouteSegments(values: unknown, stationCoordinates: DALCo
       asRecord(segment).routeGeometry,
       asRecord(segment).centerline,
     ));
-  if (segmentCoordinates.length > 1) return segmentCoordinates;
-  return stationCoordinates;
+  return segmentCoordinates.length > 1 ? segmentCoordinates : [];
 }
 
 function coordinatesFromDependencyGraph(value: unknown): DALCoordinate[] {
@@ -247,36 +264,103 @@ function coordinatesFromDependencyGraph(value: unknown): DALCoordinate[] {
   ].flatMap((entry) => coordinatesFrom(entry));
 }
 
+function coordinatesFromCommercialDraftSnapshot(value: unknown): DALCoordinate[] {
+  const snapshot = asRecord(value);
+  if (!Object.keys(snapshot).length) return [];
+  return firstCoordinateList(
+    asRecord(snapshot.geometry).coordinates,
+    asRecord(asRecord(snapshot.geometry).geometry).coordinates,
+    snapshot.geometry,
+    snapshot.centerline,
+    asRecord(snapshot.centerline).coordinates,
+    asRecord(snapshot.centerline).geometry,
+    asRecord(snapshot.centerlineRoute).coordinates,
+    asRecord(snapshot.centerlineRoute).geometry,
+    snapshot.centerlineRoute,
+    asRecord(snapshot.osrmRoute).coordinates,
+    asRecord(snapshot.osrmRoute).geometry,
+    snapshot.osrmRoute,
+    snapshot.routeGeometry,
+  );
+}
+
+function coordinatesFromCustomerRequests(values: unknown): DALCoordinate[] {
+  for (const request of asArray(values)) {
+    const record = asRecord(request);
+    const metadata = asRecord(record.metadata);
+    const coordinates = firstCoordinateList(
+      coordinatesFromCommercialDraftSnapshot(record.commercialDraftSnapshot),
+      coordinatesFromCommercialDraftSnapshot(metadata.commercialDraftSnapshot),
+      record.geometry,
+      asRecord(record.geometry).coordinates,
+      asRecord(record.geometry).geometry,
+      record.centerline,
+      record.routeGeometry,
+    );
+    if (coordinates.length > 1) return coordinates;
+  }
+  return [];
+}
+
+function coordinatesFromProposedIofUnits(values: unknown): DALCoordinate[] {
+  const coordinates = asArray(values)
+    .flatMap((unit) => {
+      const record = asRecord(unit);
+      const metadata = asRecord(record.metadata);
+      return firstCoordinateList(
+        asRecord(record.geometry).coordinates,
+        asRecord(asRecord(record.geometry).geometry).coordinates,
+        record.geometry,
+        record.routeGeometry,
+        record.centerline,
+        asRecord(record.centerline).coordinates,
+        asRecord(record.centerline).geometry,
+        asRecord(metadata.geometry).coordinates,
+        metadata.geometry,
+        coordinatesFromGeometryReferences(record.geometryReferences),
+      );
+    });
+  return coordinates.length > 1 ? coordinates : [];
+}
+
 function routeCoordinatesFromPackage(draft: DraftIofPackageRuntime) {
   const loose = draft as Record<string, unknown>;
   const routeEntries = asArray(loose.route);
   const doctrineAssembly = asRecord(loose.productDoctrineAssembly);
-  const stationCoordinates = coordinatesFromStations(draft.stations);
   const routeGeometry = routeEntries
     .map((entry) => firstCoordinateList(asRecord(entry).geometry, asRecord(entry).coordinates, asRecord(entry).routeGeometry))
     .find((coordinates) => coordinates.length > 1) ?? [];
   const routeSegmentGeometry = coordinatesFromRouteSegments([
     ...asArray(loose.routeSegments),
     ...asArray(doctrineAssembly.routeSegments),
-  ], stationCoordinates);
+  ]);
   return firstCoordinateList(
     asRecord(loose.geometry).coordinates,
+    asRecord(asRecord(loose.geometry).geometry).coordinates,
     loose.geometry,
+    asRecord(loose.centerline).coordinates,
+    asRecord(loose.centerline).geometry,
     loose.centerline,
-    asRecord(loose.centerlineRoute).geometry,
     asRecord(loose.centerlineRoute).coordinates,
-    asRecord(loose.osrmRoute).geometry,
+    asRecord(asRecord(loose.centerlineRoute).geometry).coordinates,
+    asRecord(loose.centerlineRoute).geometry,
+    loose.centerlineRoute,
     asRecord(loose.osrmRoute).coordinates,
+    asRecord(asRecord(loose.osrmRoute).geometry).coordinates,
+    asRecord(loose.osrmRoute).geometry,
+    loose.osrmRoute,
     asRecord(doctrineAssembly.osrmRoute).geometry,
+    asRecord(doctrineAssembly.osrmRoute).coordinates,
     doctrineAssembly.centerline,
+    coordinatesFromCommercialDraftSnapshot(loose.commercialDraftSnapshot),
+    coordinatesFromCustomerRequests(loose.customerRequests),
+    coordinatesFromProposedIofUnits(draft.proposedIofUnits),
     asRecord(loose.spine).geometry,
     asRecord(loose.spine).coordinates,
     asRecord(loose.spine).centerline,
     routeGeometry,
     routeSegmentGeometry,
-    stationCoordinates,
     coordinatesFromGeometryReferences(loose.geometryReferences),
-    coordinatesFromDependencyGraph(draft.dependencyGraph),
   );
 }
 
@@ -285,14 +369,25 @@ function centerlineCoordinatesFromPackage(draft: DraftIofPackageRuntime, routeCo
   const doctrineAssembly = asRecord(loose.productDoctrineAssembly);
   return firstCoordinateList(
     asRecord(loose.geometry).coordinates,
+    asRecord(asRecord(loose.geometry).geometry).coordinates,
     loose.geometry,
+    asRecord(loose.centerline).coordinates,
+    asRecord(loose.centerline).geometry,
     loose.centerline,
-    asRecord(loose.centerlineRoute).geometry,
     asRecord(loose.centerlineRoute).coordinates,
-    asRecord(loose.osrmRoute).geometry,
+    asRecord(asRecord(loose.centerlineRoute).geometry).coordinates,
+    asRecord(loose.centerlineRoute).geometry,
+    loose.centerlineRoute,
     asRecord(loose.osrmRoute).coordinates,
+    asRecord(asRecord(loose.osrmRoute).geometry).coordinates,
+    asRecord(loose.osrmRoute).geometry,
+    loose.osrmRoute,
     asRecord(doctrineAssembly.osrmRoute).geometry,
+    asRecord(doctrineAssembly.osrmRoute).coordinates,
     doctrineAssembly.centerline,
+    coordinatesFromCommercialDraftSnapshot(loose.commercialDraftSnapshot),
+    coordinatesFromCustomerRequests(loose.customerRequests),
+    coordinatesFromProposedIofUnits(draft.proposedIofUnits),
     routeCoordinates,
   );
 }
@@ -569,18 +664,61 @@ function packageGraphPrimitives(projection: Omit<EngineeringCertificationProject
   return primitives;
 }
 
+function draftIofRouteFeature(projection: Omit<EngineeringCertificationProjection, "mapSpec">): MapKernelGeoJsonFeature | undefined {
+  if (projection.routeCoordinates.length < 2) return undefined;
+  return {
+    type: "Feature",
+    geometry: {
+      type: "LineString",
+      coordinates: projection.routeCoordinates,
+    },
+    properties: {
+      source: "DRAFT_IOF_PACKAGE",
+      packageId: projection.packageId,
+      authority: "ENGINEERING_CERTIFICATION",
+      layer: "ENGINEERING_CENTERLINE",
+      coordinateCount: projection.routeCoordinates.length,
+      routeLengthFeet: projection.routeLength,
+      noScopeVersionCreation: true,
+    },
+  };
+}
+
+function engineeringCertificationDebugEnabled() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem("hyperlinx:debug:engineering-certification") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function debugEngineeringProjection(payload: Record<string, unknown>) {
+  if (!engineeringCertificationDebugEnabled()) return;
+  console.debug("ENGINEERING CERTIFICATION PROJECTION", payload);
+}
+
 function renderCertificationSpec(projection: Omit<EngineeringCertificationProjection, "mapSpec">): MapKernelRenderSpec {
   const primitives: MapKernelPrimitive[] = [];
   const packageId = projection.packageId;
-  if (projection.centerlineCoordinates.length > 1) {
+  const routeFeature = draftIofRouteFeature(projection);
+  const routeFeatureCoordinates = coordinatesFrom(routeFeature?.geometry.coordinates);
+  const centerlineCoordinates = firstCoordinateList(routeFeatureCoordinates, projection.centerlineCoordinates);
+  if (centerlineCoordinates.length > 1) {
     primitives.push({
       id: `${packageId}:centerline`,
       layerId: "iofPackage",
       kind: "line",
-      coordinates: projection.centerlineCoordinates,
+      coordinates: centerlineCoordinates,
       label: "Draft IOF centerline",
       style: { stroke: "#38bdf8", strokeWidth: 5, opacity: 0.82 },
-      metadata: { source: "Draft IOF Package", sourceLayer: "ENGINEERING_CERTIFICATION_CENTERLINE", renderAuthority: "Draft IOF Package Projection", packageId },
+      metadata: {
+        source: "Draft IOF Package",
+        sourceLayer: "ENGINEERING_CERTIFICATION_CENTERLINE",
+        renderAuthority: "Draft IOF Package Projection",
+        packageId,
+        canonicalGeoJsonFeature: routeFeature,
+      },
       ref: { kind: "Route", id: `${packageId}:centerline`, routeId: `${packageId}:centerline`, scopeVersionId: "draft-iof-certification" },
     });
   }
@@ -655,6 +793,7 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
     sourceId: packageId,
     name: "Engineering Certification Draft IOF Projection",
     primitives,
+    features: routeFeature ? [routeFeature] : [],
     metadata: {
       packageId,
       scopeVersionId: "draft-iof-certification",
@@ -700,9 +839,18 @@ export function buildEngineeringCertificationProjection(draft: DraftIofPackageRu
   };
   const compliance = buildCompliance(draft, partial);
   const projectionWithoutMap = { ...partial, compliance };
+  const mapSpec = renderCertificationSpec(projectionWithoutMap);
+  debugEngineeringProjection({
+    packageId: draft.packageId,
+    routeLengthFt: routeLength,
+    geometryCoordinateCount: loose.geometryCoordinateCount,
+    extractedRouteCoordinateCount: routeCoordinates.length,
+    mapSpecFeatureCount: mapSpec.features?.length ?? 0,
+    mapSpecPrimitiveCount: mapSpec.primitives.length,
+  });
   return {
     ...projectionWithoutMap,
-    mapSpec: renderCertificationSpec(projectionWithoutMap),
+    mapSpec,
   };
 }
 

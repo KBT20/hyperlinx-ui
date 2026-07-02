@@ -16,14 +16,17 @@ function assert(condition, message) {
 const projectionPath = "src/engineering/EngineeringCertificationProjection.ts";
 const commercialAssemblyPath = "src/commercial/IOFPackageAssemblyEngine.ts";
 const workspacePath = "src/workspaces/EngineeringCertificationWorkspace.tsx";
+const mapLayerManagerPath = "src/mapkernel/MapLayerManager.ts";
 
 assert(existsSync(path.join(root, projectionPath)), "EngineeringCertificationProjection.ts is missing.");
 assert(existsSync(path.join(root, commercialAssemblyPath)), "IOFPackageAssemblyEngine.ts is missing.");
 assert(existsSync(path.join(root, workspacePath)), "EngineeringCertificationWorkspace.tsx is missing.");
+assert(existsSync(path.join(root, mapLayerManagerPath)), "MapLayerManager.ts is missing.");
 
 const projection = read(projectionPath);
 const commercialAssembly = read(commercialAssemblyPath);
 const workspace = read(workspacePath);
+const mapLayerManager = read(mapLayerManagerPath);
 const combinedCertificationRenderPath = `${projection}\n${workspace}`;
 
 assert(!combinedCertificationRenderPath.includes("/api/baseline-graphs"), "Engineering Certification render path must not call /api/baseline-graphs.");
@@ -33,11 +36,14 @@ assert(!combinedCertificationRenderPath.includes("inventoryRecovery"), "Engineer
 
 [
   "coordinatesFromGeometryReferences",
+  "coordinatesFromCommercialDraftSnapshot",
+  "coordinatesFromCustomerRequests",
+  "coordinatesFromProposedIofUnits",
   "coordinatesFromStations",
   "coordinatesFromRouteSegments",
-  "coordinatesFromDependencyGraph",
   "centerlineCoordinatesFromPackage",
   "packageGraphPrimitives",
+  "draftIofRouteFeature",
 ].forEach((symbol) => {
   assert(projection.includes(symbol), `Projection is missing package-native helper: ${symbol}.`);
 });
@@ -47,11 +53,12 @@ assert(!combinedCertificationRenderPath.includes("inventoryRecovery"), "Engineer
   "loose.centerlineRoute",
   "loose.osrmRoute",
   "doctrineAssembly.centerline",
+  "loose.commercialDraftSnapshot",
+  "loose.customerRequests",
+  "draft.proposedIofUnits",
   "loose.spine",
   "routeSegmentGeometry",
-  "stationCoordinates",
   "coordinatesFromGeometryReferences(loose.geometryReferences)",
-  "coordinatesFromDependencyGraph(draft.dependencyGraph)",
 ].forEach((pattern) => {
   assert(projection.includes(pattern), `Projection route fallback is missing '${pattern}'.`);
 });
@@ -67,6 +74,8 @@ assert(!combinedCertificationRenderPath.includes("inventoryRecovery"), "Engineer
 });
 
 assert(projection.includes("primitives.push(...packageGraphPrimitives(projection, packageId));"), "Projection does not add package graph primitives.");
+assert(projection.includes("features: routeFeature ? [routeFeature] : []"), "Projection map spec must carry a canonical GeoJSON Feature.");
+assert(mapLayerManager.includes("features?: MapKernelGeoJsonFeature[]"), "MapKernel render spec must support canonical GeoJSON features.");
 assert(workspace.includes("specs={[projection.mapSpec]}"), "Engineering Certification workspace must render the projection map spec directly.");
 assert(workspace.includes("Rendered from Draft IOF Package artifacts"), "Engineering canvas copy must describe package-native rendering.");
 assert(commercialAssembly.includes("geometry: geoJsonLineString(packageCenterline)"), "Commercial assembly must persist canonical package geometry.");
@@ -197,6 +206,69 @@ const geometryCompliance = projectedAssembledPackage.compliance.find((row) => ro
 assert(projectedAssembledPackage.routeCoordinates.length === 1615, "Engineering projection did not preserve all 1,615 commercial geometry coordinates.");
 assert(geometryCompliance?.status === "PASS", "PD-001 geometry should PASS when 1,615 coordinates are projected.");
 assert(geometryCompliance?.detail.includes("Coordinates 1,615"), "PD-001 geometry detail must include deterministic coordinate count.");
+assert(projectedAssembledPackage.mapSpec.features?.length === 1, "MapKernel-compatible spec must contain one canonical LineString Feature.");
+assert(projectedAssembledPackage.mapSpec.features[0]?.type === "Feature", "Canonical render object must be a GeoJSON Feature.");
+assert(projectedAssembledPackage.mapSpec.features[0]?.geometry?.type === "LineString", "Canonical render feature must be a LineString.");
+assert(projectedAssembledPackage.mapSpec.features[0]?.geometry?.coordinates?.length === 1615, "Canonical LineString Feature must contain 1,615 coordinates.");
+assert(projectedAssembledPackage.mapSpec.features[0]?.properties?.source === "DRAFT_IOF_PACKAGE", "Canonical render feature must be sourced from the Draft IOF Package.");
+assert(projectedAssembledPackage.mapSpec.features[0]?.properties?.authority === "ENGINEERING_CERTIFICATION", "Canonical render feature must carry Engineering Certification authority.");
+assert(projectedAssembledPackage.mapSpec.primitives.some((primitive) =>
+  primitive.kind === "line" &&
+  primitive.metadata?.sourceLayer === "ENGINEERING_CERTIFICATION_CENTERLINE" &&
+  primitive.coordinates?.length === 1615
+), "MapKernel primitive adapter must draw the 1,615-coordinate Engineering centerline.");
+
+function isolatedDraft(overrides) {
+  return {
+    ...assembledPackage,
+    packageId: `DRAFT-IOF-SHAPE-${overrides.shapeName ?? "UNKNOWN"}`,
+    draftPackageId: `DRAFT-IOF-SHAPE-${overrides.shapeName ?? "UNKNOWN"}`,
+    geometry: null,
+    geometryCoordinateCount: 0,
+    centerline: null,
+    centerlineRoute: null,
+    osrmRoute: null,
+    spine: null,
+    route: [],
+    routeSegments: [],
+    productDoctrineAssembly: null,
+    commercialDraftSnapshot: null,
+    customerRequests: [],
+    proposedIofUnits: [],
+    stations: [],
+    geometryReferences: [],
+    ...overrides,
+  };
+}
+
+const geometryReferenceStrings = osrmGeometry.map((coordinate, index) => `shape:geometry:${index}:${coordinate[0]},${coordinate[1]}`);
+const reversedLatLngGeometry = osrmGeometry.map(([lng, lat]) => [lat, lng]);
+const shapeFixtures = [
+  ["geometry.coordinates", isolatedDraft({ shapeName: "GEOMETRY", geometry: { type: "LineString", coordinates: osrmGeometry } })],
+  ["geometry.geometry.coordinates", isolatedDraft({ shapeName: "NESTED-GEOMETRY", geometry: { geometry: { type: "LineString", coordinates: osrmGeometry } } })],
+  ["centerline.coordinates", isolatedDraft({ shapeName: "CENTERLINE-COORDINATES", centerline: { coordinates: osrmGeometry } })],
+  ["centerline.geometry.coordinates", isolatedDraft({ shapeName: "CENTERLINE-GEOMETRY", centerline: { geometry: { type: "LineString", coordinates: osrmGeometry } } })],
+  ["centerlineRoute.coordinates", isolatedDraft({ shapeName: "CENTERLINE-ROUTE-COORDINATES", centerlineRoute: { coordinates: osrmGeometry } })],
+  ["centerlineRoute.geometry.coordinates", isolatedDraft({ shapeName: "CENTERLINE-ROUTE-GEOMETRY", centerlineRoute: { geometry: { type: "LineString", coordinates: osrmGeometry } } })],
+  ["osrmRoute.coordinates", isolatedDraft({ shapeName: "OSRM-ROUTE-COORDINATES", osrmRoute: { coordinates: osrmGeometry } })],
+  ["osrmRoute.geometry.coordinates", isolatedDraft({ shapeName: "OSRM-ROUTE-GEOMETRY", osrmRoute: { geometry: { type: "LineString", coordinates: osrmGeometry } } })],
+  ["commercialDraftSnapshot.geometry", isolatedDraft({ shapeName: "COMMERCIAL-DRAFT-SNAPSHOT", commercialDraftSnapshot: { geometry: { type: "LineString", coordinates: osrmGeometry } } })],
+  ["customerRequests[].commercialDraftSnapshot.geometry", isolatedDraft({ shapeName: "CUSTOMER-REQUEST-SNAPSHOT", customerRequests: [{ commercialDraftSnapshot: { geometry: { type: "LineString", coordinates: osrmGeometry } } }] })],
+  ["proposedIofUnits[].geometry", isolatedDraft({ shapeName: "PROPOSED-UNIT-GEOMETRY", proposedIofUnits: [{ unitId: "UNIT-GEOMETRY", geometry: { type: "LineString", coordinates: osrmGeometry } }] })],
+  ["proposedIofUnits[].geometryReferences embedded", isolatedDraft({ shapeName: "PROPOSED-UNIT-GEOMETRY-REFERENCES", proposedIofUnits: [{ unitId: "UNIT-GEOMETRY-REFERENCES", geometryReferences: geometryReferenceStrings }] })],
+  ["normalized [lat,lng] centerlineRoute.geometry.coordinates", isolatedDraft({ shapeName: "LAT-LNG-NORMALIZATION", centerlineRoute: { geometry: { type: "LineString", coordinates: reversedLatLngGeometry } } })],
+];
+
+shapeFixtures.forEach(([label, draft]) => {
+  const shapeProjection = projectionModule.buildEngineeringCertificationProjection(draft);
+  assert(shapeProjection.routeCoordinates.length === 1615, `Projection did not extract 1,615 coordinates from ${label}.`);
+  assert(shapeProjection.mapSpec.features?.[0]?.geometry?.coordinates?.length === 1615, `MapKernel feature did not carry 1,615 coordinates from ${label}.`);
+  assert(shapeProjection.compliance.find((row) => row.key === "geometry")?.status === "PASS", `PD-001 geometry did not PASS for ${label}.`);
+  if (String(label).includes("[lat,lng]")) {
+    assert(shapeProjection.routeCoordinates[0][0] === osrmGeometry[0][0], "Projection did not normalize [lat,lng] longitude into [lng,lat].");
+    assert(shapeProjection.routeCoordinates[0][1] === osrmGeometry[0][1], "Projection did not normalize [lat,lng] latitude into [lng,lat].");
+  }
+});
 
 const zeroGeometryProjection = projectionModule.buildEngineeringCertificationProjection({
   ...assembledPackage,
@@ -206,6 +278,10 @@ const zeroGeometryProjection = projectionModule.buildEngineeringCertificationPro
   centerline: [],
   centerlineRoute: null,
   osrmRoute: null,
+  commercialDraftSnapshot: null,
+  customerRequests: [],
+  proposedIofUnits: [],
+  productDoctrineAssembly: null,
   route: [],
   routeSegments: [],
   stations: [],
@@ -215,5 +291,32 @@ const zeroGeometryCompliance = zeroGeometryProjection.compliance.find((row) => r
 assert(zeroGeometryProjection.routeCoordinates.length === 0, "Zero-geometry fixture unexpectedly projected coordinates.");
 assert(zeroGeometryCompliance?.status === "FAIL", "PD-001 geometry must FAIL when zero coordinates are projected.");
 assert(zeroGeometryCompliance?.detail.includes("Projected NO"), "PD-001 geometry failure must state Projected NO.");
+assert((zeroGeometryProjection.mapSpec.features?.length ?? 0) === 0, "Zero-geometry fixture must not emit a canonical LineString Feature.");
+
+const stationOnlyProjection = projectionModule.buildEngineeringCertificationProjection({
+  ...assembledPackage,
+  packageId: "DRAFT-IOF-STATIONS-NO-GEOMETRY",
+  draftPackageId: "DRAFT-IOF-STATIONS-NO-GEOMETRY",
+  geometry: null,
+  geometryCoordinateCount: 0,
+  centerline: null,
+  centerlineRoute: null,
+  osrmRoute: null,
+  spine: null,
+  productDoctrineAssembly: null,
+  route: [],
+  routeSegments: [],
+  geometryReferences: [],
+  proposedIofUnits: [],
+  customerRequests: [],
+  stations: [
+    { stationId: "STA-ONLY-000", stationFeet: 0, coordinate: [-97.7431, 30.2672] },
+    { stationId: "STA-ONLY-001", stationFeet: 5280, coordinate: [-96.7970, 32.7767] },
+  ],
+});
+const stationOnlyGeometryCompliance = stationOnlyProjection.compliance.find((row) => row.key === "geometry");
+assert(stationOnlyProjection.routeCoordinates.length === 0, "Station coordinates must not be promoted into route geometry.");
+assert(stationOnlyGeometryCompliance?.status === "FAIL", "PD-001 geometry must FAIL when only stations are projected.");
+assert(stationOnlyProjection.mapSpec.primitives.some((primitive) => primitive.metadata?.sourceLayer === "ENGINEERING_CERTIFICATION_STATIONS"), "Station-only fixture should still render station artifacts.");
 
 console.log("Sprint 20A Engineering Projection Rendering validation passed.");

@@ -97,12 +97,22 @@ export type MapKernelPrimitive = {
   };
 };
 
+export type MapKernelGeoJsonFeature = {
+  type: "Feature";
+  geometry: {
+    type: "LineString" | "Point" | "Polygon" | string;
+    coordinates: unknown;
+  };
+  properties: Record<string, unknown>;
+};
+
 export type MapKernelRenderSpec = {
   specId: string;
   sourceType: "ScopeVersion" | "IOFPackage" | "InventoryGraph" | "GraphExtension" | "Manual";
   sourceId: string;
   name?: string;
   primitives: MapKernelPrimitive[];
+  features?: MapKernelGeoJsonFeature[];
   metadata?: Record<string, unknown>;
 };
 

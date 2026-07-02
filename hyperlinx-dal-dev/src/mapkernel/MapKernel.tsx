@@ -228,6 +228,16 @@ function writePersistedViewState(state: PersistedMapKernelViewState) {
   }
 }
 
+function mapKernelDebugEnabled() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem("hyperlinx:debug:map-kernel") === "1" ||
+      window.localStorage.getItem("hyperlinx:debug:engineering-certification") === "1";
+  } catch {
+    return false;
+  }
+}
+
 function coordinatesFromBounds(bounds: MapBounds): [number, number][] {
   return [
     [bounds.west, bounds.south],
@@ -444,6 +454,16 @@ export default function MapKernel({
   useEffect(() => {
     onMetricsChange?.(metrics);
   }, [metrics, onMetricsChange]);
+
+  useEffect(() => {
+    if (!mapKernelDebugEnabled()) return;
+    console.debug("MAP KERNEL SPEC RECEIVED", {
+      specCount: specs.length,
+      featureCount: specs.reduce((total, spec) => total + (spec.features?.length ?? 0), 0),
+      primitiveCount: specs.reduce((total, spec) => total + spec.primitives.length, 0),
+      visiblePrimitiveCount: primitives.length,
+    });
+  }, [primitives.length, specs]);
 
   useEffect(() => {
     if (renderAudit.status === "PASS") return;

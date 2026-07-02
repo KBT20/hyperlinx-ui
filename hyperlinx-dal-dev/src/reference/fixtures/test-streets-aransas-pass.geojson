@@ -1,0 +1,75 @@
+{
+  "type": "FeatureCollection",
+  "name": "test-streets-aransas-pass-demo",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "streetId": "demo-street-commercial-001",
+        "name": "Commercial St",
+        "highway": "tertiary",
+        "classification": "Collector",
+        "jurisdiction": "City of Aransas Pass",
+        "source": "DEMO_IMPORT_ONLY",
+        "notes": "Small DAL test fixture for street-centerline ingestion. Not authoritative production data."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-97.1507, 27.8992],
+          [-97.1506, 27.9042],
+          [-97.1505, 27.9094],
+          [-97.1505, 27.9144]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "streetId": "demo-street-wilson-001",
+        "name": "W Wilson Ave",
+        "highway": "residential",
+        "classification": "Local",
+        "jurisdiction": "City of Aransas Pass",
+        "source": "DEMO_IMPORT_ONLY",
+        "notes": "Small DAL test fixture for street-centerline ingestion. Not authoritative production data."
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-97.1588, 27.9078],
+          [-97.1542, 27.9079],
+          [-97.1506, 27.9079],
+          [-97.1463, 27.9080]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "streetId": "demo-street-goodnight-001",
+        "name": "Goodnight Ave",
+        "highway": "secondary",
+        "classification": "Arterial",
+        "jurisdiction": "City of Aransas Pass",
+        "source": "DEMO_IMPORT_ONLY",
+        "notes": "Small DAL test fixture for street-centerline ingestion. Not authoritative production data."
+      },
+      "geometry": {
+        "type": "MultiLineString",
+        "coordinates": [
+          [
+            [-97.1588, 27.9123],
+            [-97.1540, 27.9124],
+            [-97.1505, 27.9125]
+          ],
+          [
+            [-97.1505, 27.9125],
+            [-97.1462, 27.9126],
+            [-97.1427, 27.9126]
+          ]
+        ]
+      }
+    }
+  ]
+}

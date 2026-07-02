@@ -399,13 +399,15 @@ export type DraftIofPackageRuntime = {
   validation?: IofPackageValidation;
   packageDifferences?: IofPackageDifferences;
   proposedIofUnits: ProposedIofUnit[];
-  geometry?: { type: "LineString" | string; coordinates: Array<[number, number]> | unknown[] };
+  geometry?: unknown;
   geometryCoordinateCount?: number;
-  centerline?: unknown[];
+  centerline?: unknown;
   centerlineId?: string;
   centerlineRoute?: unknown;
+  osrmRoute?: unknown;
   spine?: unknown;
   route?: unknown[];
+  commercialDraftSnapshot?: unknown;
   stations?: unknown[];
   structures?: unknown[];
   dependencies?: unknown[];
