@@ -11,6 +11,11 @@ import type {
 import type { CommercialCorridorDraft, CommercialCorridorSegment } from "./CommercialCorridorDraftEngine";
 import type { OpportunityQuickQuote } from "./OpportunityScoutEngine";
 import type { ProductDoctrine, ProductDoctrineAssembly } from "../products/ProductDoctrineContracts";
+import { createMeasuredSpine } from "../spine/MeasuredSpineEngine";
+import { createObjectStationAttachments } from "../spine/ObjectStationAttachmentEngine";
+import { createStationAuthority, ENGINEERING_STATION_INTERVAL_FEET } from "../spine/StationAuthorityEngine";
+import { createStationIndexedGraph } from "../spine/StationIndexedGraphEngine";
+import type { SpineSiteReference } from "../spine/SpineAuthorityContracts";
 
 type JsonObject = Record<string, unknown>;
 type ValidationTuple = [string, boolean];
@@ -119,6 +124,21 @@ function geoJsonLineString(coordinates: [number, number][]) {
   return {
     type: "LineString",
     coordinates,
+  };
+}
+
+function spineSiteReference(
+  value: unknown,
+  fallbackId: string,
+  fallbackRole: "A" | "Z",
+  fallbackCoordinate: [number, number],
+): SpineSiteReference {
+  const record = asRecord(value);
+  return {
+    siteId: asString(record.siteId ?? record.id, fallbackId),
+    label: asString(record.label ?? record.name, `${fallbackRole} site`),
+    role: asString(record.role, fallbackRole),
+    coordinate: normalizeCoordinate(record.coordinate) ?? fallbackCoordinate,
   };
 }
 
@@ -775,6 +795,7 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     (packageRouteFeet / 5280)
   ).toFixed(3));
   const centerlineId = doctrineAssembly?.centerlineId ?? `${packageId}:CENTERLINE`;
+  const packageRouteId = input.commercialDraft?.routeId ?? input.quickQuote?.candidateId ?? packageId;
   const spine = doctrineAssembly?.spine ?? (packageCenterline.length > 1 ? {
     spineId: `${packageId}:SPINE`,
     topology: "LINEAR",
@@ -786,7 +807,7 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     source: "COMMERCIAL_OSRM_ROUTE_GEOMETRY",
   } : null);
   const centerlineRoute = packageCenterline.length > 1 ? {
-    routeId: input.commercialDraft?.routeId ?? input.quickQuote?.candidateId ?? packageId,
+    routeId: packageRouteId,
     source: "COMMERCIAL_OSRM",
     routeMiles: packageRouteMiles,
     routeFeet: packageRouteFeet,
@@ -794,7 +815,26 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     geometryCoordinateCount: packageCenterline.length,
     pathFound: true,
   } : null;
-  const stations = doctrineAssembly?.stations ?? buildStationObjects(packageId, input.commercialDraft, input.stationing);
+  const measuredSpine = packageCenterline.length > 1 ? createMeasuredSpine({
+    packageId,
+    routeId: packageRouteId,
+    geometry: packageCenterline,
+    aSite: spineSiteReference(doctrineAssembly?.aSite, `${packageId}:SITE:A`, "A", packageCenterline[0]),
+    zSite: spineSiteReference(doctrineAssembly?.zSite, `${packageId}:SITE:Z`, "Z", packageCenterline[packageCenterline.length - 1]),
+    sourceGeometryRef: `${packageId}:GEOMETRY:COMMERCIAL-DRAFT`,
+  }) : null;
+  const stationAuthority = measuredSpine ? createStationAuthority({
+    measuredSpine,
+    intervalFeet: ENGINEERING_STATION_INTERVAL_FEET,
+    stationClass: "ENGINEERING",
+  }) : null;
+  const stationIndexedGraph = measuredSpine && stationAuthority ? createStationIndexedGraph({
+    packageId,
+    measuredSpine,
+    stationAuthority,
+  }) : null;
+  const legacyStations = doctrineAssembly?.stations ?? buildStationObjects(packageId, input.commercialDraft, input.stationing);
+  const stations = stationAuthority?.stations ?? legacyStations;
   const structures = doctrineAssembly?.structureAssembly.structures ?? buildStructureObjects(packageId, input.commercialDraft);
   const doctrineObjects = doctrineAssembly?.objects ?? [];
   const packageObjects = doctrineObjects.length ? doctrineObjects : input.objectInventory ?? [];
@@ -825,6 +865,14 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     runtimeEvidenceIds,
   });
   const proposedIofUnits = [...proposedRouteUnits, ...proposedStructureUnits];
+  const stationAttachmentObjects = [...packageObjects, ...structures];
+  const stationAttachmentInputs = stationAttachmentObjects.length ? stationAttachmentObjects : proposedIofUnits;
+  const objectStationAttachments = stationAuthority ? createObjectStationAttachments({
+    packageId,
+    objects: stationAttachmentInputs,
+    stationAuthority,
+    stationIndexedGraph: stationIndexedGraph ?? undefined,
+  }) : [];
   const pricing = input.pricing ?? doctrineAssembly?.pricingSummary ?? proposal.pricingSummary ?? input.commercialDraft?.transparentEstimate ?? input.quickQuote;
   const validation = buildValidation({
     packageId,
@@ -945,6 +993,8 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
       geometryCoordinateCount: packageCenterline.length,
       segmentCount: draft?.routeSegments.length ?? (quickQuote ? 1 : 0),
       stationCount: stations.length,
+      stationAuthorityId: stationAuthority?.authorityId,
+      measuredSpineId: measuredSpine?.spineId,
       constructionMix: draft?.constructionMix,
       graphSummary: graphSummary(input.graph),
       designArtifactCount: input.designArtifacts?.length ?? 0,
@@ -989,6 +1039,10 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
         graph: Boolean(input.graph),
         stationing: stations.length,
         objectInventory: input.objectInventory?.length ?? 0,
+        measuredSpine: Boolean(measuredSpine),
+        stationAuthority: Boolean(stationAuthority),
+        stationIndexedGraph: Boolean(stationIndexedGraph),
+        objectStationAttachments: objectStationAttachments.length,
         pricing: Boolean(pricing),
         productDoctrine: Boolean(input.productDoctrine),
         productDoctrineAssembly: Boolean(doctrineAssembly),
@@ -1018,6 +1072,22 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     centerlineId,
     centerlineRoute,
     spine,
+    measuredSpine,
+    stationAuthority,
+    stationIndex: stationAuthority?.stationIndex,
+    stationToCoordinateMap: stationAuthority?.stationToCoordinateMap,
+    objectStationAttachments,
+    stationIndexedGraph,
+    commercialObjectPlacementHistory: [],
+    customerRequestedMoves: [],
+    commercialImpactSummary: {
+      status: "NO_COMMERCIAL_STATION_MOVES",
+      requiresEngineeringReview: "NO",
+      noCertification: true,
+      noScopeVersionCreation: true,
+    },
+    commercialImpactSummaries: [],
+    commercialReviewRevision: 0,
     routeSegments: doctrineAssembly?.routeSegments,
     conduitAssembly: doctrineAssembly?.conduitAssembly,
     fiberAssembly: doctrineAssembly?.fiberAssembly,

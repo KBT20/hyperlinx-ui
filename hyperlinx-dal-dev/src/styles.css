@@ -412,9 +412,46 @@ textarea {
   gap: 12px;
 }
 
+.dal-panel label {
+  display: grid;
+  gap: 6px;
+  color: #c9d9e8;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.dal-panel input,
+.dal-panel select {
+  border: 1px solid #284662;
+  background: #081827;
+  color: #e5f4ff;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
 .dal-status {
   color: #a9d9f7;
   font-size: 13px;
+}
+
+.dal-json {
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid #18344e;
+  background: #071827;
+  border-radius: 6px;
+  color: #d6ecff;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+.scopeversion-readiness-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .dal-metrics,
@@ -3051,6 +3088,70 @@ textarea {
   max-height: 420px;
   overflow: auto;
   white-space: pre-wrap;
+}
+
+.station-aware-object-review-panel {
+  gap: 16px;
+}
+
+.commercial-station-review-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.3fr) minmax(320px, 0.7fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.commercial-station-review-map {
+  min-height: 420px;
+  border: 1px solid #dbe3ec;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.commercial-station-review-map .dal-map-kernel {
+  min-height: 420px;
+}
+
+.commercial-station-review-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.commercial-station-review-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.commercial-station-review-controls input,
+.commercial-station-review-controls select,
+.commercial-station-review-controls textarea {
+  width: 100%;
+}
+
+.commercial-station-checkbox {
+  flex-direction: row !important;
+  align-items: center;
+}
+
+.commercial-station-checkbox input {
+  width: auto;
+}
+
+.teralinx-summary-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.station-aware-object-table td b,
+.station-aware-object-table td small {
+  display: block;
+}
+
+@media (max-width: 1100px) {
+  .commercial-station-review-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .engineering-certification-package-header {

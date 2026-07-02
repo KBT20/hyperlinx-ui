@@ -21,6 +21,7 @@ import ProposedNetworkWorkspace from "../components/workspaces/ProposedNetworkWo
 import PrismWorkspace from "../workspaces/PrismWorkspace";
 import PrismSiteDecisionWorkspace from "../workspaces/PrismSiteDecisionWorkspace";
 import RouteEngineeringWorkspace from "../workspaces/RouteEngineeringWorkspace";
+import ScopeVersionWorkspace from "../workspaces/ScopeVersionWorkspace";
 import TeralinxRouteWorkspace from "../components/workspaces/TeralinxRouteWorkspace";
 import TranslateWorkspace from "../workspaces/TranslateWorkspace";
 import TwinWorkspace from "../workspaces/TwinWorkspace";
@@ -43,6 +44,7 @@ function DALWorkspaceOutlet() {
   if (workspace === "prism") return <PrismWorkspace />;
   if (workspace === "siteDecision") return <PrismSiteDecisionWorkspace />;
   if (workspace === "routeEngineering") return <RouteEngineeringWorkspace />;
+  if (workspace === "scopeVersion") return <ScopeVersionWorkspace />;
   if (workspace === "candidateSites") return <CandidateSitesWorkspace />;
   if (workspace === "networkAffinity") return <NetworkAffinityWorkspace />;
   if (workspace === "portfolio") return <PortfolioWorkspace />;
@@ -62,6 +64,7 @@ function reasoningWorkspace(workspace: ReturnType<typeof useDALState>["workspace
   if (workspace === "graphViewer" || workspace === "graphExtensions" || workspace === "inventoryRecovery") return "graph-viewer";
   if (workspace === "siteDecision") return "prism";
   if (workspace === "routeEngineering") return "prism";
+  if (workspace === "scopeVersion") return "operational-intelligence";
   if (workspace === "portfolio" || workspace === "candidateSites" || workspace === "networkAffinity") return "portfolio";
   if (workspace === "ops") return "operational-intelligence";
   return workspace;
@@ -106,6 +109,13 @@ function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]
       "Which constraints remain unresolved?",
       "Summarize object moves and redlines.",
       "What is ready for ScopeVersion promotion?",
+    ];
+  if (workspace === "scopeVersion")
+    return [
+      "Summarize ScopeVersion authority.",
+      "What downstream approvals are pending?",
+      "Explain the revision lineage.",
+      "Which certified artifacts govern operations?",
     ];
   if (workspace === "portfolio")
     return [

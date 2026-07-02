@@ -1,6 +1,12 @@
 import type { DraftIofPackageRuntime } from "../api/teralinxRuntime";
 import type { DALCoordinate } from "../types/dal";
 import type { MapKernelGeoJsonFeature, MapKernelPrimitive, MapKernelRenderSpec } from "../mapkernel/MapLayerManager";
+import type {
+  MeasuredSpine,
+  ObjectStationAttachment,
+  StationAuthority,
+  StationIndexedGraph,
+} from "../spine/SpineAuthorityContracts";
 
 export type EngineeringComplianceStatus = "PASS" | "WARNING" | "FAIL" | "PENDING";
 
@@ -17,8 +23,10 @@ export const PD001_COMPLIANCE_CATEGORIES = [
   "geometry",
   "spine",
   "stationing",
+  "station-to-coordinate",
   "graph",
   "objects",
+  "object attachment",
   "structures",
   "conduit",
   "fiber",
@@ -70,6 +78,9 @@ export interface EngineeringPackageStation {
   milepost: number;
   label: string;
   coordinate?: DALCoordinate;
+  segmentId?: string;
+  stationClass?: string;
+  geometryHash?: string;
   raw: Record<string, unknown>;
 }
 
@@ -89,6 +100,9 @@ export interface EngineeringPackageObject {
   constraintLinks: string[];
   currentReviewStatus: string;
   movable: boolean;
+  attachmentMethod?: string;
+  attachmentStatus?: string;
+  attachmentId?: string;
   raw: Record<string, unknown>;
 }
 
@@ -120,6 +134,10 @@ export interface EngineeringCertificationProjection {
   stations: EngineeringPackageStation[];
   objects: EngineeringPackageObject[];
   constraints: EngineeringCertificationConstraint[];
+  measuredSpine?: MeasuredSpine;
+  stationAuthority?: StationAuthority;
+  stationIndexedGraph?: StationIndexedGraph;
+  objectStationAttachments?: ObjectStationAttachment[];
   compliance: EngineeringComplianceRow[];
   mapSpec: MapKernelRenderSpec;
   stationMoveAllowed: false;
@@ -256,6 +274,44 @@ function coordinatesFromRouteSegments(values: unknown): DALCoordinate[] {
   return segmentCoordinates.length > 1 ? segmentCoordinates : [];
 }
 
+function coordinatesFromMeasuredSpine(value: unknown): DALCoordinate[] {
+  const measuredSpine = asRecord(value);
+  const segments = asArray<Record<string, unknown>>(measuredSpine.segments);
+  if (!segments.length) return [];
+  const coordinates: DALCoordinate[] = [];
+  segments.forEach((segment, index) => {
+    const start = coordinateFrom(segment.startCoordinate);
+    const end = coordinateFrom(segment.endCoordinate);
+    if (index === 0 && start) coordinates.push(start);
+    if (end) coordinates.push(end);
+  });
+  return coordinates.length > 1 ? coordinates : [];
+}
+
+function measuredSpineFromPackage(draft: DraftIofPackageRuntime): MeasuredSpine | undefined {
+  const measuredSpine = asRecord((draft as Record<string, unknown>).measuredSpine);
+  if (!asString(measuredSpine.spineId) || !asString(measuredSpine.geometryHash)) return undefined;
+  return measuredSpine as unknown as MeasuredSpine;
+}
+
+function stationAuthorityFromPackage(draft: DraftIofPackageRuntime): StationAuthority | undefined {
+  const stationAuthority = asRecord((draft as Record<string, unknown>).stationAuthority);
+  const stations = asArray(stationAuthority.stations);
+  if (!asString(stationAuthority.authorityId) || !stations.length) return undefined;
+  return stationAuthority as unknown as StationAuthority;
+}
+
+function stationIndexedGraphFromPackage(draft: DraftIofPackageRuntime): StationIndexedGraph | undefined {
+  const graph = asRecord((draft as Record<string, unknown>).stationIndexedGraph);
+  const edges = asArray(graph.edges);
+  if (!asString(graph.graphId) || !edges.length) return undefined;
+  return graph as unknown as StationIndexedGraph;
+}
+
+function objectStationAttachmentsFromPackage(draft: DraftIofPackageRuntime): ObjectStationAttachment[] {
+  return asArray<ObjectStationAttachment>((draft as Record<string, unknown>).objectStationAttachments);
+}
+
 function coordinatesFromDependencyGraph(value: unknown): DALCoordinate[] {
   const graph = asRecord(value);
   return [
@@ -338,6 +394,7 @@ function routeCoordinatesFromPackage(draft: DraftIofPackageRuntime) {
     asRecord(loose.geometry).coordinates,
     asRecord(asRecord(loose.geometry).geometry).coordinates,
     loose.geometry,
+    coordinatesFromMeasuredSpine(loose.measuredSpine),
     asRecord(loose.centerline).coordinates,
     asRecord(loose.centerline).geometry,
     loose.centerline,
@@ -371,6 +428,7 @@ function centerlineCoordinatesFromPackage(draft: DraftIofPackageRuntime, routeCo
     asRecord(loose.geometry).coordinates,
     asRecord(asRecord(loose.geometry).geometry).coordinates,
     loose.geometry,
+    coordinatesFromMeasuredSpine(loose.measuredSpine),
     asRecord(loose.centerline).coordinates,
     asRecord(loose.centerline).geometry,
     loose.centerline,
@@ -406,17 +464,27 @@ function stationLabel(station: Record<string, unknown>, stationFeet: number) {
 }
 
 function normalizeStations(draft: DraftIofPackageRuntime, routeCoordinates: DALCoordinate[]): EngineeringPackageStation[] {
-  const rawStations = asArray<Record<string, unknown>>(draft.stations);
+  const authority = stationAuthorityFromPackage(draft);
+  const rawStations = authority?.stations?.length
+    ? (authority.stations as unknown as Record<string, unknown>[])
+    : asArray<Record<string, unknown>>(draft.stations);
+  const stationCoordinateMap = asRecord((draft as Record<string, unknown>).stationToCoordinateMap ?? asRecord(authority).stationToCoordinateMap);
+  const byStationId = asRecord(stationCoordinateMap.byStationId);
   return rawStations.map((station, index) => {
+    const stationId = asString(station.stationId ?? station.id, `${draft.packageId}:STATION:${String(index).padStart(4, "0")}`);
     const stationFeet = asNumber(station.stationFeet ?? station.measureFeet ?? station.feet, index * 5280);
-    const coordinate = coordinateFrom(station.coordinate ?? station.geometry ?? station) ?? coordinateAt(routeCoordinates, index, rawStations.length);
+    const mapEntry = asRecord(byStationId[stationId]);
+    const coordinate = coordinateFrom(station.coordinate ?? station.geometry ?? mapEntry.coordinate ?? station) ?? coordinateAt(routeCoordinates, index, rawStations.length);
     return {
-      stationId: asString(station.stationId ?? station.id, `${draft.packageId}:STATION:${String(index).padStart(4, "0")}`),
+      stationId,
       stationIndex: asNumber(station.stationIndex ?? station.index, index),
       stationFeet,
       milepost: asNumber(station.milepost, stationFeet / 5280),
       label: stationLabel(station, stationFeet),
       coordinate,
+      segmentId: asString(station.segmentId ?? mapEntry.segmentId, ""),
+      stationClass: asString(station.stationClass, ""),
+      geometryHash: asString(station.geometryHash ?? mapEntry.geometryHash, ""),
       raw: station,
     };
   });
@@ -467,6 +535,9 @@ function objectMovable(record: Record<string, unknown>) {
 
 function normalizeObjects(draft: DraftIofPackageRuntime, stations: EngineeringPackageStation[]): EngineeringPackageObject[] {
   const loose = draft as Record<string, unknown>;
+  const attachments = new Map(
+    objectStationAttachmentsFromPackage(draft).map((attachment) => [attachment.objectId, attachment as unknown as Record<string, unknown>]),
+  );
   const sourceObjects = [
     ...asArray<Record<string, unknown>>(draft.objects),
     ...asArray<Record<string, unknown>>(draft.structures),
@@ -474,14 +545,27 @@ function normalizeObjects(draft: DraftIofPackageRuntime, stations: EngineeringPa
   ];
   const source = sourceObjects.length ? sourceObjects : asArray<Record<string, unknown>>(draft.proposedIofUnits);
   return source.map((record, index) => {
+    const objectId = objectIdFor(record, draft.packageId, index);
+    const attachment = attachments.get(objectId) ?? asRecord(
+      [...attachments.values()].find((candidate) => asString(candidate.objectId) === objectId),
+    );
     const metadata = asRecord(record.metadata);
-    const stationReference = asString(record.stationId ?? record.station ?? metadata.stationId ?? metadata.station, "");
-    const fallbackStation = stations.find((station) => station.stationId === stationReference || station.label === stationReference) ?? nearestStation(stations, index, source.length);
-    const coordinate = coordinateFrom(record.coordinate ?? record.geometry ?? metadata.coordinate) ?? fallbackStation?.coordinate;
+    const attachmentStatus = asString(attachment.attachmentStatus, "");
+    const attachmentMethod = asString(attachment.attachmentMethod, "");
+    const stationReference = attachmentStatus === "UNRESOLVED"
+      ? ""
+      : asString(attachment.stationId ?? attachment.stationLabel ?? record.stationId ?? record.station ?? metadata.stationId ?? metadata.station, "");
+    const fallbackStation = stationReference
+      ? stations.find((station) => station.stationId === stationReference || station.label === stationReference)
+      : attachments.has(objectId)
+        ? undefined
+        : nearestStation(stations, index, source.length);
+    const renderFallbackStation = fallbackStation ?? nearestStation(stations, index, source.length);
+    const coordinate = coordinateFrom(attachment.coordinate ?? record.coordinate ?? record.geometry ?? metadata.coordinate) ?? renderFallbackStation?.coordinate;
     const quantity = record.quantity ?? record.commercialQuantity ?? record.engineeringQuantity ?? metadata.quantity;
     const objectType = objectTypeFor(record);
     return {
-      objectId: objectIdFor(record, draft.packageId, index),
+      objectId,
       objectType,
       station: stationReference || fallbackStation?.label,
       stationRange: asString(record.stationRange ?? metadata.stationRange, ""),
@@ -496,6 +580,9 @@ function normalizeObjects(draft: DraftIofPackageRuntime, stations: EngineeringPa
       constraintLinks: uniqueStrings([record.constraintLinks, metadata.constraintLinks]),
       currentReviewStatus: asString(record.status ?? record.engineeringDecision ?? metadata.status, "PENDING"),
       movable: objectMovable(record),
+      attachmentMethod,
+      attachmentStatus,
+      attachmentId: asString(attachment.attachmentId, ""),
       raw: record,
     };
   });
@@ -547,7 +634,33 @@ function complianceStatus(condition: boolean, pending = false): EngineeringCompl
   return pending ? "PENDING" : "WARNING";
 }
 
-function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<EngineeringCertificationProjection, "routeCoordinates" | "routeLength" | "stations" | "objects" | "constraints">): EngineeringComplianceRow[] {
+function expectedStationCount(routeLengthFeet: number, intervalFeet: number) {
+  if (routeLengthFeet <= 0 || intervalFeet <= 0) return 0;
+  const baseCount = Math.floor(routeLengthFeet / intervalFeet) + 1;
+  const finalMeasure = (baseCount - 1) * intervalFeet;
+  return Math.abs(routeLengthFeet - finalMeasure) < 0.001 ? baseCount : baseCount + 1;
+}
+
+function stationCoordinateComplete(station: EngineeringPackageStation) {
+  const raw = station.raw;
+  const lat = asNumber(raw.lat, station.coordinate?.[1]);
+  const lng = asNumber(raw.lng, station.coordinate?.[0]);
+  return Boolean(
+    station.coordinate &&
+    Number.isFinite(lat) &&
+    Number.isFinite(lng) &&
+    Number.isFinite(station.stationFeet) &&
+    station.label,
+  );
+}
+
+function stationGraphReferencesValid(graph: StationIndexedGraph | undefined, stations: EngineeringPackageStation[]) {
+  if (!graph?.edges?.length) return false;
+  const stationIds = new Set(stations.map((station) => station.stationId));
+  return graph.edges.every((edge) => stationIds.has(edge.fromStationId) && stationIds.has(edge.toStationId));
+}
+
+function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<EngineeringCertificationProjection, "routeCoordinates" | "routeLength" | "stations" | "objects" | "constraints" | "measuredSpine" | "stationAuthority" | "stationIndexedGraph" | "objectStationAttachments">): EngineeringComplianceRow[] {
   const loose = draft as Record<string, unknown>;
   const quantitySummary = asRecord(loose.quantitySummary);
   const pricingSummary = asRecord(loose.pricingSummary ?? draft.commercialSummary?.pricingSummary);
@@ -557,17 +670,35 @@ function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<Enginee
   const crossingAssembly = asRecord(loose.crossingAssembly);
   const unresolvedConstraints = projection.constraints.filter((constraint) => !["RESOLVED", "ACCEPTED"].includes(constraint.status));
   const validation = draft.validation?.status;
-  const geometryProjected = projection.routeCoordinates.length > 1;
-  const geometryLengthMiles = projection.routeLength > 0 ? Number((projection.routeLength / 5280).toFixed(2)) : 0;
-  const geometryDetail = geometryProjected
-    ? `Coordinates ${projection.routeCoordinates.length.toLocaleString()}. Length ${geometryLengthMiles.toLocaleString()} mi. Projected YES.`
-    : "Coordinates 0. Projected NO. Reason: No geometry present in Draft IOF Package.";
+  const measuredSpine = projection.measuredSpine;
+  const measuredSpinePresent = Boolean(measuredSpine?.geometryHash && measuredSpine.coordinateCount > 1);
+  const spinePresent = Boolean(measuredSpine && measuredSpine.routeLengthFeet > 0);
+  const geometryLengthMiles = measuredSpine?.routeLengthMiles ?? (projection.routeLength > 0 ? Number((projection.routeLength / 5280).toFixed(2)) : 0);
+  const geometryDetail = measuredSpinePresent
+    ? `Coordinates ${measuredSpine?.coordinateCount.toLocaleString()}. Length ${geometryLengthMiles.toLocaleString()} mi. Measured spine ${measuredSpine?.geometryHash}.`
+    : "Coordinates 0. Projected NO. Reason: No measured spine authority present in Draft IOF Package.";
+  const stationAuthority = projection.stationAuthority;
+  const intervalFeet = asNumber(stationAuthority?.intervalFeet, 0);
+  const stationCountExpected = measuredSpine && intervalFeet ? expectedStationCount(measuredSpine.routeLengthFeet, intervalFeet) : 0;
+  const stationingPass = Boolean(stationAuthority && stationCountExpected > 0 && projection.stations.length === stationCountExpected);
+  const stationCoordinatesPass = Boolean(stationAuthority && projection.stations.length > 0 && projection.stations.every(stationCoordinateComplete));
+  const graphPass = stationGraphReferencesValid(projection.stationIndexedGraph, projection.stations);
+  const attachments = projection.objectStationAttachments ?? [];
+  const objectAttachmentPass = projection.objects.length === 0 ||
+    (attachments.length >= projection.objects.length && attachments.every((attachment) => (
+      attachment.attachmentStatus === "EXCEPTED" ||
+      (Boolean(attachment.attachmentMethod) &&
+        attachment.attachmentMethod !== "UNRESOLVED" &&
+        attachment.attachmentStatus !== "UNRESOLVED")
+    )));
   const rows: Array<[typeof PD001_COMPLIANCE_CATEGORIES[number], EngineeringComplianceStatus, string]> = [
-    ["geometry", geometryProjected ? "PASS" : "FAIL", geometryDetail],
-    ["spine", complianceStatus(Boolean(loose.spine)), asString(asRecord(loose.spine).spineId, "spine pending")],
-    ["stationing", complianceStatus(projection.stations.length > 0), `${projection.stations.length.toLocaleString()} stations`],
-    ["graph", complianceStatus(Boolean(draft.dependencyGraph?.nodes?.length)), `${draft.dependencyGraph?.nodes?.length ?? 0} graph nodes`],
+    ["geometry", measuredSpinePresent ? "PASS" : "FAIL", geometryDetail],
+    ["spine", spinePresent ? "PASS" : "FAIL", measuredSpine ? `${measuredSpine.spineId} / ${measuredSpine.routeLengthFeet.toLocaleString()} ft` : "measured spine authority missing"],
+    ["stationing", stationingPass ? "PASS" : "FAIL", stationAuthority ? `${projection.stations.length.toLocaleString()} stations / expected ${stationCountExpected.toLocaleString()} at ${intervalFeet.toLocaleString()} ft` : "station authority missing"],
+    ["station-to-coordinate", stationCoordinatesPass ? "PASS" : "FAIL", stationCoordinatesPass ? "every authorized station has measure and coordinate" : "station coordinate map incomplete or missing"],
+    ["graph", graphPass ? "PASS" : "FAIL", projection.stationIndexedGraph ? `${projection.stationIndexedGraph.edgeCount.toLocaleString()} station-indexed graph edges` : "station-indexed graph missing"],
     ["objects", complianceStatus(projection.objects.length > 0), `${projection.objects.length.toLocaleString()} objects`],
+    ["object attachment", objectAttachmentPass ? "PASS" : "FAIL", objectAttachmentPass ? `${attachments.length.toLocaleString()} object station attachments` : "one or more objects are unresolved or attachment authority is missing"],
     ["structures", complianceStatus(asNumber(structureAssembly.structureCount, asArray(draft.structures).length) > 0), `${asNumber(structureAssembly.structureCount, asArray(draft.structures).length).toLocaleString()} structures`],
     ["conduit", complianceStatus(asNumber(conduitAssembly.conduitFeet) > 0 || projection.objects.some((object) => object.objectType.includes("CONDUIT"))), `${asNumber(conduitAssembly.conduitFeet).toLocaleString()} conduit feet`],
     ["fiber", complianceStatus(asNumber(fiberAssembly.fiberFeet) > 0 || projection.objects.some((object) => object.objectType.includes("FIBER"))), `${asNumber(fiberAssembly.fiberFeet).toLocaleString()} fiber feet`],
@@ -609,6 +740,33 @@ function packageRouteSegments(draft: DraftIofPackageRuntime) {
 function packageGraphPrimitives(projection: Omit<EngineeringCertificationProjection, "mapSpec">, packageId: string): MapKernelPrimitive[] {
   const segments = packageRouteSegments(projection.sourceDraftPackage);
   const primitives: MapKernelPrimitive[] = [];
+  const stationGraph = projection.stationIndexedGraph ?? stationIndexedGraphFromPackage(projection.sourceDraftPackage);
+  if (stationGraph?.edges?.length) {
+    stationGraph.edges.forEach((edge) => {
+      const fromStation = stationForReference(projection.stations, edge.fromStationId);
+      const toStation = stationForReference(projection.stations, edge.toStationId);
+      if (!fromStation?.coordinate || !toStation?.coordinate) return;
+      primitives.push({
+        id: `${edge.edgeId}:graph-edge`,
+        layerId: "edge",
+        kind: "line",
+        coordinates: [fromStation.coordinate, toStation.coordinate],
+        label: `Station graph ${fromStation.label} to ${toStation.label}`,
+        payload: edge,
+        style: { stroke: "#f59e0b", strokeWidth: 2, opacity: 0.72, dasharray: "2 4" },
+        metadata: {
+          source: "Draft IOF Package",
+          sourceLayer: "ENGINEERING_CERTIFICATION_STATION_INDEXED_GRAPH",
+          renderAuthority: "STATION_INDEXED_GRAPH_AUTHORITY",
+          packageId,
+          graphId: stationGraph.graphId,
+          geometryHash: edge.geometryHash,
+        },
+        ref: { kind: "Edge", id: edge.edgeId, edgeId: edge.edgeId, scopeVersionId: "draft-iof-certification" },
+      });
+    });
+  }
+  if (primitives.length) return primitives;
   if (segments.length) {
     segments.forEach((segment, index) => {
       const fromStation = stationForReference(projection.stations, segment.fromStationId ?? segment.fromStation ?? segment.from);
@@ -728,25 +886,37 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
       layerId: "routeAuthorityDraft",
       kind: "line",
       coordinates: projection.routeCoordinates,
-      label: "Draft IOF spine",
+      label: "Measured spine",
       style: { stroke: "#22c55e", strokeWidth: 3, opacity: 0.9, dasharray: "8 5" },
-      metadata: { source: "Draft IOF Package", sourceLayer: "ENGINEERING_CERTIFICATION_SPINE", renderAuthority: "Draft IOF Package Projection", packageId },
-      ref: { kind: "Route", id: `${packageId}:spine`, routeId: `${packageId}:spine`, scopeVersionId: "draft-iof-certification" },
+      metadata: {
+        source: "Draft IOF Package",
+        sourceLayer: "ENGINEERING_CERTIFICATION_MEASURED_SPINE",
+        renderAuthority: "MEASURED_SPINE_AUTHORITY",
+        packageId,
+        geometryHash: projection.measuredSpine?.geometryHash,
+      },
+      ref: { kind: "Route", id: `${packageId}:spine`, routeId: projection.measuredSpine?.spineId ?? `${packageId}:spine`, scopeVersionId: "draft-iof-certification" },
     });
   }
   primitives.push(...packageGraphPrimitives(projection, packageId));
-  projection.stations.forEach((station) => {
+  const lastStationIndex = projection.stations.length - 1;
+  projection.stations.forEach((station, index) => {
     if (!station.coordinate) return;
+    const isMajorStation = index === 0 ||
+      index === lastStationIndex ||
+      station.stationClass === "MAJOR" ||
+      Math.abs(station.stationFeet % 5280) < 1;
     primitives.push({
       id: `${station.stationId}:point`,
       layerId: "station",
       kind: "point",
       coordinate: station.coordinate,
       label: station.label,
-      style: { fill: "#fde68a", stroke: "#713f12", radius: 4, opacity: 0.95 },
-      metadata: { stationFeet: station.stationFeet, source: "Draft IOF Package", sourceLayer: "ENGINEERING_CERTIFICATION_STATIONS", renderAuthority: "Draft IOF Package Projection", packageId },
+      style: { fill: isMajorStation ? "#fde68a" : "#bfdbfe", stroke: isMajorStation ? "#713f12" : "#1d4ed8", radius: isMajorStation ? 4 : 2.5, opacity: isMajorStation ? 0.95 : 0.68 },
+      metadata: { stationFeet: station.stationFeet, source: "Draft IOF Package", sourceLayer: "ENGINEERING_CERTIFICATION_STATIONS", renderAuthority: "STATION_AUTHORITY", packageId, geometryHash: station.geometryHash },
       ref: { kind: "Station", id: station.stationId, stationId: station.stationId, scopeVersionId: "draft-iof-certification" },
     });
+    if (!isMajorStation) return;
     primitives.push({
       id: `${station.stationId}:label`,
       layerId: "station",
@@ -754,7 +924,7 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
       coordinate: station.coordinate,
       label: station.label,
       style: { fill: "#172554", fontSize: 11, fontWeight: 800 },
-      metadata: { stationFeet: station.stationFeet, source: "Draft IOF Package", sourceLayer: "ENGINEERING_CERTIFICATION_STATION_LABELS", renderAuthority: "Draft IOF Package Projection", packageId },
+      metadata: { stationFeet: station.stationFeet, source: "Draft IOF Package", sourceLayer: "ENGINEERING_CERTIFICATION_MAJOR_STATION_LABELS", renderAuthority: "STATION_AUTHORITY", packageId, geometryHash: station.geometryHash },
       ref: { kind: "Station", id: station.stationId, stationId: station.stationId, scopeVersionId: "draft-iof-certification" },
     });
   });
@@ -768,7 +938,14 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
       label: object.objectType,
       style: objectStyle(object),
       payload: object.raw,
-      metadata: { source: "Draft IOF Package", sourceLayer: "ENGINEERING_CERTIFICATION_OBJECTS", renderAuthority: "Draft IOF Package Projection", packageId },
+      metadata: {
+        source: "Draft IOF Package",
+        sourceLayer: "ENGINEERING_CERTIFICATION_STATION_INDEXED_OBJECTS",
+        renderAuthority: "OBJECT_STATION_ATTACHMENT_AUTHORITY",
+        packageId,
+        attachmentMethod: object.attachmentMethod,
+        attachmentStatus: object.attachmentStatus,
+      },
       ref: { kind: "Object", id: object.objectId, objectId: object.objectId, scopeVersionId: "draft-iof-certification" },
     });
   });
@@ -806,12 +983,16 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
 
 export function buildEngineeringCertificationProjection(draft: DraftIofPackageRuntime): EngineeringCertificationProjection {
   const loose = draft as Record<string, unknown>;
+  const measuredSpine = measuredSpineFromPackage(draft);
+  const stationAuthority = stationAuthorityFromPackage(draft);
+  const stationIndexedGraph = stationIndexedGraphFromPackage(draft);
+  const objectStationAttachments = objectStationAttachmentsFromPackage(draft);
   const routeCoordinates = routeCoordinatesFromPackage(draft);
   const centerlineCoordinates = centerlineCoordinatesFromPackage(draft, routeCoordinates);
   const stations = normalizeStations(draft, routeCoordinates);
   const objects = normalizeObjects(draft, stations);
   const constraints = constraintsFromPackage(draft);
-  const routeLength = asNumber(asRecord(loose.quantitySummary).routeFeet ?? asRecord(draft.commercialSummary).routeFeet, routeCoordinates.length ? asNumber(asRecord(draft.commercialSummary).routeMiles) * 5280 : 0);
+  const routeLength = asNumber(measuredSpine?.routeLengthFeet ?? asRecord(loose.quantitySummary).routeFeet ?? asRecord(draft.commercialSummary).routeFeet, routeCoordinates.length ? asNumber(asRecord(draft.commercialSummary).routeMiles) * 5280 : 0);
   const facilityCount = objects.filter((object) => object.objectType.includes("ILA") || object.objectType.includes("REGEN") || object.objectType.includes("FACILITY")).length;
   const partial: Omit<EngineeringCertificationProjection, "mapSpec" | "compliance"> = {
     packageId: draft.packageId,
@@ -834,6 +1015,10 @@ export function buildEngineeringCertificationProjection(draft: DraftIofPackageRu
     stations,
     objects,
     constraints,
+    measuredSpine,
+    stationAuthority,
+    stationIndexedGraph,
+    objectStationAttachments,
     stationMoveAllowed: false,
     sourceDraftPackage: draft,
   };
@@ -847,6 +1032,8 @@ export function buildEngineeringCertificationProjection(draft: DraftIofPackageRu
     extractedRouteCoordinateCount: routeCoordinates.length,
     mapSpecFeatureCount: mapSpec.features?.length ?? 0,
     mapSpecPrimitiveCount: mapSpec.primitives.length,
+    measuredSpineAuthority: measuredSpine?.geometryHash,
+    stationAuthorityCount: stationAuthority?.stationCount ?? 0,
   });
   return {
     ...projectionWithoutMap,

@@ -567,7 +567,18 @@ export async function handleScopeVersions(req, res, pathname) {
 
   if (match.base && req.method === "POST") {
     const body = await readRequestJson(req);
-    const scopeVersion = await persistScopeVersion(normalizeScopeVersion(body));
+    const proposed = normalizeScopeVersion(body);
+    const existing = await loadRecord(DIRS.scopeVersions, proposed.scopeVersionId).catch(() => null);
+    if (existing) {
+      errorResponse(res, 409, `ScopeVersion already exists and cannot be overwritten: ${proposed.scopeVersionId}`);
+      return true;
+    }
+    const proposedSource = String(proposed.source ?? proposed.canonicalTruth?.source ?? proposed.canonicalTruth?.sourceWorkspace ?? proposed.canonicalTruth?.authority ?? "").toUpperCase();
+    if (proposedSource.includes("COMMERCIAL")) {
+      errorResponse(res, 409, "Commercial cannot create ScopeVersion. Promote a Certified IOF Package through Engineering Certification.");
+      return true;
+    }
+    const scopeVersion = await persistScopeVersion(proposed);
     jsonResponse(res, 201, { scopeVersion });
     return true;
   }

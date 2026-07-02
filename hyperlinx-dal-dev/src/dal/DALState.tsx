@@ -31,6 +31,7 @@ export type DALWorkspace =
   | "candidateSites"
   | "networkAffinity"
   | "portfolio"
+  | "scopeVersion"
   | "marketplace"
   | "control"
   | "field"

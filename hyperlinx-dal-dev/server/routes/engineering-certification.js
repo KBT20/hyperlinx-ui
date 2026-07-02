@@ -16,6 +16,10 @@ import {
 import { requireAnyPermission } from "./authority.js";
 import { persistScopeVersion } from "./scopeversions.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
+import {
+  createScopeVersionFromCertifiedPackage as createScopeVersionAuthority,
+  markCertifiedPackagePromoted,
+} from "../scopeversion-authority-engine.js";
 
 const BASE_PATH = "/api/engineering/certification";
 const CHECKLIST_KEYS = [
@@ -1545,103 +1549,12 @@ function createExecutionCertificate(certifiedPackage, checklist, user, scopeVers
   };
 }
 
-function createScopeVersionFromCertifiedPackage(certifiedPackage, certificate, user) {
-  const timestamp = nowIso();
-  const scopeVersionId = certificate.scopeVersionId || `SV-${certifiedPackage.certifiedPackageId}-${Date.now()}`;
-  const certifiedUnits = asArray(certifiedPackage.certifiedIofUnits);
-  return {
-    scopeVersionId,
-    type: "EXECUTION_AUTHORITY",
-    status: "CERTIFIED",
-    certificationState: "CERTIFIED",
-    isImmutable: true,
-    certifiedIofPackageId: certifiedPackage.certifiedPackageId,
-    executionAuthorizationCertificateId: certificate.certificateId,
-    proposalId: certifiedPackage.proposalId,
-    productId: certifiedPackage.productId,
-    productName: certifiedPackage.productName,
-    fulfillmentPlanId: certifiedPackage.fulfillmentPlanId,
-    fulfillmentStrategy: certifiedPackage.fulfillmentStrategy,
-    fulfillmentPlan: certifiedPackage.fulfillmentPlan,
-    fulfillmentMix: certifiedPackage.fulfillmentMix,
-    proposalRecipientContactIds: certifiedPackage.proposalRecipientContactIds,
-    customerReviewContactIds: certifiedPackage.customerReviewContactIds,
-    approvalAuthorityContactIds: certifiedPackage.approvalAuthorityContactIds,
-    sofRecipientContactIds: certifiedPackage.sofRecipientContactIds,
-    customerContactEmails: certifiedPackage.customerContactEmails,
-    accountId: certifiedPackage.accountId,
-    customerId: certifiedPackage.customerId,
-    opportunityId: certifiedPackage.opportunityId,
-    organizationId: user.organizationId,
-    workspaceId: user.workspaceId,
-    runtimeObjectIds: unique(certifiedPackage.runtimeObjectIds),
-    runtimeRelationshipIds: unique(certifiedPackage.runtimeRelationshipIds),
-    runtimeEvidenceIds: unique(certifiedPackage.runtimeEvidenceIds),
-    certifiedIofUnitIds: certifiedUnits.map((unit) => unit.unitId),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    canonicalTruth: {
-      lifecycleState: "CERTIFIED",
-      lifecycleTimestamp: timestamp,
-      constitutionalAuthority: "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE",
-      certifiedIofPackageId: certifiedPackage.certifiedPackageId,
-      executionAuthorizationCertificateId: certificate.certificateId,
-      proposalId: certifiedPackage.proposalId,
-      productId: certifiedPackage.productId,
-      productName: certifiedPackage.productName,
-      fulfillmentPlanId: certifiedPackage.fulfillmentPlanId,
-      fulfillmentStrategy: certifiedPackage.fulfillmentStrategy,
-      fulfillmentPlan: certifiedPackage.fulfillmentPlan,
-      fulfillmentMix: certifiedPackage.fulfillmentMix,
-      proposalRecipientContactIds: certifiedPackage.proposalRecipientContactIds,
-      customerReviewContactIds: certifiedPackage.customerReviewContactIds,
-      approvalAuthorityContactIds: certifiedPackage.approvalAuthorityContactIds,
-      sofRecipientContactIds: certifiedPackage.sofRecipientContactIds,
-      customerContactEmails: certifiedPackage.customerContactEmails,
-      accountId: certifiedPackage.accountId,
-      customerId: certifiedPackage.customerId,
-      opportunityId: certifiedPackage.opportunityId,
-      existingInventoryReferences: certifiedPackage.existingInventoryReferences,
-      customerTwinReference: certifiedPackage.customerTwinReference,
-      customerDesignReferences: certifiedPackage.customerDesignReferences,
-      partnerInventoryReferences: certifiedPackage.partnerInventoryReferences,
-      marketplaceAssetReferences: certifiedPackage.marketplaceAssetReferences,
-      newInfrastructureRequired: certifiedPackage.newInfrastructureRequired,
-      geometryReferences: certifiedPackage.geometryReferences,
-      relationships: certifiedPackage.runtimeRelationshipIds,
-      evidence: certifiedPackage.runtimeEvidenceIds,
-      certifiedIofUnitIds: certifiedUnits.map((unit) => unit.unitId),
-      certifiedIofUnits: certifiedUnits.map((unit) => ({
-        unitId: unit.unitId,
-        unitType: unit.unitType,
-        runtimeObjectIds: unit.runtimeObjectIds,
-        geometryReferences: unit.geometryReferences,
-        dependencyIds: unit.dependencyIds,
-        status: unit.status,
-      })),
-      executionGate: {
-        marketplaceEnabled: false,
-        contractsEnabled: false,
-        procurementEnabled: false,
-        controlEnabled: false,
-        fieldEnabled: false,
-        operationalIntelligenceEnabled: false,
-        nextConsumer: "MARKETPLACE_NEXT_PHASE",
-      },
-    },
-    events: [{
-      eventId: `event-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      type: "scopeversion.created_from_certified_iof_package",
-      entityId: scopeVersionId,
-      entityType: "ScopeVersion",
-      payload: {
-        certifiedIofPackageId: certifiedPackage.certifiedPackageId,
-        executionAuthorizationCertificateId: certificate.certificateId,
-        authority: "EXECUTION",
-      },
-      createdAt: timestamp,
-    }],
-  };
+function createScopeVersionFromCertifiedPackage(certifiedPackage, certificate, user, options = {}) {
+  return createScopeVersionAuthority(certifiedPackage, {
+    certificate,
+    user,
+    ...options,
+  });
 }
 
 async function persistCertificate(certificate) {
@@ -1694,12 +1607,31 @@ async function persistCertificationEvidence(certifiedPackage, certificate, user)
   return evidence;
 }
 
-async function generateScopeVersion(certifiedPackage, certificate, user) {
+async function generateScopeVersion(certifiedPackage, certificate, user, options = {}) {
   if (certifiedPackage.scopeVersionId) {
     const existing = await loadRecord(DIRS.scopeVersions, certifiedPackage.scopeVersionId).catch(() => null);
     if (existing) return { scopeVersion: existing, certifiedPackage, certificate };
   }
-  const scopeVersion = await persistScopeVersion(createScopeVersionFromCertifiedPackage(certifiedPackage, certificate, user));
+  const previousScopeVersionId = options.previousScopeVersionId ?? options.parentScopeVersionId ?? certifiedPackage.parentScopeVersionId ?? certifiedPackage.previousScopeVersionId;
+  const previousScopeVersion = previousScopeVersionId
+    ? await loadRecord(DIRS.scopeVersions, previousScopeVersionId).catch(() => null)
+    : null;
+  const proposedScopeVersion = createScopeVersionFromCertifiedPackage(certifiedPackage, certificate, user, {
+    previousScopeVersion,
+    parentScopeVersionId: previousScopeVersionId,
+    changeSummary: options.changeSummary,
+    engineeringReason: options.engineeringReason,
+    approvedBy: options.approvedBy,
+    approvedTimestamp: options.approvedTimestamp,
+  });
+  const existingScopeVersion = await loadRecord(DIRS.scopeVersions, proposedScopeVersion.scopeVersionId).catch(() => null);
+  if (existingScopeVersion) {
+    if (existingScopeVersion.certifiedIofPackageId === certifiedPackage.certifiedPackageId || existingScopeVersion.canonicalTruth?.certifiedIofPackageId === certifiedPackage.certifiedPackageId) {
+      return { scopeVersion: existingScopeVersion, certifiedPackage, certificate };
+    }
+    throw new Error(`ScopeVersion already exists and cannot be overwritten: ${proposedScopeVersion.scopeVersionId}`);
+  }
+  const scopeVersion = await persistScopeVersion(proposedScopeVersion);
   const nextCertificate = {
     ...certificate,
     scopeVersionId: scopeVersion.scopeVersionId,
@@ -1712,14 +1644,23 @@ async function generateScopeVersion(certifiedPackage, certificate, user) {
     },
     updatedAt: nowIso(),
   };
-  const nextCertified = {
-    ...certifiedPackage,
-    scopeVersionId: scopeVersion.scopeVersionId,
-    executionAuthorizationCertificateId: nextCertificate.certificateId,
-    executionAuthorized: true,
-    updatedAt: nowIso(),
-  };
+  const nextCertified = markCertifiedPackagePromoted(certifiedPackage, scopeVersion, nextCertificate);
   await persistRecord(DIRS.certifiedIofPackages, nextCertified.certifiedPackageId, nextCertified);
+  if (nextCertified.sourcePackageId) {
+    const draft = await loadRecord(DIRS.iofPackages, nextCertified.sourcePackageId).catch(() => null);
+    if (draft) {
+      await persistRecord(DIRS.iofPackages, nextCertified.sourcePackageId, {
+        ...draft,
+        scopeVersionId: scopeVersion.scopeVersionId,
+        scopeVersionCreated: true,
+        scopeVersionCreatedAt: nextCertified.scopeVersionCreatedAt,
+        engineeringCertificationLocked: true,
+        engineeringReadOnly: true,
+        immutable: true,
+        updatedAt: nowIso(),
+      });
+    }
+  }
   await persistCertificate(nextCertificate);
   await persistCertificationEvidence(nextCertified, nextCertificate, user);
   await appendHistory(nextCertified, user, "runtime.authority_transfer.engineering_to_execution", "Authority transferred from Engineering Certification to executable ScopeVersion.", {
@@ -1886,7 +1827,7 @@ async function handleCertifyPackage(req, res, user, packageId) {
   });
 }
 
-async function handleGenerateScopeVersion(res, user, certifiedPackageId) {
+async function handleGenerateScopeVersion(req, res, user, certifiedPackageId) {
   const certified = await loadRecord(DIRS.certifiedIofPackages, certifiedPackageId).catch(() => null);
   if (!certified) {
     errorResponse(res, 404, `Certified IOF Package not found: ${certifiedPackageId}`);
@@ -1900,7 +1841,21 @@ async function handleGenerateScopeVersion(res, user, certifiedPackageId) {
     ? await loadRecord(DIRS.executionAuthorizationCertificates, certified.executionAuthorizationCertificateId).catch(() => null)
     : null;
   const nextCertificate = certificate ?? createExecutionCertificate(certified, certified.engineeringChecklist ?? {}, user);
-  const generated = await generateScopeVersion(certified, nextCertificate, user);
+  const body = await readRequestJson(req);
+  let generated;
+  try {
+    generated = await generateScopeVersion(certified, nextCertificate, user, {
+      previousScopeVersionId: body.previousScopeVersionId ?? body.parentScopeVersionId,
+      parentScopeVersionId: body.parentScopeVersionId,
+      changeSummary: body.changeSummary,
+      engineeringReason: body.engineeringReason,
+      approvedBy: body.approvedBy,
+      approvedTimestamp: body.approvedTimestamp,
+    });
+  } catch (error) {
+    errorResponse(res, 409, error instanceof Error ? error.message : String(error));
+    return;
+  }
   const workspaceSession = await updateRuntimeWorkspaceSession({
     accountId: generated.certifiedPackage.accountId,
     customerId: generated.certifiedPackage.customerId,
@@ -1916,8 +1871,8 @@ async function handleGenerateScopeVersion(res, user, certifiedPackageId) {
     certifiedPackageId: generated.certifiedPackage.certifiedPackageId,
     scopeVersionId: generated.scopeVersion.scopeVersionId,
     currentRuntimeObject: generated.scopeVersion.scopeVersionId,
-    currentAuthority: "EXECUTION",
-    currentLifecycleStage: "EXECUTION_AUTHORIZED",
+    currentAuthority: "SCOPEVERSION",
+    currentLifecycleStage: "SCOPEVERSION_AUTHORITY",
     selectedRoute: asArray(generated.certifiedPackage.geometryReferences)[0],
     selectedGraph: asArray(generated.certifiedPackage.runtimeObjectIds)[0],
     selectedPackage: generated.certifiedPackage.sourcePackageId,
@@ -1925,7 +1880,7 @@ async function handleGenerateScopeVersion(res, user, certifiedPackageId) {
     engineeringRevision: generated.certifiedPackage.packageRevision,
     sessionState: "ACTIVE",
     lastActivity: "EXECUTION_AUTHORIZED",
-  }, user, "AUTHORITY_TRANSFER_ENGINEERING_TO_EXECUTION", "Manual ScopeVersion generation persisted WorkspaceSession execution authority.");
+  }, user, "AUTHORITY_TRANSFER_ENGINEERING_TO_SCOPEVERSION", "Certified IOF Package promoted into immutable ScopeVersion authority.");
   jsonResponse(res, 200, { ...generated, workspaceSession });
 }
 
@@ -2060,7 +2015,7 @@ export async function handleEngineeringCertification(req, res, pathname) {
   }
 
   if (req.method === "POST" && parts[0] === "certified-packages" && parts[1] && parts[2] === "generate-scopeversion") {
-    await handleGenerateScopeVersion(res, user, parts[1]);
+    await handleGenerateScopeVersion(req, res, user, parts[1]);
     return true;
   }
 

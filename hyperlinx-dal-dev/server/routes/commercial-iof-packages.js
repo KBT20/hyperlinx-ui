@@ -32,6 +32,70 @@ function uniqueStrings(values) {
   return result;
 }
 
+const REQUIRED_STATION_OBJECT_TYPES = new Set([
+  "ILA",
+  "ILA_FACILITY",
+  "REGEN",
+  "REGENERATION",
+  "REGENERATION_FACILITY",
+  "HUT",
+  "HANDHOLE",
+  "VAULT",
+  "SPLICE_CASE",
+  "PULL_POINT",
+  "MARKER",
+]);
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function commercialObjectId(record, packageId, index) {
+  return String(record.objectId ?? record.unitId ?? record.structureId ?? record.id ?? record.runtimeObjectId ?? `${packageId}:COMMERCIAL-OBJECT:${String(index + 1).padStart(4, "0")}`);
+}
+
+function commercialObjectType(record) {
+  const metadata = asRecord(record.metadata);
+  return String(metadata.structureType ?? record.structureType ?? record.unitType ?? record.objectType ?? record.type ?? "OBJECT").toUpperCase();
+}
+
+function stationAwareSubmitReadiness(draftPackage) {
+  const blockingIssues = [];
+  const geometryCoordinateCount = asArray(asRecord(draftPackage.geometry).coordinates).length || asArray(draftPackage.centerline).length;
+  const stationAuthorityStations = asArray(asRecord(draftPackage.stationAuthority).stations);
+  const attachments = asArray(draftPackage.objectStationAttachments);
+  const objects = [
+    ...asArray(draftPackage.objects),
+    ...asArray(draftPackage.structures),
+  ];
+  const sourceObjects = objects.length ? objects : asArray(draftPackage.proposedIofUnits);
+  if (!geometryCoordinateCount) blockingIssues.push("route geometry missing");
+  if (!asRecord(draftPackage.measuredSpine).geometryHash) blockingIssues.push("measuredSpine missing");
+  if (!stationAuthorityStations.length) blockingIssues.push("stationAuthority missing");
+  if (!attachments.length) blockingIssues.push("objectStationAttachments missing");
+  const unresolved = sourceObjects
+    .map((record, index) => ({
+      objectId: commercialObjectId(asRecord(record), draftPackage.packageId, index),
+      objectType: commercialObjectType(asRecord(record)),
+    }))
+    .filter((object) => REQUIRED_STATION_OBJECT_TYPES.has(object.objectType))
+    .filter((object) => {
+      const attachment = attachments.find((candidate) => String(candidate.objectId) === object.objectId);
+      return !attachment || attachment.attachmentMethod === "UNRESOLVED" || attachment.attachmentStatus === "UNRESOLVED";
+    })
+    .map((object) => object.objectId);
+  if (unresolved.length) blockingIssues.push(`unresolved required facility object: ${unresolved.join(", ")}`);
+  return {
+    status: blockingIssues.length ? "FAIL" : "PASS",
+    blockingIssues,
+    canSubmitToEngineering: blockingIssues.length === 0,
+  };
+}
+
 function requireCommercialPackageUser(req, res) {
   const user = userFromBearerToken(req);
   if (!user) {
@@ -75,6 +139,16 @@ function normalizeCommercialDraftPackage(raw, user) {
     existingInventoryReferences: uniqueStrings([raw.existingInventoryReferences]),
     customerDesignReferences: uniqueStrings([raw.customerDesignReferences]),
     geometryReferences: uniqueStrings([raw.geometryReferences]),
+    commercialObjectPlacementHistory: Array.isArray(raw.commercialObjectPlacementHistory) ? raw.commercialObjectPlacementHistory : [],
+    customerRequestedMoves: Array.isArray(raw.customerRequestedMoves) ? raw.customerRequestedMoves : [],
+    commercialImpactSummary: raw.commercialImpactSummary ?? {
+      status: "NO_COMMERCIAL_STATION_MOVES",
+      requiresEngineeringReview: "NO",
+      noCertification: true,
+      noScopeVersionCreation: true,
+    },
+    commercialImpactSummaries: Array.isArray(raw.commercialImpactSummaries) ? raw.commercialImpactSummaries : [],
+    commercialReviewRevision: Number(raw.commercialReviewRevision ?? 0),
     historyIds: uniqueStrings([raw.historyIds, `${packageId}:HISTORY:COMMERCIAL_ASSEMBLED`]),
     noScopeVersionCreation: true,
     noMarketplaceCreation: true,
@@ -169,6 +243,9 @@ async function persistEngineeringIntakeRecord(draftPackage, user) {
     doctrineId: draftPackage.doctrineId,
     productDoctrineVersion: draftPackage.productDoctrineVersion,
     packageRevision: draftPackage.packageRevision ?? draftPackage.revision ?? 0,
+    commercialReviewRevision: draftPackage.commercialReviewRevision ?? 0,
+    customerRequestedMoveCount: asArray(draftPackage.customerRequestedMoves).length,
+    commercialImpactStatus: draftPackage.commercialImpactSummary?.status,
     assignedEngineerId: draftPackage.assignedEngineerId ?? "",
     assignedEngineer: draftPackage.assignedEngineer || "Unassigned",
     commercialRevisionLocked: true,
@@ -237,8 +314,15 @@ async function persistEngineeringIntakeRecord(draftPackage, user) {
 async function submitCommercialDraftPackageToEngineering(rawDraftPackage, user) {
   const timestamp = nowIso();
   const savedDraftPackage = normalizeCommercialDraftPackage(rawDraftPackage, user);
+  const stationReadiness = stationAwareSubmitReadiness(savedDraftPackage);
+  if (!stationReadiness.canSubmitToEngineering) {
+    const error = new Error(`Commercial station-aware review blocks Engineering submission: ${stationReadiness.blockingIssues.join("; ")}`);
+    error.status = 409;
+    throw error;
+  }
   const submitted = {
     ...savedDraftPackage,
+    commercialStationReviewReadiness: stationReadiness,
     status: "SUBMITTED_TO_ENGINEERING",
     workflowStatus: "ENGINEERING_INTAKE",
     lifecycleState: "SUBMITTED_TO_ENGINEERING",
@@ -308,8 +392,12 @@ export async function handleCommercialIofPackages(req, res, pathname) {
       packageId,
       draftPackageId: bodyDraft.draftPackageId ?? existing?.draftPackageId ?? packageId,
     };
-    const result = await submitCommercialDraftPackageToEngineering(rawDraftPackage, user);
-    jsonResponse(res, 200, result);
+    try {
+      const result = await submitCommercialDraftPackageToEngineering(rawDraftPackage, user);
+      jsonResponse(res, 200, result);
+    } catch (error) {
+      errorResponse(res, error.status ?? 500, error.message ?? "Commercial Draft IOF Package submission failed.");
+    }
     return true;
   }
 

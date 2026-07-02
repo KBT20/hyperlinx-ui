@@ -406,6 +406,17 @@ export type DraftIofPackageRuntime = {
   centerlineRoute?: unknown;
   osrmRoute?: unknown;
   spine?: unknown;
+  measuredSpine?: unknown;
+  stationAuthority?: unknown;
+  stationIndex?: unknown;
+  stationToCoordinateMap?: unknown;
+  objectStationAttachments?: unknown[];
+  stationIndexedGraph?: unknown;
+  commercialObjectPlacementHistory?: unknown[];
+  customerRequestedMoves?: unknown[];
+  commercialImpactSummary?: unknown;
+  commercialImpactSummaries?: unknown[];
+  commercialReviewRevision?: number;
   route?: unknown[];
   commercialDraftSnapshot?: unknown;
   stations?: unknown[];
@@ -1220,7 +1231,18 @@ export async function openCertifiedIofPackage(certifiedPackageId: string, sessio
   return (data.certifiedIofPackage ?? data) as CertifiedIofPackageRuntime;
 }
 
-export async function generateScopeVersionFromCertifiedIofPackage(certifiedPackageId: string, session?: TeralinxAuthSession | null) {
+export async function generateScopeVersionFromCertifiedIofPackage(
+  certifiedPackageId: string,
+  input: {
+    previousScopeVersionId?: string;
+    parentScopeVersionId?: string;
+    changeSummary?: string;
+    engineeringReason?: string;
+    approvedBy?: string;
+    approvedTimestamp?: string;
+  } = {},
+  session?: TeralinxAuthSession | null,
+) {
   return requestJson<{
     certifiedPackage: CertifiedIofPackageRuntime;
     certificate: ExecutionAuthorizationCertificate;
@@ -1228,5 +1250,6 @@ export async function generateScopeVersionFromCertifiedIofPackage(certifiedPacka
   }>(`/api/engineering/certification/certified-packages/${encodeURIComponent(certifiedPackageId)}/generate-scopeversion`, {
     method: "POST",
     headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
   });
 }

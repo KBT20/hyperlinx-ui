@@ -1,0 +1,697 @@
+import { createHash } from "node:crypto";
+
+export const SCOPEVERSION_AUTHORITY_READINESS = [
+  { key: "engineering", label: "Engineering", status: "PASS" },
+  { key: "business", label: "Business", status: "PENDING" },
+  { key: "legal", label: "Legal", status: "PENDING" },
+  { key: "serviceOrder", label: "Service Order", status: "PENDING" },
+  { key: "control", label: "Control", status: "PENDING" },
+  { key: "marketplace", label: "Marketplace", status: "PENDING" },
+  { key: "field", label: "Field", status: "PENDING" },
+  { key: "operationalTwin", label: "Operational Twin", status: "PENDING" },
+];
+
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null || value === "") return [];
+  return [value];
+}
+
+function unique(values) {
+  return [...new Set(asArray(values).flatMap((value) => asArray(value)).filter(Boolean).map(String))];
+}
+
+function numeric(value, fallback = 0) {
+  const next = Number(value);
+  return Number.isFinite(next) ? next : fallback;
+}
+
+function stableIdPart(value, fallback = "UNKNOWN") {
+  return String(value ?? fallback)
+    .replace(/[^A-Za-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120) || fallback;
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function sortForHash(value) {
+  if (Array.isArray(value)) return value.map(sortForHash);
+  if (!value || typeof value !== "object") return value;
+  return Object.keys(value).sort().reduce((next, key) => {
+    next[key] = sortForHash(value[key]);
+    return next;
+  }, {});
+}
+
+function hashPayload(value) {
+  return createHash("sha256").update(JSON.stringify(sortForHash(value))).digest("hex");
+}
+
+function normalizeCoordinate(value) {
+  if (!Array.isArray(value) || value.length < 2) return undefined;
+  const first = Number(value[0]);
+  const second = Number(value[1]);
+  if (!Number.isFinite(first) || !Number.isFinite(second)) return undefined;
+  const lonLatValid = Math.abs(first) <= 180 && Math.abs(second) <= 90;
+  const latLonValid = Math.abs(first) <= 90 && Math.abs(second) <= 180;
+  if (lonLatValid) return [first, second];
+  if (latLonValid) return [second, first];
+  return undefined;
+}
+
+function coordinateFrom(value) {
+  const normalized = normalizeCoordinate(value);
+  if (normalized) return normalized;
+  const record = asRecord(value);
+  const direct = record.coordinate ?? record.coordinates ?? record.location ?? record.point;
+  if (direct !== undefined && direct !== value) {
+    const nested = coordinateFrom(direct);
+    if (nested) return nested;
+  }
+  const lon = Number(record.lon ?? record.lng ?? record.longitude ?? record.x);
+  const lat = Number(record.lat ?? record.latitude ?? record.y);
+  return normalizeCoordinate([lon, lat]);
+}
+
+function coordinatesFrom(value) {
+  const normalized = normalizeCoordinate(value);
+  if (normalized) return [normalized];
+  if (!Array.isArray(value)) {
+    const record = asRecord(value);
+    const geometry = asRecord(record.geometry);
+    const centerline = asRecord(record.centerline);
+    const candidates = [
+      record.coordinates,
+      geometry.coordinates,
+      record.geometry,
+      record.routeGeometry,
+      record.centerline,
+      centerline.coordinates,
+      centerline.geometry,
+      record.path,
+      record.points,
+      ...(String(record.type ?? "") === "FeatureCollection" ? asArray(record.features) : []),
+    ].filter((candidate) => candidate !== undefined && candidate !== value);
+    for (const candidate of candidates) {
+      const coordinates = coordinatesFrom(candidate);
+      if (coordinates.length > 1) return coordinates;
+    }
+    const coordinate = coordinateFrom(value);
+    return coordinate ? [coordinate] : [];
+  }
+  if (value.every((entry) => normalizeCoordinate(entry))) {
+    return value.map(normalizeCoordinate).filter(Boolean);
+  }
+  const nested = value.flatMap((entry) => coordinatesFrom(entry));
+  if (nested.length > 1) return nested;
+  return value.map(coordinateFrom).filter(Boolean);
+}
+
+function firstCoordinateList(...values) {
+  for (const value of values) {
+    const coordinates = coordinatesFrom(value);
+    if (coordinates.length > 1) return coordinates;
+  }
+  return [];
+}
+
+function geometryReferencesCoordinates(values) {
+  return asArray(values).flatMap((value) => {
+    const embedded = coordinatesFrom(value);
+    if (embedded.length) return embedded;
+    return [...String(value ?? "").matchAll(/(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/g)]
+      .map((match) => normalizeCoordinate([Number(match[1]), Number(match[2])]))
+      .filter(Boolean);
+  });
+}
+
+export function routeCoordinatesFromCertifiedPackage(certifiedPackage = {}) {
+  const doctrineAssembly = asRecord(certifiedPackage.productDoctrineAssembly);
+  const routeEntries = asArray(certifiedPackage.route);
+  const routeGeometry = routeEntries
+    .map((entry) => firstCoordinateList(asRecord(entry).geometry, asRecord(entry).coordinates, asRecord(entry).routeGeometry))
+    .find((coordinates) => coordinates.length > 1) ?? [];
+  const routeSegmentGeometry = asArray(certifiedPackage.routeSegments)
+    .flatMap((segment) => firstCoordinateList(
+      asRecord(segment).geometry,
+      asRecord(segment).coordinates,
+      asRecord(segment).routeGeometry,
+      asRecord(segment).centerline,
+    ));
+  return firstCoordinateList(
+    asRecord(certifiedPackage.geometry).coordinates,
+    asRecord(asRecord(certifiedPackage.geometry).geometry).coordinates,
+    certifiedPackage.geometry,
+    asRecord(certifiedPackage.centerline).coordinates,
+    asRecord(certifiedPackage.centerline).geometry,
+    certifiedPackage.centerline,
+    asRecord(certifiedPackage.centerlineRoute).coordinates,
+    asRecord(asRecord(certifiedPackage.centerlineRoute).geometry).coordinates,
+    asRecord(certifiedPackage.centerlineRoute).geometry,
+    certifiedPackage.centerlineRoute,
+    asRecord(certifiedPackage.osrmRoute).coordinates,
+    asRecord(asRecord(certifiedPackage.osrmRoute).geometry).coordinates,
+    asRecord(certifiedPackage.osrmRoute).geometry,
+    certifiedPackage.osrmRoute,
+    asRecord(doctrineAssembly.osrmRoute).coordinates,
+    asRecord(doctrineAssembly.osrmRoute).geometry,
+    doctrineAssembly.centerline,
+    asRecord(certifiedPackage.spine).coordinates,
+    asRecord(certifiedPackage.spine).geometry,
+    asRecord(certifiedPackage.spine).centerline,
+    routeGeometry,
+    routeSegmentGeometry,
+    geometryReferencesCoordinates(certifiedPackage.geometryReferences),
+  );
+}
+
+function routeLengthFeetFromPackage(certifiedPackage = {}) {
+  return numeric(
+    asRecord(certifiedPackage.quantitySummary).routeFeet ??
+      asRecord(certifiedPackage.commercialSummary).routeFeet ??
+      asRecord(certifiedPackage.centerlineRoute).routeFeet ??
+      asRecord(certifiedPackage.osrmRoute).routeFeet ??
+      asRecord(certifiedPackage.spine).routeFeet ??
+      certifiedPackage.routeFeet,
+    0,
+  );
+}
+
+function routeMilesFromPackage(certifiedPackage = {}, routeLengthFeet = 0) {
+  return numeric(
+    asRecord(certifiedPackage.quantitySummary).routeMiles ??
+      asRecord(certifiedPackage.commercialSummary).routeMiles ??
+      asRecord(certifiedPackage.centerlineRoute).routeMiles ??
+      asRecord(certifiedPackage.osrmRoute).routeMiles ??
+      asRecord(certifiedPackage.spine).routeMiles ??
+      certifiedPackage.routeMiles,
+    routeLengthFeet ? routeLengthFeet / 5280 : 0,
+  );
+}
+
+function certifiedSpine(certifiedPackage, routeCoordinates, routeLengthFeet, routeMiles) {
+  const source = asRecord(certifiedPackage.spine);
+  const coordinates = firstCoordinateList(source.coordinates, source.geometry, source.centerline, routeCoordinates);
+  return {
+    ...source,
+    spineId: String(source.spineId ?? source.id ?? `${certifiedPackage.certifiedPackageId ?? certifiedPackage.packageId}:SPINE`),
+    centerlineId: String(source.centerlineId ?? certifiedPackage.centerlineId ?? `${certifiedPackage.certifiedPackageId ?? certifiedPackage.packageId}:CENTERLINE`),
+    routeFeet: numeric(source.routeFeet, routeLengthFeet),
+    routeMiles: numeric(source.routeMiles, routeMiles),
+    coordinates,
+    geometry: {
+      type: "LineString",
+      coordinates,
+    },
+    source: "CERTIFIED_IOF_PACKAGE",
+    authority: "SCOPEVERSION",
+  };
+}
+
+function stationLabel(station, measureFeet) {
+  const explicit = station.label ?? station.stationLabel ?? station.stationId ?? station.id;
+  if (explicit) return String(explicit);
+  return `${Math.floor(measureFeet / 100)}+${Math.round(measureFeet % 100).toString().padStart(2, "0")}`;
+}
+
+function certifiedStations(certifiedPackage, scopeVersionId, routeId, timestamp) {
+  return asArray(certifiedPackage.stations)
+    .map((station, index) => {
+      const record = asRecord(station);
+      const coordinate = coordinateFrom(record.coordinate ?? record.geometry ?? record);
+      if (!coordinate) return null;
+      const measureFeet = numeric(record.measureFeet ?? record.stationFeet ?? record.feet, index * 5280);
+      const stationId = String(record.stationId ?? record.id ?? `${scopeVersionId}:STATION:${String(index + 1).padStart(4, "0")}`);
+      return {
+        ...record,
+        stationId,
+        scopeVersionId,
+        certifiedRouteId: String(certifiedPackage.certifiedPackageId ?? certifiedPackage.packageId ?? scopeVersionId),
+        routeId,
+        measureFeet,
+        stationFeet: measureFeet,
+        stationLabel: stationLabel(record, measureFeet),
+        coordinate,
+        stationState: "PLANNED",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+    })
+    .filter(Boolean);
+}
+
+function objectType(record) {
+  const metadata = asRecord(record.metadata);
+  return String(metadata.structureType ?? record.structureType ?? record.objectType ?? record.unitType ?? record.type ?? "IOF_OBJECT").toUpperCase();
+}
+
+function stationForObject(stations, record) {
+  const metadata = asRecord(record.metadata);
+  const stationRef = String(record.stationId ?? record.station ?? metadata.stationId ?? metadata.station ?? "");
+  if (!stationRef) return undefined;
+  return stations.find((station) => station.stationId === stationRef || station.stationLabel === stationRef);
+}
+
+function certifiedObjects(certifiedPackage, scopeVersionId, stations, timestamp) {
+  const sources = [
+    ...asArray(certifiedPackage.objects),
+    ...asArray(certifiedPackage.structures),
+  ];
+  const sourceObjects = sources.length ? sources : asArray(certifiedPackage.certifiedIofUnits);
+  return sourceObjects.map((object, index) => {
+    const record = asRecord(object);
+    const metadata = asRecord(record.metadata);
+    const station = stationForObject(stations, record);
+    const coordinate = coordinateFrom(record.coordinate ?? record.geometry ?? metadata.coordinate) ?? station?.coordinate;
+    const measureFeet = numeric(record.measureFeet ?? record.stationFeet ?? metadata.measureFeet ?? station?.measureFeet, 0);
+    const type = objectType(record);
+    const objectId = String(record.objectId ?? record.unitId ?? record.structureId ?? record.id ?? `${scopeVersionId}:OBJECT:${String(index + 1).padStart(4, "0")}`);
+    return {
+      ...record,
+      objectId,
+      scopeVersionId,
+      stationId: String(record.stationId ?? station?.stationId ?? ""),
+      objectCategory: String(record.objectCategory ?? metadata.objectCategory ?? "INFRASTRUCTURE"),
+      objectType: type,
+      objectState: "PLANNED",
+      label: String(record.label ?? record.name ?? type),
+      coordinate,
+      measureFeet,
+      quantity: numeric(record.quantity ?? record.engineeringQuantity ?? record.commercialQuantity ?? metadata.quantity, 1),
+      unit: String(record.unit ?? metadata.unit ?? "EA"),
+      specification: String(record.specification ?? metadata.specification ?? record.constructionMethod ?? "Certified IOF Package object"),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+  });
+}
+
+function certifiedFacilities(objects) {
+  return objects.filter((object) => /ILA|REGEN|FACILITY|HUT|VAULT|SHELTER/i.test(String(object.objectType ?? object.label ?? "")));
+}
+
+function certifiedGraph(certifiedPackage, routeCoordinates) {
+  const graph = asRecord(certifiedPackage.dependencyGraph);
+  const routeSegments = asArray(certifiedPackage.routeSegments);
+  return {
+    graphId: String(graph.graphId ?? `${certifiedPackage.certifiedPackageId ?? certifiedPackage.packageId}:GRAPH`),
+    source: "CERTIFIED_IOF_PACKAGE",
+    nodes: asArray(graph.nodes),
+    edges: asArray(graph.edges),
+    routeSegments,
+    routeCoordinateCount: routeCoordinates.length,
+    summary: {
+      ...(asRecord(graph.summary)),
+      nodeCount: asArray(graph.nodes).length,
+      edgeCount: asArray(graph.edges).length,
+      routeSegmentCount: routeSegments.length,
+      routeCoordinateCount: routeCoordinates.length,
+    },
+  };
+}
+
+function revisionNumber(previousScopeVersion, certifiedPackage) {
+  if (previousScopeVersion) return numeric(previousScopeVersion.revision ?? previousScopeVersion.canonicalTruth?.revision, 1) + 1;
+  return Math.max(1, numeric(certifiedPackage.scopeVersionRevision ?? certifiedPackage.revision, 1));
+}
+
+function revisionLabel(revision) {
+  return `ScopeVersion-${String(revision).padStart(4, "0")}`;
+}
+
+function scopeVersionId(certifiedPackage, revision, previousScopeVersion) {
+  const explicit = certifiedPackage.proposedScopeVersionId ?? certifiedPackage.scopeVersionAuthorityId;
+  if (explicit) return String(explicit);
+  return `${revisionLabel(revision)}-${stableIdPart(certifiedPackage.certifiedPackageId ?? certifiedPackage.packageId ?? "CERTIFIED-IOF")}`;
+}
+
+function readinessSnapshot() {
+  return SCOPEVERSION_AUTHORITY_READINESS.map((item) => ({
+    ...item,
+    authority: item.key === "engineering" ? "CERTIFIED_IOF_PACKAGE" : "DOWNSTREAM_PENDING",
+  }));
+}
+
+function graphSummary(graph, stations, objects) {
+  return {
+    nodeCount: asArray(graph.nodes).length,
+    edgeCount: asArray(graph.edges).length,
+    stationCount: stations.length,
+    routeCount: graph.routeCoordinateCount > 1 ? 1 : 0,
+  };
+}
+
+export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, options = {}) {
+  if (String(certifiedPackage.status ?? "").toUpperCase() !== "CERTIFIED") {
+    throw new Error("Only Certified IOF Packages may be promoted to ScopeVersion authority.");
+  }
+  const timestamp = options.createdAt ?? nowIso();
+  const previousScopeVersion = options.previousScopeVersion;
+  const revision = revisionNumber(previousScopeVersion, certifiedPackage);
+  const scopeVersionIdValue = scopeVersionId(certifiedPackage, revision, previousScopeVersion);
+  const routeCoordinates = routeCoordinatesFromCertifiedPackage(certifiedPackage);
+  if (routeCoordinates.length < 2) {
+    throw new Error("Certified IOF Package cannot create ScopeVersion without certified route geometry.");
+  }
+  const routeLengthFeet = routeLengthFeetFromPackage(certifiedPackage);
+  const routeMiles = routeMilesFromPackage(certifiedPackage, routeLengthFeet);
+  const routeId = String(certifiedPackage.routeId ?? certifiedPackage.centerlineId ?? `${scopeVersionIdValue}:ROUTE`);
+  const spine = certifiedSpine(certifiedPackage, routeCoordinates, routeLengthFeet, routeMiles);
+  const stations = certifiedStations(certifiedPackage, scopeVersionIdValue, routeId, timestamp);
+  const objects = certifiedObjects(certifiedPackage, scopeVersionIdValue, stations, timestamp);
+  const facilities = certifiedFacilities(objects);
+  const graph = certifiedGraph(certifiedPackage, routeCoordinates);
+  const constraints = [
+    ...asArray(certifiedPackage.constraintsReviewed),
+    ...asArray(certifiedPackage.engineeringConstraints),
+    ...asArray(certifiedPackage.constraints),
+  ];
+  const redlineHistory = [
+    ...asArray(certifiedPackage.redlineHistory),
+    ...asArray(certifiedPackage.redlineRevisionHistory),
+  ];
+  const objectMoveHistory = asArray(certifiedPackage.objectMoveHistory);
+  const engineeringNotes = unique([
+    certifiedPackage.notes,
+    ...asArray(certifiedPackage.engineeringNotes),
+    asRecord(certifiedPackage.engineeringChecklist).engineeringNotes,
+  ]);
+  const certificate = asRecord(options.certificate);
+  const user = asRecord(options.user);
+  const approvedBy = String(options.approvedBy ?? user.name ?? certifiedPackage.certifiedBy ?? certifiedPackage.engineer ?? "Engineering");
+  const approvedTimestamp = String(options.approvedTimestamp ?? timestamp);
+  const parentScopeVersionId = previousScopeVersion?.scopeVersionId ?? options.parentScopeVersionId ?? certifiedPackage.parentScopeVersionId;
+  const rootScopeVersionId = previousScopeVersion?.rootScopeVersionId ?? previousScopeVersion?.scopeVersionId ?? parentScopeVersionId ?? scopeVersionIdValue;
+  const previousRevision = previousScopeVersion
+    ? {
+        scopeVersionId: previousScopeVersion.scopeVersionId,
+        revision: previousScopeVersion.revision ?? previousScopeVersion.canonicalTruth?.revision,
+        revisionLabel: previousScopeVersion.revisionLabel ?? previousScopeVersion.canonicalTruth?.revisionLabel,
+      }
+    : undefined;
+  const productDoctrine = {
+    doctrineId: certifiedPackage.doctrineId ?? certifiedPackage.productDoctrine?.doctrineId,
+    productDoctrineVersion: certifiedPackage.productDoctrineVersion ?? certifiedPackage.doctrineVersion,
+    productDoctrineRules: certifiedPackage.productDoctrineRules,
+    productDoctrineAssembly: certifiedPackage.productDoctrineAssembly,
+  };
+  const engineeringDoctrine = {
+    doctrineStatus: certifiedPackage.doctrineStatus,
+    engineeringChecklist: certifiedPackage.engineeringChecklist,
+    approvedExceptions: certifiedPackage.approvedExceptions ?? certifiedPackage.exceptionsApproved,
+    doctrineExceptions: certifiedPackage.doctrineExceptions,
+  };
+  const validationSnapshot = {
+    packageValidation: certifiedPackage.validation,
+    packageReadiness: certifiedPackage.packageReadiness,
+    readiness: certifiedPackage.readiness,
+    engineeringReadiness: certifiedPackage.engineeringReadiness,
+  };
+  const doctrineComplianceSnapshot = {
+    doctrineStatus: certifiedPackage.doctrineStatus,
+    validation: certifiedPackage.validation,
+    compliance: certifiedPackage.compliance,
+    exceptionsApproved: certifiedPackage.approvedExceptions ?? certifiedPackage.exceptionsApproved,
+  };
+  const digitalCertificationMetadata = {
+    certificateId: certificate.certificateId,
+    scopeVersionId: scopeVersionIdValue,
+    certifiedIofPackageId: certifiedPackage.certifiedPackageId,
+    sourceDraftPackageId: certifiedPackage.sourcePackageId ?? certifiedPackage.sourceDraftPackageId,
+    certifiedAt: certifiedPackage.certifiedAt ?? certifiedPackage.certificationDate,
+    certifiedBy: certifiedPackage.certifiedBy ?? certifiedPackage.engineer,
+    certifiedById: certifiedPackage.certifiedById ?? certifiedPackage.engineerId,
+    engineeringApprover: certificate.engineeringApprover ?? approvedBy,
+    engineeringApproverId: certificate.engineeringApproverId ?? user.userId,
+    certificationConfidence: certificate.certificationConfidence ?? certifiedPackage.certificationConfidence,
+  };
+  const assemblyFingerprint = hashPayload({
+    scopeVersionId: scopeVersionIdValue,
+    certifiedIofPackageId: certifiedPackage.certifiedPackageId,
+    routeCoordinates,
+    spine,
+    stations,
+    objects,
+    constraints,
+    redlineHistory,
+    doctrineComplianceSnapshot,
+    validationSnapshot,
+    digitalCertificationMetadata,
+  });
+  digitalCertificationMetadata.assemblyFingerprint = assemblyFingerprint;
+  const downstreamReadiness = readinessSnapshot();
+  const canonicalTruth = {
+    lifecycleState: "CERTIFIED",
+    lifecycleTimestamp: timestamp,
+    constitutionalAuthority: "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE",
+    authority: "SCOPEVERSION_OPERATIONAL_BASELINE",
+    immutable: true,
+    parentCertifiedPackageId: certifiedPackage.certifiedPackageId,
+    certifiedIofPackageId: certifiedPackage.certifiedPackageId,
+    sourceDraftPackageId: certifiedPackage.sourcePackageId ?? certifiedPackage.sourceDraftPackageId,
+    executionAuthorizationCertificateId: certificate.certificateId,
+    revision,
+    revisionLabel: revisionLabel(revision),
+    parentScopeVersionId,
+    rootScopeVersionId,
+    previousRevision,
+    changeSummary: options.changeSummary ?? certifiedPackage.changeSummary ?? (previousScopeVersion ? "Engineering revision promoted from Certified IOF Package." : "Initial ScopeVersion authority from Certified IOF Package."),
+    engineeringReason: options.engineeringReason ?? certifiedPackage.engineeringReason ?? "Engineering certified IOF Package promoted to operational baseline.",
+    approvedBy,
+    approvedTimestamp,
+    customer: {
+      customerId: certifiedPackage.customerId,
+      name: certifiedPackage.customerSummary?.name ?? certifiedPackage.customerName ?? certifiedPackage.customerId,
+    },
+    account: {
+      accountId: certifiedPackage.accountId,
+      name: certifiedPackage.accountName ?? certifiedPackage.customerSummary?.accountName,
+    },
+    opportunity: {
+      opportunityId: certifiedPackage.opportunityId,
+      proposalId: certifiedPackage.proposalId,
+    },
+    product: {
+      productId: certifiedPackage.productId,
+      productName: certifiedPackage.productName,
+      fulfillmentPlanId: certifiedPackage.fulfillmentPlanId,
+      fulfillmentStrategy: certifiedPackage.fulfillmentStrategy,
+    },
+    productDoctrine,
+    engineeringDoctrine,
+    routeGeometry: routeCoordinates,
+    geometry: routeCoordinates,
+    certifiedGeometry: {
+      type: "LineString",
+      coordinates: routeCoordinates,
+    },
+    certifiedSpine: spine,
+    spine,
+    certifiedStations: stations,
+    stations,
+    certifiedGraph: graph,
+    graph,
+    certifiedObjects: objects,
+    objects,
+    facilityInventory: facilities,
+    constructionQuantities: certifiedPackage.quantitySummary ?? certifiedPackage.commercialSummary?.quantitySummary ?? {},
+    routeLength: {
+      feet: routeLengthFeet,
+      miles: routeMiles,
+      source: "CERTIFIED_IOF_PACKAGE",
+    },
+    constraintHistory: constraints,
+    constraints,
+    constraintSummary: certifiedPackage.constraintSummary,
+    redlineHistory,
+    objectMoveHistory,
+    engineeringNotes,
+    doctrineComplianceSnapshot,
+    validationSnapshot,
+    validation: validationSnapshot,
+    digitalCertificationMetadata,
+    downstreamReadiness,
+    readiness: downstreamReadiness,
+    executionGate: {
+      businessApproval: "PENDING",
+      legalApproval: "PENDING",
+      serviceOrder: "PENDING",
+      control: "PENDING",
+      marketplace: "PENDING",
+      field: "PENDING",
+      operationalTwin: "PENDING",
+      engineering: "PASS",
+    },
+    graphSummary: graphSummary(graph, stations, objects),
+    networkBasis: {
+      routeId,
+      routeName: String(certifiedPackage.routeName ?? certifiedPackage.centerlineId ?? routeId),
+      nodeId: "",
+      stationId: stations[0]?.stationId ?? "",
+      attachmentPoint: routeCoordinates[0],
+      attachmentCoordinates: routeCoordinates[0],
+      certificationStatus: "CERTIFIED",
+    },
+    geographicBasis: {
+      candidateLatitude: numeric(routeCoordinates[0]?.[1], 0),
+      candidateLongitude: numeric(routeCoordinates[0]?.[0], 0),
+      geometry: routeCoordinates,
+      routeGeometry: routeCoordinates,
+      certifiedGeometry: routeCoordinates,
+      spineGeometry: spine.coordinates,
+      buildPath: {
+        source: "CERTIFIED_IOF_PACKAGE",
+        coordinates: routeCoordinates,
+      },
+    },
+    engineeringBasis: {
+      buildFeet: routeLengthFeet,
+      buildMiles: routeMiles,
+      routeStatus: "VALID",
+      certificationReadiness: "SCOPEVERSION_AUTHORITY_CREATED",
+      certifiedGeometrySnapshot: routeCoordinates,
+      certifiedGeometryHash: hashPayload(routeCoordinates),
+      constraints,
+      constraintSummary: certifiedPackage.constraintSummary,
+      redlineHistory,
+      objectMoveHistory,
+      engineeringNotes,
+      doctrineComplianceSnapshot,
+      validationSnapshot,
+    },
+    authorityModel: {
+      commercial: "ENDED_AT_DRAFT_IOF_PACKAGE",
+      engineering: "ENDED_AT_CERTIFIED_IOF_PACKAGE",
+      scopeVersion: "OPERATIONAL_AUTHORITY_BEGINS",
+      business: "MAY_AUTHORIZE_WITHOUT_ENGINEERING_MUTATION",
+      legal: "MAY_AUTHORIZE_WITHOUT_ENGINEERING_MUTATION",
+    },
+  };
+  return {
+    scopeVersionId: scopeVersionIdValue,
+    type: "SCOPEVERSION_AUTHORITY",
+    source: "CertifiedIofPackage",
+    status: "CERTIFIED",
+    certificationState: "CERTIFIED",
+    isImmutable: true,
+    immutable: true,
+    revision,
+    revisionLabel: revisionLabel(revision),
+    parentScopeVersionId,
+    rootScopeVersionId,
+    relationshipType: parentScopeVersionId ? "AMENDMENT" : "ROOT",
+    previousRevision,
+    changeSummary: canonicalTruth.changeSummary,
+    engineeringReason: canonicalTruth.engineeringReason,
+    approvedBy,
+    approvedTimestamp,
+    certifiedIofPackageId: certifiedPackage.certifiedPackageId,
+    parentCertifiedPackageId: certifiedPackage.certifiedPackageId,
+    executionAuthorizationCertificateId: certificate.certificateId,
+    proposalId: certifiedPackage.proposalId,
+    productId: certifiedPackage.productId,
+    productName: certifiedPackage.productName,
+    accountId: certifiedPackage.accountId,
+    customerId: certifiedPackage.customerId,
+    opportunityId: certifiedPackage.opportunityId,
+    organizationId: user.organizationId ?? certifiedPackage.organizationId,
+    workspaceId: user.workspaceId ?? certifiedPackage.workspaceId,
+    createdBy: approvedBy,
+    user: approvedBy,
+    routeLengthFeet,
+    routeMiles,
+    geometry: routeCoordinates,
+    graphSummary: canonicalTruth.graphSummary,
+    certifiedRouteReference: {
+      certifiedRouteId: certifiedPackage.certifiedPackageId,
+      sourceCertifiedPackageId: certifiedPackage.certifiedPackageId,
+      routeAuthorityState: "CERTIFIED_ROUTE",
+      certifiedAt: certifiedPackage.certifiedAt ?? certifiedPackage.certificationDate ?? timestamp,
+      certifiedBy: certifiedPackage.certifiedBy ?? certifiedPackage.engineer ?? approvedBy,
+    },
+    iofPackageIds: unique([certifiedPackage.sourcePackageId, certifiedPackage.certifiedPackageId]),
+    runtimeObjectIds: unique(certifiedPackage.runtimeObjectIds),
+    runtimeRelationshipIds: unique(certifiedPackage.runtimeRelationshipIds),
+    runtimeEvidenceIds: unique(certifiedPackage.runtimeEvidenceIds),
+    certifiedIofUnitIds: asArray(certifiedPackage.certifiedIofUnits).map((unit) => unit.unitId),
+    decisionTimestamp: timestamp,
+    canonicalTruth,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    events: [{
+      eventId: `event-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      type: "scopeversion.created_from_certified_iof_package",
+      entityId: scopeVersionIdValue,
+      entityType: "ScopeVersion",
+      payload: {
+        certifiedIofPackageId: certifiedPackage.certifiedPackageId,
+        executionAuthorizationCertificateId: certificate.certificateId,
+        revision,
+        revisionLabel: revisionLabel(revision),
+        parentScopeVersionId,
+        authority: "SCOPEVERSION",
+      },
+      createdAt: timestamp,
+    }],
+  };
+}
+
+export function markCertifiedPackagePromoted(certifiedPackage, scopeVersion, certificate) {
+  const timestamp = nowIso();
+  return {
+    ...certifiedPackage,
+    scopeVersionId: scopeVersion.scopeVersionId,
+    scopeVersionRevision: scopeVersion.revision,
+    scopeVersionCreated: true,
+    scopeVersionCreatedAt: timestamp,
+    executionAuthorizationCertificateId: certificate.certificateId,
+    executionAuthorized: true,
+    engineeringCertificationLocked: true,
+    engineeringReadOnly: true,
+    immutable: true,
+    readiness: {
+      ...(certifiedPackage.readiness ?? {}),
+      status: "SCOPEVERSION_AUTHORITY_CREATED",
+      readyForScopeVersionCreation: false,
+      scopeVersionCreated: true,
+      scopeVersionId: scopeVersion.scopeVersionId,
+    },
+    updatedAt: timestamp,
+  };
+}
+
+export function validateScopeVersionAuthority(scopeVersion = {}) {
+  const truth = asRecord(scopeVersion.canonicalTruth);
+  const failures = [];
+  const requireValue = (condition, message) => {
+    if (!condition) failures.push(message);
+  };
+  requireValue(scopeVersion.scopeVersionId, "ScopeVersion ID is required.");
+  requireValue(scopeVersion.certifiedIofPackageId || truth.certifiedIofPackageId, "Certified IOF Package reference is required.");
+  requireValue(scopeVersion.isImmutable === true || scopeVersion.immutable === true || truth.immutable === true, "ScopeVersion must be immutable.");
+  requireValue(truth.constitutionalAuthority === "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE", "ScopeVersion authority must derive from Certified IOF Package.");
+  requireValue(coordinatesFrom(truth.routeGeometry ?? truth.geometry ?? scopeVersion.geometry).length > 1, "Certified geometry is required.");
+  requireValue(asRecord(truth.spine ?? truth.certifiedSpine).spineId, "Certified spine is required.");
+  requireValue(asArray(truth.stations ?? truth.certifiedStations).length > 0, "Certified stations are required.");
+  requireValue(asArray(asRecord(truth.graph ?? truth.certifiedGraph).nodes).length >= 0 && asRecord(truth.graph ?? truth.certifiedGraph).graphId, "Certified graph is required.");
+  requireValue(asArray(truth.objects ?? truth.certifiedObjects).length > 0, "Certified objects are required.");
+  requireValue(asArray(truth.constraints ?? truth.constraintHistory).length >= 0, "Constraint history must be present.");
+  requireValue(numeric(asRecord(truth.routeLength).feet) > 0, "Route length is required.");
+  requireValue(Object.keys(asRecord(truth.productDoctrine)).length > 0, "Product doctrine snapshot is required.");
+  requireValue(Object.keys(asRecord(truth.engineeringDoctrine)).length > 0, "Engineering doctrine snapshot is required.");
+  requireValue(Object.keys(asRecord(truth.validationSnapshot)).length > 0, "Validation snapshot is required.");
+  const readiness = asArray(truth.downstreamReadiness);
+  requireValue(readiness.some((item) => item.key === "engineering" && item.status === "PASS"), "Engineering readiness must be PASS.");
+  requireValue(readiness.filter((item) => item.key !== "engineering").every((item) => item.status === "PENDING"), "Downstream readiness must be PENDING.");
+  return {
+    status: failures.length ? "FAIL" : "PASS",
+    failures,
+  };
+}

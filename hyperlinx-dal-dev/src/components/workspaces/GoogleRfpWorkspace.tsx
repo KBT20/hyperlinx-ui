@@ -114,6 +114,7 @@ import GoogleBidRouteReviewPanel from "./googleRfp/GoogleBidRouteReviewPanel";
 import GoogleBidSupportingInformationPanel from "./googleRfp/GoogleBidSupportingInformationPanel";
 import GoogleBidVendorResponsePreviewPanel from "./googleRfp/GoogleBidVendorResponsePreviewPanel";
 import { CommercialReviewPanel } from "./googleRfp/CommercialReviewPanel";
+import StationAwareObjectReviewPanel from "../commercial/StationAwareObjectReviewPanel";
 import TransparentEstimateExplorer from "./googleRfp/TransparentEstimateExplorer";
 import ProposedNetworkMapPanel, { type CommercialIlaMapStation, type ProposedNetworkSelection } from "./proposednetwork/ProposedNetworkMapPanel";
 import type { ProposedGraph } from "../../proposedGraph/ProposedGraph";
@@ -4088,13 +4089,14 @@ export default function GoogleRfpWorkspace() {
       setEngineeringCertificationNotice("Engineering can only assemble from a customer-approved and runtime-valid Proposal.");
       return;
     }
-    if (!commercialDraftIofPackagePreview) {
+    const draftSource = commercialDraftIofPackage ?? commercialDraftIofPackagePreview;
+    if (!draftSource) {
       setEngineeringCertificationNotice("Commercial Draft IOF Package JSON is required before Engineering handoff.");
       return;
     }
     setEngineeringCertificationPending(true);
     try {
-      const draft = await saveCommercialDraftIofPackage(commercialDraftIofPackagePreview, session);
+      const draft = await saveCommercialDraftIofPackage(draftSource, session);
       setCommercialDraftIofPackage(draft);
       setActiveDraftIofPackage(draft);
       activateEngineeringCertificationFromDraftPackage(draft);
@@ -4112,13 +4114,14 @@ export default function GoogleRfpWorkspace() {
       setProposalRuntimeNotice("Save a governed Proposal Runtime Object before preserving Draft IOF Package JSON.");
       return;
     }
-    if (!commercialDraftIofPackagePreview) {
+    const draftSource = commercialDraftIofPackage ?? commercialDraftIofPackagePreview;
+    if (!draftSource) {
       setProposalRuntimeNotice("Commercial package assembly needs proposal, design, pricing, and validation inputs.");
       return;
     }
     setEngineeringCertificationPending(true);
     try {
-      const draft = await saveCommercialDraftIofPackage(commercialDraftIofPackagePreview, session);
+      const draft = await saveCommercialDraftIofPackage(draftSource, session);
       setCommercialDraftIofPackage(draft);
       setActiveDraftIofPackage(draft);
       setProposalRuntimeNotice(`${draft.packageId} saved as deterministic Draft IOF Package JSON.`);
@@ -4141,8 +4144,14 @@ export default function GoogleRfpWorkspace() {
     setProposalRuntimeNotice(`${draft.packageId} validation ${validationStatus}; readiness ${readiness}.`);
   }
 
+  function handleCommercialStationReviewDraftChange(nextDraft: DraftIofPackageRuntime, message: string) {
+    setCommercialDraftIofPackage(nextDraft);
+    setProposalRuntimeNotice(message);
+    setEngineeringCertificationNotice(`${nextDraft.packageId} has Commercial station-aware revisions. Save before Engineering submission.`);
+  }
+
   async function handleSubmitCommercialDraftIofToEngineering() {
-    const draftSource = commercialDraftIofPackagePreview ?? commercialDraftIofPackage ?? activeDraftIofPackage;
+    const draftSource = commercialDraftIofPackage ?? commercialDraftIofPackagePreview ?? activeDraftIofPackage;
     if (!draftSource) {
       setProposalRuntimeNotice("Commercial Review needs a Draft IOF Package before Engineering submission.");
       return;
@@ -7132,6 +7141,14 @@ export default function GoogleRfpWorkspace() {
         onSaveDraft={handleSaveCommercialDraftIofPackage}
         onValidate={handleValidateCommercialReviewPackage}
         onSubmitToEngineering={handleSubmitCommercialDraftIofToEngineering}
+      />
+
+      <StationAwareObjectReviewPanel
+        draftPackage={displayedDraftIofPackage}
+        canEdit={canManageProposalRuntime}
+        pending={engineeringCertificationPending}
+        actor={currentUserName}
+        onDraftChange={handleCommercialStationReviewDraftChange}
       />
 
       {/*

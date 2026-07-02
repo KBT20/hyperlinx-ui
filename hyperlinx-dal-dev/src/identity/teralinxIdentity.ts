@@ -15,6 +15,11 @@ export function canAccessWorkspace(user: TeralinxUser | null | undefined, worksp
     return userHasPermission(user, "workspace.engineering.write") ||
       userHasPermission(user, "workspace.salesEngineering");
   }
+  if (workspace === "scopeVersion") {
+    return userHasPermission(user, "scopeversion.authority") ||
+      userHasPermission(user, "workspace.engineering.read") ||
+      userHasPermission(user, "workspace.engineering.write");
+  }
   if (workspace === "candidateSites" || workspace === "networkAffinity") return userHasPermission(user, "workspace.salesEngineering");
   return false;
 }

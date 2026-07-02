@@ -235,7 +235,7 @@ export type ScopeVersionLifecycleState =
   | "BLOCKED"
   | "REJECTED";
 
-export type ScopeVersionTruthType = "INVENTORY" | "CANDIDATE" | "APPROVED" | "FIELD_CLOSED" | "AS_BUILT";
+export type ScopeVersionTruthType = "INVENTORY" | "CANDIDATE" | "APPROVED" | "FIELD_CLOSED" | "AS_BUILT" | "SCOPEVERSION_AUTHORITY";
 
 export type ScopeVersionCertificationState = "DRAFT" | "CERTIFIED" | "REJECTED";
 
@@ -787,6 +787,15 @@ export type ScopeVersion = {
   type?: ScopeVersionTruthType;
   parentScopeVersionId?: string;
   rootScopeVersionId?: string;
+  revision?: number;
+  revisionLabel?: string;
+  previousRevision?: unknown;
+  changeSummary?: string;
+  engineeringReason?: string;
+  approvedBy?: string;
+  approvedTimestamp?: string;
+  certifiedIofPackageId?: string;
+  parentCertifiedPackageId?: string;
   relationshipType?: ScopeVersionRelationshipType;
   inventoryId?: string;
   sourceInventoryId?: string;
@@ -795,7 +804,7 @@ export type ScopeVersion = {
   candidateSiteId?: string;
   sourceOpportunityId?: string;
   createdBy?: string;
-  source: "InventoryGraph" | "GraphExtension" | "OpportunitySeed" | "PrismOpportunity" | "DesignCandidate" | "CustomerDesignRequest" | "FieldClosure" | "Manual";
+  source: "InventoryGraph" | "GraphExtension" | "OpportunitySeed" | "PrismOpportunity" | "DesignCandidate" | "CustomerDesignRequest" | "CertifiedIofPackage" | "FieldClosure" | "Manual";
   status: ScopeVersionStatus;
   certificationState: ScopeVersionCertificationState;
   isImmutable?: boolean;
@@ -832,6 +841,7 @@ export type ScopeVersion = {
   createdAt: string;
   updatedAt: string;
   events: OperationalEvent[];
+  [key: string]: unknown;
 };
 
 export type ServiceabilityStatus = "GREEN" | "YELLOW" | "RED";
