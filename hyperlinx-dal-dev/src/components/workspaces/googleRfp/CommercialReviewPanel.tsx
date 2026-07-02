@@ -10,6 +10,8 @@ type CommercialReviewPanelProps = {
   pending?: boolean;
   canEdit?: boolean;
   notice?: string;
+  draftIofApprovalDisabled?: boolean;
+  draftIofApprovalReason?: string;
   onSaveDraft: () => void;
   onValidate: () => void;
   onSubmitToEngineering: () => void;
@@ -38,6 +40,8 @@ export function CommercialReviewPanel({
   pending = false,
   canEdit = true,
   notice,
+  draftIofApprovalDisabled = false,
+  draftIofApprovalReason,
   onSaveDraft,
   onValidate,
   onSubmitToEngineering,
@@ -87,10 +91,11 @@ export function CommercialReviewPanel({
         <button type="button" className="secondary" onClick={() => setPreviewOpen((open) => !open)} disabled={!draftPackage}>
           Preview Package
         </button>
-        <button type="button" onClick={onSubmitToEngineering} disabled={!canEdit || locked || pending || !draftPackage}>Submit to Engineering</button>
+        <button type="button" onClick={onSubmitToEngineering} disabled={!canEdit || locked || pending || !draftPackage || draftIofApprovalDisabled}>Submit to Engineering</button>
       </div>
 
       {notice ? <div className="dal-status">{notice}</div> : null}
+      {draftPackage && draftIofApprovalDisabled && draftIofApprovalReason ? <div className="dal-status fail">{draftIofApprovalReason}</div> : null}
 
       {previewOpen ? (
         <details open>

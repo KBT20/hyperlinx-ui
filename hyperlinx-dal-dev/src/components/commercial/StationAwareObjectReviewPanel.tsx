@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DraftIofPackageRuntime } from "../../api/teralinxRuntime";
 import {
   addCommercialObjectAtStation,
@@ -8,8 +8,11 @@ import {
 } from "../../commercial/CommercialObjectPlacementEngine";
 import {
   buildCommercialStationReview,
+  buildCommercialStationReviewMapSpec,
+  lookupCommercialStationExpectations,
   lookupCommercialStation,
   type CommercialMovableObjectReview,
+  type CommercialStationReviewMapMode,
 } from "../../commercial/CommercialStationReviewEngine";
 import MapKernel from "../../mapkernel/MapKernel";
 
@@ -18,6 +21,8 @@ type StationAwareObjectReviewPanelProps = {
   canEdit: boolean;
   pending?: boolean;
   actor: string;
+  focusStationRef?: string;
+  focusSpineObjectId?: string;
   onDraftChange: (draftPackage: DraftIofPackageRuntime, message: string) => void;
 };
 
@@ -50,6 +55,8 @@ export default function StationAwareObjectReviewPanel({
   canEdit,
   pending = false,
   actor,
+  focusStationRef,
+  focusSpineObjectId,
   onDraftChange,
 }: StationAwareObjectReviewPanelProps) {
   const review = useMemo(() => buildCommercialStationReview(draftPackage), [draftPackage]);
@@ -61,10 +68,29 @@ export default function StationAwareObjectReviewPanel({
   const [reason, setReason] = useState("Customer requested station-aware commercial review move.");
   const [customerRequested, setCustomerRequested] = useState(true);
   const [notice, setNotice] = useState("");
+  const [mapMode, setMapMode] = useState<CommercialStationReviewMapMode>("ENGINEERING_REVIEW_VIEW");
+  const [selectedStationRef, setSelectedStationRef] = useState("");
   const stationLookup = useMemo(() => draftPackage ? lookupCommercialStation(draftPackage, targetStation) : null, [draftPackage, targetStation]);
+  const mapSpec = useMemo(() => buildCommercialStationReviewMapSpec(draftPackage, mapMode), [draftPackage, mapMode]);
+  const selectedStationExpectations = useMemo(() => (
+    draftPackage ? lookupCommercialStationExpectations(draftPackage, selectedStationRef || stationLookup?.stationId || targetStation) : null
+  ), [draftPackage, selectedStationRef, stationLookup?.stationId, targetStation]);
   const locked = Boolean((draftPackage as any)?.commercialRevisionLocked) ||
     ["SUBMITTED_TO_ENGINEERING", "UNDER_ENGINEERING_REVIEW", "CERTIFIED"].includes(String(draftPackage?.status ?? ""));
   const actionDisabled = !canEdit || pending || locked || !draftPackage || !review.stationLookupReady;
+
+  useEffect(() => {
+    const focusId = String(focusSpineObjectId ?? "").trim();
+    if (!focusId) return;
+    if (review.movableObjects.some((object) => object.objectId === focusId)) setSelectedObjectId(focusId);
+  }, [focusSpineObjectId, review.movableObjects]);
+
+  useEffect(() => {
+    const focusRef = String(focusStationRef ?? "").trim();
+    if (!focusRef) return;
+    setSelectedStationRef(focusRef);
+    setTargetStation(focusRef);
+  }, [focusStationRef]);
 
   function applyMove() {
     if (!draftPackage || !selectedObject) return;
@@ -141,6 +167,9 @@ export default function StationAwareObjectReviewPanel({
         <div><span>Station Authority</span><b>{review.stationAuthority?.stationCount?.toLocaleString() ?? "Missing"}</b></div>
         <div><span>Movable Objects</span><b>{review.movableObjects.length.toLocaleString()}</b></div>
         <div><span>Attachments</span><b>{((draftPackage as any)?.objectStationAttachments ?? []).length.toLocaleString()}</b></div>
+        <div><span>Audit Attachments</span><b>{((draftPackage as any)?.spineAuditAttachments ?? []).length.toLocaleString()}</b></div>
+        <div><span>Closure Expectations</span><b>{((draftPackage as any)?.closureExpectations ?? []).length.toLocaleString()}</b></div>
+        <div><span>Review Objects</span><b>{((draftPackage as any)?.spineReviewObjects ?? []).length.toLocaleString()}</b></div>
         <div><span>Customer Moves</span><b>{((draftPackage as any)?.customerRequestedMoves ?? []).length.toLocaleString()}</b></div>
         <div><span>Commercial Revisions</span><b>{((draftPackage as any)?.commercialObjectPlacementHistory ?? []).length.toLocaleString()}</b></div>
         <div><span>Can Certify</span><b>{review.canCertifyStationAuthority ? "YES" : "NO"}</b></div>
@@ -149,11 +178,28 @@ export default function StationAwareObjectReviewPanel({
 
       <div className="commercial-station-review-grid">
         <div className="commercial-station-review-map">
+          <div className="dal-actions commercial-map-mode-controls" aria-label="Commercial map modes">
+            {review.mapModes.map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={mapMode === mode ? "primary" : "secondary"}
+                onClick={() => setMapMode(mode)}
+              >
+                {mode.replaceAll("_", " ")}
+              </button>
+            ))}
+          </div>
           <MapKernel
-            specs={[review.mapSpec]}
-            stationDensityFeet={600}
-            showStationLabels
+            specs={[mapSpec]}
+            stationDensityFeet={mapMode === "ROUTE_VIEW" ? 5280 : 1000}
+            showStationLabels={mapMode !== "FIELD_PREVIEW_VIEW"}
             initialMode="geographic"
+            onSelectionChange={(selection) => {
+              const stationId = selection?.featureRef.stationId;
+              if (selection?.kind === "Station" && stationId) setSelectedStationRef(stationId);
+              else if (selection?.featureRef.stationId) setSelectedStationRef(selection.featureRef.stationId);
+            }}
           />
         </div>
 
@@ -192,6 +238,48 @@ export default function StationAwareObjectReviewPanel({
             <div><span>Measure</span><b>{feet(stationLookup?.measureFeet)}</b></div>
             <div><span>Coordinate</span><b>{coordinateText(stationLookup?.coordinate)}</b></div>
             <div><span>Segment</span><b>{stationLookup?.segmentId?.split(":").slice(-2).join(":") ?? "n/a"}</b></div>
+          </div>
+
+          <div className="station-expectation-panel">
+            <div className="dal-panel-title-row">
+              <div>
+                <h3>Station Expectation Panel</h3>
+                <span>{selectedStationExpectations?.station.stationLabel ?? stationLookup?.stationLabel ?? "Select a station"}</span>
+              </div>
+              <span className={`dal-badge ${selectedStationExpectations ? "pass" : "warning"}`}>
+                {selectedStationExpectations ? "Closure Preview" : "No Station Selection"}
+              </span>
+            </div>
+            {selectedStationExpectations ? (
+              <>
+                <div className="teralinx-summary-grid compact">
+                  <div><span>Station ID</span><b>{selectedStationExpectations.station.stationId}</b></div>
+                  <div><span>Measure</span><b>{feet(selectedStationExpectations.station.measureFeet)}</b></div>
+                  <div><span>Coordinate</span><b>{coordinateText(selectedStationExpectations.station.coordinate)}</b></div>
+                  <div><span>Objects</span><b>{selectedStationExpectations.attachedObjects.length.toLocaleString()}</b></div>
+                  <div><span>Expected Work</span><b>{selectedStationExpectations.expectedWork.length.toLocaleString()}</b></div>
+                  <div><span>Review Objects</span><b>{selectedStationExpectations.reviewObjects.length.toLocaleString()}</b></div>
+                </div>
+                <div className="dal-list station-expectation-list">
+                  {selectedStationExpectations.closurePreview.slice(0, 8).map((expectation) => (
+                    <div className="dal-list-row teralinx-list-row" key={expectation.closureExpectationId}>
+                      <b>{expectation.expectedWork}</b>
+                      <span>{expectation.expectedQuantity.toLocaleString()} {expectation.quantityUnit}</span>
+                      <small>Evidence: {expectation.requiredEvidence.join(", ")}. Status: {expectation.currentStatus}</small>
+                    </div>
+                  ))}
+                  {selectedStationExpectations.reviewObjects.map((reviewObject) => (
+                    <div className="dal-list-row teralinx-list-row" key={reviewObject.reviewObjectId}>
+                      <b>{reviewObject.reviewType.replaceAll("_", " ")}</b>
+                      <span>{reviewObject.label}</span>
+                      <small>{reviewObject.requiredBeforeEngineeringCertification ? "Required before Engineering Certification" : "Commercial review item"}</small>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="dal-status">Click a station or enter a target station to preview expected work, audit data, closure evidence placeholders, and unresolved review items.</div>
+            )}
           </div>
 
           <div className="dal-actions">

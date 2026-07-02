@@ -68,6 +68,23 @@ function stationAwareSubmitReadiness(draftPackage) {
   const geometryCoordinateCount = asArray(asRecord(draftPackage.geometry).coordinates).length || asArray(draftPackage.centerline).length;
   const stationAuthorityStations = asArray(asRecord(draftPackage.stationAuthority).stations);
   const attachments = asArray(draftPackage.objectStationAttachments);
+  const auditProjection = asRecord(draftPackage.spineAuditProjection);
+  const closureExpectations = asArray(draftPackage.closureExpectations);
+  const auditProjectionSummary = asRecord(draftPackage.auditProjectionSummary);
+  const kernelExecutionGraph = asRecord(draftPackage.kernelExecutionGraph);
+  const executionNodes = asArray(draftPackage.executionNodes);
+  const executionEdges = asArray(draftPackage.executionEdges);
+  const executionGraphValidation = asRecord(draftPackage.executionGraphValidation);
+  const executionExpectations = asArray(draftPackage.executionExpectations);
+  const closureLedgers = asArray(draftPackage.closureLedgers);
+  const constitutionalClosureSummary = asRecord(draftPackage.constitutionalClosureSummary);
+  const constitutionalAssembly = asRecord(draftPackage.constitutionalAssembly);
+  const spineObjectDependencies = asArray(draftPackage.spineObjectDependencies);
+  const spineObjectCloseSequences = asArray(draftPackage.spineObjectCloseSequences);
+  const spineObjectEvidenceRequirements = asArray(draftPackage.spineObjectEvidenceRequirements);
+  const segmentValidationRules = asArray(draftPackage.segmentValidationRules);
+  const paymentEligibilityRules = asArray(draftPackage.paymentEligibilityRules);
+  const draftIofReadiness = asRecord(draftPackage.draftIofReadiness);
   const objects = [
     ...asArray(draftPackage.objects),
     ...asArray(draftPackage.structures),
@@ -77,6 +94,24 @@ function stationAwareSubmitReadiness(draftPackage) {
   if (!asRecord(draftPackage.measuredSpine).geometryHash) blockingIssues.push("measuredSpine missing");
   if (!stationAuthorityStations.length) blockingIssues.push("stationAuthority missing");
   if (!attachments.length) blockingIssues.push("objectStationAttachments missing");
+  if (!auditProjection.projectionId) blockingIssues.push("spineAuditProjection missing");
+  if (!closureExpectations.length) blockingIssues.push("closureExpectations missing");
+  if (auditProjectionSummary.complianceStatus === "FAIL") blockingIssues.push("audit projection compliance failed");
+  if (!kernelExecutionGraph.graphId) blockingIssues.push("kernelExecutionGraph missing");
+  if (!executionNodes.length) blockingIssues.push("executionNodes missing");
+  if (!executionEdges.length) blockingIssues.push("executionEdges missing");
+  if (executionGraphValidation.status === "FAIL") blockingIssues.push("execution graph validation failed");
+  if (!executionExpectations.length) blockingIssues.push("executionExpectations missing");
+  if (!closureLedgers.length) blockingIssues.push("closureLedgers missing");
+  if (!constitutionalClosureSummary.authority) blockingIssues.push("constitutionalClosureSummary missing");
+  if (!constitutionalAssembly.authority) blockingIssues.push("constitutionalAssembly missing");
+  if (constitutionalAssembly.status !== "PASS") blockingIssues.push("constitutionalAssembly failed");
+  if (!spineObjectDependencies.length) blockingIssues.push("spineObjectDependencies missing");
+  if (!spineObjectCloseSequences.length) blockingIssues.push("spineObjectCloseSequences missing");
+  if (!spineObjectEvidenceRequirements.length) blockingIssues.push("spineObjectEvidenceRequirements missing");
+  if (!segmentValidationRules.length) blockingIssues.push("segmentValidationRules missing");
+  if (!paymentEligibilityRules.length) blockingIssues.push("paymentEligibilityRules missing");
+  if (draftIofReadiness.status !== "READY") blockingIssues.push("draftIofReadiness blocked");
   const unresolved = sourceObjects
     .map((record, index) => ({
       objectId: commercialObjectId(asRecord(record), draftPackage.packageId, index),
@@ -93,6 +128,37 @@ function stationAwareSubmitReadiness(draftPackage) {
     status: blockingIssues.length ? "FAIL" : "PASS",
     blockingIssues,
     canSubmitToEngineering: blockingIssues.length === 0,
+  };
+}
+
+function freezeCommercialAuditProjectionBaseline(draftPackage, timestamp) {
+  const projection = asRecord(draftPackage.spineAuditProjection);
+  if (!projection.projectionId) return draftPackage;
+  const frozenProjection = {
+    ...projection,
+    baselineState: "FROZEN",
+    baselineFrozenAt: projection.baselineFrozenAt ?? timestamp,
+    baselineProjectionId: projection.baselineProjectionId ?? projection.projectionId,
+    attachments: asArray(projection.attachments).map((attachment) => ({
+      ...asRecord(attachment),
+      status: asRecord(attachment).status === "PROJECTED" ? "FROZEN" : asRecord(attachment).status,
+    })),
+    summary: {
+      ...asRecord(projection.summary),
+      baselineFrozen: true,
+    },
+  };
+  return {
+    ...draftPackage,
+    spineAuditProjection: frozenProjection,
+    spineAuditAttachments: frozenProjection.attachments,
+    stationedExpectations: asArray(frozenProjection.stationedExpectations),
+    stationRangeExpectations: asArray(frozenProjection.stationRangeExpectations),
+    spineReviewObjects: asArray(frozenProjection.spineReviewObjects),
+    closureExpectations: asArray(frozenProjection.closureExpectations),
+    auditProjectionSummary: frozenProjection.summary,
+    commercialBaselineFrozen: true,
+    commercialBaselineFrozenAt: frozenProjection.baselineFrozenAt,
   };
 }
 
@@ -320,8 +386,9 @@ async function submitCommercialDraftPackageToEngineering(rawDraftPackage, user) 
     error.status = 409;
     throw error;
   }
+  const frozenDraftPackage = freezeCommercialAuditProjectionBaseline(savedDraftPackage, timestamp);
   const submitted = {
-    ...savedDraftPackage,
+    ...frozenDraftPackage,
     commercialStationReviewReadiness: stationReadiness,
     status: "SUBMITTED_TO_ENGINEERING",
     workflowStatus: "ENGINEERING_INTAKE",

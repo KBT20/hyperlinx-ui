@@ -115,6 +115,10 @@ import GoogleBidSupportingInformationPanel from "./googleRfp/GoogleBidSupporting
 import GoogleBidVendorResponsePreviewPanel from "./googleRfp/GoogleBidVendorResponsePreviewPanel";
 import { CommercialReviewPanel } from "./googleRfp/CommercialReviewPanel";
 import StationAwareObjectReviewPanel from "../commercial/StationAwareObjectReviewPanel";
+import ConstitutionalAssemblyReviewPanel, {
+  evaluateConstitutionalAssemblyReview,
+  type ConstitutionalAssemblyFocus,
+} from "../commercial/ConstitutionalAssemblyReviewPanel";
 import TransparentEstimateExplorer from "./googleRfp/TransparentEstimateExplorer";
 import ProposedNetworkMapPanel, { type CommercialIlaMapStation, type ProposedNetworkSelection } from "./proposednetwork/ProposedNetworkMapPanel";
 import type { ProposedGraph } from "../../proposedGraph/ProposedGraph";
@@ -125,6 +129,13 @@ import {
   POINT_TO_POINT_LONG_HAUL_PRODUCT_ID,
 } from "../../products/pointToPointLongHaulDoctrine";
 import type { ProductDoctrineSite } from "../../products/ProductDoctrineContracts";
+import {
+  executePointToPointConfigurator,
+  productConfiguratorForProduct,
+  POINT_TO_POINT_CONFIGURATOR_ID,
+  POINT_TO_POINT_PRODUCT_NAME,
+  type PointToPointConfiguratorResult,
+} from "../../products/PointToPointConfigurator";
 
 type CommercialWorkspaceView =
   | "account"
@@ -401,17 +412,7 @@ const COMMERCIAL_WORKFLOW: Array<{ id: CommercialWorkspaceView; label: string; s
 ];
 
 const LAYER_1_PRODUCT_OPTIONS: Layer1ProductOption[] = [
-  { productId: POINT_TO_POINT_LONG_HAUL_PRODUCT_ID, productName: "Point-to-Point Long Haul Conduit & Fiber", productFamily: "Transport Infrastructure", defaultTermYears: 20, protected: false },
-  { productId: "PRODUCT-L1-PROTECTED-DARK-FIBER-IRU", productName: "Protected Dark Fiber IRU", productFamily: "Infrastructure", defaultTermYears: 20, protected: true },
-  { productId: "PRODUCT-L1-UNPROTECTED-DARK-FIBER-IRU", productName: "Unprotected Dark Fiber IRU", productFamily: "Infrastructure", defaultTermYears: 20, protected: false },
-  { productId: "PRODUCT-L1-DARK-FIBER-LEASE", productName: "Dark Fiber Lease", productFamily: "Infrastructure", defaultTermYears: 5, protected: false },
-  { productId: "PRODUCT-L1-CONDUIT-AS-A-SERVICE", productName: "Conduit-as-a-Service", productFamily: "Infrastructure", defaultTermYears: 10, protected: false },
-  { productId: "PRODUCT-L1-LATERAL-FIBER-EXTENSION", productName: "Lateral Fiber Extension", productFamily: "Infrastructure", defaultTermYears: 10, protected: false },
-  { productId: "PRODUCT-L1-LONG-HAUL-ROUTE", productName: "Long-Haul Route", productFamily: "Transport Infrastructure", defaultTermYears: 20, protected: true },
-  { productId: "PRODUCT-L1-METRO-BACKBONE", productName: "Metro Backbone", productFamily: "Transport Infrastructure", defaultTermYears: 15, protected: true },
-  { productId: "PRODUCT-L1-DATA-CENTER-INTERCONNECT", productName: "Data Center Interconnect", productFamily: "Transport Infrastructure", defaultTermYears: 10, protected: true },
-  { productId: "PRODUCT-L1-CAMPUS-INTERCONNECT", productName: "Campus Interconnect", productFamily: "Transport Infrastructure", defaultTermYears: 10, protected: false },
-  { productId: "PRODUCT-L1-POINT-OF-PRESENCE", productName: "Point of Presence (POP)", productFamily: "Physical Facilities", defaultTermYears: 10, protected: false },
+  { productId: POINT_TO_POINT_LONG_HAUL_PRODUCT_ID, productName: POINT_TO_POINT_PRODUCT_NAME, productFamily: "Transport Infrastructure", defaultTermYears: 20, protected: false },
 ];
 
 const CARRIER_NEUTRAL_FULFILLMENT_MIX = [
@@ -1162,7 +1163,7 @@ function corridorDraftCanRun(state: OpportunityWorkflowState) {
 }
 
 function draftTypeLabel(type: CommercialDraftType | null) {
-  if (type === "NEW_GRAPH_CORRIDOR") return "Create New Graph / Corridor";
+  if (type === "NEW_GRAPH_CORRIDOR") return "Point-to-Point Product Design";
   if (type === "EXISTING_GRAPH_EXTENSION") return "Extend Existing Graph / Lateral";
   return "Not selected";
 }
@@ -2773,6 +2774,9 @@ export default function GoogleRfpWorkspace() {
   const [engineeringReviewQueue, setEngineeringReviewQueue] = useState<EngineeringReviewQueueItem[]>([]);
   const [activeDraftIofPackage, setActiveDraftIofPackage] = useState<DraftIofPackageRuntime | null>(null);
   const [commercialDraftIofPackage, setCommercialDraftIofPackage] = useState<DraftIofPackageRuntime | null>(null);
+  const [constitutionalAssemblyFocus, setConstitutionalAssemblyFocus] = useState<ConstitutionalAssemblyFocus | null>(null);
+  const [productConfiguratorResult, setProductConfiguratorResult] = useState<PointToPointConfiguratorResult | null>(null);
+  const [productConfiguratorNotice, setProductConfiguratorNotice] = useState("Point-to-Point Configurator is waiting for customer, product, A, and Z.");
   const [engineeringCertificationNotice, setEngineeringCertificationNotice] = useState("Engineering Certification queue is waiting for a Draft IOF Package.");
   const [engineeringCertificationPending, setEngineeringCertificationPending] = useState(false);
   const [runtimeLifecycleState, setRuntimeLifecycleState] = useState<RuntimeLifecycleBridgeState | null>(null);
@@ -2866,6 +2870,10 @@ export default function GoogleRfpWorkspace() {
   const selectedProductOption = useMemo(
     () => LAYER_1_PRODUCT_OPTIONS.find((product) => product.productId === selectedProductId) ?? LAYER_1_PRODUCT_OPTIONS[0],
     [selectedProductId],
+  );
+  const selectedProductConfiguratorId = useMemo(
+    () => productConfiguratorForProduct(selectedProductOption.productId),
+    [selectedProductOption.productId],
   );
   const proposalRecipientContactIds = useMemo(
     () => governedContactsForSelectedAccount.filter((contact) => contact.proposalRecipient !== false).map((contact) => contact.contactId),
@@ -6408,7 +6416,122 @@ export default function GoogleRfpWorkspace() {
     selectedScope.scopeId,
     sofRecipientContactIds,
   ]);
+
+  function handleBuildProductCommercialDesign() {
+    const configuratorId = selectedProductConfiguratorId;
+    if (configuratorId !== POINT_TO_POINT_CONFIGURATOR_ID) {
+      setProductConfiguratorNotice("No Product Configurator is available for the selected product.");
+      return;
+    }
+    const originLocation = azOriginLocation ?? resolveAzTextInput("A");
+    const destinationLocation = azDestinationLocation ?? resolveAzTextInput("Z");
+    if (!originLocation || !destinationLocation) {
+      setProductConfiguratorNotice("Resolve A and Z before building the Commercial Design.");
+      setOpportunityWorkflowState("AWAITING_AZ_INPUT");
+      setActiveView("scout");
+      return;
+    }
+    const timestamp = new Date().toISOString();
+    const routePlan = activeLiveSession?.routePlan ?? selectedRoutePlans[0];
+    const routedGeometry = commercialRouteResult?.status === "ROUTED"
+      ? commercialRouteResult.geometry?.map((point) => [point.longitude, point.latitude] as DALCoordinate) ?? []
+      : [];
+    const routeGeometry = routedGeometry.length > 1
+      ? routedGeometry
+      : activeFinancialDraft?.geometry?.length
+        ? activeFinancialDraft.geometry
+        : opportunityScoutQuickQuote?.geometry?.length
+          ? opportunityScoutQuickQuote.geometry
+          : activeLiveSession?.activeEditableRouteGeometry?.length
+            ? activeLiveSession.activeEditableRouteGeometry
+            : routePlan?.stationedCorridor?.centerlineRoute?.geometry?.length
+              ? routePlan.stationedCorridor.centerlineRoute.geometry
+              : routePlan?.proposedGraph?.centerlineRoute?.geometry ?? [];
+    const routeMiles = commercialRouteResult?.status === "ROUTED"
+      ? commercialRouteResult.routeMiles
+      : activeFinancialDraft?.routeMiles ?? opportunityScoutQuickQuote?.routeMiles;
+    const opportunityId = activeCommercialOpportunityId ||
+      activeCommercialOpportunity?.opportunityId ||
+      routePlan?.routeRequirement.routeRequirementId ||
+      `${selectedAccount.accountId}-POINT-TO-POINT-OPPORTUNITY`;
+    const proposalId = activeProposalRuntime?.proposalId ?? `PROPOSAL-${selectedAccount.accountId}-${opportunityId}`;
+    try {
+      const result = executePointToPointConfigurator({
+        customer: {
+          accountId: selectedAccount.accountId,
+          customerId: customerIdForAccount(selectedAccount.accountId),
+          customerName: selectedAccount.name,
+        },
+        opportunity: {
+          opportunityId,
+          proposalId,
+          proposalNumber: activeProposalRuntime?.proposalNumber ?? proposalId,
+          title: activeProposalRuntime?.title ?? `${selectedAccount.name} ${POINT_TO_POINT_PRODUCT_NAME}`,
+          summary: activeProposalRuntime?.summary ?? `Commercial Design for ${selectedAccount.name} ${POINT_TO_POINT_PRODUCT_NAME}.`,
+        },
+        product: {
+          productId: selectedProductOption.productId,
+          productName: selectedProductOption.productName,
+          defaultTermYears: selectedProductOption.defaultTermYears,
+          protected: selectedProductOption.protected,
+        },
+        aLocation: {
+          locationId: originLocation.id,
+          label: originLocation.label,
+          latitude: originLocation.latitude,
+          longitude: originLocation.longitude,
+          source: originLocation.source,
+        },
+        zLocation: {
+          locationId: destinationLocation.id,
+          label: destinationLocation.label,
+          latitude: destinationLocation.latitude,
+          longitude: destinationLocation.longitude,
+          source: destinationLocation.source,
+        },
+        routeGeometry: routeGeometry.length > 1 ? routeGeometry : undefined,
+        routeId: commercialRouteResult?.status === "ROUTED"
+          ? commercialRouteResult.routeId
+          : activeFinancialDraft?.routeId ?? routePlan?.routeRequirement.routeRequirementId,
+        routeMiles,
+        commercialAssumptions: {
+          assumptionStateId: selectedAssumptionState.stateId,
+          civilMix: selectedAssumptionState.civilMix,
+          pricingScopeId: selectedScope.scopeId,
+          selectedRouteRequirementIds: selectedScope.routeRequirementIds,
+          fulfillmentMix: CARRIER_NEUTRAL_FULFILLMENT_MIX,
+        },
+        pricingSummary: selectedPricingSummary.reconciliation as unknown as Record<string, unknown>,
+        routeSegments: activeFinancialDraft?.routeSegments,
+        generatedAt: timestamp,
+        ownerId: currentUserId,
+        owner: currentUserName,
+        organizationId: currentOrganizationId,
+        workspaceId: currentWorkspaceId,
+      });
+      setAzOriginLocation(originLocation);
+      setAzDestinationLocation(destinationLocation);
+      setProductConfiguratorResult(result);
+      setProductConfiguratorNotice(`${result.configuratorId} ${result.configuratorVersion} built ${result.draftPackage.packageId}.`);
+      setCommercialDraftIofPackage(result.draftPackage);
+      setActiveDraftIofPackage(result.draftPackage);
+      setCommercialDraftType("NEW_GRAPH_CORRIDOR");
+      setActiveDesignMode("NEW_INDEPENDENT_GRAPH");
+      setOpportunityScoutMode("AZ_BUILDER");
+      setOpportunityWorkflowState("COMMERCIAL_DRAFT_ACTIVE");
+      setActiveView("review");
+      setProposalRuntimeNotice(`${result.draftPackage.packageId} created from Product Configurator and loaded into Commercial Review.`);
+      setEngineeringCertificationNotice(`${result.draftPackage.packageId} is ready for Commercial Review before Engineering submission.`);
+    } catch (error) {
+      setProductConfiguratorNotice(`Product Configurator failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   const displayedDraftIofPackage = commercialDraftIofPackage ?? commercialDraftIofPackagePreview ?? activeDraftIofPackage;
+  const constitutionalAssemblyReview = useMemo(
+    () => evaluateConstitutionalAssemblyReview(displayedDraftIofPackage),
+    [displayedDraftIofPackage],
+  );
 
   return (
     <section className="dal-workspace wide">
@@ -6585,6 +6708,102 @@ export default function GoogleRfpWorkspace() {
             ))}
           </div>
         </div>
+
+        <section className="dal-panel product-configurator-panel" aria-label="Product Configurator">
+          <div className="dal-panel-title-row">
+            <div>
+              <h3>Product Configurator</h3>
+              <span>{productConfiguratorNotice}</span>
+            </div>
+            <span className={`dal-badge ${productConfiguratorResult?.validation.status === "PASS" ? "pass" : selectedProductConfiguratorId ? "warning" : "fail"}`}>
+              {productConfiguratorResult?.validation.status ?? selectedProductConfiguratorId ?? "No Configurator"}
+            </span>
+          </div>
+          <div className="account-workspace-summary">
+            <div><span>Step 1 Customer</span><b>{selectedAccount.name}</b></div>
+            <label>
+              <span>Step 2 Product</span>
+              <select value={selectedProductId} onChange={(event) => setSelectedProductId(event.currentTarget.value)} aria-label="Product Configurator product">
+                {LAYER_1_PRODUCT_OPTIONS.map((product) => (
+                  <option key={`configurator-${product.productId}`} value={product.productId}>{product.productName}</option>
+                ))}
+              </select>
+            </label>
+            <div><span>Configurator</span><b>{selectedProductConfiguratorId ?? "Unavailable"}</b></div>
+            <div><span>Doctrine</span><b>{selectedProductDoctrine ? `${selectedProductDoctrine.doctrineId} ${selectedProductDoctrine.doctrineVersion}` : "Unavailable"}</b></div>
+          </div>
+          <div className="account-product-fulfillment">
+            <label>
+              <span>Step 3 A Location</span>
+              <input value={opportunityScoutAzOrigin} onChange={(event) => setOpportunityScoutAzOrigin(event.currentTarget.value)} placeholder="Address or lat,lng" />
+            </label>
+            <label>
+              <span>Step 3 Z Location</span>
+              <input value={opportunityScoutAzDestination} onChange={(event) => setOpportunityScoutAzDestination(event.currentTarget.value)} placeholder="Address or lat,lng" />
+            </label>
+            <div className="account-fulfillment-mix">
+              <div><span>A Status</span><b>{azOriginLocation ? `${azOriginLocation.label} / ${locationSourceLabel(azOriginLocation.source)}` : "Unresolved"}</b></div>
+              <div><span>Z Status</span><b>{azDestinationLocation ? `${azDestinationLocation.label} / ${locationSourceLabel(azDestinationLocation.source)}` : "Unresolved"}</b></div>
+            </div>
+          </div>
+          <div className="dal-actions">
+            <button type="button" className="secondary" onClick={() => handleResolveAzTextLocation("A")} disabled={!opportunityScoutAzOrigin.trim()}>
+              Resolve A
+            </button>
+            <button type="button" className="secondary" onClick={() => handleResolveAzTextLocation("Z")} disabled={!opportunityScoutAzDestination.trim()}>
+              Resolve Z
+            </button>
+            <button type="button" className="secondary" onClick={handleBeginAzOpportunity}>
+              Open A/Z Selector
+            </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={handleBuildProductCommercialDesign}
+              disabled={
+                selectedProductConfiguratorId !== POINT_TO_POINT_CONFIGURATOR_ID ||
+                (!azOriginLocation && !opportunityScoutAzOrigin.trim()) ||
+                (!azDestinationLocation && !opportunityScoutAzDestination.trim())
+              }
+            >
+              BUILD COMMERCIAL DESIGN
+            </button>
+          </div>
+          {productConfiguratorResult ? (
+            <>
+              <div className="dal-panel-title-row">
+                <div>
+                  <h3>Context Inspector</h3>
+                  <span>{productConfiguratorResult.draftPackage.packageId}</span>
+                </div>
+                <span className="dal-badge pass">{productConfiguratorResult.contextInspector.draftPackageStatus.replaceAll("_", " ")}</span>
+              </div>
+              <div className="teralinx-summary-grid">
+                <div><span>Customer</span><b>{productConfiguratorResult.contextInspector.customer}</b></div>
+                <div><span>Opportunity</span><b>{productConfiguratorResult.contextInspector.opportunity}</b></div>
+                <div><span>Product</span><b>{productConfiguratorResult.contextInspector.product}</b></div>
+                <div><span>Doctrine</span><b>{productConfiguratorResult.contextInspector.doctrine}</b></div>
+                <div><span>Configurator</span><b>{productConfiguratorResult.contextInspector.configurator}</b></div>
+                <div><span>Route Length</span><b>{productConfiguratorResult.contextInspector.routeLength}</b></div>
+                <div><span>Measured Spine</span><b>{productConfiguratorResult.contextInspector.measuredSpine}</b></div>
+                <div><span>Station Count</span><b>{productConfiguratorResult.contextInspector.stationCount.toLocaleString()}</b></div>
+                <div><span>Engineering Objects</span><b>{productConfiguratorResult.contextInspector.engineeringObjects.toLocaleString()}</b></div>
+                <div><span>Quantities</span><b>{productConfiguratorResult.contextInspector.quantities}</b></div>
+                <div><span>Commercial Status</span><b>{productConfiguratorResult.contextInspector.commercialStatus.replaceAll("_", " ")}</b></div>
+                <div><span>Draft Package Status</span><b>{productConfiguratorResult.contextInspector.draftPackageStatus.replaceAll("_", " ")}</b></div>
+              </div>
+              <div className="dal-list">
+                {productConfiguratorResult.validation.checks.map((check) => (
+                  <div className="dal-list-row teralinx-list-row" key={check.key}>
+                    <b>{check.label}</b>
+                    <span>{check.status}</span>
+                    <small>{check.key}</small>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
+        </section>
 
         {accountEditorOpen ? (
           <div className="account-workspace-editor">
@@ -7047,7 +7266,7 @@ export default function GoogleRfpWorkspace() {
           </div>
           <div className="dal-status">What are we building?</div>
           <div className="commercial-command-grid">
-            <button type="button" onClick={handleBeginAzOpportunity}>Create New Graph / Corridor</button>
+            <button type="button" onClick={handleBeginAzOpportunity}>Point-to-Point Product Configurator</button>
             <button type="button" onClick={handleBeginExtendExistingOpportunity} disabled={!accountRenderableCustomerTwin.routes.length && !accountRenderableCustomerTwin.objects.length}>Extend Existing Graph / Lateral</button>
             <button type="button" onClick={() => handleBeginImportOpportunity("KMZ")}>Import Customer Design Request</button>
             <button type="button" onClick={handleLoadSavedProposal}>Load Saved Proposal</button>
@@ -7138,9 +7357,16 @@ export default function GoogleRfpWorkspace() {
         pending={engineeringCertificationPending}
         canEdit={canManageProposalRuntime}
         notice={proposalRuntimeNotice}
+        draftIofApprovalDisabled={constitutionalAssemblyReview.draftIofGateBlocked}
+        draftIofApprovalReason={constitutionalAssemblyReview.draftIofGateReason}
         onSaveDraft={handleSaveCommercialDraftIofPackage}
         onValidate={handleValidateCommercialReviewPackage}
         onSubmitToEngineering={handleSubmitCommercialDraftIofToEngineering}
+      />
+
+      <ConstitutionalAssemblyReviewPanel
+        draftPackage={displayedDraftIofPackage}
+        onFocusSpineObject={setConstitutionalAssemblyFocus}
       />
 
       <StationAwareObjectReviewPanel
@@ -7148,6 +7374,8 @@ export default function GoogleRfpWorkspace() {
         canEdit={canManageProposalRuntime}
         pending={engineeringCertificationPending}
         actor={currentUserName}
+        focusStationRef={constitutionalAssemblyFocus?.stationRef}
+        focusSpineObjectId={constitutionalAssemblyFocus?.spineObjectId}
         onDraftChange={handleCommercialStationReviewDraftChange}
       />
 
@@ -7591,8 +7819,8 @@ export default function GoogleRfpWorkspace() {
           {opportunityWorkflowState === "IDLE" && !opportunityScoutCandidate && !activeCommercialDraftNetworks.length ? (
             <div className="commercial-inspector-card">
               <b>No opportunity selected</b>
-              <span>Select Create New Graph / Corridor or Extend Existing Graph / Lateral.</span>
-              <small>New Graph builds A/Z corridor data. Extend Existing builds attachment-based lateral economics.</small>
+              <span>Select Product Configurator or Extend Existing Graph / Lateral.</span>
+              <small>Product Configurator builds A/Z commercial design data. Extend Existing builds attachment-based lateral economics.</small>
             </div>
           ) : null}
           {opportunityWorkflowState === "SELECTING_START_MODE" ? (
@@ -7645,7 +7873,7 @@ export default function GoogleRfpWorkspace() {
           ) : null}
           {opportunityWorkflowState === "AWAITING_AZ_INPUT" ? (
             <div className="commercial-inspector-card">
-              <b>Create New Graph / Corridor</b>
+              <b>Point-to-Point Product Configurator</b>
               <span>A and Z resolve as explicit endpoints. Customer Twin is not used for attachment or station snapping.</span>
               <label>
                 <span>A Location</span>
@@ -7674,7 +7902,7 @@ export default function GoogleRfpWorkspace() {
                 <button type="button" onClick={() => handleResolveAzExistingLocation("Z", "CUSTOMER_OBJECT")} disabled={!accountRenderableCustomerTwin.objects.length}>Z Object</button>
               </div>
               {azMapPlacementSlot ? <span className="dal-status">Click the map to resolve {azMapPlacementSlot}.</span> : null}
-              <button type="button" onClick={handleRunAzBuilderScout} disabled={!azOriginLocation || !azDestinationLocation}>Create Corridor Seed</button>
+              <button type="button" onClick={handleRunAzBuilderScout} disabled={!azOriginLocation || !azDestinationLocation}>Resolve Product A/Z</button>
             </div>
           ) : null}
           {opportunityWorkflowState === "AWAITING_IMPORT" ? (

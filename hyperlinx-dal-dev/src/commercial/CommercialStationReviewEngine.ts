@@ -8,9 +8,16 @@ import type {
   StationAuthority,
   StationIndexedGraph,
 } from "../spine/SpineAuthorityContracts";
+import type {
+  SpineAuditProjection,
+  SpineReviewObject,
+  StationRangeExpectation,
+} from "../spine/SpineAuditProjectionContracts";
+import { lookupStationExpectations, type StationExpectationLookup } from "../spine/SpineAuditProjectionEngine";
 import { distanceFeet } from "../spine/MeasuredSpineEngine";
 
 type JsonObject = Record<string, unknown>;
+export type CommercialStationReviewMapMode = "ROUTE_VIEW" | "ENGINEERING_REVIEW_VIEW" | "FIELD_PREVIEW_VIEW";
 
 export type CommercialStationLookupQuery =
   | string
@@ -60,9 +67,12 @@ export interface CommercialStationReviewState {
   measuredSpine?: MeasuredSpine;
   stationAuthority?: StationAuthority;
   stationIndexedGraph?: StationIndexedGraph;
+  spineAuditProjection?: SpineAuditProjection;
   movableObjects: CommercialMovableObjectReview[];
   stationLookupReady: boolean;
+  stationExpectationLookupReady: boolean;
   mapSpec: MapKernelRenderSpec;
+  mapModes: CommercialStationReviewMapMode[];
   readiness: CommercialStationReviewReadiness;
   commercialAuthority: "COMMERCIAL_STATION_REVIEW";
   canCertifyStationAuthority: false;
@@ -152,8 +162,19 @@ export function stationIndexedGraphFromCommercialDraft(draftPackage: DraftIofPac
   return graph as unknown as StationIndexedGraph;
 }
 
+export function spineAuditProjectionFromCommercialDraft(draftPackage: DraftIofPackageRuntime | null | undefined) {
+  const projection = asRecord((draftPackage as JsonObject | null | undefined)?.spineAuditProjection);
+  const attachments = asArray(projection.attachments);
+  if (!asString(projection.projectionId) || !attachments.length) return undefined;
+  return projection as unknown as SpineAuditProjection;
+}
+
 export function objectStationAttachmentsFromCommercialDraft(draftPackage: DraftIofPackageRuntime | null | undefined) {
   return asArray<ObjectStationAttachment>((draftPackage as JsonObject | null | undefined)?.objectStationAttachments);
+}
+
+export function lookupCommercialStationExpectations(draftPackage: DraftIofPackageRuntime | null | undefined, stationIdOrLabel: string) {
+  return lookupStationExpectations(spineAuditProjectionFromCommercialDraft(draftPackage), stationIdOrLabel);
 }
 
 function stationResult(station: AuthorizedStation): CommercialStationLookupResult {
@@ -248,6 +269,7 @@ export function buildCommercialStationReview(draftPackage: DraftIofPackageRuntim
   const measuredSpine = measuredSpineFromCommercialDraft(draftPackage);
   const stationAuthority = stationAuthorityFromCommercialDraft(draftPackage);
   const stationIndexedGraph = stationIndexedGraphFromCommercialDraft(draftPackage);
+  const spineAuditProjection = spineAuditProjectionFromCommercialDraft(draftPackage);
   const attachments = objectStationAttachmentsFromCommercialDraft(draftPackage);
   const objects = sourceObjectsForCommercialStationReview(draftPackage);
   const movableCandidates = objects
@@ -293,9 +315,12 @@ export function buildCommercialStationReview(draftPackage: DraftIofPackageRuntim
     measuredSpine,
     stationAuthority,
     stationIndexedGraph,
+    spineAuditProjection,
     movableObjects,
     stationLookupReady: Boolean(stationAuthority?.stations?.length),
-    mapSpec: buildCommercialStationReviewMapSpec(draftPackage),
+    stationExpectationLookupReady: Boolean(spineAuditProjection?.closureExpectations?.length),
+    mapSpec: buildCommercialStationReviewMapSpec(draftPackage, "ENGINEERING_REVIEW_VIEW"),
+    mapModes: ["ROUTE_VIEW", "ENGINEERING_REVIEW_VIEW", "FIELD_PREVIEW_VIEW"],
     readiness,
     commercialAuthority: "COMMERCIAL_STATION_REVIEW",
     canCertifyStationAuthority: false,
@@ -356,11 +381,33 @@ function measuredSpineCoordinates(measuredSpine: MeasuredSpine | undefined) {
   return coordinates;
 }
 
-export function buildCommercialStationReviewMapSpec(draftPackage: DraftIofPackageRuntime | null | undefined): MapKernelRenderSpec {
+function stationById(stationAuthority: StationAuthority | undefined, stationId: string | undefined) {
+  if (!stationId) return undefined;
+  return stationAuthority?.stations.find((station) => station.stationId === stationId);
+}
+
+function rangeColor(expectation: StationRangeExpectation) {
+  if (expectation.expectationType === "PLOW") return "#84cc16";
+  if (expectation.expectationType === "BORE") return "#a855f7";
+  if (expectation.expectationType === "OPEN_TRENCH") return "#f97316";
+  if (expectation.expectationType === "CONDUIT") return "#22c55e";
+  if (expectation.expectationType === "FIBER") return "#38bdf8";
+  return "#64748b";
+}
+
+function reviewColor(reviewObject: SpineReviewObject) {
+  if (reviewObject.reviewType === "UNKNOWN_CONDITION") return "#ef4444";
+  if (reviewObject.reviewType === "CONFIDENCE_RISK") return "#f59e0b";
+  if (reviewObject.reviewType === "JURISDICTION_REVIEW") return "#8b5cf6";
+  return "#64748b";
+}
+
+export function buildCommercialStationReviewMapSpec(draftPackage: DraftIofPackageRuntime | null | undefined, mapMode: CommercialStationReviewMapMode = "ENGINEERING_REVIEW_VIEW"): MapKernelRenderSpec {
   const packageId = draftPackage?.packageId ?? "DRAFT-IOF-PENDING";
   const measuredSpine = measuredSpineFromCommercialDraft(draftPackage);
   const stationAuthority = stationAuthorityFromCommercialDraft(draftPackage);
   const stationIndexedGraph = stationIndexedGraphFromCommercialDraft(draftPackage);
+  const spineAuditProjection = spineAuditProjectionFromCommercialDraft(draftPackage);
   const review = {
     attachments: objectStationAttachmentsFromCommercialDraft(draftPackage),
     objects: sourceObjectsForCommercialStationReview(draftPackage),
@@ -392,7 +439,7 @@ export function buildCommercialStationReviewMapSpec(draftPackage: DraftIofPackag
       ref: { kind: "Route", id: `${packageId}:commercial-measured-spine`, routeId: measuredSpine?.spineId ?? `${packageId}:spine`, scopeVersionId: "commercial-review" },
     });
   }
-  stationIndexedGraph?.edges?.forEach((edge) => {
+  if (mapMode !== "ROUTE_VIEW") stationIndexedGraph?.edges?.forEach((edge) => {
     const fromStation = stationAuthority?.stations.find((station) => station.stationId === edge.fromStationId);
     const toStation = stationAuthority?.stations.find((station) => station.stationId === edge.toStationId);
     if (!fromStation || !toStation) return;
@@ -407,8 +454,58 @@ export function buildCommercialStationReviewMapSpec(draftPackage: DraftIofPackag
       ref: { kind: "Edge", id: edge.edgeId, edgeId: edge.edgeId, scopeVersionId: "commercial-review" },
     });
   });
+  if (mapMode !== "ROUTE_VIEW") {
+    spineAuditProjection?.stationRangeExpectations?.forEach((expectation) => {
+      const fromStation = stationById(stationAuthority, expectation.fromStationId);
+      const toStation = stationById(stationAuthority, expectation.toStationId);
+      if (!fromStation || !toStation) return;
+      primitives.push({
+        id: `${expectation.expectationId}:audit-range-overlay`,
+        layerId: "iofPackage",
+        kind: "line",
+        coordinates: [fromStation.coordinate, toStation.coordinate],
+        label: expectation.expectationType.replaceAll("_", " "),
+        style: { stroke: rangeColor(expectation), strokeWidth: mapMode === "FIELD_PREVIEW_VIEW" ? 9 : 6, opacity: 0.42 },
+        payload: expectation,
+        metadata: {
+          source: "Commercial Review",
+          sourceLayer: "COMMERCIAL_AUDIT_RANGE_OVERLAY",
+          renderAuthority: "SPINE_AUDIT_PROJECTION_AUTHORITY",
+          packageId,
+          expectationType: expectation.expectationType,
+          closureRequired: expectation.closureRequired,
+          auditEntryIds: expectation.auditEntryIds,
+        },
+        ref: { kind: "ProductionUnit", id: expectation.expectationId, objectId: expectation.expectationId, scopeVersionId: "commercial-review" },
+      });
+    });
+    spineAuditProjection?.spineReviewObjects?.forEach((reviewObject) => {
+      const station = stationById(stationAuthority, reviewObject.stationId);
+      const coordinate = reviewObject.coordinate ?? station?.coordinate;
+      if (!coordinate) return;
+      primitives.push({
+        id: `${reviewObject.reviewObjectId}:audit-review-object`,
+        layerId: "object",
+        kind: "point",
+        coordinate,
+        label: reviewObject.label,
+        style: { fill: reviewColor(reviewObject), stroke: "#111827", radius: 7, opacity: 0.92 },
+        payload: reviewObject,
+        metadata: {
+          source: "Commercial Review",
+          sourceLayer: "COMMERCIAL_AUDIT_REVIEW_OBJECTS",
+          renderAuthority: "SPINE_AUDIT_PROJECTION_AUTHORITY",
+          packageId,
+          reviewType: reviewObject.reviewType,
+          reviewRequired: reviewObject.reviewRequired,
+        },
+        ref: { kind: "Object", id: reviewObject.reviewObjectId, objectId: reviewObject.reviewObjectId, stationId: reviewObject.stationId, scopeVersionId: "commercial-review" },
+      });
+    });
+  }
   stationAuthority?.stations?.forEach((station) => {
     const major = station.stationIndex === 0 || station.stationIndex === stationAuthority.stations.length - 1 || Math.round(station.measureFeet) % 5280 === 0;
+    if (mapMode === "ROUTE_VIEW" && !major) return;
     primitives.push({
       id: `${station.stationId}:commercial-point`,
       layerId: "station",
@@ -419,7 +516,7 @@ export function buildCommercialStationReviewMapSpec(draftPackage: DraftIofPackag
       metadata: { stationFeet: station.measureFeet, source: "Commercial Review", sourceLayer: "COMMERCIAL_STATIONS", renderAuthority: "STATION_AUTHORITY", packageId, geometryHash: station.geometryHash },
       ref: { kind: "Station", id: station.stationId, stationId: station.stationId, scopeVersionId: "commercial-review" },
     });
-    if (!major) return;
+    if (!major || mapMode === "FIELD_PREVIEW_VIEW") return;
     primitives.push({
       id: `${station.stationId}:commercial-label`,
       layerId: "station",
@@ -432,7 +529,7 @@ export function buildCommercialStationReviewMapSpec(draftPackage: DraftIofPackag
     });
   });
   const attachmentsByObjectId = new Map(review.attachments.map((attachment) => [attachment.objectId, attachment]));
-  review.objects.forEach((object, index) => {
+  if (mapMode !== "ROUTE_VIEW") review.objects.forEach((object, index) => {
     const objectId = commercialObjectId(object, packageId, index);
     const attachment = attachmentsByObjectId.get(objectId);
     const coordinate = coordinateFrom(attachment?.coordinate ?? object.coordinate);
@@ -450,7 +547,7 @@ export function buildCommercialStationReviewMapSpec(draftPackage: DraftIofPackag
     });
   });
   return {
-    specId: `commercial-station-review:${packageId}`,
+    specId: `commercial-station-review:${packageId}:${mapMode}`,
     sourceType: "IOFPackage",
     sourceId: packageId,
     name: "Commercial Station-Aware Review",
@@ -462,6 +559,9 @@ export function buildCommercialStationReviewMapSpec(draftPackage: DraftIofPackag
       sourceAuthority: "COMMERCIAL_DRAFT_IOF_PACKAGE",
       noScopeVersionCreation: true,
       canCertifyStationAuthority: false,
+      mapMode,
+      auditProjectionId: spineAuditProjection?.projectionId,
+      closureExpectationCount: spineAuditProjection?.closureExpectations.length ?? 0,
     },
   };
 }

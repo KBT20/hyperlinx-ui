@@ -34,6 +34,7 @@ export const PD001_COMPLIANCE_CATEGORIES = [
   "crossings",
   "quantities",
   "pricing summary",
+  "audit projection",
   "O&M",
   "constraints",
   "engineering readiness",
@@ -664,6 +665,7 @@ function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<Enginee
   const loose = draft as Record<string, unknown>;
   const quantitySummary = asRecord(loose.quantitySummary);
   const pricingSummary = asRecord(loose.pricingSummary ?? draft.commercialSummary?.pricingSummary);
+  const auditProjectionSummary = asRecord(loose.auditProjectionSummary);
   const structureAssembly = asRecord(loose.structureAssembly);
   const conduitAssembly = asRecord(loose.conduitAssembly);
   const fiberAssembly = asRecord(loose.fiberAssembly);
@@ -706,6 +708,7 @@ function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<Enginee
     ["crossings", complianceStatus(asNumber(crossingAssembly.crossingCount) > 0 || projection.objects.some((object) => object.objectType.includes("CROSSING")), true), `${asNumber(crossingAssembly.crossingCount).toLocaleString()} crossings`],
     ["quantities", complianceStatus(Object.keys(quantitySummary).length > 0), `${Object.keys(quantitySummary).length.toLocaleString()} quantity keys`],
     ["pricing summary", complianceStatus(Object.keys(pricingSummary).length > 0), Object.keys(pricingSummary).length ? "pricing summary present" : "pricing summary pending"],
+    ["audit projection", auditProjectionSummary.complianceStatus === "FAIL" ? "FAIL" : auditProjectionSummary.complianceStatus === "WARNING" ? "WARNING" : asNumber(auditProjectionSummary.closureExpectationCount, 0) > 0 ? "PASS" : "FAIL", Object.keys(auditProjectionSummary).length ? `${asNumber(auditProjectionSummary.projectedAttachmentCount, 0).toLocaleString()} projected audit attachments / ${asNumber(auditProjectionSummary.closureExpectationCount, 0).toLocaleString()} closure expectations` : "audit projection missing"],
     ["O&M", "PENDING", "O&M remains downstream of certification"],
     ["constraints", unresolvedConstraints.length ? "WARNING" : "PASS", unresolvedConstraints.length ? `${unresolvedConstraints.length.toLocaleString()} unresolved constraints` : "constraints resolved or accepted"],
     ["engineering readiness", validation === "FAIL" ? "FAIL" : draft.engineeringReadiness?.includes("BLOCKED") ? "FAIL" : draft.engineeringReadiness?.includes("READY") ? "PASS" : "WARNING", draft.engineeringReadiness ?? "PENDING"],

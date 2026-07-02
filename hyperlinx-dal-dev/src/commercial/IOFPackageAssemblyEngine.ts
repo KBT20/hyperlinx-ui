@@ -11,10 +11,12 @@ import type {
 import type { CommercialCorridorDraft, CommercialCorridorSegment } from "./CommercialCorridorDraftEngine";
 import type { OpportunityQuickQuote } from "./OpportunityScoutEngine";
 import type { ProductDoctrine, ProductDoctrineAssembly } from "../products/ProductDoctrineContracts";
+import { buildKernelExecutionGraph } from "../kernel/ExecutionGraphBuilder";
 import { createMeasuredSpine } from "../spine/MeasuredSpineEngine";
 import { createObjectStationAttachments } from "../spine/ObjectStationAttachmentEngine";
 import { createStationAuthority, ENGINEERING_STATION_INTERVAL_FEET } from "../spine/StationAuthorityEngine";
 import { createStationIndexedGraph } from "../spine/StationIndexedGraphEngine";
+import { createSpineAuditProjection } from "../spine/SpineAuditProjectionEngine";
 import type { SpineSiteReference } from "../spine/SpineAuthorityContracts";
 
 type JsonObject = Record<string, unknown>;
@@ -402,6 +404,9 @@ function buildValidation(args: {
   pricing: unknown;
   validation?: ValidationInput[];
   productDoctrineAssembly?: ProductDoctrineAssembly | null;
+  auditProjectionSummary?: unknown;
+  kernelExecutionGraphSummary?: unknown;
+  constitutionalAssembly?: unknown;
 }): IofPackageValidation {
   const proposal = args.proposal;
   const checks = [
@@ -435,6 +440,53 @@ function buildValidation(args: {
       label: "No ScopeVersion created by Commercial assembly",
       status: "PASS",
     },
+    ...(args.auditProjectionSummary ? [
+      {
+        key: "spine-audit-projection",
+        label: "Audit Projection onto Measured Spine",
+        status: asRecord(args.auditProjectionSummary).complianceStatus === "FAIL" ? "FAIL" : asRecord(args.auditProjectionSummary).complianceStatus === "WARNING" ? "WARNING" : "PASS",
+      },
+      {
+        key: "closure-expectations-created",
+        label: "Closure expectations created from audit projection",
+        status: asNumber(asRecord(args.auditProjectionSummary).closureExpectationCount, 0) > 0 ? "PASS" : "FAIL",
+      },
+      {
+        key: "cost-bearing-audit-lines-attached",
+        label: "Cost-bearing audit lines attached to spine/stations/objects",
+        status: asNumber(asRecord(args.auditProjectionSummary).costBearingUnattachedCount, 0) === 0 ? "PASS" : "FAIL",
+      },
+    ] : []),
+    ...(args.kernelExecutionGraphSummary ? [
+      {
+        key: "kernel-execution-graph",
+        label: "Kernel Execution Graph created",
+        status: asRecord(args.kernelExecutionGraphSummary).validationStatus === "FAIL" ? "FAIL" : asNumber(asRecord(args.kernelExecutionGraphSummary).nodeCount, 0) > 0 ? "PASS" : "FAIL",
+      },
+      {
+        key: "kernel-execution-station-nodes",
+        label: "Stations projected as first-class execution nodes",
+        status: asNumber(asRecord(args.kernelExecutionGraphSummary).stationNodeCount, 0) > 0 ? "PASS" : "FAIL",
+      },
+      {
+        key: "kernel-execution-closure-nodes",
+        label: "Closure expectations projected into execution graph",
+        status: asNumber(asRecord(args.kernelExecutionGraphSummary).closureExpectationNodeCount, 0) > 0 ? "PASS" : "WARNING",
+      },
+    ] : []),
+    ...(args.constitutionalAssembly ? [
+      {
+        key: "constitutional-assembly",
+        label: "Constitutional Assembly validated",
+        status: asRecord(args.constitutionalAssembly).status === "PASS" ? "PASS" : "FAIL",
+      },
+      {
+        key: "constitutional-assembly-draft-approval-gate",
+        label: "Draft IOF approval prohibited until Constitutional Assembly succeeds",
+        status: asRecord(args.constitutionalAssembly).draftIofApprovalProhibitedUntilPass === true &&
+          asRecord(args.constitutionalAssembly).status === "PASS" ? "PASS" : "FAIL",
+      },
+    ] : []),
     ...(args.productDoctrineAssembly ? [
       {
         key: "product-doctrine-assembly",
@@ -752,6 +804,138 @@ function packageReadiness(validation: IofPackageValidation, units: ProposedIofUn
   };
 }
 
+function expectationSpineObjectId(expectation: JsonObject, index: number) {
+  return asString(
+    expectation.spineObjectId ?? expectation.executionObjectId ?? expectation.nodeId,
+    `SPINE-OBJECT-${String(index + 1).padStart(4, "0")}`,
+  );
+}
+
+function buildSpineObjectDependencies(expectations: unknown[]) {
+  return asArray<JsonObject>(expectations).map((expectation, index) => ({
+    dependencyId: `${expectationSpineObjectId(expectation, index)}:DEPENDENCY-GRAPH`,
+    spineObjectId: expectationSpineObjectId(expectation, index),
+    nodeId: asString(expectation.nodeId),
+    dependencies: asArray(expectation.expectedDependencies),
+    dependencyGraphNotSchedule: expectation.dependencyGraphNotSchedule === true,
+    authority: asString(expectation.authority, "CONSTITUTIONAL_CLOSURE_AUTHORITY"),
+    noScopeVersionCreation: true,
+  }));
+}
+
+function buildSpineObjectCloseSequences(expectations: unknown[]) {
+  return asArray<JsonObject>(expectations).map((expectation, index) => {
+    const legalCloseSequence = asArray(expectation.legalCloseSequence);
+    return {
+      sequenceId: `${expectationSpineObjectId(expectation, index)}:LEGAL-CLOSE-SEQUENCE`,
+      spineObjectId: expectationSpineObjectId(expectation, index),
+      nodeId: asString(expectation.nodeId),
+      legalCloseSequence,
+      expectedCloseSequence: asArray(expectation.expectedCloseSequence),
+      nextDeterministicClose: legalCloseSequence[0] ?? null,
+      dependencyGraphNotSchedule: expectation.dependencyGraphNotSchedule === true,
+      authority: asString(expectation.authority, "CONSTITUTIONAL_CLOSURE_AUTHORITY"),
+      noScopeVersionCreation: true,
+    };
+  });
+}
+
+function buildSpineObjectEvidenceRequirements(expectations: unknown[]) {
+  return asArray<JsonObject>(expectations).map((expectation, index) => ({
+    evidenceRequirementId: `${expectationSpineObjectId(expectation, index)}:EVIDENCE-REQUIREMENTS`,
+    spineObjectId: expectationSpineObjectId(expectation, index),
+    nodeId: asString(expectation.nodeId),
+    requiredEvidence: asArray(expectation.expectedEvidence),
+    requiredMeasurements: asArray(expectation.expectedMeasurements),
+    requiredAcceptanceCriteria: asArray(expectation.expectedAcceptanceCriteria),
+    authority: asString(expectation.authority, "CONSTITUTIONAL_CLOSURE_AUTHORITY"),
+    noScopeVersionCreation: true,
+  }));
+}
+
+function buildSegmentValidationRules(args: {
+  expectations: unknown[];
+  stationRangeExpectations?: unknown[];
+}) {
+  const ranges = asArray<JsonObject>(args.stationRangeExpectations);
+  if (ranges.length) {
+    return ranges.map((range, index) => ({
+      segmentValidationRuleId: `${asString(range.expectationId, `STATION-RANGE-${index + 1}`)}:SEGMENT-VALIDATION`,
+      spineObjectId: asString(range.expectationId, `STATION-RANGE-${index + 1}`),
+      fromStationId: range.fromStationId,
+      toStationId: range.toStationId,
+      expectedQuantity: range.expectedQuantity,
+      quantityUnit: range.quantityUnit,
+      validationRule: "NO_CLOSE_NO_VALIDATION_NO_PAYMENT",
+      asBuiltRequiredFromValidatedCloses: true,
+      segmentAcceptanceRequired: true,
+      noScopeVersionCreation: true,
+    }));
+  }
+  return asArray<JsonObject>(args.expectations)
+    .filter((expectation) => ["STATION_RANGE", "CONDUIT_SEGMENT", "FIBER_SEGMENT"].includes(asString(expectation.nodeType)))
+    .map((expectation, index) => ({
+      segmentValidationRuleId: `${expectationSpineObjectId(expectation, index)}:SEGMENT-VALIDATION`,
+      spineObjectId: expectationSpineObjectId(expectation, index),
+      nodeId: asString(expectation.nodeId),
+      validationRule: "NO_CLOSE_NO_VALIDATION_NO_PAYMENT",
+      legalCloseSequence: asArray(expectation.legalCloseSequence),
+      asBuiltRequiredFromValidatedCloses: true,
+      segmentAcceptanceRequired: true,
+      noScopeVersionCreation: true,
+    }));
+}
+
+function buildPaymentEligibilityRules(expectations: unknown[]) {
+  return asArray<JsonObject>(expectations).map((expectation, index) => ({
+    paymentEligibilityRuleId: `${expectationSpineObjectId(expectation, index)}:PAYMENT-ELIGIBILITY`,
+    spineObjectId: expectationSpineObjectId(expectation, index),
+    nodeId: asString(expectation.nodeId),
+    paymentEligibilityRule: asString(expectation.paymentEligibilityRule, "NO_CLOSE_NO_VALIDATION_NO_PAYMENT"),
+    requiredCloseSequence: asArray(expectation.legalCloseSequence),
+    validationRequired: true,
+    segmentAcceptanceRequired: true,
+    revenueRealizationRule: "NO_CLOSE_NO_VALIDATION_NO_PAYMENT",
+    noScopeVersionCreation: true,
+  }));
+}
+
+function buildDraftIofReadiness(args: {
+  validation: IofPackageValidation;
+  readiness: ReturnType<typeof packageReadiness>;
+  constitutionalAssembly: unknown;
+  spineObjectDependencies: unknown[];
+  spineObjectCloseSequences: unknown[];
+  spineObjectEvidenceRequirements: unknown[];
+  segmentValidationRules: unknown[];
+  paymentEligibilityRules: unknown[];
+}) {
+  const blockingIssues = [
+    ...args.readiness.blockingIssues,
+  ];
+  const assembly = asRecord(args.constitutionalAssembly);
+  if (assembly.status !== "PASS") blockingIssues.push("Constitutional Assembly failed.");
+  if (!args.spineObjectDependencies.length) blockingIssues.push("spineObjectDependencies missing.");
+  if (!args.spineObjectCloseSequences.length) blockingIssues.push("spineObjectCloseSequences missing.");
+  if (!args.spineObjectEvidenceRequirements.length) blockingIssues.push("spineObjectEvidenceRequirements missing.");
+  if (!args.segmentValidationRules.length) blockingIssues.push("segmentValidationRules missing.");
+  if (!args.paymentEligibilityRules.length) blockingIssues.push("paymentEligibilityRules missing.");
+  if (args.validation.status === "FAIL") blockingIssues.push("Draft IOF validation failed.");
+  const ready = blockingIssues.length === 0;
+  return {
+    status: ready ? "READY" : "BLOCKED",
+    canApproveDraftIof: ready,
+    canSubmitToEngineering: ready,
+    approvalGate: "Draft IOF approval prohibited until Constitutional Assembly succeeds.",
+    blockingIssues,
+    authority: "CONSTITUTIONAL_ASSEMBLY_REVIEW",
+    noScopeVersionCreation: true,
+    noServiceOrderCreation: true,
+    noMarketplaceCreation: true,
+    noControlCreation: true,
+  };
+}
+
 export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIofPackageRuntime {
   const proposal = input.proposal;
   const timestamp = asString(
@@ -873,6 +1057,43 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     stationAuthority,
     stationIndexedGraph: stationIndexedGraph ?? undefined,
   }) : [];
+  const spineAuditProjection = measuredSpine && stationAuthority ? createSpineAuditProjection({
+    packageId,
+    measuredSpine,
+    stationAuthority,
+    stationIndexedGraph,
+    engineeringObjects: stationAttachmentInputs,
+    objectStationAttachments,
+    commercialAuditEntries: input.commercialDraft?.transparentEstimate.auditTrail,
+    quantitySummary: doctrineAssembly?.quantitySummary,
+    pricingSummary: doctrineAssembly?.pricingSummary ?? input.pricing ?? proposal.pricingSummary,
+    transparentEstimate: input.commercialDraft?.transparentEstimate,
+    productionAssumptions: input.commercialDraft?.transparentEstimate.controls,
+    unknownReviewItems: input.commercialDraft?.transparentEstimate.unknownQuantities,
+    generatedAt: timestamp,
+  }) : null;
+  const kernelExecutionGraph = measuredSpine && stationAuthority ? buildKernelExecutionGraph({
+    packageId,
+    measuredSpine,
+    stationAuthority,
+    stationIndex: stationAuthority.stationIndex,
+    stationToCoordinateMap: stationAuthority.stationToCoordinateMap,
+    stationIndexedGraph,
+    engineeringObjects: stationAttachmentInputs,
+    objectStationAttachments,
+    spineAuditProjection,
+    closureExpectations: spineAuditProjection?.closureExpectations,
+    generatedAt: timestamp,
+  }) : null;
+  const executionExpectations = kernelExecutionGraph?.executionExpectations ?? [];
+  const spineObjectDependencies = buildSpineObjectDependencies(executionExpectations);
+  const spineObjectCloseSequences = buildSpineObjectCloseSequences(executionExpectations);
+  const spineObjectEvidenceRequirements = buildSpineObjectEvidenceRequirements(executionExpectations);
+  const segmentValidationRules = buildSegmentValidationRules({
+    expectations: executionExpectations,
+    stationRangeExpectations: spineAuditProjection?.stationRangeExpectations,
+  });
+  const paymentEligibilityRules = buildPaymentEligibilityRules(executionExpectations);
   const pricing = input.pricing ?? doctrineAssembly?.pricingSummary ?? proposal.pricingSummary ?? input.commercialDraft?.transparentEstimate ?? input.quickQuote;
   const validation = buildValidation({
     packageId,
@@ -884,8 +1105,21 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     pricing,
     validation: input.validation,
     productDoctrineAssembly: doctrineAssembly,
+    auditProjectionSummary: spineAuditProjection?.summary,
+    kernelExecutionGraphSummary: kernelExecutionGraph?.summary,
+    constitutionalAssembly: kernelExecutionGraph?.constitutionalAssembly,
   });
   const readiness = packageReadiness(validation, proposedIofUnits);
+  const draftIofReadiness = buildDraftIofReadiness({
+    validation,
+    readiness,
+    constitutionalAssembly: kernelExecutionGraph?.constitutionalAssembly,
+    spineObjectDependencies,
+    spineObjectCloseSequences,
+    spineObjectEvidenceRequirements,
+    segmentValidationRules,
+    paymentEligibilityRules,
+  });
   const engineeringRequirements = [
     {
       requirementId: `${packageId}:ENGINEERING-REQ:UNIT-CERTIFICATION`,
@@ -1043,6 +1277,20 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
         stationAuthority: Boolean(stationAuthority),
         stationIndexedGraph: Boolean(stationIndexedGraph),
         objectStationAttachments: objectStationAttachments.length,
+        spineAuditProjection: Boolean(spineAuditProjection),
+        closureExpectations: spineAuditProjection?.closureExpectations.length ?? 0,
+        kernelExecutionGraph: Boolean(kernelExecutionGraph),
+        executionNodes: kernelExecutionGraph?.nodes.length ?? 0,
+        executionEdges: kernelExecutionGraph?.edges.length ?? 0,
+        executionExpectations: kernelExecutionGraph?.executionExpectations?.length ?? 0,
+        closureLedgers: kernelExecutionGraph?.closureLedgers?.length ?? 0,
+        constitutionalAssembly: asString((kernelExecutionGraph?.constitutionalAssembly as { status?: string } | undefined)?.status, "MISSING"),
+        spineObjectDependencies: spineObjectDependencies.length,
+        spineObjectCloseSequences: spineObjectCloseSequences.length,
+        spineObjectEvidenceRequirements: spineObjectEvidenceRequirements.length,
+        segmentValidationRules: segmentValidationRules.length,
+        paymentEligibilityRules: paymentEligibilityRules.length,
+        draftIofReadiness: draftIofReadiness.status,
         pricing: Boolean(pricing),
         productDoctrine: Boolean(input.productDoctrine),
         productDoctrineAssembly: Boolean(doctrineAssembly),
@@ -1078,6 +1326,30 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     stationToCoordinateMap: stationAuthority?.stationToCoordinateMap,
     objectStationAttachments,
     stationIndexedGraph,
+    spineAuditProjection,
+    spineAuditAttachments: spineAuditProjection?.attachments ?? [],
+    stationedExpectations: spineAuditProjection?.stationedExpectations ?? [],
+    stationRangeExpectations: spineAuditProjection?.stationRangeExpectations ?? [],
+    spineReviewObjects: spineAuditProjection?.spineReviewObjects ?? [],
+    closureExpectations: spineAuditProjection?.closureExpectations ?? [],
+    auditProjectionSummary: spineAuditProjection?.summary,
+    kernelExecutionGraph,
+    executionNodes: kernelExecutionGraph?.nodes ?? [],
+    executionEdges: kernelExecutionGraph?.edges ?? [],
+    executionGraphProjections: kernelExecutionGraph?.projections ?? [],
+    executionGraphValidation: kernelExecutionGraph?.validation,
+    executionGraphSummary: kernelExecutionGraph?.summary,
+    executionExpectations: kernelExecutionGraph?.executionExpectations ?? [],
+    closureLedgers: kernelExecutionGraph?.closureLedgers ?? [],
+    closureReplaySummary: kernelExecutionGraph?.closureReplaySummary,
+    constitutionalClosureSummary: kernelExecutionGraph?.constitutionalClosureSummary,
+    constitutionalAssembly: kernelExecutionGraph?.constitutionalAssembly,
+    spineObjectDependencies,
+    spineObjectCloseSequences,
+    spineObjectEvidenceRequirements,
+    segmentValidationRules,
+    paymentEligibilityRules,
+    draftIofReadiness,
     commercialObjectPlacementHistory: [],
     customerRequestedMoves: [],
     commercialImpactSummary: {

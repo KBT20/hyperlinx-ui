@@ -7,9 +7,21 @@ function fmt(n: number | undefined) {
   return Number(n || 0).toLocaleString();
 }
 
+const EXECUTION_PROJECTION_TABS = [
+  "Physical",
+  "Stations",
+  "Engineering",
+  "Execution",
+  "Marketplace",
+  "Control",
+  "Field",
+  "Operational",
+] as const;
+
 export default function GraphViewerWorkspace() {
   const { selectedInventoryId, selectedGraph, setSelectedGraph } = useDALState();
-  const [status, setStatus] = useState("Graph Viewer ready.");
+  const [status, setStatus] = useState("Kernel Execution Graph ready.");
+  const [activeProjection, setActiveProjection] = useState<typeof EXECUTION_PROJECTION_TABS[number]>("Physical");
   const [layers, setLayers] = useState<GraphLayerToggles>({
     inventory: true,
     inventoryPath: true,
@@ -29,7 +41,7 @@ export default function GraphViewerWorkspace() {
 
   async function loadGraph(inventoryId: string) {
     try {
-      setStatus("Loading full inventory graph...");
+      setStatus("Loading Kernel Execution Graph projection...");
       const graph = await loadInventoryGraph(inventoryId);
       setSelectedGraph(graph);
       setStatus(`Loaded ${graph.metadata.name}.`);
@@ -46,14 +58,24 @@ export default function GraphViewerWorkspace() {
     <section className="dal-workspace">
       <div className="dal-workspace-header">
         <div>
-          <h2>DAL Graph Viewer</h2>
-          <p>Viewport-filtered inventory graph rendering with routes and stations prioritized for dense carrier data.</p>
+          <h2>Kernel Execution Graph</h2>
+          <p>Constitutional execution graph projection across physical route, stations, engineering objects, Control, Field, and Operational Twin state.</p>
         </div>
       </div>
 
       <div className="dal-panel">
         <div className="dal-panel-title-row">
           <h3>{selectedGraph?.metadata.name ?? "No graph selected"}</h3>
+          <div className="dal-actions">
+            {EXECUTION_PROJECTION_TABS.map((tab) => (
+              <button key={tab} type="button" className={activeProjection === tab ? "active-toggle" : ""} onClick={() => setActiveProjection(tab)}>
+                {tab}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="dal-panel-title-row">
+          <h3>{activeProjection} Projection</h3>
           <div className="dal-actions">
             {(["inventoryPath", "candidate", "buildPath", "attachmentPoint", "routes", "stations", "edges", "nodes"] as Array<keyof GraphLayerToggles>).map((layer) => (
               <button key={layer} type="button" className={layers[layer] ? "active-toggle" : ""} onClick={() => toggleLayer(layer)}>
@@ -98,8 +120,8 @@ export default function GraphViewerWorkspace() {
         </div>
 
         <div className="dal-panel">
-          <h3>Selected Feature</h3>
-          {selectedFeature ? <pre className="dal-pre">{JSON.stringify(selectedFeature, null, 2)}</pre> : <div className="dal-status">Click a rendered feature.</div>}
+          <h3>Selected Execution Node</h3>
+          {selectedFeature ? <pre className="dal-pre">{JSON.stringify(selectedFeature, null, 2)}</pre> : <div className="dal-status">Click a rendered execution node.</div>}
         </div>
       </div>
     </section>
