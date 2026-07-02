@@ -170,14 +170,38 @@ function isCoordinate(value: unknown): value is DALCoordinate {
 function coordinateFrom(value: unknown): DALCoordinate | undefined {
   if (isCoordinate(value)) return [Number(value[0]), Number(value[1])];
   const record = asRecord(value);
+  const coordinateCandidate = record.coordinate ?? record.coordinates ?? record.location ?? record.point;
+  if (coordinateCandidate !== undefined) {
+    if (isCoordinate(coordinateCandidate)) return [Number(coordinateCandidate[0]), Number(coordinateCandidate[1])];
+    const nested = coordinateFrom(coordinateCandidate);
+    if (nested) return nested;
+  }
   const lon = Number(record.lon ?? record.lng ?? record.longitude);
   const lat = Number(record.lat ?? record.latitude);
   return isCoordinate([lon, lat]) ? [lon, lat] : undefined;
 }
 
 function coordinatesFrom(value: unknown): DALCoordinate[] {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value)) {
+    const record = asRecord(value);
+    const candidates = [
+      record.coordinates,
+      record.geometry,
+      record.routeGeometry,
+      record.centerline,
+      record.path,
+      record.points,
+    ].filter((candidate) => candidate !== undefined && candidate !== value);
+    for (const candidate of candidates) {
+      const coordinates = coordinatesFrom(candidate);
+      if (coordinates.length > 1) return coordinates;
+    }
+    const coordinate = coordinateFrom(value);
+    return coordinate ? [coordinate] : [];
+  }
   if (value.every(isCoordinate)) return value.map((coordinate) => [Number(coordinate[0]), Number(coordinate[1])] as DALCoordinate);
+  const nestedCoordinates = value.flatMap((entry) => coordinatesFrom(entry));
+  if (nestedCoordinates.length > 1) return nestedCoordinates;
   return value.map(coordinateFrom).filter((coordinate): coordinate is DALCoordinate => Boolean(coordinate));
 }
 
@@ -189,17 +213,87 @@ function firstCoordinateList(...values: unknown[]) {
   return [];
 }
 
+function coordinatesFromGeometryReferences(values: unknown): DALCoordinate[] {
+  return asArray(values)
+    .flatMap((value) => {
+      const matches = String(value ?? "").matchAll(/(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)/g);
+      return [...matches]
+        .map((match) => [Number(match[1]), Number(match[2])] as DALCoordinate)
+        .filter(isCoordinate);
+    });
+}
+
+function coordinatesFromStations(values: unknown): DALCoordinate[] {
+  return asArray(values).map(coordinateFrom).filter((coordinate): coordinate is DALCoordinate => Boolean(coordinate));
+}
+
+function coordinatesFromRouteSegments(values: unknown, stationCoordinates: DALCoordinate[] = []): DALCoordinate[] {
+  const segmentCoordinates = asArray(values)
+    .flatMap((segment) => firstCoordinateList(
+      asRecord(segment).geometry,
+      asRecord(segment).coordinates,
+      asRecord(segment).routeGeometry,
+      asRecord(segment).centerline,
+    ));
+  if (segmentCoordinates.length > 1) return segmentCoordinates;
+  return stationCoordinates;
+}
+
+function coordinatesFromDependencyGraph(value: unknown): DALCoordinate[] {
+  const graph = asRecord(value);
+  return [
+    ...asArray(graph.nodes),
+    ...asArray(graph.edges),
+  ].flatMap((entry) => coordinatesFrom(entry));
+}
+
 function routeCoordinatesFromPackage(draft: DraftIofPackageRuntime) {
   const loose = draft as Record<string, unknown>;
   const routeEntries = asArray(loose.route);
+  const doctrineAssembly = asRecord(loose.productDoctrineAssembly);
+  const stationCoordinates = coordinatesFromStations(draft.stations);
   const routeGeometry = routeEntries
     .map((entry) => firstCoordinateList(asRecord(entry).geometry, asRecord(entry).coordinates, asRecord(entry).routeGeometry))
     .find((coordinates) => coordinates.length > 1) ?? [];
+  const routeSegmentGeometry = coordinatesFromRouteSegments([
+    ...asArray(loose.routeSegments),
+    ...asArray(doctrineAssembly.routeSegments),
+  ], stationCoordinates);
   return firstCoordinateList(
+    asRecord(loose.geometry).coordinates,
+    loose.geometry,
     loose.centerline,
+    asRecord(loose.centerlineRoute).geometry,
+    asRecord(loose.centerlineRoute).coordinates,
     asRecord(loose.osrmRoute).geometry,
+    asRecord(loose.osrmRoute).coordinates,
+    asRecord(doctrineAssembly.osrmRoute).geometry,
+    doctrineAssembly.centerline,
     asRecord(loose.spine).geometry,
+    asRecord(loose.spine).coordinates,
+    asRecord(loose.spine).centerline,
     routeGeometry,
+    routeSegmentGeometry,
+    stationCoordinates,
+    coordinatesFromGeometryReferences(loose.geometryReferences),
+    coordinatesFromDependencyGraph(draft.dependencyGraph),
+  );
+}
+
+function centerlineCoordinatesFromPackage(draft: DraftIofPackageRuntime, routeCoordinates: DALCoordinate[]) {
+  const loose = draft as Record<string, unknown>;
+  const doctrineAssembly = asRecord(loose.productDoctrineAssembly);
+  return firstCoordinateList(
+    asRecord(loose.geometry).coordinates,
+    loose.geometry,
+    loose.centerline,
+    asRecord(loose.centerlineRoute).geometry,
+    asRecord(loose.centerlineRoute).coordinates,
+    asRecord(loose.osrmRoute).geometry,
+    asRecord(loose.osrmRoute).coordinates,
+    asRecord(doctrineAssembly.osrmRoute).geometry,
+    doctrineAssembly.centerline,
+    routeCoordinates,
   );
 }
 
@@ -358,7 +452,7 @@ function complianceStatus(condition: boolean, pending = false): EngineeringCompl
   return pending ? "PENDING" : "WARNING";
 }
 
-function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<EngineeringCertificationProjection, "routeCoordinates" | "stations" | "objects" | "constraints">): EngineeringComplianceRow[] {
+function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<EngineeringCertificationProjection, "routeCoordinates" | "routeLength" | "stations" | "objects" | "constraints">): EngineeringComplianceRow[] {
   const loose = draft as Record<string, unknown>;
   const quantitySummary = asRecord(loose.quantitySummary);
   const pricingSummary = asRecord(loose.pricingSummary ?? draft.commercialSummary?.pricingSummary);
@@ -368,8 +462,13 @@ function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<Enginee
   const crossingAssembly = asRecord(loose.crossingAssembly);
   const unresolvedConstraints = projection.constraints.filter((constraint) => !["RESOLVED", "ACCEPTED"].includes(constraint.status));
   const validation = draft.validation?.status;
+  const geometryProjected = projection.routeCoordinates.length > 1;
+  const geometryLengthMiles = projection.routeLength > 0 ? Number((projection.routeLength / 5280).toFixed(2)) : 0;
+  const geometryDetail = geometryProjected
+    ? `Coordinates ${projection.routeCoordinates.length.toLocaleString()}. Length ${geometryLengthMiles.toLocaleString()} mi. Projected YES.`
+    : "Coordinates 0. Projected NO. Reason: No geometry present in Draft IOF Package.";
   const rows: Array<[typeof PD001_COMPLIANCE_CATEGORIES[number], EngineeringComplianceStatus, string]> = [
-    ["geometry", validationStatus(draft, "geometry") ?? complianceStatus(projection.routeCoordinates.length > 1), `${projection.routeCoordinates.length.toLocaleString()} route coordinates projected`],
+    ["geometry", geometryProjected ? "PASS" : "FAIL", geometryDetail],
     ["spine", complianceStatus(Boolean(loose.spine)), asString(asRecord(loose.spine).spineId, "spine pending")],
     ["stationing", complianceStatus(projection.stations.length > 0), `${projection.stations.length.toLocaleString()} stations`],
     ["graph", complianceStatus(Boolean(draft.dependencyGraph?.nodes?.length)), `${draft.dependencyGraph?.nodes?.length ?? 0} graph nodes`],
@@ -394,6 +493,80 @@ function objectStyle(object: EngineeringPackageObject) {
   if (object.objectType.includes("FIBER")) return { fill: "#38bdf8", stroke: "#075985", radius: 5 };
   if (object.objectType.includes("CONDUIT")) return { fill: "#34d399", stroke: "#065f46", radius: 5 };
   return { fill: "#fb7185", stroke: "#881337", radius: 6 };
+}
+
+function stationForReference(stations: EngineeringPackageStation[], reference: unknown) {
+  const text = String(reference ?? "");
+  if (!text) return undefined;
+  return stations.find((station) => station.stationId === text || station.label === text || String(station.raw.id ?? "") === text);
+}
+
+function packageRouteSegments(draft: DraftIofPackageRuntime) {
+  const loose = draft as Record<string, unknown>;
+  const doctrineAssembly = asRecord(loose.productDoctrineAssembly);
+  return [
+    ...asArray<Record<string, unknown>>(loose.routeSegments),
+    ...asArray<Record<string, unknown>>(doctrineAssembly.routeSegments),
+    ...asArray<Record<string, unknown>>(loose.route).filter((route) => asString(route.fromStationId ?? route.toStationId) || firstCoordinateList(route.geometry, route.coordinates).length > 1),
+  ];
+}
+
+function packageGraphPrimitives(projection: Omit<EngineeringCertificationProjection, "mapSpec">, packageId: string): MapKernelPrimitive[] {
+  const segments = packageRouteSegments(projection.sourceDraftPackage);
+  const primitives: MapKernelPrimitive[] = [];
+  if (segments.length) {
+    segments.forEach((segment, index) => {
+      const fromStation = stationForReference(projection.stations, segment.fromStationId ?? segment.fromStation ?? segment.from);
+      const toStation = stationForReference(projection.stations, segment.toStationId ?? segment.toStation ?? segment.to);
+      const coordinates = firstCoordinateList(segment.geometry, segment.coordinates, segment.routeGeometry, [
+        fromStation?.coordinate,
+        toStation?.coordinate,
+      ]);
+      if (coordinates.length < 2) return;
+      const segmentId = asString(segment.segmentId ?? segment.edgeId ?? segment.id, `${packageId}:GRAPH-EDGE:${String(index + 1).padStart(3, "0")}`);
+      primitives.push({
+        id: `${segmentId}:graph-edge`,
+        layerId: "edge",
+        kind: "line",
+        coordinates,
+        label: asString(segment.label ?? segment.name, `Package graph edge ${index + 1}`),
+        payload: segment,
+        style: { stroke: "#f59e0b", strokeWidth: 2, opacity: 0.82, dasharray: "5 4" },
+        metadata: {
+          source: "Draft IOF Package",
+          sourceLayer: "ENGINEERING_CERTIFICATION_GRAPH",
+          renderAuthority: "Draft IOF Package Projection",
+          packageId,
+          graphId: projection.sourceDraftPackage.dependencyGraph?.graphId,
+        },
+        ref: { kind: "Edge", id: segmentId, edgeId: segmentId, scopeVersionId: "draft-iof-certification" },
+      });
+    });
+  }
+  if (!primitives.length && projection.stations.length > 1) {
+    projection.stations.slice(0, -1).forEach((station, index) => {
+      const next = projection.stations[index + 1];
+      if (!station.coordinate || !next.coordinate) return;
+      const edgeId = `${packageId}:STATION-GRAPH:${String(index + 1).padStart(3, "0")}`;
+      primitives.push({
+        id: `${edgeId}:graph-edge`,
+        layerId: "edge",
+        kind: "line",
+        coordinates: [station.coordinate, next.coordinate],
+        label: `Station graph edge ${index + 1}`,
+        style: { stroke: "#f59e0b", strokeWidth: 2, opacity: 0.65, dasharray: "3 5" },
+        metadata: {
+          source: "Draft IOF Package",
+          sourceLayer: "ENGINEERING_CERTIFICATION_GRAPH",
+          renderAuthority: "Draft IOF Package Station Graph",
+          packageId,
+          graphId: projection.sourceDraftPackage.dependencyGraph?.graphId,
+        },
+        ref: { kind: "Edge", id: edgeId, edgeId, scopeVersionId: "draft-iof-certification" },
+      });
+    });
+  }
+  return primitives;
 }
 
 function renderCertificationSpec(projection: Omit<EngineeringCertificationProjection, "mapSpec">): MapKernelRenderSpec {
@@ -423,6 +596,7 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
       ref: { kind: "Route", id: `${packageId}:spine`, routeId: `${packageId}:spine`, scopeVersionId: "draft-iof-certification" },
     });
   }
+  primitives.push(...packageGraphPrimitives(projection, packageId));
   projection.stations.forEach((station) => {
     if (!station.coordinate) return;
     primitives.push({
@@ -494,7 +668,7 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
 export function buildEngineeringCertificationProjection(draft: DraftIofPackageRuntime): EngineeringCertificationProjection {
   const loose = draft as Record<string, unknown>;
   const routeCoordinates = routeCoordinatesFromPackage(draft);
-  const centerlineCoordinates = firstCoordinateList(loose.centerline, asRecord(loose.osrmRoute).geometry, routeCoordinates);
+  const centerlineCoordinates = centerlineCoordinatesFromPackage(draft, routeCoordinates);
   const stations = normalizeStations(draft, routeCoordinates);
   const objects = normalizeObjects(draft, stations);
   const constraints = constraintsFromPackage(draft);

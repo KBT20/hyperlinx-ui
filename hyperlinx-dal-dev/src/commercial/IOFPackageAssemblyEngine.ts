@@ -93,6 +93,35 @@ function uniqueStrings(values: unknown[]) {
   return result;
 }
 
+function isCoordinate(value: unknown): value is [number, number] {
+  return Array.isArray(value) &&
+    value.length >= 2 &&
+    Number.isFinite(Number(value[0])) &&
+    Number.isFinite(Number(value[1])) &&
+    Math.abs(Number(value[0])) <= 180 &&
+    Math.abs(Number(value[1])) <= 90;
+}
+
+function normalizeCoordinate(value: unknown): [number, number] | null {
+  if (isCoordinate(value)) return [Number(value[0]), Number(value[1])];
+  const record = asRecord(value);
+  const lon = Number(record.lon ?? record.lng ?? record.longitude);
+  const lat = Number(record.lat ?? record.latitude);
+  return isCoordinate([lon, lat]) ? [lon, lat] : null;
+}
+
+function normalizeGeometry(value: unknown): [number, number][] {
+  if (!Array.isArray(value)) return [];
+  return value.map(normalizeCoordinate).filter((coordinate): coordinate is [number, number] => Boolean(coordinate));
+}
+
+function geoJsonLineString(coordinates: [number, number][]) {
+  return {
+    type: "LineString",
+    coordinates,
+  };
+}
+
 function normalizePercent(value: unknown, fallback = 0) {
   const numeric = asNumber(value, fallback);
   const percent = numeric > 0 && numeric <= 1 ? numeric * 100 : numeric;
@@ -349,6 +378,7 @@ function buildValidation(args: {
   proposal: Partial<ProposalRuntimeObject>;
   units: ProposedIofUnit[];
   geometryReferences: string[];
+  geometryCoordinateCount: number;
   pricing: unknown;
   validation?: ValidationInput[];
   productDoctrineAssembly?: ProductDoctrineAssembly | null;
@@ -373,7 +403,7 @@ function buildValidation(args: {
     {
       key: "geometry-or-design-artifact",
       label: "Geometry or design artifact",
-      status: args.geometryReferences.length > 0 ? "PASS" : "WARNING",
+      status: args.geometryCoordinateCount > 1 ? "PASS" : "FAIL",
     },
     {
       key: "pricing-inputs",
@@ -727,6 +757,43 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
   const existingInventoryReferences = uniqueStrings([proposal.existingInventoryReferences, input.existingInventoryReferences, objectInventoryIds]);
   const customerDesignReferences = uniqueStrings([proposal.customerDesignReferences, input.customerDesignReferences, input.designArtifacts?.map(designArtifactId)]);
   const doctrineAssembly = input.productDoctrineAssembly ?? null;
+  const packageCenterline = [
+    normalizeGeometry(doctrineAssembly?.centerline),
+    normalizeGeometry(input.commercialDraft?.geometry),
+    normalizeGeometry(input.quickQuote?.geometry),
+    normalizeGeometry(asRecord(input.commercialCandidate).geometry),
+  ].find((coordinates) => coordinates.length > 1) ?? [];
+  const packageRouteFeet = Math.round(
+    doctrineAssembly?.quantitySummary.routeFeet ??
+    input.commercialDraft?.routeFeet ??
+    ((input.quickQuote?.routeMiles ?? 0) * 5280),
+  );
+  const packageRouteMiles = Number((
+    doctrineAssembly?.quantitySummary.routeMiles ??
+    input.commercialDraft?.routeMiles ??
+    input.quickQuote?.routeMiles ??
+    (packageRouteFeet / 5280)
+  ).toFixed(3));
+  const centerlineId = doctrineAssembly?.centerlineId ?? `${packageId}:CENTERLINE`;
+  const spine = doctrineAssembly?.spine ?? (packageCenterline.length > 1 ? {
+    spineId: `${packageId}:SPINE`,
+    topology: "LINEAR",
+    networkClass: "LONG_HAUL",
+    centerlineId,
+    routeMiles: packageRouteMiles,
+    routeFeet: packageRouteFeet,
+    noScopeVersionCreation: true,
+    source: "COMMERCIAL_OSRM_ROUTE_GEOMETRY",
+  } : null);
+  const centerlineRoute = packageCenterline.length > 1 ? {
+    routeId: input.commercialDraft?.routeId ?? input.quickQuote?.candidateId ?? packageId,
+    source: "COMMERCIAL_OSRM",
+    routeMiles: packageRouteMiles,
+    routeFeet: packageRouteFeet,
+    geometry: packageCenterline,
+    geometryCoordinateCount: packageCenterline.length,
+    pathFound: true,
+  } : null;
   const stations = doctrineAssembly?.stations ?? buildStationObjects(packageId, input.commercialDraft, input.stationing);
   const structures = doctrineAssembly?.structureAssembly.structures ?? buildStructureObjects(packageId, input.commercialDraft);
   const doctrineObjects = doctrineAssembly?.objects ?? [];
@@ -765,6 +832,7 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     proposal,
     units: proposedIofUnits,
     geometryReferences,
+    geometryCoordinateCount: packageCenterline.length,
     pricing,
     validation: input.validation,
     productDoctrineAssembly: doctrineAssembly,
@@ -872,8 +940,9 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
       confidenceSummary: proposal.confidenceSummary,
       commercialAssumptionIds: proposal.commercialAssumptionIds ?? [],
       routeId: draft?.routeId ?? quickQuote?.candidateId,
-      routeMiles: draft?.routeMiles ?? quickQuote?.routeMiles,
-      routeFeet: draft?.routeFeet,
+      routeMiles: packageRouteMiles,
+      routeFeet: packageRouteFeet,
+      geometryCoordinateCount: packageCenterline.length,
       segmentCount: draft?.routeSegments.length ?? (quickQuote ? 1 : 0),
       stationCount: stations.length,
       constructionMix: draft?.constructionMix,
@@ -923,6 +992,7 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
         pricing: Boolean(pricing),
         productDoctrine: Boolean(input.productDoctrine),
         productDoctrineAssembly: Boolean(doctrineAssembly),
+        routeGeometryCoordinates: packageCenterline.length,
         validationOutputs: input.validation?.length ?? 0,
       },
       noEngineeringRegenerationRequired: true,
@@ -941,10 +1011,13 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     aSite: doctrineAssembly?.aSite,
     zSite: doctrineAssembly?.zSite,
     azSites: doctrineAssembly ? [doctrineAssembly.aSite, doctrineAssembly.zSite].filter(Boolean) : undefined,
-    osrmRoute: doctrineAssembly?.osrmRoute,
-    centerline: doctrineAssembly?.centerline,
-    centerlineId: doctrineAssembly?.centerlineId,
-    spine: doctrineAssembly?.spine,
+    osrmRoute: doctrineAssembly?.osrmRoute ?? centerlineRoute,
+    geometry: geoJsonLineString(packageCenterline),
+    geometryCoordinateCount: packageCenterline.length,
+    centerline: packageCenterline,
+    centerlineId,
+    centerlineRoute,
+    spine,
     routeSegments: doctrineAssembly?.routeSegments,
     conduitAssembly: doctrineAssembly?.conduitAssembly,
     fiberAssembly: doctrineAssembly?.fiberAssembly,

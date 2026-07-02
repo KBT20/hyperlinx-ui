@@ -77,6 +77,10 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   return (text ? JSON.parse(text) : {}) as T;
 }
 
+function isExpectedBaselineGraph404(error: unknown) {
+  return /(^|\s)404(\s|$)/.test(error instanceof Error ? error.message : String(error));
+}
+
 async function tryRemote<T>(url: string, init?: RequestInit): Promise<T | null> {
   try {
     return await requestJson<T>(url, init);
@@ -263,7 +267,9 @@ export async function listInventoryGraphs() {
   const baselineItems = await listServerBaselineGraphMetadata()
     .then((items) => items.map((item) => ({ ...item, localFallback: false, serverBacked: true })))
     .catch((err) => {
-      console.warn("DAL BASELINE GRAPH DISCOVERY FALLBACK", err instanceof Error ? err.message : String(err));
+      if (!isExpectedBaselineGraph404(err)) {
+        console.warn("DAL BASELINE GRAPH DISCOVERY FALLBACK", err instanceof Error ? err.message : String(err));
+      }
       return [] as InventoryGraphMetadata[];
     });
   const remote = await tryRemote<any>(apiUrl("/api/inventory-graphs", DAL_INVENTORY_GRAPH_API));
