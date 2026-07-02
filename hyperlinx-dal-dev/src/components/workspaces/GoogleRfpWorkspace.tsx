@@ -70,6 +70,7 @@ import {
   saveCommercialDraftIofPackage,
   shareCommercialOpportunity,
   saveProposalDraft,
+  submitDraftIofPackageToEngineering,
   submitProposalToCustomer,
   uploadProposalEvidence,
   type DraftIofPackageRuntime,
@@ -112,10 +113,17 @@ import GoogleBidCommercialPreviewPanel from "./googleRfp/GoogleBidCommercialPrev
 import GoogleBidRouteReviewPanel from "./googleRfp/GoogleBidRouteReviewPanel";
 import GoogleBidSupportingInformationPanel from "./googleRfp/GoogleBidSupportingInformationPanel";
 import GoogleBidVendorResponsePreviewPanel from "./googleRfp/GoogleBidVendorResponsePreviewPanel";
+import { CommercialReviewPanel } from "./googleRfp/CommercialReviewPanel";
 import TransparentEstimateExplorer from "./googleRfp/TransparentEstimateExplorer";
 import ProposedNetworkMapPanel, { type CommercialIlaMapStation, type ProposedNetworkSelection } from "./proposednetwork/ProposedNetworkMapPanel";
 import type { ProposedGraph } from "../../proposedGraph/ProposedGraph";
 import type { DALCoordinate } from "../../types/dal";
+import {
+  assemblePointToPointLongHaulDoctrine,
+  POINT_TO_POINT_LONG_HAUL_DOCTRINE,
+  POINT_TO_POINT_LONG_HAUL_PRODUCT_ID,
+} from "../../products/pointToPointLongHaulDoctrine";
+import type { ProductDoctrineSite } from "../../products/ProductDoctrineContracts";
 
 type CommercialWorkspaceView =
   | "account"
@@ -392,6 +400,7 @@ const COMMERCIAL_WORKFLOW: Array<{ id: CommercialWorkspaceView; label: string; s
 ];
 
 const LAYER_1_PRODUCT_OPTIONS: Layer1ProductOption[] = [
+  { productId: POINT_TO_POINT_LONG_HAUL_PRODUCT_ID, productName: "Point-to-Point Long Haul Conduit & Fiber", productFamily: "Transport Infrastructure", defaultTermYears: 20, protected: false },
   { productId: "PRODUCT-L1-PROTECTED-DARK-FIBER-IRU", productName: "Protected Dark Fiber IRU", productFamily: "Infrastructure", defaultTermYears: 20, protected: true },
   { productId: "PRODUCT-L1-UNPROTECTED-DARK-FIBER-IRU", productName: "Unprotected Dark Fiber IRU", productFamily: "Infrastructure", defaultTermYears: 20, protected: false },
   { productId: "PRODUCT-L1-DARK-FIBER-LEASE", productName: "Dark Fiber Lease", productFamily: "Infrastructure", defaultTermYears: 5, protected: false },
@@ -2726,6 +2735,7 @@ function EmptyAccountProposal({ account }: { account: CommercialAccountFixture }
 
 export default function GoogleRfpWorkspace() {
   const {
+    activateEngineeringCertificationFromDraftPackage,
     activateRouteEngineeringFromCommercialDraft,
     customerDesignImports,
     selectedCustomerDesignImportId,
@@ -2784,7 +2794,7 @@ export default function GoogleRfpWorkspace() {
   const [accountDraft, setAccountDraft] = useState<AccountEditorState>(() => emptyAccountEditor(currentUserName));
   const [contactDraft, setContactDraft] = useState<ContactEditorState>(() => contactEditorDefaults());
   const [selectedAccountId, setSelectedAccountId] = useState("google");
-  const [selectedProductId, setSelectedProductId] = useState("PRODUCT-L1-PROTECTED-DARK-FIBER-IRU");
+  const [selectedProductId, setSelectedProductId] = useState(POINT_TO_POINT_LONG_HAUL_PRODUCT_ID);
   const [activeView, setActiveView] = useState<CommercialWorkspaceView>("networks");
   const [activeDesignMode, setActiveDesignMode] = useState<CommercialDesignMode>("EXTEND_EXISTING_NETWORK");
   const [commercialDraftType, setCommercialDraftType] = useState<CommercialDraftType | null>(null);
@@ -3675,25 +3685,9 @@ export default function GoogleRfpWorkspace() {
   }, [session?.token]);
 
   useEffect(() => {
-    if (!canReadEngineeringCertification) {
-      setEngineeringReviewQueue([]);
-      setActiveDraftIofPackage(null);
-      return;
-    }
-    let cancelled = false;
-    listEngineeringReviewQueue(session)
-      .then((queue) => {
-        if (cancelled) return;
-        setEngineeringReviewQueue(queue);
-        setEngineeringCertificationNotice(queue.length ? "Engineering Review Queue loaded." : "No Draft IOF Packages are waiting for Engineering certification.");
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setEngineeringCertificationNotice(`Engineering Review Queue unavailable: ${error instanceof Error ? error.message : String(error)}`);
-      });
-    return () => {
-      cancelled = true;
-    };
+    setEngineeringReviewQueue([]);
+    if (!canReadEngineeringCertification) setActiveDraftIofPackage(null);
+    setEngineeringCertificationNotice("Commercial Review submits Draft IOF Packages to Engineering Intake.");
   }, [canReadEngineeringCertification, session?.token]);
 
   function upsertProposalRuntimeRecord(record: ProposalRuntimeObject) {
@@ -4103,6 +4097,7 @@ export default function GoogleRfpWorkspace() {
       const draft = await saveCommercialDraftIofPackage(commercialDraftIofPackagePreview, session);
       setCommercialDraftIofPackage(draft);
       setActiveDraftIofPackage(draft);
+      activateEngineeringCertificationFromDraftPackage(draft);
       await refreshEngineeringReviewQueue(`${draft.packageId} saved from Commercial package JSON and queued for Engineering certification.`);
       setProposalRuntimeNotice(`${draft.packageId} saved as the Draft IOF Package source for Engineering review.`);
     } catch (error) {
@@ -4127,9 +4122,46 @@ export default function GoogleRfpWorkspace() {
       setCommercialDraftIofPackage(draft);
       setActiveDraftIofPackage(draft);
       setProposalRuntimeNotice(`${draft.packageId} saved as deterministic Draft IOF Package JSON.`);
-      await refreshEngineeringReviewQueue(`${draft.packageId} is available for Engineering review.`);
+      setEngineeringCertificationNotice(`${draft.packageId} saved as a Commercial Draft IOF Package. Submit it to create Engineering Intake.`);
     } catch (error) {
       setProposalRuntimeNotice(`Commercial Draft IOF Package save failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setEngineeringCertificationPending(false);
+    }
+  }
+
+  function handleValidateCommercialReviewPackage() {
+    const draft = commercialDraftIofPackage ?? commercialDraftIofPackagePreview ?? activeDraftIofPackage;
+    if (!draft) {
+      setProposalRuntimeNotice("Commercial Review has no Draft IOF Package to validate.");
+      return;
+    }
+    const validationStatus = String((draft.validationSummary as any)?.status ?? draft.validation?.status ?? "MISSING");
+    const readiness = String((draft.packageReadiness as any)?.status ?? draft.engineeringReadiness ?? "UNKNOWN").replaceAll("_", " ");
+    setProposalRuntimeNotice(`${draft.packageId} validation ${validationStatus}; readiness ${readiness}.`);
+  }
+
+  async function handleSubmitCommercialDraftIofToEngineering() {
+    const draftSource = commercialDraftIofPackagePreview ?? commercialDraftIofPackage ?? activeDraftIofPackage;
+    if (!draftSource) {
+      setProposalRuntimeNotice("Commercial Review needs a Draft IOF Package before Engineering submission.");
+      return;
+    }
+    if (draftSource.commercialRevisionLocked || ["SUBMITTED_TO_ENGINEERING", "UNDER_ENGINEERING_REVIEW", "CERTIFIED"].includes(String(draftSource.status ?? ""))) {
+      setProposalRuntimeNotice(`${draftSource.packageId} is already locked for Engineering custody.`);
+      return;
+    }
+    setEngineeringCertificationPending(true);
+    try {
+      const result = await submitDraftIofPackageToEngineering(draftSource.packageId, { draftPackage: draftSource }, session);
+      const draft = result.draftPackage;
+      setCommercialDraftIofPackage(draft);
+      setActiveDraftIofPackage(draft);
+      setEngineeringReviewQueue((items) => items.filter((item) => item.packageId !== draft.packageId));
+      setProposalRuntimeNotice(`${draft.packageId} submitted to Engineering Intake as ${result.engineeringIntake.status}.`);
+      setEngineeringCertificationNotice(`${draft.packageId} is awaiting Engineering review.`);
+    } catch (error) {
+      setProposalRuntimeNotice(`Engineering submission failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setEngineeringCertificationPending(false);
     }
@@ -4140,6 +4172,7 @@ export default function GoogleRfpWorkspace() {
     try {
       const draft = await openDraftIofPackageForCertification(packageId, session);
       setActiveDraftIofPackage(draft);
+      activateEngineeringCertificationFromDraftPackage(draft);
       setEngineeringCertificationNotice(`${draft.packageId} opened for Engineering review.`);
     } catch (error) {
       setEngineeringCertificationNotice(`Open Draft IOF Package failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -4242,11 +4275,11 @@ export default function GoogleRfpWorkspace() {
           riskAccepted: true,
           packageComplete: true,
           certificationConfidence: 94,
-          engineeringNotes: "Engineering certification completed. Execution stops at ScopeVersion.",
+          engineeringNotes: "Engineering certification completed. Execution stops at Certified IOF Package.",
         },
       }, session);
       setActiveDraftIofPackage(result.draftPackage);
-      await refreshEngineeringReviewQueue(`${result.certifiedIofPackage.certifiedPackageId} certified. ScopeVersion ${String(result.scopeVersion.scopeVersionId)} generated.`);
+      await refreshEngineeringReviewQueue(`${result.certifiedIofPackage.certifiedPackageId} certified. ScopeVersion not created by certification.`);
     } catch (error) {
       setEngineeringCertificationNotice(`Package certification failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -6036,7 +6069,7 @@ export default function GoogleRfpWorkspace() {
       title: `${accepted.accountName} Accepted Commercial Proposal`,
       summary: `Customer accepted ${routePlan.routeRequirement.bidSegmentName}.`,
       executiveSummary: preview.executiveSummary,
-      pricingSummary: selectedPricingSummary.reconciliation,
+      pricingSummary: selectedPricingSummary.reconciliation as unknown as Record<string, unknown>,
       marginSummary: {
         grossMarginDollars: selectedPricingSummary.reconciliation.grossMarginDollars,
         grossMarginPercent: selectedPricingSummary.reconciliation.grossMarginPercent,
@@ -6168,6 +6201,60 @@ export default function GoogleRfpWorkspace() {
   const unsavedChanges = Boolean(activeLiveSession?.dirty || (commercialCorridorDraft && !opportunityScoutCandidate?.lockedIntoCommercialDraft));
   const activeFinancialDraft = selectedImportedCommercialDraft ?? commercialCorridorDraft ?? loadedCommercialDraftSnapshot;
   const activeFinancialAuthority = activeFinancialDraft?.financialAuthority ?? null;
+  const selectedProductDoctrine = selectedProductOption.productId === POINT_TO_POINT_LONG_HAUL_PRODUCT_ID ? POINT_TO_POINT_LONG_HAUL_DOCTRINE : null;
+  const productDoctrineAssembly = useMemo(() => {
+    if (!selectedProductDoctrine) return null;
+    const routePlan = activeLiveSession?.routePlan ?? selectedRoutePlans[0];
+    const routedGeometry = commercialRouteResult?.status === "ROUTED"
+      ? commercialRouteResult.geometry?.map((point) => [point.longitude, point.latitude] as DALCoordinate) ?? []
+      : [];
+    const centerline = activeFinancialDraft?.geometry ?? opportunityScoutQuickQuote?.geometry ?? activeLiveSession?.activeEditableRouteGeometry ?? routePlan?.stationedCorridor?.centerlineRoute.geometry ?? routedGeometry;
+    const routeMiles = activeFinancialDraft?.routeMiles ?? opportunityScoutQuickQuote?.routeMiles ?? commercialRouteResult?.routeMiles ?? selectedPricingSummary.reconciliation.routeMiles;
+    const routeFeet = activeFinancialDraft?.routeFeet ?? Math.round(routeMiles * 5280);
+    const routeId = activeFinancialDraft?.routeId ?? opportunityScoutQuickQuote?.candidateId ?? commercialRouteResult?.routeId ?? routePlan?.routeRequirement.routeRequirementId ?? `${selectedAccount.accountId}-POINT-TO-POINT`;
+    const siteFromLocation = (role: "A" | "Z", location: ResolvedLocation | undefined | null, fallbackCoordinate: DALCoordinate | undefined, fallbackLabel: string): ProductDoctrineSite | null => {
+      const coordinate = location ? [location.longitude, location.latitude] as DALCoordinate : fallbackCoordinate;
+      if (!coordinate) return null;
+      return {
+        siteId: `${POINT_TO_POINT_LONG_HAUL_PRODUCT_ID}:SITE:${role}:${selectedAccount.accountId}`,
+        role,
+        label: location?.label ?? fallbackLabel,
+        coordinate,
+        source: location?.source ?? "OSRM_CENTERLINE",
+      };
+    };
+    const aSite = siteFromLocation("A", azOriginLocation ?? opportunityScoutCandidate?.originLocation, centerline[0], activeFinancialDraft?.aLabel ?? "A location");
+    const zSite = siteFromLocation("Z", azDestinationLocation ?? opportunityScoutCandidate?.destinationLocation, centerline[centerline.length - 1], activeFinancialDraft?.zLabel ?? "Z location");
+    return assemblePointToPointLongHaulDoctrine({
+      accountId: selectedAccount.accountId,
+      customerId: customerIdForAccount(selectedAccount.accountId),
+      aSite,
+      zSite,
+      osrmRoute: centerline.length > 1 && routeFeet > 0 ? {
+        routeId,
+        source: "OSRM",
+        routeMiles,
+        routeFeet,
+        distanceMeters: Math.round(routeFeet / 3.28084),
+        geometry: centerline,
+      } : null,
+      routeSegments: activeFinancialDraft?.routeSegments,
+      pricingSummary: selectedPricingSummary.reconciliation as unknown as Record<string, unknown>,
+      stationIntervalFeet: activeFinancialDraft?.stationIntervalFeet ?? 5280,
+    });
+  }, [
+    activeFinancialDraft,
+    activeLiveSession,
+    azDestinationLocation,
+    azOriginLocation,
+    commercialRouteResult,
+    opportunityScoutCandidate,
+    opportunityScoutQuickQuote,
+    selectedAccount.accountId,
+    selectedPricingSummary.reconciliation,
+    selectedProductDoctrine,
+    selectedRoutePlans,
+  ]);
   const commercialDraftIofPackagePreview = useMemo(() => {
     const routePlan = activeLiveSession?.routePlan ?? selectedRoutePlans[0];
     if (!routePlan && !activeProposalRuntime && !activeFinancialDraft && !opportunityScoutQuickQuote) return null;
@@ -6254,6 +6341,8 @@ export default function GoogleRfpWorkspace() {
         transparentEstimate: activeFinancialDraft?.transparentEstimate,
       },
       validation: commercialDraftValidation,
+      productDoctrine: selectedProductDoctrine,
+      productDoctrineAssembly,
       selectedRoutePlans,
       assignedEngineerId: currentUserId,
       assignedEngineer: currentUserName,
@@ -6301,7 +6390,9 @@ export default function GoogleRfpWorkspace() {
     selectedImportedCustomerDesignImport,
     selectedImportedCustomerRoute,
     selectedPricingSummary,
+    selectedProductDoctrine,
     selectedProductOption,
+    productDoctrineAssembly,
     selectedRoutePlans,
     selectedScope.label,
     selectedScope.routeRequirementIds,
@@ -6449,6 +6540,8 @@ export default function GoogleRfpWorkspace() {
           <div><span>Customer ID</span><b>{customerIdForAccount(selectedAccount.accountId)}</b></div>
           <div><span>Contacts</span><b>{governedContactsForSelectedAccount.length || selectedAccount.contacts.length}</b></div>
           <div><span>Product</span><b>{selectedProductOption.productName}</b></div>
+          <div><span>Doctrine</span><b>{selectedProductDoctrine?.doctrineId ?? "No product doctrine"}</b></div>
+          <div><span>Doctrine Validation</span><b>{productDoctrineAssembly?.validationSummary.status ?? "Not assembled"}</b></div>
           <div><span>Opportunities</span><b>{accountCommercialOpportunities.length}</b></div>
           <div><span>Proposals</span><b>{accountProposalRuntimeRecords.length}</b></div>
           <div><span>IOF Packages</span><b>{activeDraftIofPackage?.customerId === customerIdForAccount(selectedAccount.accountId) || activeDraftIofPackage?.accountId === selectedAccount.accountId ? "1" : "0"}</b></div>
@@ -6464,6 +6557,16 @@ export default function GoogleRfpWorkspace() {
               ))}
             </select>
           </label>
+          {selectedProductDoctrine ? (
+            <div className="account-fulfillment-mix">
+              <div><span>Doctrine</span><b>{selectedProductDoctrine.doctrineVersion}</b></div>
+              <div><span>Network</span><b>{selectedProductDoctrine.rules.networkClass}</b></div>
+              <div><span>Topology</span><b>{selectedProductDoctrine.rules.topology}</b></div>
+              <div><span>Layer</span><b>{selectedProductDoctrine.rules.layer}</b></div>
+              <div><span>Optical Transport</span><b>{selectedProductDoctrine.rules.opticalTransport ? "Allowed" : "False"}</b></div>
+              <div><span>Engineering Gate</span><b>{selectedProductDoctrine.rules.engineeringCertificationRequired ? "Required" : "Open"}</b></div>
+            </div>
+          ) : null}
           <div className="account-fulfillment-mix">
             {CARRIER_NEUTRAL_FULFILLMENT_MIX.map((item) => (
               <div key={item.ownershipClass}>
@@ -7017,6 +7120,21 @@ export default function GoogleRfpWorkspace() {
         </details>
       </section>
 
+      <CommercialReviewPanel
+        draftPackage={displayedDraftIofPackage}
+        customerName={selectedAccount.name}
+        proposalLabel={String(activeProposalRuntime?.proposalNumber ?? activeProposalRuntime?.proposalId ?? "No proposal")}
+        productLabel={String(selectedProductOption.productName ?? selectedProductOption.productId)}
+        doctrineLabel={`${String(displayedDraftIofPackage?.doctrineId ?? selectedProductDoctrine?.doctrineId ?? "PD-001")} ${String(displayedDraftIofPackage?.productDoctrineVersion ?? selectedProductDoctrine?.doctrineVersion ?? "").trim()}`}
+        pending={engineeringCertificationPending}
+        canEdit={canManageProposalRuntime}
+        notice={proposalRuntimeNotice}
+        onSaveDraft={handleSaveCommercialDraftIofPackage}
+        onValidate={handleValidateCommercialReviewPackage}
+        onSubmitToEngineering={handleSubmitCommercialDraftIofToEngineering}
+      />
+
+      {/*
       <section className="dal-panel commercial-iof-package-json">
         <div className="dal-panel-title-row">
           <div>
@@ -7030,10 +7148,15 @@ export default function GoogleRfpWorkspace() {
         <div className="teralinx-summary-grid">
           <div><span>Assembler</span><b>{String(displayedDraftIofPackage?.assemblyReport?.assembledBy ?? "IOFPackageAssemblyEngine")}</b></div>
           <div><span>Proposal</span><b>{displayedDraftIofPackage?.proposalId ?? activeProposalRuntime?.proposalId ?? "Save proposal first"}</b></div>
+          <div><span>Doctrine ID</span><b>{String(displayedDraftIofPackage?.doctrineId ?? selectedProductDoctrine?.doctrineId ?? "n/a")}</b></div>
+          <div><span>Doctrine Version</span><b>{String(displayedDraftIofPackage?.productDoctrineVersion ?? selectedProductDoctrine?.doctrineVersion ?? "n/a")}</b></div>
           <div><span>Units</span><b>{displayedDraftIofPackage?.proposedIofUnits?.length.toLocaleString() ?? "0"}</b></div>
           <div><span>Stations</span><b>{displayedDraftIofPackage?.stations?.length.toLocaleString() ?? "0"}</b></div>
+          <div><span>Objects</span><b>{displayedDraftIofPackage?.objects?.length.toLocaleString() ?? "0"}</b></div>
+          <div><span>Quantities</span><b>{Number((displayedDraftIofPackage?.quantitySummary as any)?.routeFeet ?? 0).toLocaleString()} ft</b></div>
+          <div><span>Pricing</span><b>{money(Number((displayedDraftIofPackage?.pricingSummary as any)?.sellPriceIru ?? 0))}</b></div>
           <div><span>Geometry Refs</span><b>{displayedDraftIofPackage?.geometryReferences?.length.toLocaleString() ?? "0"}</b></div>
-          <div><span>Validation</span><b>{String(displayedDraftIofPackage?.validation?.status ?? "Missing")}</b></div>
+          <div><span>Validation</span><b>{String((displayedDraftIofPackage?.validationSummary as any)?.status ?? displayedDraftIofPackage?.validation?.status ?? "Missing")}</b></div>
           <div><span>ScopeVersion</span><b>{displayedDraftIofPackage?.noScopeVersionCreation ? "Not created" : "Blocked"}</b></div>
           <div><span>Engineering</span><b>{displayedDraftIofPackage?.engineeringReadiness?.replaceAll("_", " ") ?? "Not ready"}</b></div>
         </div>
@@ -7327,6 +7450,7 @@ export default function GoogleRfpWorkspace() {
           </details>
         </section>
       ) : null}
+      */}
 
       <section className="commercial-orchestrator-shell" aria-label="Commercial Planning domain orchestrator">
         <aside className="commercial-orchestrator-nav">

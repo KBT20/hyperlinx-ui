@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { listCustomerDesignImports, normalizeCustomerDesignImport, saveCustomerDesignImport } from "../api/customerDesignLibrary";
-import { listEngineeringDrafts, saveEngineeringDraft } from "../api/teralinxRuntime";
+import { listEngineeringDrafts, saveEngineeringDraft, type DraftIofPackageRuntime } from "../api/teralinxRuntime";
 import type { InventoryGraph, InventoryGraphMetadata, PrismOpportunity, ScopeVersion } from "../types/dal";
 import type { CandidateSite } from "../types/candidateSite";
 import type { CommercialCorridorDraft } from "../commercial/CommercialCorridorDraftEngine";
@@ -98,6 +98,11 @@ type DALState = {
   upsertCustomerDesignImport: (record: CustomerDesignImport) => void;
   selectedRouteEngineeringActivation: RouteEngineeringActivationRequest | null;
   setSelectedRouteEngineeringActivation: (activation: RouteEngineeringActivationRequest | null) => void;
+  selectedEngineeringDraftIofPackageId: string;
+  setSelectedEngineeringDraftIofPackageId: (packageId: string) => void;
+  selectedEngineeringDraftIofPackage: DraftIofPackageRuntime | null;
+  setSelectedEngineeringDraftIofPackage: (draftPackage: DraftIofPackageRuntime | null) => void;
+  activateEngineeringCertificationFromDraftPackage: (draftPackage: DraftIofPackageRuntime) => void;
   engineeringDrafts: RouteEngineeringDraft[];
   engineeringLibraryLoaded: boolean;
   selectedRouteEngineeringDraft: RouteEngineeringDraft | null;
@@ -141,6 +146,8 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
   const [selectedCustomerDesignImportId, setSelectedCustomerDesignImportId] = useState("");
   const [selectedCustomerDesignRouteId, setSelectedCustomerDesignRouteId] = useState("");
   const [selectedRouteEngineeringActivation, setSelectedRouteEngineeringActivation] = useState<RouteEngineeringActivationRequest | null>(null);
+  const [selectedEngineeringDraftIofPackageId, setSelectedEngineeringDraftIofPackageId] = useState("");
+  const [selectedEngineeringDraftIofPackage, setSelectedEngineeringDraftIofPackageState] = useState<DraftIofPackageRuntime | null>(null);
   const [engineeringDrafts, setEngineeringDrafts] = useState<RouteEngineeringDraft[]>([]);
   const [engineeringLibraryLoaded, setEngineeringLibraryLoaded] = useState(false);
   const [selectedRouteEngineeringDraft, setSelectedRouteEngineeringDraftState] = useState<RouteEngineeringDraft | null>(null);
@@ -206,6 +213,17 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
     setWorkspace("routeEngineering");
     return request;
   }, [setWorkspace]);
+
+  const setSelectedEngineeringDraftIofPackage = useCallback((draftPackage: DraftIofPackageRuntime | null) => {
+    setSelectedEngineeringDraftIofPackageState(draftPackage);
+    setSelectedEngineeringDraftIofPackageId(draftPackage?.packageId ?? "");
+  }, []);
+
+  const activateEngineeringCertificationFromDraftPackage = useCallback((draftPackage: DraftIofPackageRuntime) => {
+    setSelectedEngineeringDraftIofPackage(draftPackage);
+    setSelectedRouteEngineeringActivation(null);
+    setWorkspace("routeEngineering");
+  }, [setSelectedEngineeringDraftIofPackage, setWorkspace]);
 
   function upsertInventorySummary(summary: DALInventorySummary) {
     setInventorySummaries((prev) => [summary, ...prev.filter((item) => item.inventoryId !== summary.inventoryId)]);
@@ -321,6 +339,11 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
       upsertCustomerDesignImport,
       selectedRouteEngineeringActivation,
       setSelectedRouteEngineeringActivation,
+      selectedEngineeringDraftIofPackageId,
+      setSelectedEngineeringDraftIofPackageId,
+      selectedEngineeringDraftIofPackage,
+      setSelectedEngineeringDraftIofPackage,
+      activateEngineeringCertificationFromDraftPackage,
       engineeringDrafts,
       engineeringLibraryLoaded,
       selectedRouteEngineeringDraft,
@@ -355,6 +378,10 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
       selectedCustomerDesignRouteId,
       selectedCustomerDesignImport,
       selectedRouteEngineeringActivation,
+      selectedEngineeringDraftIofPackageId,
+      selectedEngineeringDraftIofPackage,
+      setSelectedEngineeringDraftIofPackage,
+      activateEngineeringCertificationFromDraftPackage,
       engineeringDrafts,
       engineeringLibraryLoaded,
       selectedRouteEngineeringDraft,

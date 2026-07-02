@@ -536,16 +536,53 @@ export type ProposalCustomerRecipientInput = {
 export type CertifiedIofPackageRuntime = DraftIofPackageRuntime & {
   certifiedPackageId: string;
   sourcePackageId: string;
+  sourceDraftPackageId?: string;
+  certificationDate?: string;
   certifiedAt: string;
   certifiedBy: string;
   certifiedById: string;
+  engineer?: string;
+  engineerId?: string;
+  doctrineStatus?: string;
+  constraintSummary?: Record<string, unknown>;
+  approvedExceptions?: unknown[];
+  redlineHistory?: unknown[];
+  engineeringManifest?: IofPackageManifest;
+  readiness?: Record<string, unknown>;
+  notes?: string;
   engineeringChecklist: Record<string, unknown>;
   certificationConfidence: number;
   certifiedIofUnits: ProposedIofUnit[];
-  executionAuthorizationCertificateId: string;
+  executionAuthorizationCertificateId?: string;
   scopeVersionId?: string;
   executionAuthorized?: boolean;
   immutable: boolean;
+};
+
+export type EngineeringIntakeRecord = {
+  intakeId: string;
+  packageId: string;
+  draftPackageId: string;
+  status: string;
+  workflowStatus: string;
+  lifecycleState: string;
+  authority: string;
+  customerId?: string;
+  customerName?: string;
+  proposalId?: string;
+  productId?: string;
+  productName?: string;
+  doctrineId?: string;
+  packageRevision?: number;
+  assignedEngineer?: string;
+  commercialRevisionLocked?: boolean;
+  submittedAt?: string;
+  openedAt?: string;
+  certifiedAt?: string;
+  certifiedPackageId?: string;
+  createdAt: string;
+  updatedAt: string;
+  [key: string]: unknown;
 };
 
 export type ExecutionAuthorizationCertificate = {
@@ -891,6 +928,13 @@ export async function listEngineeringReviewQueue(session?: TeralinxAuthSession |
   return unwrapList<EngineeringReviewQueueItem>(data, ["engineeringReviewQueue", "queue", "items"]);
 }
 
+export async function listDraftIofPackagesForCertification(session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/engineering/certification/draft-packages", {
+    headers: authHeaders(session),
+  });
+  return unwrapList<DraftIofPackageRuntime>(data, ["draftPackages", "iofPackages", "items"]);
+}
+
 export async function assembleDraftIofPackageFromProposal(
   input: { proposalId: string; packageId?: string; assignedEngineerId?: string; assignedEngineer?: string; priority?: string },
   session?: TeralinxAuthSession | null,
@@ -913,6 +957,22 @@ export async function saveCommercialDraftIofPackage(
     body: JSON.stringify({ draftPackage }),
   });
   return (data.draftPackage ?? data.iofPackage ?? data) as DraftIofPackageRuntime;
+}
+
+export async function submitDraftIofPackageToEngineering(
+  packageId: string,
+  input: { draftPackage?: DraftIofPackageRuntime } = {},
+  session?: TeralinxAuthSession | null,
+) {
+  return requestJson<{
+    draftPackage: DraftIofPackageRuntime;
+    iofPackage: DraftIofPackageRuntime;
+    engineeringIntake: EngineeringIntakeRecord;
+  }>(`/api/commercial/iof-packages/${encodeURIComponent(packageId)}/submit-engineering`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
 }
 
 export async function openDraftIofPackageForCertification(packageId: string, session?: TeralinxAuthSession | null) {
@@ -961,6 +1021,85 @@ export async function getDraftIofPackageDifferences(packageId: string, session?:
     headers: authHeaders(session),
   });
   return data.packageDifferences as IofPackageDifferences;
+}
+
+export async function addEngineeringCertificationConstraint(
+  packageId: string,
+  input: {
+    category: string;
+    station?: string;
+    stationRange?: string;
+    objectReference?: string;
+    severity?: string;
+    status?: string;
+    engineeringDisposition?: string;
+    notesEvidence?: string;
+  },
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/constraints`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return (data.draftPackage ?? data.iofPackage ?? data) as DraftIofPackageRuntime;
+}
+
+export async function moveEngineeringCertificationObject(
+  packageId: string,
+  input: {
+    objectId: string;
+    newStation: string;
+    reason: string;
+    authority: string;
+    impactSummary?: string;
+  },
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/object-moves`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return (data.draftPackage ?? data.iofPackage ?? data) as DraftIofPackageRuntime;
+}
+
+export async function createEngineeringCertificationRouteRedline(
+  packageId: string,
+  input: {
+    reason: string;
+    description?: string;
+    authority: string;
+    affectedStations?: string;
+    impactSummary?: string;
+  },
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/route-redlines`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return (data.draftPackage ?? data.iofPackage ?? data) as DraftIofPackageRuntime;
+}
+
+export async function recordEngineeringDoctrineException(
+  packageId: string,
+  input: {
+    doctrineRule: string;
+    actualCondition: string;
+    reason: string;
+    approvalAuthority: string;
+    impactSummary: string;
+  },
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/doctrine-exceptions`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return (data.draftPackage ?? data.iofPackage ?? data) as DraftIofPackageRuntime;
 }
 
 async function engineeringUnitAction(
@@ -1050,8 +1189,8 @@ export async function certifyDraftIofPackage(
   return requestJson<{
     draftPackage: DraftIofPackageRuntime;
     certifiedIofPackage: CertifiedIofPackageRuntime;
-    executionAuthorizationCertificate: ExecutionAuthorizationCertificate;
-    scopeVersion: Record<string, unknown>;
+    executionAuthorizationCertificate?: ExecutionAuthorizationCertificate;
+    scopeVersion?: Record<string, unknown>;
   }>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/certify`, {
     method: "POST",
     headers: authHeaders(session, { "Content-Type": "application/json" }),

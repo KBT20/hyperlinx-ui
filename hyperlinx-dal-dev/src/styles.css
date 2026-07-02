@@ -3042,6 +3042,166 @@ textarea {
   border-color: rgba(56, 189, 248, 0.36);
 }
 
+.engineering-certification-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.commercial-review-package-preview {
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.engineering-certification-package-header {
+  margin-top: 0;
+}
+
+.engineering-certification-workflow {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.engineering-certification-workflow div {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 6px;
+  background: #071827;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.engineering-certification-workflow div.complete {
+  border-color: rgba(34, 197, 94, 0.42);
+}
+
+.engineering-certification-workflow div.active {
+  border-color: rgba(56, 189, 248, 0.56);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.18);
+}
+
+.engineering-certification-workflow span,
+.engineering-certification-workflow b {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.engineering-certification-workflow span {
+  color: #d8f4ff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.engineering-certification-workflow b {
+  color: #9fbed8;
+  font-size: 11px;
+  margin-top: 3px;
+  text-transform: uppercase;
+}
+
+.engineering-certification-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.82fr) minmax(420px, 1.8fr) minmax(280px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.engineering-certification-bottom {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(320px, 1.15fr) minmax(320px, 1.05fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.engineering-certification-summary,
+.engineering-certification-compliance,
+.engineering-certification-actions {
+  align-content: start;
+}
+
+.engineering-certification-canvas .dal-map-kernel {
+  min-height: 620px;
+}
+
+.engineering-certification-kv {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.72fr) minmax(0, 1.28fr);
+  gap: 7px 10px;
+}
+
+.engineering-certification-kv span {
+  color: #9fbed8;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.engineering-certification-kv b {
+  color: #f8fbff;
+  font-size: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.engineering-certification-compliance-list,
+.engineering-certification-list {
+  display: grid;
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.engineering-certification-compliance-list div,
+.engineering-certification-list div {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 6px;
+  background: rgba(7, 24, 39, 0.86);
+  display: grid;
+  gap: 6px;
+  padding: 9px;
+}
+
+.engineering-certification-compliance-list div {
+  grid-template-columns: minmax(110px, 1fr) auto;
+  align-items: center;
+}
+
+.engineering-certification-compliance-list small {
+  color: #b7c9dc;
+  grid-column: 1 / -1;
+}
+
+.engineering-certification-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.engineering-certification-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.engineering-certification-segments button {
+  font-size: 12px;
+  min-height: 34px;
+  padding: 7px 9px;
+}
+
+.engineering-certification-primary {
+  border-color: #86efac;
+  background: #166534;
+  color: #f0fdf4;
+  font-weight: 900;
+  min-height: 42px;
+}
+
+.engineering-certification-primary:hover {
+  background: #15803d;
+}
+
 .engineering-mode-controls {
   align-items: center;
   display: flex;
@@ -3211,6 +3371,10 @@ textarea {
 
 @media (max-width: 960px) {
   .commercial-compact-header,
+  .engineering-certification-grid,
+  .engineering-certification-bottom,
+  .engineering-certification-workflow,
+  .engineering-certification-form-grid,
   .commercial-orchestrator-shell {
     grid-template-columns: 1fr;
   }

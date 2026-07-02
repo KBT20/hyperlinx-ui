@@ -78,7 +78,7 @@ function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]
       "What must transfer to Engineering?",
     ];
   if (workspace === "proposedNetwork") return ["Explain this proposed network", "What should the customer review?", "What is still non-authoritative?"];
-  if (workspace === "preliminaryProposal") return ["Explain this preliminary proposal", "What assumptions matter?", "What blocks Route Engineering handoff?"];
+  if (workspace === "preliminaryProposal") return ["Explain this preliminary proposal", "What assumptions matter?", "What blocks Engineering Certification handoff?"];
   if (workspace === "inventory") return ["Summarize this inventory graph", "Identify graph anomalies", "What should I inspect next?"];
   if (workspace === "inventoryRecovery") return ["Which graphs are browser only?", "What should be pushed to the server?", "Summarize sync failures"];
   if (workspace === "graphViewer") return ["Explain the selected graph context", "Summarize route structure", "Suggest extension candidates"];
@@ -101,11 +101,11 @@ function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]
     ];
   if (workspace === "routeEngineering")
     return [
-      "Why is this route blocked?",
-      "What evidence is missing?",
-      "Can this route produce an authoritative quote?",
-      "Compare route feet to crow-fly feet.",
-      "What must happen before certification?",
+      "What blocks package certification?",
+      "Which PD-001 checks need exceptions?",
+      "Which constraints remain unresolved?",
+      "Summarize object moves and redlines.",
+      "What is ready for ScopeVersion promotion?",
     ];
   if (workspace === "portfolio")
     return [

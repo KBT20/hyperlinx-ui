@@ -44,6 +44,7 @@ export const INVENTORY_OWNERSHIP_CLASSES = {
 };
 
 const LAYER_1_PRODUCTS = [
+  ["POINT_TO_POINT_LONG_HAUL_CONDUIT_FIBER", "Point-to-Point Long Haul Conduit & Fiber", "Transport Infrastructure", "POINT_TO_POINT_LONG_HAUL_CONDUIT_FIBER", ["long haul", "linear topology", "conduit", "fiber", "point-to-point"]],
   ["PRODUCT-L1-PROTECTED-DARK-FIBER-IRU", "Protected Dark Fiber IRU", "Infrastructure", "DARK_FIBER_IRU", ["fiber", "route topology", "physical protection", "diversity"]],
   ["PRODUCT-L1-UNPROTECTED-DARK-FIBER-IRU", "Unprotected Dark Fiber IRU", "Infrastructure", "DARK_FIBER_IRU", ["fiber", "route topology"]],
   ["PRODUCT-L1-DARK-FIBER-LEASE", "Dark Fiber Lease", "Infrastructure", "DARK_FIBER_LEASE", ["fiber", "lease terms", "operations"]],

@@ -10,6 +10,7 @@ import type {
 } from "../api/teralinxRuntime";
 import type { CommercialCorridorDraft, CommercialCorridorSegment } from "./CommercialCorridorDraftEngine";
 import type { OpportunityQuickQuote } from "./OpportunityScoutEngine";
+import type { ProductDoctrine, ProductDoctrineAssembly } from "../products/ProductDoctrineContracts";
 
 type JsonObject = Record<string, unknown>;
 type ValidationTuple = [string, boolean];
@@ -32,6 +33,8 @@ export type IOFPackageAssemblyInput = {
   objectInventory?: unknown[];
   pricing?: unknown;
   validation?: ValidationInput[];
+  productDoctrine?: ProductDoctrine | null;
+  productDoctrineAssembly?: ProductDoctrineAssembly | null;
   selectedRoutePlans?: unknown[];
   assignedEngineerId?: string;
   assignedEngineer?: string;
@@ -348,6 +351,7 @@ function buildValidation(args: {
   geometryReferences: string[];
   pricing: unknown;
   validation?: ValidationInput[];
+  productDoctrineAssembly?: ProductDoctrineAssembly | null;
 }): IofPackageValidation {
   const proposal = args.proposal;
   const checks = [
@@ -381,6 +385,23 @@ function buildValidation(args: {
       label: "No ScopeVersion created by Commercial assembly",
       status: "PASS",
     },
+    ...(args.productDoctrineAssembly ? [
+      {
+        key: "product-doctrine-assembly",
+        label: "Product Doctrine Assembly",
+        status: args.productDoctrineAssembly.validationSummary.status,
+      },
+      {
+        key: "product-doctrine-scopeversion-gate",
+        label: "Product Doctrine blocks commercial ScopeVersion creation",
+        status: args.productDoctrineAssembly.rules.scopeVersionCreationAllowedFromCommercial === false ? "PASS" : "FAIL",
+      },
+      {
+        key: "product-doctrine-engineering-gate",
+        label: "Product Doctrine requires Engineering certification",
+        status: args.productDoctrineAssembly.rules.engineeringCertificationRequired === true ? "PASS" : "FAIL",
+      },
+    ] : []),
     ...normalizeValidationInputs(args.validation),
   ];
   const passCount = checks.filter((check) => check.status === "PASS").length;
@@ -705,10 +726,14 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
   const runtimeEvidenceIds = uniqueStrings([proposal.runtimeEvidenceIds, input.runtimeEvidenceIds]);
   const existingInventoryReferences = uniqueStrings([proposal.existingInventoryReferences, input.existingInventoryReferences, objectInventoryIds]);
   const customerDesignReferences = uniqueStrings([proposal.customerDesignReferences, input.customerDesignReferences, input.designArtifacts?.map(designArtifactId)]);
-  const stations = buildStationObjects(packageId, input.commercialDraft, input.stationing);
-  const structures = buildStructureObjects(packageId, input.commercialDraft);
+  const doctrineAssembly = input.productDoctrineAssembly ?? null;
+  const stations = doctrineAssembly?.stations ?? buildStationObjects(packageId, input.commercialDraft, input.stationing);
+  const structures = doctrineAssembly?.structureAssembly.structures ?? buildStructureObjects(packageId, input.commercialDraft);
+  const doctrineObjects = doctrineAssembly?.objects ?? [];
+  const packageObjects = doctrineObjects.length ? doctrineObjects : input.objectInventory ?? [];
   const dependencies = uniqueStrings([
     `${packageId}:DEPENDENCY:PROPOSAL`,
+    input.productDoctrine?.doctrineId ? `${packageId}:DEPENDENCY:PRODUCT-DOCTRINE` : "",
     `${packageId}:DEPENDENCY:DESIGN`,
     `${packageId}:DEPENDENCY:STATIONING`,
     `${packageId}:DEPENDENCY:PRICING`,
@@ -733,7 +758,7 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     runtimeEvidenceIds,
   });
   const proposedIofUnits = [...proposedRouteUnits, ...proposedStructureUnits];
-  const pricing = input.pricing ?? proposal.pricingSummary ?? input.commercialDraft?.transparentEstimate ?? input.quickQuote;
+  const pricing = input.pricing ?? doctrineAssembly?.pricingSummary ?? proposal.pricingSummary ?? input.commercialDraft?.transparentEstimate ?? input.quickQuote;
   const validation = buildValidation({
     packageId,
     timestamp,
@@ -742,6 +767,7 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     geometryReferences,
     pricing,
     validation: input.validation,
+    productDoctrineAssembly: doctrineAssembly,
   });
   const readiness = packageReadiness(validation, proposedIofUnits);
   const engineeringRequirements = [
@@ -755,6 +781,13 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
       label: "ScopeVersion creation remains blocked until Engineering certification completes.",
       noScopeVersionCreation: true,
     },
+    ...(input.productDoctrine ? [{
+      requirementId: `${packageId}:ENGINEERING-REQ:${input.productDoctrine.doctrineId}`,
+      label: `${input.productDoctrine.productName} doctrine requires Engineering certification before ScopeVersion.`,
+      doctrineId: input.productDoctrine.doctrineId,
+      doctrineVersion: input.productDoctrine.doctrineVersion,
+      noScopeVersionCreation: true,
+    }] : []),
   ];
   const proposalDocumentReferences = uniqueStrings([
     proposal.proposalDocumentReferences,
@@ -846,6 +879,9 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
       constructionMix: draft?.constructionMix,
       graphSummary: graphSummary(input.graph),
       designArtifactCount: input.designArtifacts?.length ?? 0,
+      doctrineId: input.productDoctrine?.doctrineId,
+      productDoctrineVersion: input.productDoctrine?.doctrineVersion,
+      quantitySummary: doctrineAssembly?.quantitySummary,
       validationStatus: validation.status,
     },
     customerSummary: {
@@ -885,6 +921,8 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
         stationing: stations.length,
         objectInventory: input.objectInventory?.length ?? 0,
         pricing: Boolean(pricing),
+        productDoctrine: Boolean(input.productDoctrine),
+        productDoctrineAssembly: Boolean(doctrineAssembly),
         validationOutputs: input.validation?.length ?? 0,
       },
       noEngineeringRegenerationRequired: true,
@@ -895,11 +933,32 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     validation,
     packageDifferences,
     proposedIofUnits,
-    route: draft?.routeSegments ?? (quickQuote ? [{ routeId: quickQuote.candidateId, routeMiles: quickQuote.routeMiles, geometry: quickQuote.geometry }] : []),
+    productDoctrine: input.productDoctrine ?? undefined,
+    doctrineId: input.productDoctrine?.doctrineId,
+    productDoctrineVersion: input.productDoctrine?.doctrineVersion,
+    productDoctrineRules: input.productDoctrine?.rules,
+    productDoctrineAssembly: doctrineAssembly ?? undefined,
+    aSite: doctrineAssembly?.aSite,
+    zSite: doctrineAssembly?.zSite,
+    azSites: doctrineAssembly ? [doctrineAssembly.aSite, doctrineAssembly.zSite].filter(Boolean) : undefined,
+    osrmRoute: doctrineAssembly?.osrmRoute,
+    centerline: doctrineAssembly?.centerline,
+    centerlineId: doctrineAssembly?.centerlineId,
+    spine: doctrineAssembly?.spine,
+    routeSegments: doctrineAssembly?.routeSegments,
+    conduitAssembly: doctrineAssembly?.conduitAssembly,
+    fiberAssembly: doctrineAssembly?.fiberAssembly,
+    structureAssembly: doctrineAssembly?.structureAssembly,
+    crossingAssembly: doctrineAssembly?.crossingAssembly,
+    quantitySummary: doctrineAssembly?.quantitySummary,
+    pricingSummary: doctrineAssembly?.pricingSummary ?? pricing,
+    validationSummary: doctrineAssembly?.validationSummary,
+    engineeringManifest: doctrineAssembly?.engineeringManifest,
+    route: doctrineAssembly?.routeSegments ?? draft?.routeSegments ?? (quickQuote ? [{ routeId: quickQuote.candidateId, routeMiles: quickQuote.routeMiles, geometry: quickQuote.geometry }] : []),
     stations,
     structures,
     dependencies,
-    objects: input.objectInventory ?? [],
+    objects: packageObjects,
     relationships: runtimeRelationshipIds.map((relationshipId) => ({ relationshipId, source: "proposal.runtimeRelationshipIds" })),
     evidence: runtimeEvidenceIds.map((evidenceId) => ({ evidenceId, source: "proposal.runtimeEvidenceIds" })),
     proposalDocumentReferences,

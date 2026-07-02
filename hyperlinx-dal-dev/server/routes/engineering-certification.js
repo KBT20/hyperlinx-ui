@@ -42,6 +42,13 @@ function unique(values) {
   return [...new Set(asArray(values).filter(Boolean).map(String))];
 }
 
+function stableIdPart(value, fallback = "UNKNOWN") {
+  return String(value ?? fallback)
+    .replace(/[^A-Za-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120) || fallback;
+}
+
 function numeric(value, fallback = 0) {
   const next = Number(value);
   return Number.isFinite(next) ? next : fallback;
@@ -190,6 +197,11 @@ function normalizeDraftPackage(raw = {}) {
     objects: asArray(raw.objects),
     relationships: asArray(raw.relationships),
     evidence: asArray(raw.evidence),
+    engineeringConstraints: asArray(raw.engineeringConstraints ?? raw.constraints),
+    objectMoveHistory: asArray(raw.objectMoveHistory),
+    redlineRevisionHistory: asArray(raw.redlineRevisionHistory),
+    doctrineExceptions: asArray(raw.doctrineExceptions),
+    engineeringRevisionMetadata: asArray(raw.engineeringRevisionMetadata),
     proposalDocumentReferences: unique(asArray(raw.proposalDocumentReferences)),
     customerRequests: asArray(raw.customerRequests),
     commercialNotes: asArray(raw.commercialNotes),
@@ -697,6 +709,74 @@ async function persistDraftPackage(record, user, eventType = "runtime.iof_packag
   return next;
 }
 
+function engineeringIntakeIdForPackage(packageId) {
+  return `ENGINEERING-INTAKE-${stableIdPart(packageId)}`;
+}
+
+async function persistEngineeringIntakeStatus(packageRecord, user, status, extras = {}) {
+  const timestamp = nowIso();
+  const intakeId = engineeringIntakeIdForPackage(packageRecord.packageId);
+  const existing = await loadRecord(DIRS.engineeringIntakes, intakeId).catch(() => null);
+  const next = {
+    ...(existing ?? {}),
+    intakeId,
+    packageId: packageRecord.packageId,
+    draftPackageId: packageRecord.draftPackageId ?? packageRecord.packageId,
+    status,
+    workflowStatus: status === "CERTIFIED" ? "CERTIFIED_IOF_PACKAGE" : "ENGINEERING_INTAKE",
+    lifecycleState: status,
+    authority: "ENGINEERING_INTAKE",
+    customerId: packageRecord.customerId,
+    customerName: packageRecord.customerSummary?.name ?? packageRecord.customerName ?? packageRecord.customerId,
+    accountId: packageRecord.accountId,
+    opportunityId: packageRecord.opportunityId,
+    proposalId: packageRecord.proposalId,
+    productId: packageRecord.productId,
+    productName: packageRecord.productName,
+    doctrineId: packageRecord.doctrineId,
+    productDoctrineVersion: packageRecord.productDoctrineVersion,
+    packageRevision: packageRecord.packageRevision,
+    assignedEngineerId: packageRecord.assignedEngineerId,
+    assignedEngineer: packageRecord.assignedEngineer || user.name,
+    commercialRevisionLocked: Boolean(packageRecord.commercialRevisionLocked ?? existing?.commercialRevisionLocked),
+    submittedAt: packageRecord.submittedAt ?? existing?.submittedAt,
+    noScopeVersionCreation: true,
+    createdAt: existing?.createdAt ?? timestamp,
+    updatedAt: timestamp,
+    ...extras,
+  };
+  await persistRecord(DIRS.engineeringIntakes, intakeId, next);
+  return next;
+}
+
+async function openDraftPackageForEngineering(packageId, user) {
+  const raw = await loadRecord(DIRS.iofPackages, packageId).catch(() => null);
+  if (!raw) return null;
+  const draft = normalizeDraftPackage(raw);
+  if (draft.status !== "SUBMITTED_TO_ENGINEERING") return decorateDraftPackageForResponse(draft);
+  const opened = await persistDraftPackage({
+    ...draft,
+    status: "UNDER_ENGINEERING_REVIEW",
+    workflowStatus: "ENGINEERING_CERTIFICATION",
+    lifecycleState: "UNDER_ENGINEERING_REVIEW",
+    authority: "ENGINEERING_CERTIFICATION",
+    engineeringStatus: "UNDER_REVIEW",
+    engineeringReadiness: "UNDER_ENGINEERING_REVIEW",
+    assignedEngineerId: draft.assignedEngineerId || user.userId,
+    assignedEngineer: draft.assignedEngineer || user.name,
+    engineeringOpenedAt: nowIso(),
+    engineeringOpenedBy: user.name,
+    engineeringOpenedById: user.userId,
+    noScopeVersionCreation: true,
+  }, user, "runtime.iof_package.engineering_opened", "Engineering opened the submitted Draft IOF Package without proposal regeneration.");
+  await persistEngineeringIntakeStatus(opened, user, "UNDER_ENGINEERING_REVIEW", {
+    openedAt: opened.engineeringOpenedAt,
+    openedBy: user.name,
+    openedById: user.userId,
+  });
+  return decorateDraftPackageForResponse(opened);
+}
+
 function packageQueueItem(record) {
   const draft = normalizeDraftPackage(record);
   return {
@@ -735,7 +815,7 @@ export async function listReviewQueue() {
   const records = await listRecords(DIRS.iofPackages);
   return sortedByUpdated(records
     .map(normalizeDraftPackage)
-    .filter((record) => !["CERTIFIED", "CLOSED", "ARCHIVED"].includes(record.status))
+    .filter((record) => record.status === "SUBMITTED_TO_ENGINEERING")
     .map(packageQueueItem));
 }
 
@@ -1101,6 +1181,311 @@ async function handleReturnToCommercial(req, res, user, packageId) {
   jsonResponse(res, 200, { iofPackage: returned });
 }
 
+const CONSTRAINT_CATEGORIES = new Set([
+  "ROW",
+  "utility conflict",
+  "railroad",
+  "DOT / highway",
+  "water crossing",
+  "environmental",
+  "floodplain",
+  "rock / geology",
+  "bridge attachment",
+  "power availability",
+  "permit jurisdiction",
+  "customer requested change",
+]);
+
+const STATION_ATTACHED_OBJECT_TYPES = new Set([
+  "REGEN",
+  "REGENERATION",
+  "REGENERATION_FACILITY",
+  "ILA",
+  "ILA_FACILITY",
+  "VAULT",
+  "HANDHOLE",
+  "SPLICE_CASE",
+  "MARKER",
+  "PULL_POINT",
+]);
+
+function objectIdentity(record = {}) {
+  return String(record.objectId ?? record.unitId ?? record.structureId ?? record.id ?? record.runtimeObjectId ?? "");
+}
+
+function objectType(record = {}) {
+  return String(
+    record.metadata?.structureType ??
+    record.structureType ??
+    record.unitType ??
+    record.objectType ??
+    record.type ??
+    record.classification ??
+    "ENGINEERING_OBJECT"
+  ).toUpperCase();
+}
+
+function objectStation(record = {}) {
+  return String(record.stationId ?? record.station ?? record.metadata?.stationId ?? record.metadata?.station ?? "");
+}
+
+function stationFeet(record = {}, stationReference = "") {
+  const stations = asArray(record.stations);
+  const station = stations.find((item) =>
+    String(item?.stationId ?? item?.id ?? "") === stationReference ||
+    String(item?.label ?? item?.stationLabel ?? "") === stationReference
+  );
+  if (!station) return undefined;
+  const feet = numeric(station.stationFeet ?? station.measureFeet ?? station.feet, Number.NaN);
+  return Number.isFinite(feet) ? feet : undefined;
+}
+
+function patchPackageObjectCollections(draft, objectId, patcher) {
+  const patchCollection = (items) => asArray(items).map((item) => {
+    if (objectIdentity(item) !== objectId) return item;
+    return patcher(item);
+  });
+  return {
+    ...draft,
+    objects: patchCollection(draft.objects),
+    structures: patchCollection(draft.structures),
+    proposedIofUnits: patchCollection(draft.proposedIofUnits),
+  };
+}
+
+function findPackageObjectRecord(draft, objectId) {
+  return [
+    ...asArray(draft.objects),
+    ...asArray(draft.structures),
+    ...asArray(draft.proposedIofUnits),
+  ].find((item) => objectIdentity(item) === objectId);
+}
+
+async function handleAddConstraint(req, res, user, packageId) {
+  const draft = await loadDraftPackage(packageId).catch(() => null);
+  if (!draft) {
+    errorResponse(res, 404, `Draft IOF Package not found: ${packageId}`);
+    return;
+  }
+  if (draft.status === "CERTIFIED") {
+    errorResponse(res, 409, "Certified IOF Packages are frozen. Create a new Commercial revision cycle.");
+    return;
+  }
+  const body = await readRequestJson(req);
+  const timestamp = nowIso();
+  const category = CONSTRAINT_CATEGORIES.has(String(body.category)) ? String(body.category) : "ROW";
+  const constraint = {
+    constraintId: String(body.constraintId ?? `${draft.packageId}:CONSTRAINT:${Date.now()}`),
+    category,
+    station: String(body.station ?? body.stationId ?? ""),
+    stationRange: String(body.stationRange ?? ""),
+    objectReference: String(body.objectReference ?? body.objectId ?? ""),
+    severity: ["LOW", "MEDIUM", "HIGH", "CRITICAL"].includes(String(body.severity)) ? String(body.severity) : "MEDIUM",
+    status: ["OPEN", "IN_REVIEW", "RESOLVED", "ACCEPTED"].includes(String(body.status)) ? String(body.status) : "OPEN",
+    engineeringDisposition: String(body.engineeringDisposition ?? body.disposition ?? "PENDING_ENGINEERING_DISPOSITION"),
+    notesEvidence: String(body.notesEvidence ?? body.notes ?? body.evidence ?? ""),
+    actor: user.name,
+    actorId: user.userId,
+    source: "Engineering Certification",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const saved = await persistDraftPackage({
+    ...draft,
+    engineeringConstraints: [...asArray(draft.engineeringConstraints), constraint],
+    updatedAt: timestamp,
+  }, user, "runtime.engineering_constraint.added", "Engineering constraint added to Draft IOF Package.", { constraintId: constraint.constraintId });
+  jsonResponse(res, 200, { draftPackage: saved, iofPackage: saved, constraint });
+}
+
+async function handleMoveObject(req, res, user, packageId) {
+  const draft = await loadDraftPackage(packageId).catch(() => null);
+  if (!draft) {
+    errorResponse(res, 404, `Draft IOF Package not found: ${packageId}`);
+    return;
+  }
+  if (draft.status === "CERTIFIED") {
+    errorResponse(res, 409, "Certified IOF Packages are frozen. Create a new Commercial revision cycle.");
+    return;
+  }
+  const body = await readRequestJson(req);
+  const objectId = String(body.objectId ?? "");
+  const target = String(body.newStation ?? body.station ?? body.stationId ?? "");
+  const reason = String(body.reason ?? "").trim();
+  const authority = String(body.authority ?? "").trim();
+  if (!objectId || !target || !reason || !authority) {
+    errorResponse(res, 400, "Object move requires objectId, newStation, reason, and authority.");
+    return;
+  }
+  const object = findPackageObjectRecord(draft, objectId);
+  if (!object) {
+    errorResponse(res, 404, `Engineering object not found: ${objectId}`);
+    return;
+  }
+  const type = objectType(object);
+  if (!STATION_ATTACHED_OBJECT_TYPES.has(type)) {
+    errorResponse(res, 409, `Object ${objectId} is ${type} and cannot be station-moved under Engineering Certification.`);
+    return;
+  }
+  const previousStation = objectStation(object);
+  const previousFeet = stationFeet(draft, previousStation);
+  const newFeet = stationFeet(draft, target);
+  const distanceDelta = Number.isFinite(previousFeet) && Number.isFinite(newFeet)
+    ? Math.round(newFeet - previousFeet)
+    : numeric(body.distanceDelta, 0);
+  const timestamp = nowIso();
+  const move = {
+    moveId: String(body.moveId ?? `${draft.packageId}:OBJECT-MOVE:${Date.now()}`),
+    objectId,
+    objectType: type,
+    previousStation,
+    newStation: target,
+    distanceDelta,
+    reason,
+    authority,
+    actor: user.name,
+    actorId: user.userId,
+    timestamp,
+    impactSummary: String(body.impactSummary ?? `Object station reference changed by ${distanceDelta} ft. Station geometry was not moved.`),
+  };
+  const patched = patchPackageObjectCollections(draft, objectId, (item) => ({
+    ...item,
+    stationId: target,
+    station: target,
+    metadata: {
+      ...(item.metadata ?? {}),
+      stationId: target,
+      previousStation,
+      latestObjectMoveId: move.moveId,
+    },
+    engineeringDecision: "OBJECT_STATION_REFERENCE_MOVED",
+    updatedAt: timestamp,
+  }));
+  const revision = {
+    revisionId: `${draft.packageId}:ENGINEERING-REVISION:OBJECT-MOVE:${Date.now()}`,
+    revisionType: "OBJECT_MOVE",
+    packageRevision: numeric(draft.packageRevision, 0),
+    objectMoveId: move.moveId,
+    createdAt: timestamp,
+    actor: user.name,
+    noStationGeometryMutation: true,
+  };
+  const saved = await persistDraftPackage({
+    ...patched,
+    objectMoveHistory: [...asArray(draft.objectMoveHistory), move],
+    engineeringRevisionMetadata: [...asArray(draft.engineeringRevisionMetadata), revision],
+    updatedAt: timestamp,
+  }, user, "runtime.engineering_object.move", "Engineering moved station-attached object reference.", { objectMoveId: move.moveId });
+  jsonResponse(res, 200, { draftPackage: saved, iofPackage: saved, objectMove: move });
+}
+
+async function handleCreateRouteRedline(req, res, user, packageId) {
+  const draft = await loadDraftPackage(packageId).catch(() => null);
+  if (!draft) {
+    errorResponse(res, 404, `Draft IOF Package not found: ${packageId}`);
+    return;
+  }
+  if (draft.status === "CERTIFIED") {
+    errorResponse(res, 409, "Certified IOF Packages are frozen. Create a new Commercial revision cycle.");
+    return;
+  }
+  const body = await readRequestJson(req);
+  const reason = String(body.reason ?? "").trim();
+  const authority = String(body.authority ?? "").trim();
+  if (!reason || !authority) {
+    errorResponse(res, 400, "Route redline requires reason and authority.");
+    return;
+  }
+  const timestamp = nowIso();
+  const nextRevision = numeric(draft.packageRevision, 0) + 1;
+  const redline = {
+    redlineId: String(body.redlineId ?? `${draft.packageId}:ROUTE-REDLINE:${Date.now()}`),
+    packageRevision: nextRevision,
+    status: "ENGINEERING_REDLINE_CREATED",
+    reason,
+    description: String(body.description ?? ""),
+    authority,
+    actor: user.name,
+    actorId: user.userId,
+    timestamp,
+    affectedStations: String(body.affectedStations ?? ""),
+    impactSummary: String(body.impactSummary ?? "Route redline requires governed regeneration before ScopeVersion promotion."),
+    regenerationRequired: [
+      "route geometry",
+      "centerline",
+      "spine",
+      "graph",
+      "stations",
+      "object station references",
+      "assemblies",
+      "quantities",
+      "pricing",
+      "validation",
+      "Draft IOF Package revision",
+    ],
+    commercialRevisionZeroImmutable: true,
+  };
+  const revision = {
+    revisionId: `${draft.packageId}:ENGINEERING-REVISION:REDLINE:${Date.now()}`,
+    revisionType: "ROUTE_REDLINE",
+    packageRevision: nextRevision,
+    redlineId: redline.redlineId,
+    createdAt: timestamp,
+    actor: user.name,
+    requiresDraftPackageRegeneration: true,
+  };
+  const saved = await persistDraftPackage({
+    ...draft,
+    packageRevision: nextRevision,
+    redlineRevisionHistory: [...asArray(draft.redlineRevisionHistory), redline],
+    engineeringRevisionMetadata: [...asArray(draft.engineeringRevisionMetadata), revision],
+    engineeringReadiness: "ROUTE_REDLINE_REQUIRES_COMMERCIAL_REVISION",
+    updatedAt: timestamp,
+  }, user, "runtime.engineering_route_redline.created", "Engineering route redline created new package revision metadata.", { redlineId: redline.redlineId });
+  jsonResponse(res, 200, { draftPackage: saved, iofPackage: saved, redline });
+}
+
+async function handleRecordDoctrineException(req, res, user, packageId) {
+  const draft = await loadDraftPackage(packageId).catch(() => null);
+  if (!draft) {
+    errorResponse(res, 404, `Draft IOF Package not found: ${packageId}`);
+    return;
+  }
+  if (draft.status === "CERTIFIED") {
+    errorResponse(res, 409, "Certified IOF Packages are frozen. Create a new Commercial revision cycle.");
+    return;
+  }
+  const body = await readRequestJson(req);
+  const doctrineRule = String(body.doctrineRule ?? body.rule ?? "").trim();
+  const actualCondition = String(body.actualCondition ?? body.condition ?? "").trim();
+  const reason = String(body.reason ?? "").trim();
+  const approvalAuthority = String(body.approvalAuthority ?? body.authority ?? "").trim();
+  const impactSummary = String(body.impactSummary ?? "").trim();
+  if (!doctrineRule || !actualCondition || !reason || !approvalAuthority || !impactSummary) {
+    errorResponse(res, 400, "Doctrine exception requires doctrineRule, actualCondition, reason, approvalAuthority, and impactSummary.");
+    return;
+  }
+  const timestamp = nowIso();
+  const exception = {
+    exceptionId: String(body.exceptionId ?? `${draft.packageId}:DOCTRINE-EXCEPTION:${Date.now()}`),
+    doctrineRule,
+    actualCondition,
+    reason,
+    approvalAuthority,
+    impactSummary,
+    actor: user.name,
+    actorId: user.userId,
+    approvedAt: timestamp,
+    status: "APPROVED",
+  };
+  const saved = await persistDraftPackage({
+    ...draft,
+    doctrineExceptions: [...asArray(draft.doctrineExceptions), exception],
+    updatedAt: timestamp,
+  }, user, "runtime.engineering_doctrine_exception.recorded", "Engineering doctrine exception recorded.", { exceptionId: exception.exceptionId });
+  jsonResponse(res, 200, { draftPackage: saved, iofPackage: saved, doctrineException: exception });
+}
+
 function createExecutionCertificate(certifiedPackage, checklist, user, scopeVersionId = "") {
   const timestamp = nowIso();
   const certifiedUnits = asArray(certifiedPackage.certifiedIofUnits);
@@ -1372,83 +1757,132 @@ async function handleCertifyPackage(req, res, user, packageId) {
     errorResponse(res, 409, "Engineering certification checklist is incomplete.");
     return;
   }
+  const unresolvedConstraints = asArray(draft.engineeringConstraints).filter((constraint) => !["RESOLVED", "ACCEPTED"].includes(String(constraint?.status ?? "")));
+  if (unresolvedConstraints.length) {
+    errorResponse(res, 409, "Engineering constraints must be resolved or explicitly accepted before certification.");
+    return;
+  }
+  const approvedExceptionRules = new Set(asArray(draft.doctrineExceptions).map((exception) => String(exception?.doctrineRule ?? exception?.rule ?? "")));
+  const unexceptedFailures = asArray(draft.validation?.checks).filter((check) => {
+    const status = String(check?.status ?? "").toUpperCase();
+    if (status !== "FAIL") return false;
+    const key = String(check?.key ?? "");
+    const label = String(check?.label ?? "");
+    return !approvedExceptionRules.has(key) && !approvedExceptionRules.has(label);
+  });
+  if (unexceptedFailures.length) {
+    errorResponse(res, 409, "PD-001 compliance failures require approved doctrine exceptions before certification.");
+    return;
+  }
   const timestamp = nowIso();
   const certifiedPackageId = String(body.certifiedPackageId ?? `CERT-IOF-${draft.packageId}`);
+  const constraintSummary = {
+    total: asArray(draft.engineeringConstraints).length,
+    resolved: asArray(draft.engineeringConstraints).filter((constraint) => String(constraint?.status ?? "").toUpperCase() === "RESOLVED").length,
+    accepted: asArray(draft.engineeringConstraints).filter((constraint) => String(constraint?.status ?? "").toUpperCase() === "ACCEPTED").length,
+    open: 0,
+  };
+  const approvedExceptions = asArray(draft.doctrineExceptions);
+  const doctrineStatus = approvedExceptions.length ? "PASS_WITH_APPROVED_EXCEPTIONS" : "PASS";
   const certifiedPackage = {
     ...draft,
     certifiedPackageId,
     sourcePackageId: draft.packageId,
     packageId: certifiedPackageId,
     sourceDraftPackageId: draft.packageId,
+    originalDraftIofPackageReference: {
+      packageId: draft.packageId,
+      draftPackageId: draft.draftPackageId,
+      packageRevision: draft.packageRevision,
+      commercialRevisionLocked: Boolean(draft.commercialRevisionLocked),
+      commercialLockedAt: draft.commercialLockedAt,
+    },
     status: "CERTIFIED",
     workflowStatus: "CERTIFIED_IOF_PACKAGE",
+    authority: "ENGINEERING_CERTIFIED_IOF_PACKAGE",
+    lifecycleState: "CERTIFIED",
+    certificationDate: timestamp,
     certifiedAt: timestamp,
+    engineer: user.name,
+    engineerId: user.userId,
     certifiedBy: user.name,
     certifiedById: user.userId,
+    doctrineStatus,
     engineeringChecklist: checklist,
+    engineeringReviewStatus: "CERTIFIED",
     certificationConfidence: checklist.certificationConfidence,
+    constraintSummary,
+    constraintsReviewed: asArray(draft.engineeringConstraints),
+    exceptionsApproved: approvedExceptions,
+    exceptions: approvedExceptions,
+    approvedExceptions,
+    redlineHistory: asArray(draft.redlineRevisionHistory),
+    redlineRevisionHistory: asArray(draft.redlineRevisionHistory),
+    objectMoveHistory: asArray(draft.objectMoveHistory),
+    engineeringManifest: draft.engineeringManifest ?? draft.manifest,
+    finalEngineeringManifest: draft.engineeringManifest ?? draft.manifest,
+    engineeringNotes: unique([
+      ...asArray(draft.engineeringNotes),
+      body.engineeringNote,
+      body.notes,
+      checklist.notes,
+    ]),
+    notes: body.notes ?? checklist.notes ?? "",
+    readiness: {
+      status: "CERTIFIED_IOF_PACKAGE_READY",
+      readyForScopeVersionCreation: true,
+      scopeVersionCreated: false,
+      noScopeVersionCreationDuringCertification: true,
+    },
+    readinessForScopeVersionPromotion: true,
+    certifiedId: certifiedPackageId,
     certifiedIofUnits: units.map((unit) => ({ ...unit, immutable: true, status: "CERTIFIED" })),
     proposedIofUnits: units.map((unit) => ({ ...unit, immutable: true, status: "CERTIFIED" })),
     immutable: true,
     executionAuthorized: false,
+    noScopeVersionCreation: true,
+    noServiceOrderCreation: true,
+    noMarketplaceCreation: true,
+    noControlCreation: true,
+    noFieldCreation: true,
+    noTwinCreation: true,
+    noPaymentsCreation: true,
+    noCustomerWorkspaceCreation: true,
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-  const certificate = createExecutionCertificate(certifiedPackage, checklist, user);
-  await persistRecord(DIRS.certifiedIofPackages, certifiedPackageId, {
-    ...certifiedPackage,
-    executionAuthorizationCertificateId: certificate.certificateId,
+  await persistRecord(DIRS.certifiedIofPackages, certifiedPackageId, certifiedPackage);
+  await persistRuntimeMirror(certifiedPackage, user, "CERTIFIED-IOF", certifiedPackageId, {
+    status: "CERTIFIED",
+    noScopeVersionCreation: true,
   });
-  await persistCertificate(certificate);
   const frozenDraft = await persistDraftPackage({
     ...draft,
     status: "CERTIFIED",
     workflowStatus: "CERTIFIED_IOF_PACKAGE",
+    authority: "ENGINEERING_CERTIFICATION",
+    lifecycleState: "CERTIFIED",
+    engineeringStatus: "CERTIFIED",
     certifiedPackageId,
+    certifiedId: certifiedPackageId,
+    certificationDate: timestamp,
     certifiedAt: timestamp,
     certifiedBy: user.name,
     certifiedById: user.userId,
     proposedIofUnits: units.map((unit) => ({ ...unit, immutable: true })),
+    noScopeVersionCreation: true,
     immutable: true,
   }, user, "runtime.iof_package.certified", "Draft IOF Package certified by Engineering.");
   await appendHistory(frozenDraft, user, "runtime.engineering_checklist.completed", "Engineering Certification checklist completed.", { checklist });
-  const generated = await generateScopeVersion({ ...certifiedPackage, executionAuthorizationCertificateId: certificate.certificateId }, certificate, user);
-  const finalDraft = await persistDraftPackage({
-    ...frozenDraft,
-    scopeVersionId: generated.scopeVersion.scopeVersionId,
-    executionAuthorizationCertificateId: generated.certificate.certificateId,
-  }, user, "runtime.iof_package.execution_authorized", "Certified IOF Package authorized executable ScopeVersion creation.");
-  const workspaceSession = await updateRuntimeWorkspaceSession({
-    accountId: generated.certifiedPackage.accountId,
-    customerId: generated.certifiedPackage.customerId,
-    sessionUserId: generated.certifiedPackage.ownerId ?? generated.certifiedPackage.commercialOwnerId,
-    sessionUserName: generated.certifiedPackage.owner ?? generated.certifiedPackage.commercialOwner,
-    workspaceId: generated.certifiedPackage.workspaceId,
-    organizationId: generated.certifiedPackage.organizationId,
-    opportunityId: generated.certifiedPackage.opportunityId,
-    productId: generated.certifiedPackage.productId,
-    fulfillmentPlanId: generated.certifiedPackage.fulfillmentPlanId,
-    proposalId: generated.certifiedPackage.proposalId,
-    packageId: finalDraft.packageId,
-    certifiedPackageId: generated.certifiedPackage.certifiedPackageId,
-    scopeVersionId: generated.scopeVersion.scopeVersionId,
-    currentRuntimeObject: generated.scopeVersion.scopeVersionId,
-    currentAuthority: "EXECUTION",
-    currentLifecycleStage: "EXECUTION_AUTHORIZED",
-    selectedRoute: asArray(generated.certifiedPackage.geometryReferences)[0],
-    selectedGraph: asArray(generated.certifiedPackage.runtimeObjectIds)[0],
-    selectedPackage: finalDraft.packageId,
-    selectedProposalRevision: generated.certifiedPackage.sourceProposalVersion,
-    engineeringRevision: finalDraft.packageRevision,
-    sessionState: "ACTIVE",
-    lastActivity: "EXECUTION_AUTHORIZED",
-  }, user, "AUTHORITY_TRANSFER_ENGINEERING_TO_EXECUTION", "Engineering certification persisted WorkspaceSession execution authority.");
+  await persistEngineeringIntakeStatus(frozenDraft, user, "CERTIFIED", {
+    certifiedAt: timestamp,
+    certifiedBy: user.name,
+    certifiedById: user.userId,
+    certifiedPackageId,
+  });
   jsonResponse(res, 200, {
-    draftPackage: finalDraft,
-    certifiedIofPackage: generated.certifiedPackage,
-    executionAuthorizationCertificate: generated.certificate,
-    scopeVersion: generated.scopeVersion,
-    workspaceSession,
+    draftPackage: frozenDraft,
+    certifiedIofPackage: certifiedPackage,
   });
 }
 
@@ -1562,8 +1996,7 @@ export async function handleEngineeringCertification(req, res, pathname) {
   }
 
   if (req.method === "GET" && parts[0] === "draft-packages" && parts[1] && parts.length === 2) {
-    const raw = await loadRecord(DIRS.iofPackages, parts[1]).catch(() => null);
-    const draft = raw ? await decorateDraftPackageForResponse(raw) : null;
+    const draft = await openDraftPackageForEngineering(parts[1], user);
     if (!draft) errorResponse(res, 404, `Draft IOF Package not found: ${parts[1]}`);
     else jsonResponse(res, 200, { iofPackage: draft, draftPackage: draft });
     return true;
@@ -1576,6 +2009,26 @@ export async function handleEngineeringCertification(req, res, pathname) {
 
   if (req.method === "POST" && parts[0] === "draft-packages" && parts[1] && parts[2] === "return-commercial") {
     await handleReturnToCommercial(req, res, user, parts[1]);
+    return true;
+  }
+
+  if (req.method === "POST" && parts[0] === "draft-packages" && parts[1] && parts[2] === "constraints") {
+    await handleAddConstraint(req, res, user, parts[1]);
+    return true;
+  }
+
+  if (req.method === "POST" && parts[0] === "draft-packages" && parts[1] && parts[2] === "object-moves") {
+    await handleMoveObject(req, res, user, parts[1]);
+    return true;
+  }
+
+  if (req.method === "POST" && parts[0] === "draft-packages" && parts[1] && parts[2] === "route-redlines") {
+    await handleCreateRouteRedline(req, res, user, parts[1]);
+    return true;
+  }
+
+  if (req.method === "POST" && parts[0] === "draft-packages" && parts[1] && parts[2] === "doctrine-exceptions") {
+    await handleRecordDoctrineException(req, res, user, parts[1]);
     return true;
   }
 

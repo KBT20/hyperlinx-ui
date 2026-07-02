@@ -148,6 +148,123 @@ async function persistCommercialPackageRuntime(packageRecord, user) {
   });
 }
 
+async function persistEngineeringIntakeRecord(draftPackage, user) {
+  const timestamp = nowIso();
+  const intakeId = `ENGINEERING-INTAKE-${stableIdPart(draftPackage.packageId)}`;
+  const intakeRecord = {
+    intakeId,
+    packageId: draftPackage.packageId,
+    draftPackageId: draftPackage.draftPackageId ?? draftPackage.packageId,
+    status: "SUBMITTED_TO_ENGINEERING",
+    workflowStatus: "ENGINEERING_INTAKE",
+    lifecycleState: "AWAITING_ENGINEERING_REVIEW",
+    authority: "ENGINEERING_INTAKE",
+    customerId: draftPackage.customerId,
+    customerName: draftPackage.customerSummary?.name ?? draftPackage.customerName ?? draftPackage.customerId,
+    accountId: draftPackage.accountId,
+    opportunityId: draftPackage.opportunityId,
+    proposalId: draftPackage.proposalId,
+    productId: draftPackage.productId,
+    productName: draftPackage.productName,
+    doctrineId: draftPackage.doctrineId,
+    productDoctrineVersion: draftPackage.productDoctrineVersion,
+    packageRevision: draftPackage.packageRevision ?? draftPackage.revision ?? 0,
+    assignedEngineerId: draftPackage.assignedEngineerId ?? "",
+    assignedEngineer: draftPackage.assignedEngineer || "Unassigned",
+    commercialRevisionLocked: true,
+    submittedBy: user.name,
+    submittedById: user.userId,
+    submittedAt: draftPackage.submittedAt ?? timestamp,
+    openedAt: draftPackage.engineeringOpenedAt,
+    openedBy: draftPackage.engineeringOpenedBy,
+    certifiedAt: draftPackage.certifiedAt,
+    certifiedPackageId: draftPackage.certifiedPackageId,
+    noScopeVersionCreation: true,
+    createdAt: draftPackage.engineeringIntakeCreatedAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+  await persistRecord(DIRS.engineeringIntakes, intakeId, intakeRecord);
+  const runtimeObjectId = `RUNTIME-DRAFT-IOF-${stableIdPart(draftPackage.packageId)}`;
+  await persistRecord(DIRS.runtimeObjects, runtimeObjectId, {
+    runtimeObjectId,
+    objectId: draftPackage.packageId,
+    objectType: "DRAFT_IOF_PACKAGE",
+    sourceObjectType: "COMMERCIAL_DRAFT_IOF_PACKAGE",
+    sourceSystem: "IOFPackageAssemblyEngine",
+    organizationId: draftPackage.organizationId,
+    workspaceId: draftPackage.workspaceId,
+    ownerId: draftPackage.ownerId,
+    owner: draftPackage.owner,
+    proposalId: draftPackage.proposalId,
+    accountId: draftPackage.accountId,
+    customerId: draftPackage.customerId,
+    opportunityId: draftPackage.opportunityId,
+    lifecycleState: draftPackage.lifecycleState,
+    status: draftPackage.status,
+    workflowStatus: draftPackage.workflowStatus,
+    engineeringIntakeId: intakeId,
+    noScopeVersionCreation: true,
+    createdAt: draftPackage.createdAt,
+    updatedAt: timestamp,
+  });
+  await persistRecord(DIRS.runtimeHistory, `${draftPackage.packageId}:HISTORY:SUBMITTED_TO_ENGINEERING`, {
+    historyId: `${draftPackage.packageId}:HISTORY:SUBMITTED_TO_ENGINEERING`,
+    objectId: draftPackage.packageId,
+    runtimeObjectId,
+    objectType: "DRAFT_IOF_PACKAGE",
+    eventType: "COMMERCIAL_DRAFT_IOF_PACKAGE_SUBMITTED_TO_ENGINEERING",
+    actorId: user.userId,
+    actorName: user.name,
+    actorRole: user.role,
+    organizationId: draftPackage.organizationId,
+    workspaceId: draftPackage.workspaceId,
+    accountId: draftPackage.accountId,
+    customerId: draftPackage.customerId,
+    opportunityId: draftPackage.opportunityId,
+    proposalId: draftPackage.proposalId,
+    packageId: draftPackage.packageId,
+    engineeringIntakeId: intakeId,
+    authority: "COMMERCIAL",
+    noScopeVersionCreation: true,
+    timestamp,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    details: "Commercial locked the Draft IOF Package revision and submitted the same package object to Engineering Intake.",
+  });
+  return intakeRecord;
+}
+
+async function submitCommercialDraftPackageToEngineering(rawDraftPackage, user) {
+  const timestamp = nowIso();
+  const savedDraftPackage = normalizeCommercialDraftPackage(rawDraftPackage, user);
+  const submitted = {
+    ...savedDraftPackage,
+    status: "SUBMITTED_TO_ENGINEERING",
+    workflowStatus: "ENGINEERING_INTAKE",
+    lifecycleState: "SUBMITTED_TO_ENGINEERING",
+    engineeringStatus: "SUBMITTED",
+    engineeringReadiness: "SUBMITTED_TO_ENGINEERING",
+    commercialRevisionLocked: true,
+    commercialLockedAt: timestamp,
+    commercialLockedBy: user.name,
+    commercialLockedById: user.userId,
+    submittedAt: timestamp,
+    submittedToEngineeringAt: timestamp,
+    submittedBy: user.name,
+    submittedById: user.userId,
+    historyIds: uniqueStrings([
+      savedDraftPackage.historyIds,
+      `${savedDraftPackage.packageId}:HISTORY:COMMERCIAL_ASSEMBLED`,
+      `${savedDraftPackage.packageId}:HISTORY:SUBMITTED_TO_ENGINEERING`,
+    ]),
+    noScopeVersionCreation: true,
+    updatedAt: timestamp,
+  };
+  await persistRecord(DIRS.iofPackages, submitted.packageId, submitted);
+  const engineeringIntake = await persistEngineeringIntakeRecord(submitted, user);
+  return { draftPackage: submitted, iofPackage: submitted, engineeringIntake };
+}
+
 export async function handleCommercialIofPackages(req, res, pathname) {
   const normalizedPath = pathname.replace(/\/+$/, "");
   if (!normalizedPath.startsWith("/api/commercial/iof-packages")) return false;
@@ -167,9 +284,32 @@ export async function handleCommercialIofPackages(req, res, pathname) {
     const body = await readRequestJson(req);
     const raw = unwrapBody(body, "draftPackage", ["iofPackage", "package"]) ?? {};
     const draftPackage = normalizeCommercialDraftPackage(raw, user);
+    const existing = await loadRecord(DIRS.iofPackages, draftPackage.packageId).catch(() => null);
+    if (existing?.commercialRevisionLocked || ["SUBMITTED_TO_ENGINEERING", "UNDER_ENGINEERING_REVIEW", "CERTIFIED"].includes(String(existing?.status ?? ""))) {
+      errorResponse(res, 409, "Commercial revision is locked after Engineering submission.");
+      return true;
+    }
     await persistRecord(DIRS.iofPackages, draftPackage.packageId, draftPackage);
     await persistCommercialPackageRuntime(draftPackage, user);
     jsonResponse(res, 201, { draftPackage, iofPackage: draftPackage });
+    return true;
+  }
+
+  if (normalizedPath.startsWith("/api/commercial/iof-packages/") && normalizedPath.endsWith("/submit-engineering") && req.method === "POST") {
+    const packageId = decodeURIComponent(normalizedPath
+      .slice("/api/commercial/iof-packages/".length)
+      .replace(/\/submit-engineering$/, ""));
+    const body = await readRequestJson(req);
+    const bodyDraft = unwrapBody(body, "draftPackage", ["iofPackage", "package"]) ?? {};
+    const existing = await loadRecord(DIRS.iofPackages, packageId).catch(() => null);
+    const rawDraftPackage = {
+      ...(existing ?? {}),
+      ...(bodyDraft ?? {}),
+      packageId,
+      draftPackageId: bodyDraft.draftPackageId ?? existing?.draftPackageId ?? packageId,
+    };
+    const result = await submitCommercialDraftPackageToEngineering(rawDraftPackage, user);
+    jsonResponse(res, 200, result);
     return true;
   }
 

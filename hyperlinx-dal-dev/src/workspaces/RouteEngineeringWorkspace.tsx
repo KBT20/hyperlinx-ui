@@ -73,16 +73,16 @@ import type {
   EngineeringSegment,
   RouteEngineeringDraft,
 } from "../engineering/RouteEngineeringDraft";
+import EngineeringCertificationWorkspace from "./EngineeringCertificationWorkspace";
 
 type TargetType = "candidate" | "opportunity";
-type EngineeringWorkspaceMode = "SALES_ENGINEERING" | "ROUTE_ENGINEERING";
+type EngineeringWorkspaceMode = "ENGINEERING_CERTIFICATION" | "SALES_ENGINEERING" | "ROUTE_ENGINEERING";
 
 const ENGINEERING_WORKSPACE_MODE_KEY = "hyperlinx-dal-dev:engineering-workspace-mode:v1";
 
 function readEngineeringWorkspaceMode(): EngineeringWorkspaceMode {
-  if (typeof window === "undefined") return "SALES_ENGINEERING";
-  const value = window.sessionStorage.getItem(ENGINEERING_WORKSPACE_MODE_KEY);
-  return value === "ROUTE_ENGINEERING" ? "ROUTE_ENGINEERING" : "SALES_ENGINEERING";
+  if (typeof window === "undefined") return "ENGINEERING_CERTIFICATION";
+  return "ENGINEERING_CERTIFICATION";
 }
 
 function fmt(value: number | undefined) {
@@ -1394,31 +1394,21 @@ export default function RouteEngineeringWorkspace() {
       <div className="dal-panel">
         <div className="dal-panel-title-row">
           <div>
-            <h2>Engineering</h2>
-            <p>One shared Engineering Draft with Sales Engineering and Route Engineering interfaces.</p>
+            <h2>Engineering Certification</h2>
+            <p>Commercial Draft IOF Packages are projected for constructability review, exceptions, redlines, object moves, and certification.</p>
           </div>
-          <div className="engineering-mode-controls" aria-label="Engineering Mode">
-            <span>Engineering Mode</span>
-            <button
-              type="button"
-              className={engineeringMode === "SALES_ENGINEERING" ? "active-toggle" : undefined}
-              onClick={() => setEngineeringMode("SALES_ENGINEERING")}
-            >
-              Sales Engineering
-            </button>
-            <button
-              type="button"
-              className={engineeringMode === "ROUTE_ENGINEERING" ? "active-toggle" : undefined}
-              onClick={() => setEngineeringMode("ROUTE_ENGINEERING")}
-            >
-              Route Engineering
-            </button>
+          <div className="engineering-mode-controls" aria-label="Engineering Certification">
+            <span>Sales-to-Operations Gate</span>
             <button type="button" onClick={refresh}>Refresh DAL API</button>
           </div>
         </div>
         <div className="dal-status">{status}</div>
       </div>
 
+      <EngineeringCertificationWorkspace />
+
+      {engineeringMode !== "ENGINEERING_CERTIFICATION" ? (
+        <>
       <div className="route-engineering-map-first">
         <MapKernel
           specs={[...(routeSpec ? [routeSpec] : []), ...candidateRenderSpecs]}
@@ -2240,6 +2230,8 @@ export default function RouteEngineeringWorkspace() {
             <pre className="dal-json">{JSON.stringify({ certifiedRoute: evaluatedRoute, scopeVersionReference: referenceFromRoute(evaluatedRoute) }, null, 2)}</pre>
           ) : null}
         </div>
+      ) : null}
+        </>
       ) : null}
         </>
       ) : null}

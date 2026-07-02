@@ -20,6 +20,7 @@ export const DIRS = {
   products: path.join(DATA_ROOT, "products"),
   fulfillmentPlans: path.join(DATA_ROOT, "fulfillment-plans"),
   iofPackages: path.join(DATA_ROOT, "iof-packages"),
+  engineeringIntakes: path.join(DATA_ROOT, "engineering-intakes"),
   certifiedIofPackages: path.join(DATA_ROOT, "certified-iof-packages"),
   executionAuthorizationCertificates: path.join(DATA_ROOT, "execution-authorization-certificates"),
   closeEvents: path.join(DATA_ROOT, "close-events"),
