@@ -7,6 +7,7 @@ import type {
   StationAuthority,
   StationIndexedGraph,
 } from "../spine/SpineAuthorityContracts";
+import type { ObjectAddress, PD002AReviewObject } from "../doctrine/pd002/addressing/PD002AAddressingContracts";
 
 export type EngineeringComplianceStatus = "PASS" | "WARNING" | "FAIL" | "PENDING";
 
@@ -26,6 +27,7 @@ export const PD001_COMPLIANCE_CATEGORIES = [
   "station-to-coordinate",
   "graph",
   "objects",
+  "object addressing",
   "object attachment",
   "structures",
   "conduit",
@@ -139,6 +141,19 @@ export interface EngineeringCertificationProjection {
   stationAuthority?: StationAuthority;
   stationIndexedGraph?: StationIndexedGraph;
   objectStationAttachments?: ObjectStationAttachment[];
+  objectAddresses?: ObjectAddress[];
+  unassignedReviewObjects?: PD002AReviewObject[];
+  addressedReviewObjects?: PD002AReviewObject[];
+  spineObjectCatalogEntries?: unknown[];
+  auditObjectManifestEntries?: unknown[];
+  auditManifestReviewObjects?: unknown[];
+  instantiatedSpineObjects?: unknown[];
+  constructionSegments?: unknown[];
+  paymentSegments?: unknown[];
+  executionZones?: unknown[];
+  instantiationSummary?: unknown;
+  instantiationHealth?: unknown;
+  hierarchySummary?: unknown;
   compliance: EngineeringComplianceRow[];
   mapSpec: MapKernelRenderSpec;
   stationMoveAllowed: false;
@@ -311,6 +326,46 @@ function stationIndexedGraphFromPackage(draft: DraftIofPackageRuntime): StationI
 
 function objectStationAttachmentsFromPackage(draft: DraftIofPackageRuntime): ObjectStationAttachment[] {
   return asArray<ObjectStationAttachment>((draft as Record<string, unknown>).objectStationAttachments);
+}
+
+function objectAddressesFromPackage(draft: DraftIofPackageRuntime): ObjectAddress[] {
+  return asArray<ObjectAddress>((draft as Record<string, unknown>).objectAddresses);
+}
+
+function unassignedReviewObjectsFromPackage(draft: DraftIofPackageRuntime): PD002AReviewObject[] {
+  return asArray<PD002AReviewObject>((draft as Record<string, unknown>).unassignedReviewObjects);
+}
+
+function addressedReviewObjectsFromPackage(draft: DraftIofPackageRuntime): PD002AReviewObject[] {
+  return asArray<PD002AReviewObject>((draft as Record<string, unknown>).addressedReviewObjects);
+}
+
+function spineObjectCatalogEntriesFromPackage(draft: DraftIofPackageRuntime): unknown[] {
+  return asArray((draft as Record<string, unknown>).spineObjectCatalogEntries);
+}
+
+function auditObjectManifestEntriesFromPackage(draft: DraftIofPackageRuntime): unknown[] {
+  return asArray((draft as Record<string, unknown>).auditObjectManifestEntries);
+}
+
+function auditManifestReviewObjectsFromPackage(draft: DraftIofPackageRuntime): unknown[] {
+  return asArray((draft as Record<string, unknown>).auditManifestReviewObjects);
+}
+
+function instantiatedSpineObjectsFromPackage(draft: DraftIofPackageRuntime): unknown[] {
+  return asArray((draft as Record<string, unknown>).instantiatedSpineObjects);
+}
+
+function constructionSegmentsFromPackage(draft: DraftIofPackageRuntime): unknown[] {
+  return asArray((draft as Record<string, unknown>).constructionSegments);
+}
+
+function paymentSegmentsFromPackage(draft: DraftIofPackageRuntime): unknown[] {
+  return asArray((draft as Record<string, unknown>).paymentSegments);
+}
+
+function executionZonesFromPackage(draft: DraftIofPackageRuntime): unknown[] {
+  return asArray((draft as Record<string, unknown>).executionZones);
 }
 
 function coordinatesFromDependencyGraph(value: unknown): DALCoordinate[] {
@@ -661,11 +716,12 @@ function stationGraphReferencesValid(graph: StationIndexedGraph | undefined, sta
   return graph.edges.every((edge) => stationIds.has(edge.fromStationId) && stationIds.has(edge.toStationId));
 }
 
-function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<EngineeringCertificationProjection, "routeCoordinates" | "routeLength" | "stations" | "objects" | "constraints" | "measuredSpine" | "stationAuthority" | "stationIndexedGraph" | "objectStationAttachments">): EngineeringComplianceRow[] {
+function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<EngineeringCertificationProjection, "routeCoordinates" | "routeLength" | "stations" | "objects" | "constraints" | "measuredSpine" | "stationAuthority" | "stationIndexedGraph" | "objectStationAttachments" | "objectAddresses" | "unassignedReviewObjects">): EngineeringComplianceRow[] {
   const loose = draft as Record<string, unknown>;
   const quantitySummary = asRecord(loose.quantitySummary);
   const pricingSummary = asRecord(loose.pricingSummary ?? draft.commercialSummary?.pricingSummary);
   const auditProjectionSummary = asRecord(loose.auditProjectionSummary);
+  const addressValidation = asRecord(loose.addressValidation);
   const structureAssembly = asRecord(loose.structureAssembly);
   const conduitAssembly = asRecord(loose.conduitAssembly);
   const fiberAssembly = asRecord(loose.fiberAssembly);
@@ -686,6 +742,9 @@ function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<Enginee
   const stationCoordinatesPass = Boolean(stationAuthority && projection.stations.length > 0 && projection.stations.every(stationCoordinateComplete));
   const graphPass = stationGraphReferencesValid(projection.stationIndexedGraph, projection.stations);
   const attachments = projection.objectStationAttachments ?? [];
+  const objectAddresses = projection.objectAddresses ?? [];
+  const unassignedReviewObjects = projection.unassignedReviewObjects ?? [];
+  const objectAddressingStatus = asString(addressValidation.status, objectAddresses.length ? "PASS" : "FAIL");
   const objectAttachmentPass = projection.objects.length === 0 ||
     (attachments.length >= projection.objects.length && attachments.every((attachment) => (
       attachment.attachmentStatus === "EXCEPTED" ||
@@ -700,6 +759,7 @@ function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<Enginee
     ["station-to-coordinate", stationCoordinatesPass ? "PASS" : "FAIL", stationCoordinatesPass ? "every authorized station has measure and coordinate" : "station coordinate map incomplete or missing"],
     ["graph", graphPass ? "PASS" : "FAIL", projection.stationIndexedGraph ? `${projection.stationIndexedGraph.edgeCount.toLocaleString()} station-indexed graph edges` : "station-indexed graph missing"],
     ["objects", complianceStatus(projection.objects.length > 0), `${projection.objects.length.toLocaleString()} objects`],
+    ["object addressing", objectAddressingStatus === "FAIL" ? "FAIL" : objectAddressingStatus === "WARNING" ? "WARNING" : "PASS", objectAddresses.length ? `${objectAddresses.length.toLocaleString()} object addresses / ${unassignedReviewObjects.length.toLocaleString()} pending review objects` : "PD-002A object addressing missing"],
     ["object attachment", objectAttachmentPass ? "PASS" : "FAIL", objectAttachmentPass ? `${attachments.length.toLocaleString()} object station attachments` : "one or more objects are unresolved or attachment authority is missing"],
     ["structures", complianceStatus(asNumber(structureAssembly.structureCount, asArray(draft.structures).length) > 0), `${asNumber(structureAssembly.structureCount, asArray(draft.structures).length).toLocaleString()} structures`],
     ["conduit", complianceStatus(asNumber(conduitAssembly.conduitFeet) > 0 || projection.objects.some((object) => object.objectType.includes("CONDUIT"))), `${asNumber(conduitAssembly.conduitFeet).toLocaleString()} conduit feet`],
@@ -722,6 +782,33 @@ function objectStyle(object: EngineeringPackageObject) {
   if (object.objectType.includes("FIBER")) return { fill: "#38bdf8", stroke: "#075985", radius: 5 };
   if (object.objectType.includes("CONDUIT")) return { fill: "#34d399", stroke: "#065f46", radius: 5 };
   return { fill: "#fb7185", stroke: "#881337", radius: 6 };
+}
+
+function objectAddressLayer(objectType: string, addressType: string) {
+  const type = objectType.toUpperCase();
+  if (type.includes("HANDHOLE") || type.includes("MANHOLE")) return "PD002A_HANDHOLES_MANHOLES";
+  if (type.includes("VAULT")) return "PD002A_VAULTS";
+  if (type.includes("SPLICE")) return "PD002A_SPLICE_CASES";
+  if (type.includes("ILA") || type.includes("REGEN")) return "PD002A_ILAS";
+  if (type.includes("PLOW") || type.includes("BORE") || type.includes("TRENCH") || type.includes("RESTORATION")) return "PD002A_CIVIL_RANGES";
+  if (type.includes("CONDUIT") || type.includes("DUCT") || type.includes("INNERDUCT") || type.includes("FUTUREPATH")) return "PD002A_CONDUIT";
+  if (type.includes("FIBER") || type.includes("LOCATE_WIRE") || type.includes("TEST_SECTION")) return "PD002A_FIBER";
+  if (type.includes("CROSSING")) return "PD002A_CROSSINGS";
+  if (addressType === "UNASSIGNED_REVIEW") return "PD002A_PENDING_REVIEW_OBJECTS";
+  return "PD002A_ADDRESSED_REVIEW_OBJECTS";
+}
+
+function objectAddressStyle(address: ObjectAddress) {
+  const layer = objectAddressLayer(address.objectType, address.addressType);
+  if (layer === "PD002A_HANDHOLES_MANHOLES") return { fill: "#facc15", stroke: "#713f12", radius: 4.5, opacity: 0.86 };
+  if (layer === "PD002A_VAULTS") return { fill: "#fbbf24", stroke: "#92400e", radius: 6, opacity: 0.9 };
+  if (layer === "PD002A_SPLICE_CASES") return { fill: "#fb7185", stroke: "#881337", radius: 4, opacity: 0.86 };
+  if (layer === "PD002A_ILAS") return { fill: "#f97316", stroke: "#7c2d12", radius: 8, opacity: 0.92 };
+  if (layer === "PD002A_CIVIL_RANGES") return { stroke: "#84cc16", strokeWidth: 6, opacity: 0.34 };
+  if (layer === "PD002A_CONDUIT") return { stroke: "#22c55e", strokeWidth: 5, opacity: 0.42 };
+  if (layer === "PD002A_FIBER") return { stroke: "#38bdf8", strokeWidth: 4, opacity: 0.48 };
+  if (layer === "PD002A_CROSSINGS") return { fill: "#ef4444", stroke: "#7f1d1d", radius: 7, opacity: 0.84 };
+  return { fill: "#a855f7", stroke: "#581c87", radius: 6, opacity: 0.8 };
 }
 
 function stationForReference(stations: EngineeringPackageStation[], reference: unknown) {
@@ -825,6 +912,191 @@ function packageGraphPrimitives(projection: Omit<EngineeringCertificationProject
   return primitives;
 }
 
+function objectAddressingPrimitives(projection: Omit<EngineeringCertificationProjection, "mapSpec">, packageId: string): MapKernelPrimitive[] {
+  const primitives: MapKernelPrimitive[] = [];
+  const addresses = projection.objectAddresses ?? [];
+  addresses.forEach((address) => {
+    const sourceLayer = objectAddressLayer(address.objectType, address.addressType);
+    if (address.addressType === "POINT" && address.stationAddress?.coordinate) {
+      primitives.push({
+        id: `${address.objectId}:pd002a-address-point`,
+        layerId: "object",
+        kind: "point",
+        coordinate: address.stationAddress.coordinate,
+        label: address.objectType,
+        style: objectAddressStyle(address),
+        payload: address,
+        metadata: {
+          source: "PD-002A Object Addressing Doctrine",
+          sourceLayer,
+          renderAuthority: "PD002A_OBJECT_ADDRESSING_AUTHORITY",
+          packageId,
+          stationId: address.stationAddress.stationId,
+          stationLabel: address.stationAddress.stationLabel,
+          addressStatus: address.addressStatus,
+          addressType: address.addressType,
+        },
+        ref: { kind: "Object", id: address.objectId, objectId: address.objectId, stationId: address.stationAddress.stationId, scopeVersionId: "draft-iof-certification" },
+      });
+      return;
+    }
+    if (address.addressType === "RANGE" && address.fromStationAddress?.coordinate && address.toStationAddress?.coordinate) {
+      primitives.push({
+        id: `${address.objectId}:pd002a-address-range`,
+        layerId: "iofPackage",
+        kind: "line",
+        coordinates: [address.fromStationAddress.coordinate, address.toStationAddress.coordinate],
+        label: address.objectType.replaceAll("_", " "),
+        style: objectAddressStyle(address),
+        payload: address,
+        metadata: {
+          source: "PD-002A Object Addressing Doctrine",
+          sourceLayer,
+          renderAuthority: "PD002A_OBJECT_ADDRESSING_AUTHORITY",
+          packageId,
+          fromStationId: address.fromStationAddress.stationId,
+          toStationId: address.toStationAddress.stationId,
+          addressStatus: address.addressStatus,
+          addressType: address.addressType,
+        },
+        ref: { kind: "ProductionUnit", id: address.objectId, objectId: address.objectId, scopeVersionId: "draft-iof-certification" },
+      });
+    }
+  });
+  projection.addressedReviewObjects?.forEach((reviewObject) => {
+    const address = reviewObject.objectAddress;
+    if (!address?.stationAddress?.coordinate) return;
+    primitives.push({
+      id: `${reviewObject.reviewObjectId}:pd002a-addressed-review`,
+      layerId: "object",
+      kind: "point",
+      coordinate: address.stationAddress.coordinate,
+      label: reviewObject.reviewType.replaceAll("_", " "),
+      style: { fill: "#a855f7", stroke: "#581c87", radius: 7, opacity: 0.88 },
+      payload: reviewObject,
+      metadata: {
+        source: "PD-002A Object Addressing Doctrine",
+        sourceLayer: "PD002A_ADDRESSED_REVIEW_OBJECTS",
+        renderAuthority: "PD002A_OBJECT_ADDRESSING_AUTHORITY",
+        packageId,
+        addressStatus: reviewObject.addressStatus,
+      },
+      ref: { kind: "Object", id: reviewObject.reviewObjectId, objectId: reviewObject.reviewObjectId, stationId: address.stationAddress.stationId, scopeVersionId: "draft-iof-certification" },
+    });
+  });
+  return primitives;
+}
+
+function spineObjectLayer(objectType: string, objectClass: string, reviewStatus: string) {
+  const type = objectType.toUpperCase();
+  const klass = objectClass.toUpperCase();
+  if (reviewStatus.includes("DISPOSITION") || klass === "CONSTRAINT") return "SPINE_OBJECT_REVIEW_OBJECTS";
+  if (type.includes("HANDHOLE")) return "SPINE_OBJECT_HANDHOLES";
+  if (type.includes("MANHOLE")) return "SPINE_OBJECT_MANHOLES";
+  if (type.includes("VAULT")) return "SPINE_OBJECT_VAULTS";
+  if (type.includes("SPLICE")) return "SPINE_OBJECT_SPLICE_CASES";
+  if (type.includes("ILA")) return "SPINE_OBJECT_ILAS";
+  if (type.includes("REGEN")) return "SPINE_OBJECT_REGENS";
+  if (type.includes("POP")) return "SPINE_OBJECT_POPS";
+  if (type.includes("CONDUIT") || type.includes("DUCT") || type.includes("INNERDUCT") || type.includes("FUTUREPATH")) return "SPINE_OBJECT_CONDUIT";
+  if (type.includes("FIBER") || type.includes("LOCATE_WIRE")) return "SPINE_OBJECT_FIBER";
+  if (type.includes("PLOW") || type.includes("BORE") || type.includes("TRENCH") || type.includes("RESTORATION") || klass === "LINEAR_CONSTRUCTION") return "SPINE_OBJECT_CIVIL_SEGMENTS";
+  return "SPINE_OBJECTS";
+}
+
+function spineObjectStyle(objectType: string, objectClass: string) {
+  const layer = spineObjectLayer(objectType, objectClass, "");
+  if (layer === "SPINE_OBJECT_HANDHOLES" || layer === "SPINE_OBJECT_MANHOLES") return { fill: "#fde047", stroke: "#854d0e", radius: 5, opacity: 0.92 };
+  if (layer === "SPINE_OBJECT_VAULTS") return { fill: "#f59e0b", stroke: "#78350f", radius: 7, opacity: 0.92 };
+  if (layer === "SPINE_OBJECT_SPLICE_CASES") return { fill: "#fb7185", stroke: "#881337", radius: 4.5, opacity: 0.92 };
+  if (layer === "SPINE_OBJECT_ILAS" || layer === "SPINE_OBJECT_REGENS" || layer === "SPINE_OBJECT_POPS") return { fill: "#f97316", stroke: "#7c2d12", radius: 8, opacity: 0.94 };
+  if (layer === "SPINE_OBJECT_CONDUIT") return { stroke: "#16a34a", strokeWidth: 7, opacity: 0.38 };
+  if (layer === "SPINE_OBJECT_FIBER") return { stroke: "#0ea5e9", strokeWidth: 5, opacity: 0.5 };
+  if (layer === "SPINE_OBJECT_CIVIL_SEGMENTS") return { stroke: "#84cc16", strokeWidth: 8, opacity: 0.3 };
+  return { fill: "#a855f7", stroke: "#581c87", radius: 6, opacity: 0.82 };
+}
+
+function stationAddressCoordinate(address: Record<string, unknown>) {
+  return coordinateFrom(address.coordinate ?? [address.lng ?? address.longitude, address.lat ?? address.latitude]);
+}
+
+function instantiatedSpineObjectPrimitives(projection: Omit<EngineeringCertificationProjection, "mapSpec">, packageId: string): MapKernelPrimitive[] {
+  const primitives: MapKernelPrimitive[] = [];
+  (projection.instantiatedSpineObjects ?? []).forEach((value) => {
+    const object = asRecord(value);
+    const spineObjectId = asString(object.spineObjectId, asString(object.objectId));
+    if (!spineObjectId) return;
+    const objectType = asString(object.objectType, "SPINE_OBJECT");
+    const objectClass = asString(object.objectClass, "UNKNOWN");
+    const reviewStatus = asString(object.reviewStatus);
+    const sourceLayer = spineObjectLayer(objectType, objectClass, reviewStatus);
+    const stationAddress = asRecord(object.stationAddress);
+    const fromStationAddress = asRecord(object.fromStationAddress);
+    const toStationAddress = asRecord(object.toStationAddress);
+    const point = stationAddressCoordinate(stationAddress);
+    const from = stationAddressCoordinate(fromStationAddress);
+    const to = stationAddressCoordinate(toStationAddress);
+    const payload = {
+      ...object,
+      layerToggle: sourceLayer,
+      constructionSegmentLayer: "Construction Segments",
+      executionZoneLayer: "Execution Zones",
+      paymentSegmentLayer: "Payment Segments",
+    };
+    if (from && to) {
+      primitives.push({
+        id: `${spineObjectId}:spine-object-range`,
+        layerId: "iofPackage",
+        kind: "line",
+        coordinates: [from, to],
+        label: objectType.replaceAll("_", " "),
+        style: spineObjectStyle(objectType, objectClass),
+        payload,
+        metadata: {
+          source: "Constitutional Spine Object Instantiation",
+          sourceLayer,
+          renderAuthority: "SPINE_OBJECT_INSTANTIATION_AUTHORITY",
+          packageId,
+          spineObjectId,
+          constructionSegmentId: object.constructionSegmentId,
+          paymentSegmentId: object.paymentSegmentId,
+          executionZoneId: object.executionZoneId,
+          currentState: object.currentState,
+          reviewStatus: object.reviewStatus,
+        },
+        ref: { kind: "Object", id: spineObjectId, objectId: spineObjectId, scopeVersionId: "draft-iof-certification" },
+      });
+      return;
+    }
+    if (!point) return;
+    primitives.push({
+      id: `${spineObjectId}:spine-object-point`,
+      layerId: "object",
+      kind: "point",
+      coordinate: point,
+      label: objectType.replaceAll("_", " "),
+      style: spineObjectStyle(objectType, objectClass),
+      payload,
+      metadata: {
+        source: "Constitutional Spine Object Instantiation",
+        sourceLayer,
+        renderAuthority: "SPINE_OBJECT_INSTANTIATION_AUTHORITY",
+        packageId,
+        spineObjectId,
+        stationId: stationAddress.stationId,
+        stationLabel: stationAddress.stationLabel,
+        constructionSegmentId: object.constructionSegmentId,
+        paymentSegmentId: object.paymentSegmentId,
+        executionZoneId: object.executionZoneId,
+        currentState: object.currentState,
+        reviewStatus: object.reviewStatus,
+      },
+      ref: { kind: "Object", id: spineObjectId, objectId: spineObjectId, stationId: asString(stationAddress.stationId), scopeVersionId: "draft-iof-certification" },
+    });
+  });
+  return primitives;
+}
+
 function draftIofRouteFeature(projection: Omit<EngineeringCertificationProjection, "mapSpec">): MapKernelGeoJsonFeature | undefined {
   if (projection.routeCoordinates.length < 2) return undefined;
   return {
@@ -902,6 +1174,8 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
     });
   }
   primitives.push(...packageGraphPrimitives(projection, packageId));
+  primitives.push(...objectAddressingPrimitives(projection, packageId));
+  primitives.push(...instantiatedSpineObjectPrimitives(projection, packageId));
   const lastStationIndex = projection.stations.length - 1;
   projection.stations.forEach((station, index) => {
     if (!station.coordinate) return;
@@ -980,6 +1254,47 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
       rootScopeVersionId: "draft-iof-certification",
       sourceAuthority: "COMMERCIAL_DRAFT_IOF_PACKAGE",
       noScopeVersionCreation: true,
+      objectAddressingLayers: [
+        "Handholes / Manholes",
+        "Vaults",
+        "Splice Cases",
+        "ILAs",
+        "Civil Ranges",
+        "Conduit",
+        "Fiber",
+        "Crossings",
+        "Pending Review Objects",
+        "Addressed Review Objects",
+        "Engineering Deltas",
+      ],
+      pendingReviewObjectCount: projection.unassignedReviewObjects?.length ?? 0,
+      unassignedReviewLabel: "UNASSIGNED - needs Engineering address",
+      spineObjectCatalogPanelTitle: "Spine Object Catalog",
+      spineObjectCatalogEntryCount: projection.spineObjectCatalogEntries?.length ?? 0,
+      auditObjectManifestEntryCount: projection.auditObjectManifestEntries?.length ?? 0,
+      auditManifestReviewObjectCount: projection.auditManifestReviewObjects?.length ?? 0,
+      auditObjectManifestInstantiationStatus: "Not Instantiated Yet",
+      instantiatedSpineObjectLayers: [
+        "Handholes",
+        "Manholes",
+        "Vaults",
+        "Conduit",
+        "Fiber",
+        "Splice Cases",
+        "ILAs",
+        "Regens",
+        "POPs",
+        "Civil Segments",
+        "Review Objects",
+        "Construction Segments",
+        "Execution Zones",
+        "Payment Segments",
+      ],
+      instantiatedSpineObjectCount: projection.instantiatedSpineObjects?.length ?? 0,
+      constructionSegmentCount: projection.constructionSegments?.length ?? 0,
+      paymentSegmentCount: projection.paymentSegments?.length ?? 0,
+      executionZoneCount: projection.executionZones?.length ?? 0,
+      spineObjectInstantiationStatus: asString(asRecord(projection.instantiationHealth).instantiationStatus, "MISSING"),
     },
   };
 }
@@ -990,6 +1305,16 @@ export function buildEngineeringCertificationProjection(draft: DraftIofPackageRu
   const stationAuthority = stationAuthorityFromPackage(draft);
   const stationIndexedGraph = stationIndexedGraphFromPackage(draft);
   const objectStationAttachments = objectStationAttachmentsFromPackage(draft);
+  const objectAddresses = objectAddressesFromPackage(draft);
+  const unassignedReviewObjects = unassignedReviewObjectsFromPackage(draft);
+  const addressedReviewObjects = addressedReviewObjectsFromPackage(draft);
+  const spineObjectCatalogEntries = spineObjectCatalogEntriesFromPackage(draft);
+  const auditObjectManifestEntries = auditObjectManifestEntriesFromPackage(draft);
+  const auditManifestReviewObjects = auditManifestReviewObjectsFromPackage(draft);
+  const instantiatedSpineObjects = instantiatedSpineObjectsFromPackage(draft);
+  const constructionSegments = constructionSegmentsFromPackage(draft);
+  const paymentSegments = paymentSegmentsFromPackage(draft);
+  const executionZones = executionZonesFromPackage(draft);
   const routeCoordinates = routeCoordinatesFromPackage(draft);
   const centerlineCoordinates = centerlineCoordinatesFromPackage(draft, routeCoordinates);
   const stations = normalizeStations(draft, routeCoordinates);
@@ -1022,6 +1347,19 @@ export function buildEngineeringCertificationProjection(draft: DraftIofPackageRu
     stationAuthority,
     stationIndexedGraph,
     objectStationAttachments,
+    objectAddresses,
+    unassignedReviewObjects,
+    addressedReviewObjects,
+    spineObjectCatalogEntries,
+    auditObjectManifestEntries,
+    auditManifestReviewObjects,
+    instantiatedSpineObjects,
+    constructionSegments,
+    paymentSegments,
+    executionZones,
+    instantiationSummary: loose.instantiationSummary,
+    instantiationHealth: loose.instantiationHealth,
+    hierarchySummary: loose.hierarchySummary,
     stationMoveAllowed: false,
     sourceDraftPackage: draft,
   };

@@ -11,7 +11,12 @@ import type {
 import type { CommercialCorridorDraft, CommercialCorridorSegment } from "./CommercialCorridorDraftEngine";
 import type { OpportunityQuickQuote } from "./OpportunityScoutEngine";
 import type { ProductDoctrine, ProductDoctrineAssembly } from "../products/ProductDoctrineContracts";
+import { createObjectAddressing } from "../doctrine/pd002/addressing/PD002AObjectAddressingEngine";
+import { createPD003ProductionArtifacts } from "../doctrine/pd003/ProductionProfileEngine";
 import { buildKernelExecutionGraph } from "../kernel/ExecutionGraphBuilder";
+import { buildSpineObjectCatalog } from "../spine/catalog/SpineObjectCatalogEngine";
+import { instantiateSpineObjects } from "../spine/instantiation/SpineObjectInstantiationEngine";
+import { createAuditObjectManifest } from "../spine/manifest/AuditObjectManifestEngine";
 import { createMeasuredSpine } from "../spine/MeasuredSpineEngine";
 import { createObjectStationAttachments } from "../spine/ObjectStationAttachmentEngine";
 import { createStationAuthority, ENGINEERING_STATION_INTERVAL_FEET } from "../spine/StationAuthorityEngine";
@@ -407,6 +412,7 @@ function buildValidation(args: {
   auditProjectionSummary?: unknown;
   kernelExecutionGraphSummary?: unknown;
   constitutionalAssembly?: unknown;
+  instantiationHealth?: unknown;
 }): IofPackageValidation {
   const proposal = args.proposal;
   const checks = [
@@ -485,6 +491,13 @@ function buildValidation(args: {
         label: "Draft IOF approval prohibited until Constitutional Assembly succeeds",
         status: asRecord(args.constitutionalAssembly).draftIofApprovalProhibitedUntilPass === true &&
           asRecord(args.constitutionalAssembly).status === "PASS" ? "PASS" : "FAIL",
+      },
+    ] : []),
+    ...(args.instantiationHealth ? [
+      {
+        key: "spine-object-instantiation",
+        label: "Constitutional Spine Object Instantiation",
+        status: asRecord(args.instantiationHealth).instantiationStatus === "PASS" ? "PASS" : "FAIL",
       },
     ] : []),
     ...(args.productDoctrineAssembly ? [
@@ -1057,6 +1070,7 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     stationAuthority,
     stationIndexedGraph: stationIndexedGraph ?? undefined,
   }) : [];
+  const productIncludesFiber = asNumber(doctrineAssembly?.quantitySummary.fiberFeet, 0) > 0 || asString(proposal.productName).toLowerCase().includes("fiber");
   const spineAuditProjection = measuredSpine && stationAuthority ? createSpineAuditProjection({
     packageId,
     measuredSpine,
@@ -1072,7 +1086,48 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     unknownReviewItems: input.commercialDraft?.transparentEstimate.unknownQuantities,
     generatedAt: timestamp,
   }) : null;
-  const kernelExecutionGraph = measuredSpine && stationAuthority ? buildKernelExecutionGraph({
+  const objectAddressing = measuredSpine && stationAuthority ? createObjectAddressing({
+    packageId,
+    measuredSpine,
+    stationAuthority,
+    objects: packageObjects,
+    structures,
+    engineeringObjects: stationAttachmentInputs,
+    proposedIofUnits,
+    objectStationAttachments,
+    commercialAuditEntries: input.commercialDraft?.transparentEstimate.auditTrail,
+    transparentEstimate: input.commercialDraft?.transparentEstimate,
+    quantitySummary: doctrineAssembly?.quantitySummary,
+    spineAuditProjection,
+    stationRangeExpectations: spineAuditProjection?.stationRangeExpectations,
+    spineReviewObjects: spineAuditProjection?.spineReviewObjects,
+    productIncludesFiber,
+    generatedAt: timestamp,
+  }) : null;
+  const spineObjectCatalog = buildSpineObjectCatalog(timestamp);
+  const auditObjectManifest = createAuditObjectManifest({
+    packageId,
+    catalog: spineObjectCatalog,
+    commercialAuditEntries: input.commercialDraft?.transparentEstimate.auditTrail,
+    quantitySummary: doctrineAssembly?.quantitySummary,
+    productConfiguration: {
+      productId: proposal.productId,
+      productName: proposal.productName,
+      doctrineId: input.productDoctrine?.doctrineId,
+      doctrineVersion: input.productDoctrine?.doctrineVersion,
+    },
+    productDoctrineAssembly: doctrineAssembly,
+    objectAddressing,
+    generatedAt: timestamp,
+  });
+  const productionArtifacts = createPD003ProductionArtifacts({
+    packageId,
+    catalog: spineObjectCatalog,
+    auditObjectManifest,
+    productIncludesFiber,
+    generatedAt: timestamp,
+  });
+  const baseKernelExecutionGraph = measuredSpine && stationAuthority ? buildKernelExecutionGraph({
     packageId,
     measuredSpine,
     stationAuthority,
@@ -1085,6 +1140,33 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     closureExpectations: spineAuditProjection?.closureExpectations,
     generatedAt: timestamp,
   }) : null;
+  const spineObjectInstantiation = instantiateSpineObjects({
+    packageId,
+    catalog: spineObjectCatalog,
+    auditObjectManifest,
+    stationAddressRegistry: objectAddressing?.stationAddressRegistry,
+    objectProductionProfiles: productionArtifacts.objectProductionProfiles,
+    kernelExecutionGraph: baseKernelExecutionGraph,
+    generatedAt: timestamp,
+  });
+  const kernelSpineObjectReferences = spineObjectInstantiation.instantiatedSpineObjects.map((object) => ({
+    spineObjectId: object.spineObjectId,
+    objectType: object.objectType,
+    catalogEntryId: object.catalogEntryId,
+    constructionSegmentId: object.constructionSegmentId,
+    paymentSegmentId: object.paymentSegmentId,
+    executionZoneId: object.executionZoneId,
+    currentState: object.currentState,
+    authority: object.authority,
+    noScopeVersionCreation: true,
+  }));
+  const kernelExecutionGraph = baseKernelExecutionGraph ? {
+    ...baseKernelExecutionGraph,
+    spineObjectIds: kernelSpineObjectReferences.map((reference) => reference.spineObjectId),
+    spineObjectReferences: kernelSpineObjectReferences,
+    referencesInstantiatedSpineObjects: true,
+    spineObjectReferenceAuthority: "SPINE_OBJECT_INSTANTIATION_AUTHORITY",
+  } : null;
   const executionExpectations = kernelExecutionGraph?.executionExpectations ?? [];
   const spineObjectDependencies = buildSpineObjectDependencies(executionExpectations);
   const spineObjectCloseSequences = buildSpineObjectCloseSequences(executionExpectations);
@@ -1108,6 +1190,7 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     auditProjectionSummary: spineAuditProjection?.summary,
     kernelExecutionGraphSummary: kernelExecutionGraph?.summary,
     constitutionalAssembly: kernelExecutionGraph?.constitutionalAssembly,
+    instantiationHealth: spineObjectInstantiation.instantiationHealth,
   });
   const readiness = packageReadiness(validation, proposedIofUnits);
   const draftIofReadiness = buildDraftIofReadiness({
@@ -1279,6 +1362,34 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
         objectStationAttachments: objectStationAttachments.length,
         spineAuditProjection: Boolean(spineAuditProjection),
         closureExpectations: spineAuditProjection?.closureExpectations.length ?? 0,
+        objectAddressingDoctrine: Boolean(objectAddressing?.objectAddressingDoctrine),
+        stationAddressRegistry: objectAddressing?.stationAddressRegistry.entries.length ?? 0,
+        objectAddresses: objectAddressing?.objectAddresses.length ?? 0,
+        unassignedReviewObjects: objectAddressing?.unassignedReviewObjects.length ?? 0,
+        addressValidation: asString((objectAddressing?.addressValidation as { status?: string } | undefined)?.status, "MISSING"),
+        spineObjectCatalog: spineObjectCatalog.entries.length,
+        spineObjectCatalogValidation: spineObjectCatalog.validation.status,
+        auditObjectManifest: auditObjectManifest.entries.length,
+        auditManifestReviewObjects: auditObjectManifest.reviewObjects.length,
+        auditObjectManifestValidation: auditObjectManifest.validation.status,
+        objectManifestInstantiationStatus: auditObjectManifest.instantiationStatus,
+        productionDoctrine: Boolean(productionArtifacts.productionDoctrine),
+        productionProfiles: productionArtifacts.productionProfiles.length,
+        objectProductionProfiles: productionArtifacts.objectProductionProfiles.length,
+        productionScheduleProjection: productionArtifacts.productionScheduleProjection.length,
+        productionCostProjection: productionArtifacts.productionCostProjection.length,
+        productionPaymentProjection: productionArtifacts.productionPaymentProjection.length,
+        productionReviewObjects: productionArtifacts.productionReviewObjects.length,
+        productionValidation: productionArtifacts.productionValidation.status,
+        instantiatedSpineObjects: spineObjectInstantiation.instantiatedSpineObjects.length,
+        spineObjectRegistry: Boolean(spineObjectInstantiation.spineObjectRegistry),
+        spineObjectIdentityRegistry: Boolean(spineObjectInstantiation.spineObjectIdentityRegistry),
+        constructionSegments: spineObjectInstantiation.constructionSegments.length,
+        paymentSegments: spineObjectInstantiation.paymentSegments.length,
+        executionZones: spineObjectInstantiation.executionZones.length,
+        instantiationHealth: spineObjectInstantiation.instantiationHealth.instantiationStatus,
+        productionBindings: spineObjectInstantiation.productionBindings.length,
+        addressBindings: spineObjectInstantiation.addressBindings.length,
         kernelExecutionGraph: Boolean(kernelExecutionGraph),
         executionNodes: kernelExecutionGraph?.nodes.length ?? 0,
         executionEdges: kernelExecutionGraph?.edges.length ?? 0,
@@ -1333,6 +1444,54 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     spineReviewObjects: spineAuditProjection?.spineReviewObjects ?? [],
     closureExpectations: spineAuditProjection?.closureExpectations ?? [],
     auditProjectionSummary: spineAuditProjection?.summary,
+    objectAddressingDoctrine: objectAddressing?.objectAddressingDoctrine,
+    stationAddressRegistry: objectAddressing?.stationAddressRegistry,
+    objectAddresses: objectAddressing?.objectAddresses ?? [],
+    unassignedReviewObjects: objectAddressing?.unassignedReviewObjects ?? [],
+    addressedReviewObjects: objectAddressing?.addressedReviewObjects ?? [],
+    addressValidation: objectAddressing?.addressValidation,
+    addressAssignmentEvents: objectAddressing?.addressAssignmentEvents ?? [],
+    addressProjectionSummary: objectAddressing?.addressProjectionSummary,
+    objectAddressingMapLayers: objectAddressing?.mapLayers ?? [],
+    spineObjectCatalog,
+    spineObjectCatalogEntries: spineObjectCatalog.entries,
+    spineObjectCatalogValidation: spineObjectCatalog.validation,
+    spineObjectCatalogSummary: spineObjectCatalog.summary,
+    auditObjectManifest,
+    auditObjectManifestEntries: auditObjectManifest.entries,
+    auditManifestReviewObjects: auditObjectManifest.reviewObjects,
+    auditObjectManifestValidation: auditObjectManifest.validation,
+    auditObjectManifestSummary: auditObjectManifest.summary,
+    objectManifestSummary: {
+      ...auditObjectManifest.summary,
+      panelTitle: "Object Manifest Summary",
+      instantiationPending: true,
+      instantiationStatusLabel: "Instantiation Pending",
+      noObjectsInstantiated: true,
+      noScopeVersionCreation: true,
+    },
+    productionDoctrine: productionArtifacts.productionDoctrine,
+    productionProfileLibrary: productionArtifacts.productionProfileLibrary,
+    productionProfiles: productionArtifacts.productionProfiles,
+    objectProductionProfiles: productionArtifacts.objectProductionProfiles,
+    productionProjectionSummary: productionArtifacts.productionProjectionSummary,
+    productionScheduleProjection: productionArtifacts.productionScheduleProjection,
+    productionCostProjection: productionArtifacts.productionCostProjection,
+    productionPaymentProjection: productionArtifacts.productionPaymentProjection,
+    productionReviewObjects: productionArtifacts.productionReviewObjects,
+    productionValidation: productionArtifacts.productionValidation,
+    instantiatedSpineObjects: spineObjectInstantiation.instantiatedSpineObjects,
+    spineObjectRegistry: spineObjectInstantiation.spineObjectRegistry,
+    spineObjectIdentityRegistry: spineObjectInstantiation.spineObjectIdentityRegistry,
+    constructionSegments: spineObjectInstantiation.constructionSegments,
+    paymentSegments: spineObjectInstantiation.paymentSegments,
+    executionZones: spineObjectInstantiation.executionZones,
+    instantiationSummary: spineObjectInstantiation.instantiationSummary,
+    instantiationHealth: spineObjectInstantiation.instantiationHealth,
+    hierarchySummary: spineObjectInstantiation.hierarchySummary,
+    productionBindings: spineObjectInstantiation.productionBindings,
+    addressBindings: spineObjectInstantiation.addressBindings,
+    kernelSpineObjectReferences,
     kernelExecutionGraph,
     executionNodes: kernelExecutionGraph?.nodes ?? [],
     executionEdges: kernelExecutionGraph?.edges ?? [],

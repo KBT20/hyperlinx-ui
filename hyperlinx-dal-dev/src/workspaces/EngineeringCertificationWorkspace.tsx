@@ -25,6 +25,7 @@ import {
 } from "../engineering/EngineeringCertificationProjection";
 import { useTeralinxAuth } from "../identity/TeralinxAuth";
 import { MapKernel } from "../mapkernel";
+import { SpineObjectCatalogPanel } from "../components/engineering/SpineObjectCatalogPanel";
 
 type StationLabelMode = "hidden" | "major" | "engineering";
 
@@ -455,6 +456,8 @@ export default function EngineeringCertificationWorkspace() {
       </div>
 
       <div className="engineering-certification-bottom">
+        <SpineObjectCatalogPanel draftPackage={renderDraft} />
+
         <section className="dal-panel">
           <div className="dal-panel-title-row">
             <h3>Constraint Queue</h3>

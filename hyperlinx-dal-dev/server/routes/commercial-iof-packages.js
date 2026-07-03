@@ -85,6 +85,37 @@ function stationAwareSubmitReadiness(draftPackage) {
   const segmentValidationRules = asArray(draftPackage.segmentValidationRules);
   const paymentEligibilityRules = asArray(draftPackage.paymentEligibilityRules);
   const draftIofReadiness = asRecord(draftPackage.draftIofReadiness);
+  const stationAddressRegistry = asRecord(draftPackage.stationAddressRegistry);
+  const objectAddresses = asArray(draftPackage.objectAddresses);
+  const addressValidation = asRecord(draftPackage.addressValidation);
+  const addressProjectionSummary = asRecord(draftPackage.addressProjectionSummary);
+  const spineObjectCatalog = asRecord(draftPackage.spineObjectCatalog);
+  const spineObjectCatalogEntries = asArray(draftPackage.spineObjectCatalogEntries);
+  const spineObjectCatalogValidation = asRecord(draftPackage.spineObjectCatalogValidation);
+  const auditObjectManifest = asRecord(draftPackage.auditObjectManifest);
+  const auditObjectManifestEntries = asArray(draftPackage.auditObjectManifestEntries);
+  const auditObjectManifestValidation = asRecord(draftPackage.auditObjectManifestValidation);
+  const auditObjectManifestSummary = asRecord(draftPackage.auditObjectManifestSummary);
+  const productionDoctrine = asRecord(draftPackage.productionDoctrine);
+  const productionProfiles = asArray(draftPackage.productionProfiles);
+  const objectProductionProfiles = asArray(draftPackage.objectProductionProfiles);
+  const productionProjectionSummary = asRecord(draftPackage.productionProjectionSummary);
+  const productionScheduleProjection = asArray(draftPackage.productionScheduleProjection);
+  const productionCostProjection = asArray(draftPackage.productionCostProjection);
+  const productionPaymentProjection = asArray(draftPackage.productionPaymentProjection);
+  const productionValidation = asRecord(draftPackage.productionValidation);
+  const instantiatedSpineObjects = asArray(draftPackage.instantiatedSpineObjects);
+  const spineObjectRegistry = asRecord(draftPackage.spineObjectRegistry);
+  const spineObjectIdentityRegistry = asRecord(draftPackage.spineObjectIdentityRegistry);
+  const constructionSegments = asArray(draftPackage.constructionSegments);
+  const paymentSegments = asArray(draftPackage.paymentSegments);
+  const executionZones = asArray(draftPackage.executionZones);
+  const instantiationSummary = asRecord(draftPackage.instantiationSummary);
+  const instantiationHealth = asRecord(draftPackage.instantiationHealth);
+  const hierarchySummary = asRecord(draftPackage.hierarchySummary);
+  const productionBindings = asArray(draftPackage.productionBindings);
+  const addressBindings = asArray(draftPackage.addressBindings);
+  const kernelSpineObjectReferences = asArray(draftPackage.kernelSpineObjectReferences);
   const objects = [
     ...asArray(draftPackage.objects),
     ...asArray(draftPackage.structures),
@@ -112,6 +143,44 @@ function stationAwareSubmitReadiness(draftPackage) {
   if (!segmentValidationRules.length) blockingIssues.push("segmentValidationRules missing");
   if (!paymentEligibilityRules.length) blockingIssues.push("paymentEligibilityRules missing");
   if (draftIofReadiness.status !== "READY") blockingIssues.push("draftIofReadiness blocked");
+  if (!stationAddressRegistry.registryId) blockingIssues.push("stationAddressRegistry missing");
+  if (!objectAddresses.length) blockingIssues.push("objectAddresses missing");
+  if (!addressValidation.validationId) blockingIssues.push("addressValidation missing");
+  if (!addressProjectionSummary.summaryId) blockingIssues.push("addressProjectionSummary missing");
+  if (!spineObjectCatalog.catalogId) blockingIssues.push("spineObjectCatalog missing");
+  if (!spineObjectCatalogEntries.length) blockingIssues.push("spineObjectCatalogEntries missing");
+  if (spineObjectCatalogValidation.status === "FAIL") blockingIssues.push("spineObjectCatalog validation failed");
+  if (!auditObjectManifest.manifestId) blockingIssues.push("auditObjectManifest missing");
+  if (!auditObjectManifestEntries.length) blockingIssues.push("auditObjectManifestEntries missing");
+  if (auditObjectManifest.createsObjects !== false) blockingIssues.push("auditObjectManifest must not instantiate objects");
+  if (auditObjectManifestValidation.status === "FAIL") blockingIssues.push("auditObjectManifest validation failed");
+  if (auditObjectManifestSummary.createsObjects !== false) blockingIssues.push("auditObjectManifestSummary missing no-instantiation boundary");
+  if (!productionDoctrine.doctrineId) blockingIssues.push("productionDoctrine missing");
+  if (!productionProfiles.length) blockingIssues.push("productionProfiles missing");
+  if (!objectProductionProfiles.length) blockingIssues.push("objectProductionProfiles missing");
+  if (!productionProjectionSummary.summaryId) blockingIssues.push("productionProjectionSummary missing");
+  if (!productionScheduleProjection.length) blockingIssues.push("productionScheduleProjection missing");
+  if (!productionCostProjection.length) blockingIssues.push("productionCostProjection missing");
+  if (!productionPaymentProjection.length) blockingIssues.push("productionPaymentProjection missing");
+  if (productionPaymentProjection.some((item) => asRecord(item).paymentEligible !== false)) blockingIssues.push("production payment projection attempted authorization");
+  if (!productionValidation.validationId) blockingIssues.push("productionValidation missing");
+  if (productionValidation.status === "FAIL") blockingIssues.push("productionValidation failed");
+  if (!instantiatedSpineObjects.length) blockingIssues.push("instantiatedSpineObjects missing");
+  if (!spineObjectRegistry.registryId) blockingIssues.push("spineObjectRegistry missing");
+  if (!spineObjectIdentityRegistry.registryId) blockingIssues.push("spineObjectIdentityRegistry missing");
+  if (!constructionSegments.length) blockingIssues.push("constructionSegments missing");
+  if (!paymentSegments.length) blockingIssues.push("paymentSegments missing");
+  if (!executionZones.length) blockingIssues.push("executionZones missing");
+  if (!instantiationSummary.summaryId) blockingIssues.push("instantiationSummary missing");
+  if (!instantiationHealth.healthId) blockingIssues.push("instantiationHealth missing");
+  if (instantiationHealth.instantiationStatus === "FAIL") blockingIssues.push("spine object instantiation failed");
+  if (!hierarchySummary.summaryId) blockingIssues.push("hierarchySummary missing");
+  if (!productionBindings.length) blockingIssues.push("productionBindings missing");
+  if (!addressBindings.length) blockingIssues.push("addressBindings missing");
+  if (!kernelSpineObjectReferences.length) blockingIssues.push("kernelSpineObjectReferences missing");
+  if (instantiatedSpineObjects.some((item) => asRecord(item).currentState !== "PLANNED")) blockingIssues.push("instantiated Spine Objects must start PLANNED");
+  if (paymentSegments.some((item) => asRecord(item).paymentEligible !== false)) blockingIssues.push("paymentSegments attempted authorization");
+  if (kernelExecutionGraph.referencesInstantiatedSpineObjects !== true) blockingIssues.push("kernelExecutionGraph missing instantiated Spine Object references");
   const unresolved = sourceObjects
     .map((record, index) => ({
       objectId: commercialObjectId(asRecord(record), draftPackage.packageId, index),
