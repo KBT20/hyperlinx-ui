@@ -88,7 +88,8 @@ assert(runtimeApi.includes("submitDraftIofPackageToEngineering"), "Runtime API i
 assert(runtimeApi.includes("EngineeringIntakeRecord"), "Runtime API is missing EngineeringIntakeRecord type.");
 assert(runtimeApi.includes("scopeVersion?: Record<string, unknown>"), "Certification response still requires a ScopeVersion.");
 
-assert(engineeringRoute.includes('.filter((record) => record.status === "SUBMITTED_TO_ENGINEERING")'), "Engineering queue must load only submitted packages.");
+assert(engineeringRoute.includes('status === "SUBMITTED_TO_ENGINEERING" || workflowStatus === "ENGINEERING_REVIEW"'), "Engineering queue must load submitted packages and approved proposal draft packages awaiting review.");
+assert(engineeringRoute.includes('["CERTIFIED", "CLOSED", "ARCHIVED"].includes(status)'), "Engineering queue must exclude terminal package states.");
 assert(engineeringRoute.includes("openDraftPackageForEngineering"), "Engineering open transition helper is missing.");
 assert(engineeringRoute.includes('status: "UNDER_ENGINEERING_REVIEW"'), "Opening a package must set UNDER_ENGINEERING_REVIEW.");
 assert(engineeringRoute.includes('workflowStatus: "ENGINEERING_CERTIFICATION"'), "Opening a package must set ENGINEERING_CERTIFICATION workflow.");

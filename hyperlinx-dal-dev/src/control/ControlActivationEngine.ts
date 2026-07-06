@@ -98,7 +98,7 @@ export function validateControlActivation(input: ControlActivationDraftInput): C
   if (readiness.status === "CONTROL_READY") {
     const controlReadyTransition = evaluateTransition({
       scopeVersionId: input.scopeVersionId ?? "",
-      previousState: "CONTRACT_EXECUTED",
+      previousState: "SERVICE_ORDER",
       requestedState: "CONTROL_READY",
       actorId: input.actorId,
       actorRole: input.actorRole,
@@ -287,8 +287,10 @@ function isRequirementSatisfied(input: ControlActivationReadinessInput, requirem
       return Boolean(input.corridorId);
     case "MISSING_CONTRACT_CLOSE":
       return hasValidatedClose(input, "CONTRACT_CLOSE");
+    case "MISSING_SERVICE_ORDER_CLOSE":
+      return hasValidatedClose(input, "SERVICE_ORDER_CLOSE");
     case "INVALID_LIFECYCLE_STATE":
-      return input.lifecycleState === "CONTRACT_EXECUTED";
+      return input.lifecycleState === "SERVICE_ORDER";
     case "MISSING_ENGINEERING_PACKAGE":
       return Boolean(input.references.engineeringPackageReference);
     case "MISSING_BUDGET":

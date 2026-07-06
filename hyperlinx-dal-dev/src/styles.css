@@ -291,6 +291,25 @@ textarea {
   gap: 8px;
 }
 
+.dal-nav-group {
+  display: grid;
+  gap: 6px;
+}
+
+.dal-nav-group + .dal-nav-group {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.dal-nav-group-title {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .dal-nav-item {
   width: 100%;
   text-align: left;
@@ -307,6 +326,41 @@ textarea {
   min-width: 0;
   padding: 18px;
   overflow: auto;
+}
+
+.runtime-diagnostics-panel {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #1d334a;
+  border-radius: 8px;
+  background: #0d1b2d;
+  color: #dbeafe;
+}
+
+.runtime-diagnostics-panel summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.runtime-diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.runtime-diagnostics-grid span {
+  color: #94a3b8;
+}
+
+.runtime-diagnostics-timings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  color: #93c5fd;
+  font-size: 11px;
 }
 
 .teralinx-login-shell {

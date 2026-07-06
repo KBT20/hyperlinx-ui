@@ -7,6 +7,7 @@ import type {
   ScopeVersionCertifiedRouteReference,
   TwinState,
 } from "../types/dal";
+import { validateConstitutionalLayerIntegrity } from "../scopeversion/ConstitutionalLayerIntegrity";
 import { getAuthoritativeLifecycleState, lifecycleRank, normalizeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
 import { calculateCompletionProjection, type CompletionProjection } from "./CompletionEngine";
 import { isKernelAlias, kernelAliasTarget, normalizeControlWorkStatus } from "./KernelStateRegistry";
@@ -558,6 +559,29 @@ function addCompletionInvariants(findings: KernelInvariant[], context: KernelInv
   }
 }
 
+function addConstitutionalLayerIntegrityInvariants(findings: KernelInvariant[], context: KernelInvariantContext) {
+  const scopes = allScopeVersions(context);
+  scopes.forEach((scope) => {
+    const result = validateConstitutionalLayerIntegrity({
+      scopeVersion: scope,
+      previousScopeVersion: context.nextScopeVersion?.scopeVersionId === scope.scopeVersionId ? context.previousScopeVersion : undefined,
+      nextScopeVersion: context.nextScopeVersion?.scopeVersionId === scope.scopeVersionId ? context.nextScopeVersion : undefined,
+      workItems: context.workItems,
+      closures: context.closures,
+      paymentCandidate: context.completionProjection,
+    });
+    result.blockers.forEach((blocker) => {
+      findings.push(invariant({
+        severity: "BLOCKING",
+        code: blocker.code,
+        entityId: scope.scopeVersionId,
+        message: blocker.message,
+        recommendedAction: `${blocker.nextLegalAction} Required authority: ${blocker.requiredAuthority}. Missing artifacts: ${blocker.missingArtifacts.join(", ")}.`,
+      }));
+    });
+  });
+}
+
 export function checkKernelInvariants(context: KernelInvariantContext): KernelInvariant[] {
   const scopes = allScopeVersions(context);
   const scopesById = new Map(scopes.map((scope) => [scope.scopeVersionId, scope]));
@@ -575,6 +599,7 @@ export function checkKernelInvariants(context: KernelInvariantContext): KernelIn
   addFallbackInvariant(findings, context);
   addLifecycleRegressionInvariant(findings, context.previousScopeVersion, context.nextScopeVersion);
   addImmutableEvidenceInvariants(findings, context.previousScopeVersion, context.nextScopeVersion);
+  addConstitutionalLayerIntegrityInvariants(findings, context);
   addWorkItemInvariants(findings, scopesById, workItems);
   addClosureInvariants(findings, scopesById, workItemsById, closures);
   addTwinIsolationInvariants(findings, context.twinState, context.selectedScopeVersionId);

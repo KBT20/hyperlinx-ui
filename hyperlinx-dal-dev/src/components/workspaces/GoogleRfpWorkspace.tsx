@@ -32,7 +32,6 @@ import {
   type CommercialCorridorDraft,
   type CommercialDraftType,
 } from "../../commercial/CommercialCorridorDraftEngine";
-import { assembleDraftIofPackage } from "../../commercial/IOFPackageAssemblyEngine";
 import { routeCommercialCorridorWithOsrm, type CommercialRouteRequest, type CommercialRouteResult } from "../../commercial/CommercialOsrmRoutingEngine";
 import {
   DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS,
@@ -94,6 +93,7 @@ import {
 import { attachPricedDraftToImportedRoute, markImportedRoutePromoted, parseCustomerDesignFile } from "../../translate/CustomerDesignImportEngine";
 import type { CustomerDesignImport, ImportedCustomerRoute } from "../../translate/CustomerDesignImport";
 import { buildRuntimeCommitFromExistingInventoryImport, type RuntimeTranslationCommitRequest } from "../../runtime/RuntimeObjectModel";
+import { scheduleDraftIofPackageAssembly, schedulePointToPointLongHaulDoctrineAssembly } from "../../runtime/ConstitutionalAssemblyScheduler";
 import { commitRuntimeTranslation } from "../../api/runtimeFoundation";
 import { googleHeliumBidPlanFixture, googleHeliumRfpOpportunity } from "../../rfp/fixtures/googleHeliumRfpFixtures";
 import { buildGoogleBidPackagePreview } from "../../rfp/GoogleBidPackagePreview";
@@ -124,7 +124,6 @@ import ProposedNetworkMapPanel, { type CommercialIlaMapStation, type ProposedNet
 import type { ProposedGraph } from "../../proposedGraph/ProposedGraph";
 import type { DALCoordinate } from "../../types/dal";
 import {
-  assemblePointToPointLongHaulDoctrine,
   POINT_TO_POINT_LONG_HAUL_DOCTRINE,
   POINT_TO_POINT_LONG_HAUL_PRODUCT_ID,
 } from "../../products/pointToPointLongHaulDoctrine";
@@ -6242,14 +6241,14 @@ export default function GoogleRfpWorkspace() {
     };
     const aSite = siteFromLocation("A", azOriginLocation ?? opportunityScoutCandidate?.originLocation, centerline[0], activeFinancialDraft?.aLabel ?? "A location");
     const zSite = siteFromLocation("Z", azDestinationLocation ?? opportunityScoutCandidate?.destinationLocation, centerline[centerline.length - 1], activeFinancialDraft?.zLabel ?? "Z location");
-    return assemblePointToPointLongHaulDoctrine({
+    const assemblyInput = {
       accountId: selectedAccount.accountId,
       customerId: customerIdForAccount(selectedAccount.accountId),
       aSite,
       zSite,
       osrmRoute: centerline.length > 1 && routeFeet > 0 ? {
         routeId,
-        source: "OSRM",
+        source: "OSRM" as const,
         routeMiles,
         routeFeet,
         distanceMeters: Math.round(routeFeet / 3.28084),
@@ -6258,7 +6257,11 @@ export default function GoogleRfpWorkspace() {
       routeSegments: activeFinancialDraft?.routeSegments,
       pricingSummary: selectedPricingSummary.reconciliation as unknown as Record<string, unknown>,
       stationIntervalFeet: activeFinancialDraft?.stationIntervalFeet ?? 5280,
-    });
+    };
+    return schedulePointToPointLongHaulDoctrineAssembly(
+      `PRODUCT-DOCTRINE-${selectedAccount.accountId}-${routeId}`,
+      assemblyInput,
+    );
   }, [
     activeFinancialDraft,
     activeLiveSession,
@@ -6336,7 +6339,7 @@ export default function GoogleRfpWorkspace() {
       noScopeVersionCreation: true,
       noInventoryMutation: true,
     } as Partial<ProposalRuntimeObject> & { proposalId: string; customerId: string; opportunityId?: string };
-    return assembleDraftIofPackage({
+    return scheduleDraftIofPackageAssembly({
       proposal: proposalSource,
       customerName: selectedAccount.name,
       accountId: selectedAccount.accountId,
@@ -6376,7 +6379,7 @@ export default function GoogleRfpWorkspace() {
       customerDesignReferences: activeProposalRuntime?.customerDesignReferences,
       customerTwinReference: activeProposalRuntime?.customerTwinReference ?? accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
       geometryReferences: activeProposalRuntime?.geometryReferences,
-    });
+    }).value;
   }, [
     accountCustomerNetworkGraph,
     accountCustomerTwin,

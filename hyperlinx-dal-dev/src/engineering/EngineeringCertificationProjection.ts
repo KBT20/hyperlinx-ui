@@ -1165,7 +1165,7 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
       style: { stroke: "#22c55e", strokeWidth: 3, opacity: 0.9, dasharray: "8 5" },
       metadata: {
         source: "Draft IOF Package",
-        sourceLayer: "ENGINEERING_CERTIFICATION_MEASURED_SPINE",
+        sourceLayer: "ENGINEERING_CERTIFICATION_SPINE",
         renderAuthority: "MEASURED_SPINE_AUTHORITY",
         packageId,
         geometryHash: projection.measuredSpine?.geometryHash,
@@ -1217,7 +1217,7 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
       payload: object.raw,
       metadata: {
         source: "Draft IOF Package",
-        sourceLayer: "ENGINEERING_CERTIFICATION_STATION_INDEXED_OBJECTS",
+        sourceLayer: "ENGINEERING_CERTIFICATION_OBJECTS",
         renderAuthority: "OBJECT_STATION_ATTACHMENT_AUTHORITY",
         packageId,
         attachmentMethod: object.attachmentMethod,

@@ -332,11 +332,100 @@ function scopeVersionId(certifiedPackage, revision, previousScopeVersion) {
   return `${revisionLabel(revision)}-${stableIdPart(certifiedPackage.certifiedPackageId ?? certifiedPackage.packageId ?? "CERTIFIED-IOF")}`;
 }
 
-function readinessSnapshot() {
+function readinessSnapshot(options = {}) {
   return SCOPEVERSION_AUTHORITY_READINESS.map((item) => ({
     ...item,
-    authority: item.key === "engineering" ? "CERTIFIED_IOF_PACKAGE" : "DOWNSTREAM_PENDING",
+    status: item.key === "serviceOrder" && options.serviceOrderAuthorized ? "PASS" : item.status,
+    authority:
+      item.key === "engineering"
+        ? "CERTIFIED_IOF_PACKAGE"
+        : item.key === "serviceOrder" && options.serviceOrderAuthorized
+          ? "SERVICE_ORDER"
+          : "DOWNSTREAM_PENDING",
   }));
+}
+
+function acceptedStatus(value) {
+  return ["ACCEPTED", "CUSTOMER_ACCEPTED", "APPROVED", "PASS", "READY"].includes(String(value ?? "").toUpperCase());
+}
+
+function authorizedStatus(value) {
+  return ["PASS", "READY", "CREATED", "APPROVED", "AUTHORIZED", "EXECUTED", "ACCEPTED", "COMPLETE", "COMPLETED"].includes(String(value ?? "").toUpperCase());
+}
+
+function customerAcceptanceArtifact(certifiedPackage = {}, options = {}) {
+  return asRecord(
+    options.customerAcceptance ??
+      certifiedPackage.customerAcceptance ??
+      certifiedPackage.acceptedProposal ??
+      certifiedPackage.proposalAcceptance ??
+      certifiedPackage.customerApproval,
+  );
+}
+
+function serviceOrderArtifact(certifiedPackage = {}, options = {}) {
+  return asRecord(
+    options.serviceOrder ??
+      certifiedPackage.serviceOrder ??
+      certifiedPackage.serviceOrderReference ??
+      certifiedPackage.serviceOrderArtifact,
+  );
+}
+
+function customerAcceptanceId(certifiedPackage = {}, acceptance = {}, serviceOrder = {}) {
+  return String(
+    acceptance.customerAcceptanceId ??
+      acceptance.customerAcceptanceCloseId ??
+      acceptance.acceptedProposalId ??
+      certifiedPackage.customerAcceptanceId ??
+      certifiedPackage.customerAcceptanceCloseId ??
+      certifiedPackage.acceptedProposalId ??
+      serviceOrder.customerAcceptanceId ??
+      serviceOrder.customerAcceptanceCloseId ??
+      serviceOrder.acceptedProposalId ??
+      "",
+  );
+}
+
+function serviceOrderId(certifiedPackage = {}, serviceOrder = {}) {
+  return String(
+    serviceOrder.serviceOrderId ??
+      serviceOrder.serviceOrderArtifactId ??
+      serviceOrder.orderId ??
+      serviceOrder.id ??
+      certifiedPackage.serviceOrderId ??
+      certifiedPackage.serviceOrderArtifactId ??
+      "",
+  );
+}
+
+function assertConstitutionalLayerIntegrityForScopeVersion(certifiedPackage = {}, options = {}) {
+  const acceptance = customerAcceptanceArtifact(certifiedPackage, options);
+  const serviceOrder = serviceOrderArtifact(certifiedPackage, options);
+  const acceptanceId = customerAcceptanceId(certifiedPackage, acceptance, serviceOrder);
+  const orderId = serviceOrderId(certifiedPackage, serviceOrder);
+  const hasCustomerAcceptance = Boolean(
+    acceptanceId ||
+      acceptance.acceptedAt ||
+      certifiedPackage.customerAcceptedAt ||
+      certifiedPackage.proposalAcceptedAt ||
+      acceptedStatus(acceptance.status ?? certifiedPackage.customerAcceptanceStatus),
+  );
+  const hasServiceOrder = Boolean(
+    orderId ||
+      serviceOrder.createdAt ||
+      serviceOrder.authorizedAt ||
+      authorizedStatus(serviceOrder.status ?? serviceOrder.authorizationStatus ?? certifiedPackage.serviceOrderStatus),
+  );
+
+  if (!hasCustomerAcceptance) {
+    throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: Service Order requires Customer Acceptance. Missing validated CUSTOMER_ACCEPTANCE_CLOSE or accepted proposal artifact. Next legal action: record and validate Customer Acceptance.");
+  }
+  if (!hasServiceOrder) {
+    throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: ScopeVersion cannot be created before Service Order. Missing Service Order artifact. Next legal action: create or attach Service Order authority, then request ScopeVersion creation.");
+  }
+
+  return { acceptance, serviceOrder, acceptanceId, serviceOrderId: orderId };
 }
 
 function graphSummary(graph, stations, objects) {
@@ -402,6 +491,8 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     productDoctrineRules: certifiedPackage.productDoctrineRules,
     productDoctrineAssembly: certifiedPackage.productDoctrineAssembly,
   };
+  const layerIntegrityAuthority = assertConstitutionalLayerIntegrityForScopeVersion(certifiedPackage, options);
+  const certifiedIofUnitIds = asArray(certifiedPackage.certifiedIofUnits).map((unit) => unit.unitId);
   const engineeringDoctrine = {
     doctrineStatus: certifiedPackage.doctrineStatus,
     engineeringChecklist: certifiedPackage.engineeringChecklist,
@@ -446,7 +537,7 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     digitalCertificationMetadata,
   });
   digitalCertificationMetadata.assemblyFingerprint = assemblyFingerprint;
-  const downstreamReadiness = readinessSnapshot();
+  const downstreamReadiness = readinessSnapshot({ serviceOrderAuthorized: true });
   const canonicalTruth = {
     lifecycleState: "CERTIFIED",
     lifecycleTimestamp: timestamp,
@@ -457,6 +548,27 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     certifiedIofPackageId: certifiedPackage.certifiedPackageId,
     sourceDraftPackageId: certifiedPackage.sourcePackageId ?? certifiedPackage.sourceDraftPackageId,
     executionAuthorizationCertificateId: certificate.certificateId,
+    customerAcceptanceId: layerIntegrityAuthority.acceptanceId,
+    customerAcceptance: layerIntegrityAuthority.acceptance,
+    serviceOrderId: layerIntegrityAuthority.serviceOrderId,
+    serviceOrder: layerIntegrityAuthority.serviceOrder,
+    proposalId: certifiedPackage.proposalId,
+    accountId: certifiedPackage.accountId,
+    customerId: certifiedPackage.customerId,
+    opportunityId: certifiedPackage.opportunityId,
+    productId: certifiedPackage.productId,
+    productName: certifiedPackage.productName,
+    fulfillmentPlanId: certifiedPackage.fulfillmentPlanId,
+    fulfillmentStrategy: certifiedPackage.fulfillmentStrategy,
+    proposalRecipientContactIds: unique(certifiedPackage.proposalRecipientContactIds),
+    customerReviewContactIds: unique(certifiedPackage.customerReviewContactIds),
+    approvalAuthorityContactIds: unique(certifiedPackage.approvalAuthorityContactIds),
+    sofRecipientContactIds: unique(certifiedPackage.sofRecipientContactIds),
+    customerContactEmails: unique(certifiedPackage.customerContactEmails),
+    runtimeObjectIds: unique(certifiedPackage.runtimeObjectIds),
+    runtimeRelationshipIds: unique(certifiedPackage.runtimeRelationshipIds),
+    runtimeEvidenceIds: unique(certifiedPackage.runtimeEvidenceIds),
+    certifiedIofUnitIds,
     revision,
     revisionLabel: revisionLabel(revision),
     parentScopeVersionId,
@@ -522,7 +634,7 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     executionGate: {
       businessApproval: "PENDING",
       legalApproval: "PENDING",
-      serviceOrder: "PENDING",
+      serviceOrder: "PASS",
       control: "PENDING",
       marketplace: "PENDING",
       field: "PENDING",
@@ -595,9 +707,13 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     certifiedIofPackageId: certifiedPackage.certifiedPackageId,
     parentCertifiedPackageId: certifiedPackage.certifiedPackageId,
     executionAuthorizationCertificateId: certificate.certificateId,
+    customerAcceptanceId: layerIntegrityAuthority.acceptanceId,
+    serviceOrderId: layerIntegrityAuthority.serviceOrderId,
     proposalId: certifiedPackage.proposalId,
     productId: certifiedPackage.productId,
     productName: certifiedPackage.productName,
+    fulfillmentPlanId: certifiedPackage.fulfillmentPlanId,
+    fulfillmentStrategy: certifiedPackage.fulfillmentStrategy,
     accountId: certifiedPackage.accountId,
     customerId: certifiedPackage.customerId,
     opportunityId: certifiedPackage.opportunityId,
@@ -620,7 +736,7 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     runtimeObjectIds: unique(certifiedPackage.runtimeObjectIds),
     runtimeRelationshipIds: unique(certifiedPackage.runtimeRelationshipIds),
     runtimeEvidenceIds: unique(certifiedPackage.runtimeEvidenceIds),
-    certifiedIofUnitIds: asArray(certifiedPackage.certifiedIofUnits).map((unit) => unit.unitId),
+    certifiedIofUnitIds,
     decisionTimestamp: timestamp,
     canonicalTruth,
     createdAt: timestamp,
@@ -645,6 +761,7 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
 
 export function markCertifiedPackagePromoted(certifiedPackage, scopeVersion, certificate) {
   const timestamp = nowIso();
+  const truth = asRecord(scopeVersion.canonicalTruth);
   return {
     ...certifiedPackage,
     scopeVersionId: scopeVersion.scopeVersionId,
@@ -652,6 +769,8 @@ export function markCertifiedPackagePromoted(certifiedPackage, scopeVersion, cer
     scopeVersionCreated: true,
     scopeVersionCreatedAt: timestamp,
     executionAuthorizationCertificateId: certificate.certificateId,
+    customerAcceptanceId: scopeVersion.customerAcceptanceId ?? truth.customerAcceptanceId,
+    serviceOrderId: scopeVersion.serviceOrderId ?? truth.serviceOrderId,
     executionAuthorized: true,
     engineeringCertificationLocked: true,
     engineeringReadOnly: true,
@@ -675,6 +794,8 @@ export function validateScopeVersionAuthority(scopeVersion = {}) {
   };
   requireValue(scopeVersion.scopeVersionId, "ScopeVersion ID is required.");
   requireValue(scopeVersion.certifiedIofPackageId || truth.certifiedIofPackageId, "Certified IOF Package reference is required.");
+  requireValue(scopeVersion.customerAcceptanceId || truth.customerAcceptanceId || asRecord(truth.customerAcceptance).acceptedProposalId, "Customer Acceptance reference is required before ScopeVersion authority.");
+  requireValue(scopeVersion.serviceOrderId || truth.serviceOrderId || asRecord(truth.serviceOrder).serviceOrderId, "Service Order reference is required before ScopeVersion authority.");
   requireValue(scopeVersion.isImmutable === true || scopeVersion.immutable === true || truth.immutable === true, "ScopeVersion must be immutable.");
   requireValue(truth.constitutionalAuthority === "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE", "ScopeVersion authority must derive from Certified IOF Package.");
   requireValue(coordinatesFrom(truth.routeGeometry ?? truth.geometry ?? scopeVersion.geometry).length > 1, "Certified geometry is required.");
@@ -689,7 +810,8 @@ export function validateScopeVersionAuthority(scopeVersion = {}) {
   requireValue(Object.keys(asRecord(truth.validationSnapshot)).length > 0, "Validation snapshot is required.");
   const readiness = asArray(truth.downstreamReadiness);
   requireValue(readiness.some((item) => item.key === "engineering" && item.status === "PASS"), "Engineering readiness must be PASS.");
-  requireValue(readiness.filter((item) => item.key !== "engineering").every((item) => item.status === "PENDING"), "Downstream readiness must be PENDING.");
+  requireValue(readiness.some((item) => item.key === "serviceOrder" && item.status === "PASS"), "Service Order readiness must be PASS.");
+  requireValue(readiness.filter((item) => !["engineering", "serviceOrder"].includes(item.key)).every((item) => item.status === "PENDING"), "Downstream readiness after Service Order must be PENDING.");
   return {
     status: failures.length ? "FAIL" : "PASS",
     failures,

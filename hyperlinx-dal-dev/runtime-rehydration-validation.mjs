@@ -141,6 +141,12 @@ const completeChecklist = {
   engineeringNotes: "Sprint 17 Runtime rehydration certification complete.",
 };
 
+const certifiedRouteGeometry = [
+  [-97.7431, 30.2672],
+  [-97.7242, 30.2788],
+  [-97.6954, 30.2967],
+];
+
 const ryan = await login("ryan", "ryan-alpha");
 const kyle = await login("kyle", "kyle-alpha");
 const google = await login("google", "google-alpha");
@@ -248,6 +254,8 @@ const quoteInput = {
   newInfrastructureRequired: ["NEW-CONSTRUCTION-SPRINT17-LATERAL"],
   customerTwinReference: "CUSTOMER-TWIN-GOOGLE",
   geometryReferences: ["ROUTE-GOOGLE-RUNTIME-OS-SPRINT17", "GEOMETRY-SPRINT17-A", "GEOMETRY-SPRINT17-Z"],
+  routeGeometry: certifiedRouteGeometry,
+  centerline: certifiedRouteGeometry,
   proposalDocumentReferences: ["DOC-SPRINT17-RUNTIME-OS-PROPOSAL"],
   assignedCustomerUsers: ["google-participant-001"],
   proposalRecipientContactIds: ["contact-google-runtime-restore"],
@@ -287,8 +295,11 @@ response = await runtimeRequest("POST", `/api/engineering/certification/draft-pa
 }, kyle);
 expectStatus("engineering:certify-package", response, 200);
 const certified = response.json.certifiedIofPackage;
+
+response = await runtimeRequest("POST", `/api/engineering/certification/certified-packages/${encodeURIComponent(certified.certifiedPackageId)}/generate-scopeversion`, undefined, kyle);
+expectStatus("engineering:generate-scopeversion", response, 200);
 const scopeVersion = response.json.scopeVersion;
-assertProof("session:updated-by-engineering", response.json.workspaceSession?.currentAuthority === "EXECUTION" && response.json.workspaceSession?.scopeVersionId === scopeVersion.scopeVersionId, response.json.workspaceSession);
+assertProof("session:updated-by-engineering", response.json.workspaceSession?.currentAuthority === "SCOPEVERSION" && response.json.workspaceSession?.scopeVersionId === scopeVersion.scopeVersionId, response.json.workspaceSession);
 
 const countsBeforeReload = {
   proposals: (await listRecords(DIRS.proposalDrafts)).length,
@@ -307,7 +318,7 @@ assertProof("rehydrate:proposal-restored", restored.proposal?.proposalId === quo
 assertProof("rehydrate:route-restored", restored.route?.geometryReferences?.includes("ROUTE-GOOGLE-RUNTIME-OS-SPRINT17"), restored.route);
 assertProof("rehydrate:graph-restored", restored.graph?.runtimeObjectIds?.includes("RUNTIME-GRAPH-GOOGLE-RUNTIME-OS"), restored.graph);
 assertProof("rehydrate:pricing-restored", Number(restored.proposal?.pricingSummary?.nrcRevenue) === 33000000, restored.proposal?.pricingSummary);
-assertProof("rehydrate:authority-restored", restored.currentAuthority === "EXECUTION" && restored.currentLifecycleStage === "EXECUTION_AUTHORIZED", restored.workspaceSession);
+assertProof("rehydrate:authority-restored", restored.currentAuthority === "SCOPEVERSION" && restored.currentLifecycleStage === "SCOPEVERSION_AUTHORITY", restored.workspaceSession);
 assertProof("rehydrate:revision-restored", String(restored.workspaceSession.selectedProposalRevision || restored.proposal?.version), restored.workspaceSession);
 assertProof("rehydrate:package-restored", restored.draftPackage?.packageId === draft.packageId, restored.draftPackage);
 assertProof("rehydrate:certified-restored", restored.certifiedPackage?.certifiedPackageId === certified.certifiedPackageId, restored.certifiedPackage);
@@ -325,7 +336,7 @@ const runtimeObjects = await listRecords(DIRS.runtimeObjects);
 const runtimeHistory = await listRecords(DIRS.runtimeHistory);
 assertProof("persistence:workspace-session", workspaceSessions.some((session) => session.userId === ryan.user.userId && session.scopeVersionId === scopeVersion.scopeVersionId), workspaceSessions);
 assertProof("persistence:workspace-session-runtime-object", runtimeObjects.some((object) => object.objectType === "WORKSPACE_SESSION" && object.metadata?.scopeVersionId === scopeVersion.scopeVersionId), runtimeObjects);
-assertProof("persistence:authority-transactions-recorded", runtimeHistory.some((event) => event.eventType === "AUTHORITY_TRANSFER_ENGINEERING_TO_EXECUTION"), runtimeHistory);
+assertProof("persistence:authority-transactions-recorded", runtimeHistory.some((event) => event.eventType === "AUTHORITY_TRANSFER_ENGINEERING_TO_SCOPEVERSION"), runtimeHistory);
 
 proof.completedAt = new Date().toISOString();
 proof.summary = {

@@ -8,6 +8,7 @@ export type ScopeVersionCloseType =
   | "VENDOR_ACCEPTANCE_CLOSE"
   | "CUSTOMER_ACCEPTANCE_CLOSE"
   | "CONTRACT_CLOSE"
+  | "SERVICE_ORDER_CLOSE"
   | "MARKETPLACE_CLOSE"
   | "CONTROL_CLOSE"
   | "FIELD_CLOSE"
@@ -214,6 +215,14 @@ export const SCOPEVERSION_CLOSE_TYPE_REGISTRY: readonly ScopeVersionCloseAuthori
     authorizedRoles: ["LEGAL", "CUSTOMER", "VENDOR"],
     requiredEvidence: true,
     requiredTraceability: ["scopeVersionId", "customerId", "opportunityId", "corridorId"],
+  },
+  {
+    authorityId: "AUTH-SERVICE-ORDER-CLOSE",
+    closeType: "SERVICE_ORDER_CLOSE",
+    authorizedRoles: ["TERALINX_OPERATIONS", "TERALINX_SALES", "LEGAL", "SYSTEM"],
+    requiredEvidence: true,
+    requiredTraceability: ["scopeVersionId", "customerId", "opportunityId", "corridorId"],
+    notes: "Service Order authority must reference validated Customer Acceptance.",
   },
   {
     authorityId: "AUTH-MARKETPLACE-CLOSE",

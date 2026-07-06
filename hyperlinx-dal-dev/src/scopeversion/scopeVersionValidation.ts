@@ -6,6 +6,7 @@ import type {
   ValidationStatus,
 } from "../types/dal";
 import { calculateScopeVersionProgress } from "./ClosureAuthorityEngine";
+import { validateConstitutionalLayerIntegrity } from "./ConstitutionalLayerIntegrity";
 import { getAuthoritativeLifecycleState, mergeScopeVersionLifecycle } from "./ScopeVersionLifecycleGuard";
 import { validateScopeVersionStationing } from "./ScopeVersionStationingValidator";
 
@@ -196,6 +197,14 @@ export function validateScopeVersion(scopeVersion: ScopeVersion): ScopeVersionVa
   }
 
   if (!decision?.recommendation) errors.push(error("decisionBasis.recommendation", "GO / NO_GO / REVIEW recommendation is required."));
+
+  const layerIntegrity = validateConstitutionalLayerIntegrity({ scopeVersion });
+  layerIntegrity.blockers.forEach((blocker) => {
+    errors.push(error(
+      `constitutionalLayerIntegrity.${blocker.code}`,
+      `${blocker.message} Missing artifacts: ${blocker.missingArtifacts.join(", ")}. Required authority: ${blocker.requiredAuthority}. Next legal action: ${blocker.nextLegalAction}`
+    ));
+  });
 
   if (requiresEngineeringCertification) {
     if (!certificationSnapshot) {

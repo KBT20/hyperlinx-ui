@@ -4,6 +4,7 @@ import {
   findTransitionAuthority,
 } from "./ScopeVersionTransitionAuthority";
 import {
+  SCOPEVERSION_STATE_REGISTRY,
   SCOPEVERSION_TRANSITION_REGISTRY,
   SCOPEVERSION_TRANSITION_REQUIREMENTS,
   type ScopeVersionLifecycleAudit,
@@ -40,6 +41,28 @@ export function getRequiredCloses(requestedState: ScopeVersionState): ScopeVersi
   return SCOPEVERSION_TRANSITION_REQUIREMENTS.find((requirement) => requirement.targetState === requestedState)?.requiredCloseTypes ?? [];
 }
 
+export function getRequiredAuthorityRoles(requestedState: ScopeVersionState): ScopeVersionCloseActorRole[] {
+  return SCOPEVERSION_TRANSITION_REQUIREMENTS.find((requirement) => requirement.targetState === requestedState)?.requiredAuthorityRoles ?? [];
+}
+
+function nextLegalAction(previousState: ScopeVersionState, requestedState: ScopeVersionState, authority?: ScopeVersionTransitionAuthority) {
+  const allowedStates = getAllowedTransitions(previousState);
+  const nextState = allowedStates[0];
+  if (!authority && nextState) {
+    return `NO LAYER SKIP: request ${previousState} -> ${nextState} before ${requestedState}.`;
+  }
+  if (!authority) {
+    const index = SCOPEVERSION_STATE_REGISTRY.indexOf(previousState);
+    const registryNext = index >= 0 ? SCOPEVERSION_STATE_REGISTRY[index + 1] : undefined;
+    return registryNext
+      ? `NO LAYER SKIP: request ${previousState} -> ${registryNext} before ${requestedState}.`
+      : `Resolve ${previousState} authority before requesting ${requestedState}.`;
+  }
+  const requiredCloses = getRequiredCloses(requestedState);
+  if (requiredCloses.length) return `Validate ${requiredCloses.join(", ")} before requesting ${authority.transition.transitionId}.`;
+  return `Request ${authority.transition.transitionId} with one of these authorities: ${authority.authorizedRoles.join(", ")}.`;
+}
+
 export function getAllowedTransitions(
   currentState: ScopeVersionState,
   actorRole?: ScopeVersionCloseActorRole,
@@ -63,6 +86,7 @@ export function validateTransitionRequirements(input: {
 } {
   const transitionId = `REQ-${input.scopeVersionId}-${input.requestedState}`;
   const requiredCloseTypes = getRequiredCloses(input.requestedState);
+  const requiredAuthorityRoles = getRequiredAuthorityRoles(input.requestedState);
   const validCloses = input.closes.filter((close) => isValidatedCloseForScope(close, input.scopeVersionId));
   const validatedCloseIds = validCloses
     .filter((close) => requiredCloseTypes.includes(close.closeType))
@@ -78,6 +102,8 @@ export function validateTransitionRequirements(input: {
         scopeVersionId: input.scopeVersionId,
         requestedState: input.requestedState,
         closeType,
+        requiredAuthorityRoles,
+        nextLegalAction: `Validate ${closeType} with ${requiredAuthorityRoles.join(", ") || "the required authority"} before advancement.`,
       }),
     ),
   };
@@ -98,7 +124,10 @@ export function evaluateTransition(input: ScopeVersionTransitionEvaluationInput)
   }
 
   if (!authority) {
-    return rejected(input, transitionId, authority, [`${input.previousState} -> ${input.requestedState} is not an allowed transition.`], [], diagnostics);
+    return rejected(input, transitionId, authority, [
+      `${input.previousState} -> ${input.requestedState} is not an allowed transition.`,
+      nextLegalAction(input.previousState, input.requestedState, authority),
+    ], [], diagnostics);
   }
 
   if (input.actorRole === "AI_ASSISTANT_ADVISORY") {
@@ -106,7 +135,10 @@ export function evaluateTransition(input: ScopeVersionTransitionEvaluationInput)
   }
 
   if (!authority.authorizedRoles.includes(input.actorRole)) {
-    return rejected(input, transitionId, authority, [`${input.actorRole} is not authorized for ${transitionId}.`], [], diagnostics);
+    return rejected(input, transitionId, authority, [
+      `${input.actorRole} is not authorized for ${transitionId}. Required authority: ${authority.authorizedRoles.join(", ")}.`,
+      nextLegalAction(input.previousState, input.requestedState, authority),
+    ], [], diagnostics);
   }
 
   const requirements = validateTransitionRequirements({
@@ -116,7 +148,9 @@ export function evaluateTransition(input: ScopeVersionTransitionEvaluationInput)
   });
 
   if (requirements.missingCloseTypes.length) {
-    return rejected(input, transitionId, authority, [], requirements.missingCloseTypes, [
+    return rejected(input, transitionId, authority, [
+      nextLegalAction(input.previousState, input.requestedState, authority),
+    ], requirements.missingCloseTypes, [
       ...diagnostics,
       ...requirements.diagnostics,
     ]);
@@ -246,4 +280,3 @@ function rejected(
 
   return result;
 }
-

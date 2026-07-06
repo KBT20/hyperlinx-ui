@@ -93,7 +93,11 @@ assert(
 const outOfScopeBehaviorPatterns = [
   /createServiceOrder/i,
   /generateServiceOrder/i,
-  /payment/i,
+  /authorizePayment/i,
+  /paymentAuthorization/i,
+  /paymentEligible\s*:\s*true/i,
+  /paymentApproved/i,
+  /paymentReleased/i,
   /CustomerWorkspace/i,
   /handleControlWorkItems\s*\(/,
   /handleFieldClosures\s*\(/,

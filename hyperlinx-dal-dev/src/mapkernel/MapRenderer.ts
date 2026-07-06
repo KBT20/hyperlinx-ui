@@ -1,5 +1,4 @@
 import {
-  isPrimitiveVisible,
   primitiveRenderKey,
   sortPrimitivesForRendering,
   withPrimitiveRenderIdentity,
@@ -8,6 +7,10 @@ import {
   type MapLayerVisibility,
   type MapRenderIdentity,
 } from "./MapLayerManager";
+import { ConstitutionalRuntimeKernel } from "../runtime/ConstitutionalRuntimeKernel";
+import { constitutionalInputHash } from "../runtime/ProjectionCache";
+import { markRuntimeDiagnostic, measureRuntime } from "../runtime/RuntimeDiagnostics";
+import { shouldProjectMapLayer } from "./MapLayerRegistry";
 
 export type MapKernelRenderOptions = {
   layerVisibility?: MapLayerVisibility;
@@ -74,6 +77,12 @@ export type MapRenderAuthorityAudit = {
   suppressedPrimitiveCount: number;
 };
 
+export type MapKernelRenderProjection = {
+  primitives: MapKernelPrimitive[];
+  metrics: MapKernelMetrics;
+  audit: MapRenderAuthorityAudit;
+};
+
 function stationLabelAllowed(primitive: MapKernelPrimitive, options: MapKernelRenderOptions) {
   if (primitive.layerId !== "station" || primitive.kind !== "label") return true;
   if (options.showStationLabels === false) return false;
@@ -87,10 +96,14 @@ export function flattenMapRenderSpecs(specs: MapKernelRenderSpec[]) {
   return specs.flatMap((spec) => spec.primitives.map((primitive, index) => withPrimitiveRenderIdentity(primitive, spec, index)));
 }
 
-export function renderMapKernelPrimitives(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}) {
-  const primitives = flattenMapRenderSpecs(specs).filter(
-    (primitive) => isPrimitiveVisible(primitive, options.layerVisibility) && stationLabelAllowed(primitive, options)
+function visibleFlattenedMapRenderSpecs(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}) {
+  return flattenMapRenderSpecs(specs).filter(
+    (primitive) => shouldProjectMapLayer(primitive, options.layerVisibility) && stationLabelAllowed(primitive, options)
   );
+}
+
+function renderMapKernelPrimitivesUncached(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}) {
+  const primitives = visibleFlattenedMapRenderSpecs(specs, options);
   const seenKeys = new Set<string>();
   const deduped = primitives.filter((primitive) => {
     const key = primitiveRenderKey(primitive);
@@ -99,6 +112,10 @@ export function renderMapKernelPrimitives(specs: MapKernelRenderSpec[], options:
     return true;
   });
   return sortPrimitivesForRendering(deduped);
+}
+
+export function renderMapKernelPrimitives(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}) {
+  return buildCachedMapRenderProjection(specs, options).primitives;
 }
 
 function rowForIdentity(identity: MapRenderIdentity): MapRenderDiagnosticRow {
@@ -138,10 +155,8 @@ function groupRows(rows: MapRenderDiagnosticRow[], keyFor: (row: MapRenderDiagno
     }));
 }
 
-export function auditMapKernelRenderAuthority(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}): MapRenderAuthorityAudit {
-  const rows = flattenMapRenderSpecs(specs)
-    .filter((primitive) => isPrimitiveVisible(primitive, options.layerVisibility) && stationLabelAllowed(primitive, options))
-    .map((primitive) => rowForIdentity(primitive.renderIdentity!));
+function auditMapKernelRenderAuthorityUncached(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}): MapRenderAuthorityAudit {
+  const rows = visibleFlattenedMapRenderSpecs(specs, options).map((primitive) => rowForIdentity(primitive.renderIdentity!));
   const duplicateKeys = groupRows(rows, (row) => row.key);
   const duplicateRenderAuthorities = groupRows(
     rows,
@@ -166,9 +181,11 @@ export function auditMapKernelRenderAuthority(specs: MapKernelRenderSpec[], opti
   };
 }
 
-export function summarizeMapKernelMetrics(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}): MapKernelMetrics {
-  const primitives = renderMapKernelPrimitives(specs, options);
-  const audit = auditMapKernelRenderAuthority(specs, options);
+export function auditMapKernelRenderAuthority(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}): MapRenderAuthorityAudit {
+  return buildCachedMapRenderProjection(specs, options).audit;
+}
+
+function summarizeMapKernelMetricsUncached(specs: MapKernelRenderSpec[], primitives: MapKernelPrimitive[], audit: MapRenderAuthorityAudit): MapKernelMetrics {
   const countRefs = (kind: string) => new Set(primitives.filter((primitive) => primitive.ref.kind === kind).map((primitive) => primitive.ref.id)).size;
   const routeAuthorityRoutes = primitives.filter(
     (primitive) =>
@@ -196,4 +213,77 @@ export function summarizeMapKernelMetrics(specs: MapKernelRenderSpec[], options:
     suppressedPrimitiveCount: audit.suppressedPrimitiveCount,
     renderAuthorityStatus: audit.status,
   };
+}
+
+function mapProjectionInput(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}) {
+  return {
+    specs: specs.map((spec) => ({
+      specId: spec.specId,
+      sourceType: spec.sourceType,
+      sourceId: spec.sourceId,
+      sourceRevision: spec.metadata?.sourceRevision ?? spec.metadata?.revision ?? spec.metadata?.updatedAt ?? spec.metadata?.packageRevision,
+      primitives: spec.primitives.map((primitive) => ({
+        id: primitive.id,
+        layerId: primitive.layerId,
+        kind: primitive.kind,
+        ref: primitive.ref,
+        coordinate: primitive.coordinate,
+        coordinates: primitive.coordinates,
+        rings: primitive.rings,
+        label: primitive.label,
+        metadata: primitive.metadata,
+      })),
+    })),
+    layerVisibility: options.layerVisibility ?? {},
+    showStationLabels: options.showStationLabels ?? true,
+    stationDensityFeet: options.stationDensityFeet ?? 300,
+  };
+}
+
+function mapProjectionArtifactId(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}) {
+  const sourceKey = specs.map((spec) => [
+    spec.sourceType,
+    spec.sourceId,
+    spec.metadata?.sourceRevision ?? spec.metadata?.revision ?? spec.metadata?.updatedAt ?? spec.metadata?.packageRevision ?? spec.specId,
+  ].join(":"));
+  return `MAP-LAYER-PROJECTION-${constitutionalInputHash({
+    sources: sourceKey,
+    layers: options.layerVisibility ?? {},
+    showStationLabels: options.showStationLabels ?? true,
+    stationDensityFeet: options.stationDensityFeet ?? 300,
+  })}`;
+}
+
+export function buildCachedMapRenderProjection(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}): MapKernelRenderProjection {
+  const input = mapProjectionInput(specs, options);
+  const record = ConstitutionalRuntimeKernel.requestArtifact({
+    artifactId: mapProjectionArtifactId(specs, options),
+    artifactType: "MapLayerProjection",
+    input,
+    doctrineVersions: specs.map((spec) => String(spec.metadata?.doctrineVersion ?? spec.metadata?.productDoctrineVersion ?? "MAP-LAYER")),
+    producedFrom: specs.map((spec) => ({
+      artifactType: spec.sourceType === "IOFPackage" ? "DraftIofPackage" : `${spec.sourceType}Artifact`,
+      artifactId: spec.sourceId,
+      revision: Number(spec.metadata?.sourceRevision ?? spec.metadata?.revision ?? spec.metadata?.packageRevision ?? 1),
+    })),
+    dependencies: specs.map((spec) => `${spec.sourceType}:${spec.sourceId}:${spec.specId}`),
+    producer: "MapKernel.buildCachedMapRenderProjection",
+    create: () => {
+      markRuntimeDiagnostic("projectionExecutions");
+      return measureRuntime("MapLayerProjection", "mapRebuilds", () => {
+        const primitives = renderMapKernelPrimitivesUncached(specs, options);
+        const audit = auditMapKernelRenderAuthorityUncached(specs, options);
+        return {
+          primitives,
+          audit,
+          metrics: summarizeMapKernelMetricsUncached(specs, primitives, audit),
+        };
+      });
+    },
+  });
+  return record.value;
+}
+
+export function summarizeMapKernelMetrics(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}): MapKernelMetrics {
+  return buildCachedMapRenderProjection(specs, options).metrics;
 }

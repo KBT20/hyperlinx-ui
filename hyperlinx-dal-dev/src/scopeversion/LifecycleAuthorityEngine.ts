@@ -7,6 +7,7 @@ import type {
   ScopeVersion,
   ScopeVersionExecutionState,
 } from "../types/dal";
+import { validateConstitutionalLayerIntegrity } from "./ConstitutionalLayerIntegrity";
 import { getAuthoritativeLifecycleState } from "./ScopeVersionLifecycleGuard";
 import { normalizeControlWorkStatus } from "../kernel/KernelStateRegistry";
 
@@ -17,6 +18,13 @@ export type LifecycleViolationCode =
   | "CONTROL_WORK_WITHOUT_APPROVED_SCOPE"
   | "CONTROL_WORK_WITHOUT_CERTIFIED_ROUTE"
   | "SCOPEVERSION_APPROVED_WITHOUT_CERTIFIED_ROUTE"
+  | "LIFECYCLE_STAGE_SKIPPED"
+  | "MISSING_CUSTOMER_ACCEPTANCE_AUTHORITY"
+  | "SERVICE_ORDER_WITHOUT_CUSTOMER_ACCEPTANCE"
+  | "SCOPEVERSION_WITHOUT_SERVICE_ORDER"
+  | "CUSTOMER_ACCEPTANCE_DIRECT_EXECUTION_TRUTH"
+  | "FIELD_CLOSE_OUTSIDE_SCOPEVERSION"
+  | "PAYMENT_ELIGIBLE_WITHOUT_VALIDATED_CLOSE"
   | "OBJECT_CLOSED_WITHOUT_RELEASE"
   | "STATION_CLOSED_WITHOUT_OBJECT_COMPLETION"
   | "TWIN_STATE_DRIFT";
@@ -262,6 +270,20 @@ export function deriveLifecycleViolations(
 
   scopeVersions.forEach((scope) => {
     const lifecycleState = getAuthoritativeLifecycleState(scope);
+    const integrity = validateConstitutionalLayerIntegrity({
+      scopeVersion: scope,
+      closures: allClosures.filter((closure) => closureScopeId(closure) === scope.scopeVersionId),
+    });
+    integrity.blockers.forEach((blocker) => {
+      violations.push(createViolation({
+        severity: "BLOCKING",
+        code: blocker.code,
+        scopeVersionId: scope.scopeVersionId,
+        message: blocker.message,
+        recommendedAction: `${blocker.nextLegalAction} Required authority: ${blocker.requiredAuthority}.`,
+        createdAt: scope.updatedAt,
+      }));
+    });
     if (lifecycleState === "APPROVED" && !hasRouteAuthority(scope)) {
       violations.push(createViolation({
         severity: "BLOCKING",

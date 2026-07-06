@@ -17,7 +17,6 @@ import {
   ENGINEERING_CERTIFICATION_WORKFLOW,
   ENGINEERING_CONSTRAINT_CATEGORIES,
   buildEngineeringCertificationChecklist,
-  buildEngineeringCertificationProjection,
   canMoveEngineeringObjectToStation,
   engineeringCertificationReady,
   type EngineeringConstraintCategory,
@@ -26,6 +25,7 @@ import {
 import { useTeralinxAuth } from "../identity/TeralinxAuth";
 import { MapKernel } from "../mapkernel";
 import { SpineObjectCatalogPanel } from "../components/engineering/SpineObjectCatalogPanel";
+import { scheduleEngineeringProjection } from "../runtime/ConstitutionalAssemblyScheduler";
 
 type StationLabelMode = "hidden" | "major" | "engineering";
 
@@ -105,7 +105,7 @@ export default function EngineeringCertificationWorkspace() {
   const [commercialRevisionReason, setCommercialRevisionReason] = useState("Engineering requests Commercial revision.");
 
   const projection = useMemo(
-    () => activeDraft ? buildEngineeringCertificationProjection(activeDraft) : null,
+    () => activeDraft ? scheduleEngineeringProjection(activeDraft) : null,
     [activeDraft],
   );
   const selectedObject = useMemo(() => {
@@ -289,7 +289,7 @@ export default function EngineeringCertificationWorkspace() {
         }, session);
         draft = result.iofPackage;
       }
-      const refreshedProjection = buildEngineeringCertificationProjection(draft);
+      const refreshedProjection = scheduleEngineeringProjection(draft);
       const result = await certifyDraftIofPackage(draft.packageId, {
         checklist: buildEngineeringCertificationChecklist(refreshedProjection, certificationNotes, 94),
       }, session);

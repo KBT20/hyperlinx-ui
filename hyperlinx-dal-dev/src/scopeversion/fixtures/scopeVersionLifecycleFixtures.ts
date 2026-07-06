@@ -111,6 +111,14 @@ export const lifecycleCloseEvidenceFixtures: readonly ScopeVersionCloseEvent[] =
     resultingState: "CONTRACT_EXECUTED",
   }),
   close({
+    closeId: "LIFE-CLOSE-SERVICE-ORDER",
+    closeType: "SERVICE_ORDER_CLOSE",
+    actorId: "ops-001",
+    actorRole: "TERALINX_OPERATIONS",
+    previousState: "CONTRACT_EXECUTED",
+    resultingState: "SERVICE_ORDER",
+  }),
+  close({
     closeId: "LIFE-CLOSE-CONTROL",
     closeType: "CONTROL_CLOSE",
     actorId: "ops-001",
@@ -190,7 +198,8 @@ export const lifecycleTransitionFixtures: readonly ScopeVersionTransitionResult[
   transition({ previousState: "CUSTOMER_REVIEW", requestedState: "CUSTOMER_ACCEPTED", actorId: "customer-001", actorRole: "CUSTOMER" }),
   transition({ previousState: "CUSTOMER_ACCEPTED", requestedState: "CONTRACT_REVIEW", actorId: "legal-001", actorRole: "LEGAL" }),
   transition({ previousState: "CONTRACT_REVIEW", requestedState: "CONTRACT_EXECUTED", actorId: "legal-001", actorRole: "LEGAL" }),
-  transition({ previousState: "CONTRACT_EXECUTED", requestedState: "CONTROL_READY", actorId: "ops-001", actorRole: "TERALINX_OPERATIONS" }),
+  transition({ previousState: "CONTRACT_EXECUTED", requestedState: "SERVICE_ORDER", actorId: "ops-001", actorRole: "TERALINX_OPERATIONS" }),
+  transition({ previousState: "SERVICE_ORDER", requestedState: "CONTROL_READY", actorId: "ops-001", actorRole: "TERALINX_OPERATIONS" }),
   transition({ previousState: "CONTROL_READY", requestedState: "CONTROL_ACTIVE", actorId: "ops-001", actorRole: "TERALINX_OPERATIONS" }),
   transition({ previousState: "CONTROL_ACTIVE", requestedState: "FIELD_READY", actorId: "ops-001", actorRole: "TERALINX_OPERATIONS" }),
   transition({ previousState: "FIELD_READY", requestedState: "FIELD_ACTIVE", actorId: "field-001", actorRole: "FIELD_OPERATOR" }),
@@ -231,4 +240,3 @@ export function evaluateScopeVersionLifecycleFixtures() {
       })),
   };
 }
-

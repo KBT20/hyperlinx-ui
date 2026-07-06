@@ -8,12 +8,13 @@ import {
   type MapKernelRenderSpec,
   type MapLayerVisibility,
 } from "./MapLayerManager";
-import { auditMapKernelRenderAuthority, renderMapKernelPrimitives, summarizeMapKernelMetrics, type MapKernelMetrics } from "./MapRenderer";
+import { buildCachedMapRenderProjection, type MapKernelMetrics } from "./MapRenderer";
 import { createMapSelection, MapSelectionContext, type MapSelection } from "./MapSelectionManager";
 import { boundsFromPrimitives, MapViewportContext, type MapBounds, type MapViewportRequest } from "./MapViewportManager";
 import { resolvePrimitiveStyle } from "./MapStyleManager";
 import { isGeographicReferenceLayerId } from "../reference/ReferenceLayerManager";
 import { centerFromCoordinates, isCoordinate, lonLatToWorld, normalizeTileX, tileCount, validTileY, worldToLonLat, worldToTile, zoomForCoordinates } from "../gis/geo";
+import { markRuntimeDiagnostic } from "../runtime/RuntimeDiagnostics";
 
 // Constitutional guardrail: MapKernel renders ScopeVersion/IOF truth only.
 // It owns viewport, selection, and presentation state; it does not create authoritative geometry.
@@ -355,18 +356,11 @@ export default function MapKernel({
   const suppressNextSelectionRef = useRef(false);
   const autoFitInitializedRef = useRef(Boolean(persistedViewState));
   const routeEditLocked = Boolean(editableRoute?.enabled && (draggingVertexIndex !== null || draggingSegmentIndex !== null || draggingCorridor));
-  const primitives = useMemo(
-    () => renderMapKernelPrimitives(specs, { layerVisibility, stationDensityFeet, showStationLabels }),
+  const mapProjection = useMemo(
+    () => buildCachedMapRenderProjection(specs, { layerVisibility, stationDensityFeet, showStationLabels }),
     [layerVisibility, showStationLabels, specs, stationDensityFeet]
   );
-  const metrics = useMemo(
-    () => summarizeMapKernelMetrics(specs, { layerVisibility, stationDensityFeet, showStationLabels }),
-    [layerVisibility, showStationLabels, specs, stationDensityFeet]
-  );
-  const renderAudit = useMemo(
-    () => auditMapKernelRenderAuthority(specs, { layerVisibility, stationDensityFeet, showStationLabels }),
-    [layerVisibility, showStationLabels, specs, stationDensityFeet]
-  );
+  const { primitives, metrics, audit: renderAudit } = mapProjection;
   const bounds = useMemo(() => {
     if (viewportRequest?.bounds) return viewportRequest.bounds;
     const editPrimitive: MapKernelPrimitive | null = editableRoute?.geometry.length
@@ -450,6 +444,10 @@ export default function MapKernel({
     }
     return nextTiles;
   }, [geoCenterWorld.x, geoCenterWorld.y, geoSize.height, geoSize.width, geoView.zoom]);
+
+  useEffect(() => {
+    markRuntimeDiagnostic("reactRenders");
+  });
 
   useEffect(() => {
     onMetricsChange?.(metrics);

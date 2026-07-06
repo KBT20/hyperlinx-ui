@@ -92,12 +92,20 @@ export const scopeVersionCloseDraftFixtures: readonly ScopeVersionCloseEvent[] =
     outcome: { status: "ACCEPTED", previousState: "CUSTOMER_ACCEPTED", resultingState: "CONTRACT_EXECUTED" },
   }),
   draft({
+    closeId: "SVCLOSE-SERVICE-ORDER-HYPERSCALER-LONG-HAUL",
+    closeType: "SERVICE_ORDER_CLOSE",
+    actorId: "ops-001",
+    actorRole: "TERALINX_OPERATIONS",
+    evidenceIds: ["SO-HYPERSCALER-LONG-HAUL"],
+    outcome: { status: "ACCEPTED", previousState: "CONTRACT_EXECUTED", resultingState: "SERVICE_ORDER" },
+  }),
+  draft({
     closeId: "SVCLOSE-CONTROL-ACTIVATION-HYPERSCALER-LONG-HAUL",
     closeType: "CONTROL_CLOSE",
     actorId: "ops-001",
     actorRole: "TERALINX_OPERATIONS",
     evidenceIds: ["CONTROL-WORK-ACTIVATION-001"],
-    outcome: { status: "ACCEPTED", previousState: "CONTRACT_EXECUTED", resultingState: "CONTROL_ACTIVE" },
+    outcome: { status: "ACCEPTED", previousState: "SERVICE_ORDER", resultingState: "CONTROL_ACTIVE" },
   }),
   draft({
     closeId: "SVCLOSE-FIELD-HYPERSCALER-LONG-HAUL",
@@ -168,4 +176,3 @@ export function evaluateScopeVersionCloseAuthorityFixtures() {
       .map((validation) => ({ closeId: validation.closeId, errors: validation.errors })),
   };
 }
-

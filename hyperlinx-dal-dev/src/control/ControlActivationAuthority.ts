@@ -11,6 +11,7 @@ export type ControlActivationBlockerCode =
   | "MISSING_OPPORTUNITY_ID"
   | "MISSING_CORRIDOR_ID"
   | "MISSING_CONTRACT_CLOSE"
+  | "MISSING_SERVICE_ORDER_CLOSE"
   | "MISSING_ENGINEERING_PACKAGE"
   | "MISSING_BUDGET"
   | "MISSING_VENDOR_ACCEPTANCE"
@@ -128,11 +129,18 @@ export const CONTROL_ACTIVATION_REQUIREMENTS: readonly ControlActivationRequirem
     description: "Control activation requires validated CONTRACT_CLOSE.",
   },
   {
+    requirementId: "REQ-CONTROL-SERVICE-ORDER-CLOSE",
+    label: "Service Order Close",
+    blockerCode: "MISSING_SERVICE_ORDER_CLOSE",
+    severity: "CRITICAL",
+    description: "Control activation requires validated SERVICE_ORDER_CLOSE.",
+  },
+  {
     requirementId: "REQ-CONTROL-LIFECYCLE",
     label: "Lifecycle State",
     blockerCode: "INVALID_LIFECYCLE_STATE",
     severity: "CRITICAL",
-    description: "Control activation starts only from CONTRACT_EXECUTED.",
+    description: "Control activation starts only from SERVICE_ORDER.",
   },
   {
     requirementId: "REQ-CONTROL-ENGINEERING-PACKAGE",

@@ -144,6 +144,12 @@ const completeChecklist = {
   engineeringNotes: "Sprint 16 lifecycle persistence audit certification complete.",
 };
 
+const certifiedRouteGeometry = [
+  [-97.7431, 30.2672],
+  [-97.7277, 30.2761],
+  [-97.7015, 30.2914],
+];
+
 const ryan = await login("ryan", "ryan-alpha");
 const fran = await login("fran", "fran-alpha");
 const kyle = await login("kyle", "kyle-alpha");
@@ -263,6 +269,8 @@ const quoteInput = {
   newInfrastructureRequired: ["NEW-CONSTRUCTION-SPRINT16-LATERAL"],
   customerTwinReference: "CUSTOMER-TWIN-GOOGLE",
   geometryReferences: ["GEOMETRY-SPRINT16-A", "GEOMETRY-SPRINT16-Z"],
+  routeGeometry: certifiedRouteGeometry,
+  centerline: certifiedRouteGeometry,
   proposalDocumentReferences: ["DOC-SPRINT16-PERSISTENCE-PROPOSAL"],
   assignedCustomerUsers: ["google-participant-001"],
   proposalRecipientContactIds: [contactId],
@@ -315,9 +323,12 @@ response = await runtimeRequest("POST", `/api/engineering/certification/draft-pa
 }, kyle);
 expectStatus("engineering:certified-iof", response, 200);
 const certified = response.json.certifiedIofPackage;
+assertProof("certified-iof:contact-recipients", certified.sofRecipientContactIds.includes(contactId), certified);
+
+response = await runtimeRequest("POST", `/api/engineering/certification/certified-packages/${encodeURIComponent(certified.certifiedPackageId)}/generate-scopeversion`, undefined, kyle);
+expectStatus("engineering:generate-scopeversion", response, 200);
 const certificate = response.json.executionAuthorizationCertificate;
 const scopeVersion = response.json.scopeVersion;
-assertProof("certified-iof:contact-recipients", certified.sofRecipientContactIds.includes(contactId), certified);
 assertProof("certificate:contact-recipients", certificate.sofRecipientContactIds.includes(contactId), certificate);
 assertProof("scopeversion:canonical-contact-recipients", scopeVersion.canonicalTruth.sofRecipientContactIds.includes(contactId), scopeVersion.canonicalTruth);
 

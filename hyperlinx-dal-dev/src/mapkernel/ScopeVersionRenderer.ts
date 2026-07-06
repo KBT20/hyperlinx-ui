@@ -2,6 +2,7 @@ import type { DALCoordinate, ScopeVersion } from "../types/dal";
 import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
 import { isValidCoordinate } from "./MapViewportManager";
 import type { MapKernelPrimitive, MapKernelRenderSpec } from "./MapLayerManager";
+import { runtimeDebugLog } from "../runtime/RuntimeDebug";
 
 // Constitutional guardrail: this renderer consumes ScopeVersion canonical truth.
 // Workspace maps must not generate independent authoritative geometry outside ScopeVersion lineage.
@@ -284,7 +285,7 @@ export function renderScopeVersion(scopeVersion: ScopeVersion): MapKernelRenderS
     scopeVersion.nearestStation,
     scopeVersion.station,
   ].filter(Boolean);
-  console.log("[RENDER_AUTHORITY_STATIONS]", {
+  runtimeDebugLog("[RENDER_AUTHORITY_STATIONS]", {
     stationCount: stationRecords.length,
   });
   const renderedStationAuthority = new Set<string>();

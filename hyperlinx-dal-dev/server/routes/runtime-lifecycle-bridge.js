@@ -17,6 +17,7 @@ import { ensureProductFulfillment } from "./product-fulfillment.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 import { listReviewQueue } from "./engineering-certification.js";
 import { loadCommercialDraftIofPackageForProposal } from "./commercial-iof-packages.js";
+import { assembleDraftIofPackageFromProposal } from "./engineering-certification.js";
 
 const BASE_PATH = "/api/runtime/lifecycle";
 const LIFECYCLE_EVENTS = [
@@ -374,6 +375,8 @@ async function ensureProposal(input, user, lifecycleId, opportunity, commercialD
   const existing = await readProposal(requestedId).catch(() => null)
     ?? (await listRecords(DIRS.proposalDrafts)).find((record) => record?.opportunityId === opportunity.opportunityId && record?.status !== "ARCHIVED");
   if (existing) return normalizeProposalRecord(existing, user, existing);
+  const routeGeometry = input.routeGeometry ?? input.proposal?.routeGeometry ?? input.commercialDraft?.routeGeometry ?? input.commercialDraft?.geometry;
+  const geometry = input.geometry ?? input.proposal?.geometry ?? (Array.isArray(routeGeometry) ? { type: "LineString", coordinates: routeGeometry } : routeGeometry);
   const evidence = await persistEvidenceOnce({
     evidenceId: `EVIDENCE-LIFECYCLE-${cleanId(lifecycleId)}-PROPOSAL-CREATED`,
     eventType: "PROPOSAL_CREATED",
@@ -433,6 +436,13 @@ async function ensureProposal(input, user, lifecycleId, opportunity, commercialD
     customerDesignReferences: unique(input.customerDesignReferences),
     customerTwinReference: customerTwin.runtimeId,
     geometryReferences: unique(input.geometryReferences),
+    geometry,
+    routeGeometry,
+    centerline: input.centerline ?? input.proposal?.centerline ?? routeGeometry,
+    centerlineRoute: input.centerlineRoute ?? input.proposal?.centerlineRoute ?? input.commercialDraft?.centerlineRoute,
+    route: input.route ?? input.proposal?.route,
+    routeSegments: input.routeSegments ?? input.proposal?.routeSegments,
+    routeMiles: input.routeMiles ?? input.pricingSummary?.routeMiles ?? input.productConfiguration?.routeMiles,
     proposalDocumentReferences: unique(input.proposalDocumentReferences ?? ["Runtime lifecycle proposal"]),
     sourceCommercialDraftId: commercialDraft.objectId,
     noScopeVersionCreation: true,
@@ -589,7 +599,11 @@ async function assembleIfApproved(input, user, lifecycleId, proposal) {
   if (!(proposal.approvalState === "APPROVED" || ["CUSTOMER_APPROVED", "READY_FOR_IOF_PACKAGE"].includes(proposal.status))) {
     return { draftPackage: null, engineeringQueueItem: null };
   }
-  const draftPackage = await loadCommercialDraftIofPackageForProposal(proposal.proposalId);
+  let draftPackage = await loadCommercialDraftIofPackageForProposal(proposal.proposalId);
+  if (!draftPackage) {
+    const assembly = await assembleDraftIofPackageFromProposal({ proposalId: proposal.proposalId }, user, { idempotent: true });
+    draftPackage = assembly.draftPackage ?? assembly.iofPackage ?? null;
+  }
   if (!draftPackage) return { draftPackage: null, engineeringQueueItem: null };
   const queue = await listReviewQueue();
   return {

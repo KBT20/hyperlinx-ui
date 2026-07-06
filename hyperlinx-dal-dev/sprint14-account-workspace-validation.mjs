@@ -137,6 +137,12 @@ const completeChecklist = {
   engineeringNotes: "Sprint 14 Google Helium certification complete.",
 };
 
+const certifiedRouteGeometry = [
+  [-97.7431, 30.2672],
+  [-97.7284, 30.2751],
+  [-97.7049, 30.2898],
+];
+
 const ryan = await login("ryan", "ryan-alpha");
 const kyle = await login("kyle", "kyle-alpha");
 const google = await login("google", "google-alpha");
@@ -219,6 +225,8 @@ const quoteInput = {
   customerDesignReferences: ["CUSTOMER-DESIGN-GOOGLE-HELIUM"],
   customerTwinReference: "CUSTOMER-TWIN-GOOGLE",
   geometryReferences: ["GEOMETRY-GOOGLE-HELIUM-A", "GEOMETRY-GOOGLE-HELIUM-Z"],
+  routeGeometry: certifiedRouteGeometry,
+  centerline: certifiedRouteGeometry,
   proposalDocumentReferences: ["DOC-GOOGLE-HELIUM-20-YEAR-IRU"],
   assignedCustomerUsers: ["google-participant-001"],
   assignedEngineerId: "teralinx-user-kyle",
@@ -256,8 +264,11 @@ response = await runtimeRequest("POST", `/api/engineering/certification/draft-pa
 }, kyle);
 expectStatus("golden-path:certified-iof", response, 200);
 const certified = response.json.certifiedIofPackage;
-const scopeVersion = response.json.scopeVersion;
 assertProof("golden-path:certified-account", certified.accountId === "google", certified);
+
+response = await runtimeRequest("POST", `/api/engineering/certification/certified-packages/${encodeURIComponent(certified.certifiedPackageId)}/generate-scopeversion`, undefined, kyle);
+expectStatus("golden-path:generate-scopeversion", response, 200);
+const scopeVersion = response.json.scopeVersion;
 assertProof("golden-path:scopeversion-account", scopeVersion.accountId === "google" && scopeVersion.canonicalTruth.accountId === "google", scopeVersion);
 
 response = await runtimeRequest("POST", "/api/runtime/lifecycle/advance", { ...quoteInput, trigger: "CUSTOMER_APPROVED" }, ryan);

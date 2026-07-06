@@ -817,9 +817,15 @@ function packageQueueItem(record) {
 
 export async function listReviewQueue() {
   const records = await listRecords(DIRS.iofPackages);
+  const isOpenEngineeringReview = (record) => {
+    const status = String(record.status ?? "");
+    const workflowStatus = String(record.workflowStatus ?? "");
+    if (["CERTIFIED", "CLOSED", "ARCHIVED"].includes(status)) return false;
+    return status === "SUBMITTED_TO_ENGINEERING" || workflowStatus === "ENGINEERING_REVIEW";
+  };
   return sortedByUpdated(records
     .map(normalizeDraftPackage)
-    .filter((record) => record.status === "SUBMITTED_TO_ENGINEERING")
+    .filter(isOpenEngineeringReview)
     .map(packageQueueItem));
 }
 
@@ -884,6 +890,12 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
   if (!proposedIofUnits.length) {
     throw runtimeError(409, "Approved Proposal has no runtime or geometry references to assemble.");
   }
+  const candidateRouteGeometry = proposal.routeGeometry ?? proposal.centerline ?? proposal.centerlineRoute?.geometry ?? proposal.geometry?.coordinates ?? proposal.geometry;
+  const routeGeometry = Array.isArray(candidateRouteGeometry) ? candidateRouteGeometry : undefined;
+  const geometryCoordinateCount = Number(proposal.geometryCoordinateCount ?? routeGeometry?.length ?? 0);
+  const routeMiles = numeric(proposal.routeMiles, numeric(proposal.pricingSummary?.routeMiles, numeric(proposal.productConfiguration?.routeMiles, 0)));
+  const routeFeet = numeric(proposal.routeFeet, routeMiles ? routeMiles * 5280 : 0);
+  const routeId = String(proposal.routeId ?? proposal.centerlineRoute?.routeId ?? asArray(proposal.geometryReferences)[0] ?? packageId);
   const draft = await persistDraftPackage({
     packageId,
     packageName: String(body.packageName ?? `${proposal.proposalNumber ?? proposalId} Draft IOF Package`),
@@ -998,6 +1010,24 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
     newInfrastructureRequired: proposal.newInfrastructureRequired,
     customerTwinReference: proposal.customerTwinReference,
     geometryReferences: proposal.geometryReferences,
+    routeId,
+    routeMiles,
+    routeFeet,
+    routeGeometry,
+    geometry: proposal.geometry ?? (routeGeometry ? { type: "LineString", coordinates: routeGeometry } : undefined),
+    geometryCoordinateCount,
+    centerline: proposal.centerline ?? routeGeometry,
+    centerlineId: proposal.centerlineId ?? `${packageId}:CENTERLINE`,
+    centerlineRoute: proposal.centerlineRoute ?? (routeGeometry ? {
+      routeId,
+      routeMiles,
+      routeFeet,
+      geometry: routeGeometry,
+      geometryCoordinateCount,
+      source: "APPROVED_PROPOSAL_RUNTIME_OBJECT",
+    } : undefined),
+    route: proposal.route ?? (routeGeometry ? [{ routeId, routeMiles, geometry: routeGeometry }] : undefined),
+    routeSegments: proposal.routeSegments,
     proposalDocumentReferences: proposal.proposalDocumentReferences,
     sourceProposalVersion: proposal.version,
   }, user, "runtime.iof_package.assembled_from_proposal", "Draft IOF Package assembled from approved Proposal references.");
@@ -1881,7 +1911,12 @@ async function handleGenerateScopeVersion(req, res, user, certifiedPackageId) {
     sessionState: "ACTIVE",
     lastActivity: "EXECUTION_AUTHORIZED",
   }, user, "AUTHORITY_TRANSFER_ENGINEERING_TO_SCOPEVERSION", "Certified IOF Package promoted into immutable ScopeVersion authority.");
-  jsonResponse(res, 200, { ...generated, workspaceSession });
+  jsonResponse(res, 200, {
+    ...generated,
+    certifiedIofPackage: generated.certifiedPackage,
+    executionAuthorizationCertificate: generated.certificate,
+    workspaceSession,
+  });
 }
 
 async function handleCertifiedList(res) {

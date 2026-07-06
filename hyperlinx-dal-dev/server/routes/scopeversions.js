@@ -223,6 +223,154 @@ function isCertifiedImmutable(scopeVersion) {
   return Boolean(scopeVersion?.isImmutable || scopeVersion?.certificationState === "CERTIFIED");
 }
 
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null || value === "") return [];
+  return [value];
+}
+
+function upper(value) {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+function readyStatus(value) {
+  return ["PASS", "READY", "CREATED", "APPROVED", "AUTHORIZED", "EXECUTED", "ACCEPTED", "COMPLETE", "COMPLETED"].includes(upper(value));
+}
+
+function acceptedStatus(value) {
+  return ["ACCEPTED", "CUSTOMER_ACCEPTED", "APPROVED", "PASS", "READY"].includes(upper(value));
+}
+
+function readinessStatus(scopeVersion, key) {
+  const truth = asRecord(scopeVersion?.canonicalTruth);
+  const item = asArray(truth.downstreamReadiness ?? truth.readiness).find((entry) => upper(asRecord(entry).key) === upper(key));
+  return upper(asRecord(item).status);
+}
+
+function executionGateStatus(scopeVersion, key) {
+  return upper(asRecord(asRecord(scopeVersion?.canonicalTruth).executionGate)[key]);
+}
+
+function isExecutionScopeVersion(scopeVersion) {
+  const truth = asRecord(scopeVersion?.canonicalTruth);
+  const type = upper(scopeVersion?.type);
+  const source = upper(scopeVersion?.source);
+  const authority = upper(truth.constitutionalAuthority ?? truth.authority);
+  if (type === "INVENTORY" || type === "CANDIDATE") return false;
+  return (
+    type === "SCOPEVERSION_AUTHORITY" ||
+    source === "CERTIFIEDIOFPACKAGE" ||
+    Boolean(scopeVersion?.certifiedIofPackageId) ||
+    authority === "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE" ||
+    authority === "SCOPEVERSION_OPERATIONAL_BASELINE" ||
+    authority === "CERTIFIED_SCOPEVERSION"
+  );
+}
+
+function serviceOrderRecord(scopeVersion) {
+  const truth = asRecord(scopeVersion?.canonicalTruth);
+  return asRecord(truth.serviceOrder ?? truth.serviceOrderReference ?? scopeVersion?.serviceOrder ?? scopeVersion?.serviceOrderReference);
+}
+
+function customerAcceptanceRecord(scopeVersion) {
+  const truth = asRecord(scopeVersion?.canonicalTruth);
+  return asRecord(truth.customerAcceptance ?? truth.acceptedProposal ?? truth.proposalAcceptance ?? scopeVersion?.customerAcceptance ?? scopeVersion?.acceptedProposal);
+}
+
+function hasCustomerAcceptanceAuthority(scopeVersion) {
+  const truth = asRecord(scopeVersion?.canonicalTruth);
+  const acceptance = customerAcceptanceRecord(scopeVersion);
+  const serviceOrder = serviceOrderRecord(scopeVersion);
+  return Boolean(
+    scopeVersion?.customerAcceptanceId ||
+      truth.customerAcceptanceId ||
+      truth.customerAcceptanceCloseId ||
+      truth.acceptedProposalId ||
+      acceptance.customerAcceptanceId ||
+      acceptance.customerAcceptanceCloseId ||
+      acceptance.acceptedProposalId ||
+      acceptance.acceptedAt ||
+      serviceOrder.customerAcceptanceId ||
+      serviceOrder.customerAcceptanceCloseId ||
+      serviceOrder.acceptedProposalId ||
+      acceptedStatus(acceptance.status ?? truth.customerAcceptanceStatus ?? truth.proposalStatus) ||
+      upper(truth.lifecycleState ?? scopeVersion?.status) === "CUSTOMER_ACCEPTED"
+  );
+}
+
+function hasServiceOrderAuthority(scopeVersion) {
+  const truth = asRecord(scopeVersion?.canonicalTruth);
+  const serviceOrder = serviceOrderRecord(scopeVersion);
+  return Boolean(
+    scopeVersion?.serviceOrderId ||
+      truth.serviceOrderId ||
+      truth.serviceOrderArtifactId ||
+      serviceOrder.serviceOrderId ||
+      serviceOrder.serviceOrderArtifactId ||
+      serviceOrder.orderId ||
+      serviceOrder.id ||
+      serviceOrder.createdAt ||
+      serviceOrder.authorizedAt ||
+      readyStatus(serviceOrder.status ?? serviceOrder.authorizationStatus ?? truth.serviceOrderStatus) ||
+      readyStatus(readinessStatus(scopeVersion, "serviceOrder")) ||
+      readyStatus(executionGateStatus(scopeVersion, "serviceOrder"))
+  );
+}
+
+function hasPaymentEligibilityClaim(scopeVersion) {
+  const truth = asRecord(scopeVersion?.canonicalTruth);
+  const candidates = [
+    truth.paymentEligibility,
+    truth.paymentStatus,
+    truth.revenueRealization,
+    truth.currentTruth,
+    truth.paymentSummary,
+    truth.paymentProjection,
+    truth.productionPaymentProjection,
+    truth.paymentSegments,
+  ];
+  return candidates.some((candidate) => {
+    if (candidate === true) return true;
+    if (typeof candidate === "string") return ["ELIGIBLE", "PAYMENT_ELIGIBLE", "ELIGIBLE_AFTER_SEGMENT_ACCEPTANCE", "ELIGIBLE_AFTER_VALIDATED_PAYMENT"].includes(upper(candidate));
+    if (Array.isArray(candidate)) {
+      return candidate.some((item) => {
+        const record = asRecord(item);
+        return record.paymentEligible === true || record.eligible === true || ["ELIGIBLE", "PAYMENT_ELIGIBLE", "ELIGIBLE_AFTER_SEGMENT_ACCEPTANCE", "ELIGIBLE_AFTER_VALIDATED_PAYMENT"].includes(upper(record.paymentEligibility ?? record.status));
+      });
+    }
+    const record = asRecord(candidate);
+    return record.paymentEligible === true || record.eligible === true || ["ELIGIBLE", "PAYMENT_ELIGIBLE", "ELIGIBLE_AFTER_SEGMENT_ACCEPTANCE", "ELIGIBLE_AFTER_VALIDATED_PAYMENT"].includes(upper(record.paymentEligibility ?? record.revenueRealization ?? record.status));
+  });
+}
+
+function hasValidatedCloseEvidence(scopeVersion) {
+  return closureRecords(scopeVersion).some((closure) => {
+    const validation = asRecord(closure.validationResult);
+    return Boolean(closure.validatedAt || closure.accepted === true || validation.accepted === true || validation.status === "ACCEPTED");
+  });
+}
+
+function assertConstitutionalLayerIntegrity(scopeVersion) {
+  if (isExecutionScopeVersion(scopeVersion)) {
+    if (!hasCustomerAcceptanceAuthority(scopeVersion)) {
+      throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: Service Order requires Customer Acceptance. Missing validated CUSTOMER_ACCEPTANCE_CLOSE or accepted proposal artifact. Next legal action: record and validate Customer Acceptance.");
+    }
+    if (hasServiceOrderAuthority(scopeVersion) && !hasCustomerAcceptanceAuthority(scopeVersion)) {
+      throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: Service Order cannot exist before Customer Acceptance. Next legal action: void or hold Service Order until Customer Acceptance is validated.");
+    }
+    if (!hasServiceOrderAuthority(scopeVersion)) {
+      throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: ScopeVersion cannot be created before Service Order. Missing Service Order artifact. Next legal action: create or attach Service Order authority, then request ScopeVersion creation.");
+    }
+  }
+  if (hasPaymentEligibilityClaim(scopeVersion) && !hasValidatedCloseEvidence(scopeVersion)) {
+    throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: Payment cannot become eligible without a validated Close. Next legal action: validate Close evidence before marking payment eligible.");
+  }
+}
+
 const STATION_TRANSITIONS = {
   PLANNED: ["RELEASED", "BLOCKED", "REJECTED"],
   RELEASED: ["IN_PROGRESS", "BLOCKED", "REJECTED"],
@@ -506,6 +654,7 @@ export async function persistScopeVersion(scopeVersion) {
   const normalized = normalizeScopeVersion(scopeVersion);
   const existing = await loadRecord(DIRS.scopeVersions, normalized.scopeVersionId).catch(() => null);
   const guarded = normalizeScopeVersion(mergeScopeVersionLifecycle(existing ? normalizeScopeVersion(existing) : null, normalized));
+  assertConstitutionalLayerIntegrity(guarded);
   return persistRecord(DIRS.scopeVersions, guarded.scopeVersionId, guarded);
 }
 

@@ -1,59 +1,68 @@
+import { lazy, Suspense } from "react";
 import { DAL_API, DAL_APP_NAME, DAL_BASELINE_GRAPH_API, DAL_INVENTORY_GRAPH_API } from "../config/dalApi";
 import ReasoningPanel from "../components/ReasoningPanel";
+import RuntimeDiagnosticsPanel from "../components/RuntimeDiagnosticsPanel";
 import type { ReasoningWorkspace } from "../api/reasoningClient";
 import { endpointBaseUrl, getReasoningEndpointCandidates } from "../api/reasoningRegistry";
-import CandidateSitesWorkspace from "../workspaces/CandidateSitesWorkspace";
-import DALInventoryWorkspace from "../workspaces/DALInventoryWorkspace";
-import DALPlaceholderWorkspace from "../workspaces/DALPlaceholderWorkspace";
-import DesignWorkspace from "../components/workspaces/DesignWorkspace";
-import FieldWorkspace from "../workspaces/FieldWorkspace";
-import GraphExtensionWorkspace from "../workspaces/GraphExtensionWorkspace";
-import GraphViewerWorkspace from "../workspaces/GraphViewerWorkspace";
-import GoogleRfpWorkspace from "../components/workspaces/GoogleRfpWorkspace";
-import InventoryRecoveryWorkspace from "../workspaces/InventoryRecoveryWorkspace";
-import ControlWorkspace from "../workspaces/ControlWorkspace";
-import MarketplaceWorkspace from "../workspaces/MarketplaceWorkspace";
-import NetworkAffinityWorkspace from "../workspaces/NetworkAffinityWorkspace";
-import OperationalIntelligenceWorkspace from "../workspaces/OperationalIntelligenceWorkspace";
-import PortfolioWorkspace from "../workspaces/PortfolioWorkspace";
-import PreliminaryProposalWorkspace from "../components/workspaces/PreliminaryProposalWorkspace";
-import ProposedNetworkWorkspace from "../components/workspaces/ProposedNetworkWorkspace";
-import PrismWorkspace from "../workspaces/PrismWorkspace";
-import PrismSiteDecisionWorkspace from "../workspaces/PrismSiteDecisionWorkspace";
-import RouteEngineeringWorkspace from "../workspaces/RouteEngineeringWorkspace";
-import ScopeVersionWorkspace from "../workspaces/ScopeVersionWorkspace";
-import TeralinxRouteWorkspace from "../components/workspaces/TeralinxRouteWorkspace";
-import TranslateWorkspace from "../workspaces/TranslateWorkspace";
-import TwinWorkspace from "../workspaces/TwinWorkspace";
 import DALNavigation from "./DALNavigation";
 import { DALStateProvider, useDALState } from "./DALState";
 import { TeralinxAuthProvider, useTeralinxAuth } from "../identity/TeralinxAuth";
 
+const CandidateSitesWorkspace = lazy(() => import("../workspaces/CandidateSitesWorkspace"));
+const DALInventoryWorkspace = lazy(() => import("../workspaces/DALInventoryWorkspace"));
+const DesignWorkspace = lazy(() => import("../components/workspaces/DesignWorkspace"));
+const FieldWorkspace = lazy(() => import("../workspaces/FieldWorkspace"));
+const GraphExtensionWorkspace = lazy(() => import("../workspaces/GraphExtensionWorkspace"));
+const GraphViewerWorkspace = lazy(() => import("../workspaces/GraphViewerWorkspace"));
+const GoogleRfpWorkspace = lazy(() => import("../components/workspaces/GoogleRfpWorkspace"));
+const InventoryRecoveryWorkspace = lazy(() => import("../workspaces/InventoryRecoveryWorkspace"));
+const ControlWorkspace = lazy(() => import("../workspaces/ControlWorkspace"));
+const MarketplaceWorkspace = lazy(() => import("../workspaces/MarketplaceWorkspace"));
+const NetworkAffinityWorkspace = lazy(() => import("../workspaces/NetworkAffinityWorkspace"));
+const OperationalIntelligenceWorkspace = lazy(() => import("../workspaces/OperationalIntelligenceWorkspace"));
+const PortfolioWorkspace = lazy(() => import("../workspaces/PortfolioWorkspace"));
+const PreliminaryProposalWorkspace = lazy(() => import("../components/workspaces/PreliminaryProposalWorkspace"));
+const ProposedNetworkWorkspace = lazy(() => import("../components/workspaces/ProposedNetworkWorkspace"));
+const PrismWorkspace = lazy(() => import("../workspaces/PrismWorkspace"));
+const PrismSiteDecisionWorkspace = lazy(() => import("../workspaces/PrismSiteDecisionWorkspace"));
+const RouteEngineeringWorkspace = lazy(() => import("../workspaces/RouteEngineeringWorkspace"));
+const ScopeVersionWorkspace = lazy(() => import("../workspaces/ScopeVersionWorkspace"));
+const TeralinxRouteWorkspace = lazy(() => import("../components/workspaces/TeralinxRouteWorkspace"));
+const TranslateWorkspace = lazy(() => import("../workspaces/TranslateWorkspace"));
+const TwinWorkspace = lazy(() => import("../workspaces/TwinWorkspace"));
+
 function DALWorkspaceOutlet() {
   const { workspace } = useDALState();
 
-  if (workspace === "teralinxRoute") return <TeralinxRouteWorkspace />;
-  if (workspace === "googleRfp") return <GoogleRfpWorkspace />;
-  if (workspace === "inventory") return <DALInventoryWorkspace />;
-  if (workspace === "inventoryRecovery") return <InventoryRecoveryWorkspace />;
-  if (workspace === "graphViewer") return <GraphViewerWorkspace />;
-  if (workspace === "graphExtensions") return <GraphExtensionWorkspace />;
-  if (workspace === "design") return <DesignWorkspace />;
-  if (workspace === "proposedNetwork") return <ProposedNetworkWorkspace />;
-  if (workspace === "preliminaryProposal") return <PreliminaryProposalWorkspace />;
-  if (workspace === "prism") return <PrismWorkspace />;
-  if (workspace === "siteDecision") return <PrismSiteDecisionWorkspace />;
-  if (workspace === "routeEngineering") return <RouteEngineeringWorkspace />;
-  if (workspace === "scopeVersion") return <ScopeVersionWorkspace />;
-  if (workspace === "candidateSites") return <CandidateSitesWorkspace />;
-  if (workspace === "networkAffinity") return <NetworkAffinityWorkspace />;
-  if (workspace === "portfolio") return <PortfolioWorkspace />;
-  if (workspace === "marketplace") return <MarketplaceWorkspace />;
-  if (workspace === "control") return <ControlWorkspace />;
-  if (workspace === "field") return <FieldWorkspace />;
-  if (workspace === "twin") return <TwinWorkspace />;
-  if (workspace === "ops") return <OperationalIntelligenceWorkspace />;
-  return <TranslateWorkspace />;
+  const body =
+    workspace === "teralinxRoute" ? <TeralinxRouteWorkspace /> :
+      workspace === "googleRfp" ? <GoogleRfpWorkspace /> :
+        workspace === "inventory" ? <DALInventoryWorkspace /> :
+          workspace === "inventoryRecovery" ? <InventoryRecoveryWorkspace /> :
+            workspace === "graphViewer" ? <GraphViewerWorkspace /> :
+              workspace === "graphExtensions" ? <GraphExtensionWorkspace /> :
+                workspace === "design" ? <DesignWorkspace /> :
+                  workspace === "proposedNetwork" ? <ProposedNetworkWorkspace /> :
+                    workspace === "preliminaryProposal" ? <PreliminaryProposalWorkspace /> :
+                      workspace === "prism" ? <PrismWorkspace /> :
+                        workspace === "siteDecision" ? <PrismSiteDecisionWorkspace /> :
+                          workspace === "routeEngineering" ? <RouteEngineeringWorkspace /> :
+                            workspace === "scopeVersion" ? <ScopeVersionWorkspace /> :
+                              workspace === "candidateSites" ? <CandidateSitesWorkspace /> :
+                                workspace === "networkAffinity" ? <NetworkAffinityWorkspace /> :
+                                  workspace === "portfolio" ? <PortfolioWorkspace /> :
+                                    workspace === "marketplace" ? <MarketplaceWorkspace /> :
+                                      workspace === "control" ? <ControlWorkspace /> :
+                                        workspace === "field" ? <FieldWorkspace /> :
+                                          workspace === "twin" ? <TwinWorkspace /> :
+                                            workspace === "ops" ? <OperationalIntelligenceWorkspace /> :
+                                              <TranslateWorkspace />;
+
+  return (
+    <Suspense fallback={<div className="dal-panel dal-status">Loading workspace...</div>}>
+      {body}
+    </Suspense>
+  );
 }
 
 function reasoningWorkspace(workspace: ReturnType<typeof useDALState>["workspace"]): ReasoningWorkspace {
@@ -266,6 +275,7 @@ function DALShell() {
         <DALNavigation />
         <main className="dal-main">
           <DALWorkspaceOutlet />
+          <RuntimeDiagnosticsPanel />
           <DALReasoningOutlet />
         </main>
       </div>

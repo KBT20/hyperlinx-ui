@@ -1,9 +1,10 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
+const tempDir = path.join(root, ".tmp", "sprint20a-engineering-projection-rendering");
 
 function read(relativePath) {
   return readFileSync(path.join(root, relativePath), "utf8");
@@ -11,6 +12,61 @@ function read(relativePath) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function toProjectPath(value) {
+  return value.replace(/\\/g, "/");
+}
+
+function outPath(relativePath) {
+  return path.join(tempDir, relativePath).replace(/\.tsx?$/, ".mjs");
+}
+
+function resolveRelativeImport(fromPath, specifier) {
+  const base = toProjectPath(path.join(path.dirname(fromPath), specifier));
+  const candidates = [
+    base,
+    `${base}.ts`,
+    `${base}.tsx`,
+    `${base}.js`,
+    `${base}.jsx`,
+    toProjectPath(path.join(base, "index.ts")),
+    toProjectPath(path.join(base, "index.tsx")),
+  ];
+  return candidates.find((candidate) => existsSync(path.join(root, candidate)));
+}
+
+const transpiledFiles = new Set();
+
+function transpile(relativePath) {
+  const normalizedPath = toProjectPath(relativePath);
+  if (transpiledFiles.has(normalizedPath)) return outPath(normalizedPath);
+  transpiledFiles.add(normalizedPath);
+  const source = read(normalizedPath);
+  for (const match of source.matchAll(/from\s+["'](\.{1,2}\/[^"']+)["']/g)) {
+    const dependency = resolveRelativeImport(normalizedPath, match[1]);
+    if (dependency && dependency.endsWith(".ts") || dependency?.endsWith(".tsx")) {
+      transpile(dependency);
+    }
+  }
+  const output = ts.transpileModule(source, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ES2022,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      jsx: ts.JsxEmit.ReactJSX,
+      importsNotUsedAsValues: ts.ImportsNotUsedAsValues.Remove,
+      esModuleInterop: true,
+    },
+    fileName: normalizedPath,
+  }).outputText.replace(/from "(\.{1,2}\/[^"]+)";/g, (_match, specifier) => {
+    const suffix = specifier.endsWith(".js") ? specifier.replace(/\.js$/, ".mjs") : `${specifier}.mjs`;
+    return `from "${suffix}";`;
+  });
+  const outputFile = outPath(normalizedPath);
+  mkdirSync(path.dirname(outputFile), { recursive: true });
+  writeFileSync(outputFile, output);
+  return outputFile;
 }
 
 const projectionPath = "src/engineering/EngineeringCertificationProjection.ts";
@@ -84,22 +140,12 @@ assert(commercialAssembly.includes("centerline: packageCenterline"), "Commercial
 assert(commercialAssembly.includes("centerlineRoute"), "Commercial assembly must persist centerlineRoute.");
 assert(commercialAssembly.includes("spine"), "Commercial assembly must persist a spine artifact.");
 
-const transpiled = ts.transpileModule(projection, {
-  compilerOptions: {
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.ES2022,
-    verbatimModuleSyntax: false,
-  },
-}).outputText;
-const projectionModule = await import(`data:text/javascript;base64,${Buffer.from(transpiled).toString("base64")}`);
-const commercialTranspiled = ts.transpileModule(commercialAssembly, {
-  compilerOptions: {
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.ES2022,
-    verbatimModuleSyntax: false,
-  },
-}).outputText;
-const commercialModule = await import(`data:text/javascript;base64,${Buffer.from(commercialTranspiled).toString("base64")}`);
+rmSync(tempDir, { recursive: true, force: true });
+mkdirSync(tempDir, { recursive: true });
+transpile(projectionPath);
+transpile(commercialAssemblyPath);
+const projectionModule = await import(pathToFileURL(outPath(projectionPath)));
+const commercialModule = await import(pathToFileURL(outPath(commercialAssemblyPath)));
 
 const osrmGeometry = Array.from({ length: 1615 }, (_, index) => [
   -97.7431 + index * 0.001,
@@ -278,6 +324,9 @@ const zeroGeometryProjection = projectionModule.buildEngineeringCertificationPro
   centerline: [],
   centerlineRoute: null,
   osrmRoute: null,
+  spine: null,
+  measuredSpine: null,
+  routeGeometry: null,
   commercialDraftSnapshot: null,
   customerRequests: [],
   proposedIofUnits: [],
@@ -303,6 +352,9 @@ const stationOnlyProjection = projectionModule.buildEngineeringCertificationProj
   centerlineRoute: null,
   osrmRoute: null,
   spine: null,
+  measuredSpine: null,
+  routeGeometry: null,
+  commercialDraftSnapshot: null,
   productDoctrineAssembly: null,
   route: [],
   routeSegments: [],

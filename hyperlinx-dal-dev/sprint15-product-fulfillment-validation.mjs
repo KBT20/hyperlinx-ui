@@ -143,6 +143,12 @@ const completeChecklist = {
   engineeringNotes: "Sprint 15 carrier-neutral Product Fulfillment certification complete.",
 };
 
+const certifiedRouteGeometry = [
+  [-97.7431, 30.2672],
+  [-97.7302, 30.2744],
+  [-97.7087, 30.2869],
+];
+
 const ryan = await login("ryan", "ryan-alpha");
 const kyle = await login("kyle", "kyle-alpha");
 const google = await login("google", "google-alpha");
@@ -239,6 +245,8 @@ const quoteInput = {
   newInfrastructureRequired: ["NEW-CONSTRUCTION-GOOGLE-LATERAL-A", "NEW-CONSTRUCTION-GOOGLE-LATERAL-Z"],
   customerTwinReference: "CUSTOMER-TWIN-GOOGLE",
   geometryReferences: ["GEOMETRY-GOOGLE-CARRIER-NEUTRAL-A", "GEOMETRY-GOOGLE-CARRIER-NEUTRAL-Z"],
+  routeGeometry: certifiedRouteGeometry,
+  centerline: certifiedRouteGeometry,
   proposalDocumentReferences: ["DOC-GOOGLE-CARRIER-NEUTRAL-PROPOSAL"],
   assignedCustomerUsers: ["google-participant-001"],
   assignedEngineerId: "teralinx-user-kyle",
@@ -292,9 +300,12 @@ response = await runtimeRequest("POST", `/api/engineering/certification/draft-pa
 }, kyle);
 expectStatus("engineering:certified-iof", response, 200);
 const certified = response.json.certifiedIofPackage;
+assertProof("certified-iof:inherits-product", certified.productId === quoteInput.productId && certified.fulfillmentPlanId === plan.fulfillmentPlanId, certified);
+
+response = await runtimeRequest("POST", `/api/engineering/certification/certified-packages/${encodeURIComponent(certified.certifiedPackageId)}/generate-scopeversion`, undefined, kyle);
+expectStatus("engineering:generate-scopeversion", response, 200);
 const certificate = response.json.executionAuthorizationCertificate;
 const scopeVersion = response.json.scopeVersion;
-assertProof("certified-iof:inherits-product", certified.productId === quoteInput.productId && certified.fulfillmentPlanId === plan.fulfillmentPlanId, certified);
 assertProof("certificate:inherits-product", certificate.productId === quoteInput.productId && certificate.fulfillmentPlanId === plan.fulfillmentPlanId, certificate);
 assertProof("scopeversion:canonical-product", scopeVersion.productId === quoteInput.productId && scopeVersion.canonicalTruth.productId === quoteInput.productId, scopeVersion);
 assertProof("scopeversion:canonical-fulfillment", scopeVersion.fulfillmentPlanId === plan.fulfillmentPlanId && scopeVersion.canonicalTruth.fulfillmentPlanId === plan.fulfillmentPlanId, scopeVersion.canonicalTruth);

@@ -3,6 +3,7 @@ import { withStoredAuth } from "./authHeaders";
 import { findRecord, readCollection, writeRecord, deleteRecord } from "./dalStorage";
 import { createScopeVersionFromInventoryGraph } from "../scopeversion/scopeVersionUtils";
 import { applyScopeVersionCertification } from "../scopeversion/scopeVersionCertification";
+import { validateConstitutionalLayerIntegrity } from "../scopeversion/ConstitutionalLayerIntegrity";
 import { getAuthoritativeLifecycleState, mergeScopeVersionLifecycle, reconcileScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
 import { logKernelFallbackActive, normalizeRouteAuthorityState } from "../kernel/KernelStateRegistry";
 import type {
@@ -190,6 +191,15 @@ function assertConstitutionalGuardrails(scopeVersion: ScopeVersion) {
   }
   if (certificationState === "REJECTED" && claimsAuthority) {
     throw new Error("Rejected ScopeVersions cannot become authoritative.");
+  }
+
+  const layerIntegrity = validateConstitutionalLayerIntegrity({ scopeVersion });
+  if (!layerIntegrity.allowed) {
+    throw new Error(
+      `Constitutional layer integrity blocked ScopeVersion ${scopeVersion.scopeVersionId}: ${layerIntegrity.blockers
+        .map((blocker) => `${blocker.message} Next legal action: ${blocker.nextLegalAction}`)
+        .join(" ")}`
+    );
   }
 }
 

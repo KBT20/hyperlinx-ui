@@ -71,6 +71,12 @@ const proof = {
   runtime: [],
 };
 
+const certifiedRouteGeometry = [
+  [-97.7431, 30.2672],
+  [-97.7354, 30.2718],
+  [-97.7216, 30.2796],
+];
+
 function assertProof(name, passed, details = {}) {
   proof.assertions.push({ name, status: passed ? "PASS" : "FAIL", ...details });
   if (!passed) throw new Error(`${name}: ${details.message ?? "assertion failed"}`);
@@ -195,6 +201,8 @@ function approvedProposalInput(ryan) {
     customerDesignReferences: [IDS.design],
     customerTwinReference: IDS.twin,
     geometryReferences: [IDS.geometry],
+    routeGeometry: certifiedRouteGeometry,
+    centerline: certifiedRouteGeometry,
     proposalDocumentReferences: ["DOC-GOOGLE-COMMERCIAL-PREVIEW"],
     approvedAt: new Date().toISOString(),
     version: 1,
@@ -295,9 +303,12 @@ response = await runtimeRequest("POST", `/api/engineering/certification/draft-pa
 }, kyle);
 expectStatus("package-certification:certify-draft-iof", response, 200);
 const certified = response.json.certifiedIofPackage;
-const certificate = response.json.executionAuthorizationCertificate;
-const scopeVersion = response.json.scopeVersion;
 assertProof("certified-package:persisted", certified.certifiedPackageId === IDS.certifiedPackage && certified.status === "CERTIFIED", certified);
+
+response = await runtimeRequest("POST", `/api/engineering/certification/certified-packages/${encodeURIComponent(IDS.certifiedPackage)}/generate-scopeversion`, undefined, kyle);
+expectStatus("scopeversion:generate-from-certified-package", response, 200);
+const certificate = response.json.executionAuthorizationCertificate ?? response.json.certificate;
+const scopeVersion = response.json.scopeVersion;
 assertProof("execution-certificate:persisted", certificate.certifiedIofPackageId === IDS.certifiedPackage && certificate.scopeVersionId === scopeVersion.scopeVersionId && certificate.assemblyFingerprint.length === 64, certificate);
 assertProof("scopeversion:generated-from-certified-package", scopeVersion.certifiedIofPackageId === IDS.certifiedPackage && scopeVersion.certificationState === "CERTIFIED", scopeVersion);
 assertProof("scopeversion:references-no-duplicates", scopeVersion.runtimeObjectIds.length === proposal.runtimeObjectIds.length && scopeVersion.canonicalTruth.certifiedIofUnitIds.length === draft.proposedIofUnits.length, scopeVersion);

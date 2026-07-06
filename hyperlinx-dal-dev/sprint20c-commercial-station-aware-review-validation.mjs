@@ -66,6 +66,7 @@ requiredFiles.forEach((relativePath) => {
   "src/spine/StationAuthorityEngine.ts",
   "src/spine/ObjectStationAttachmentEngine.ts",
   "src/spine/StationIndexedGraphEngine.ts",
+  "src/spine/SpineAuditProjectionEngine.ts",
   "src/commercial/CommercialStationReviewEngine.ts",
   "src/commercial/CommercialObjectPlacementEngine.ts",
   "src/engineering/EngineeringCertificationProjection.ts",

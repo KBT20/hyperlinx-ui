@@ -14,6 +14,7 @@ export type ScopeVersionState =
   | "CUSTOMER_ACCEPTED"
   | "CONTRACT_REVIEW"
   | "CONTRACT_EXECUTED"
+  | "SERVICE_ORDER"
   | "CONTROL_READY"
   | "CONTROL_ACTIVE"
   | "FIELD_READY"
@@ -112,6 +113,7 @@ export const SCOPEVERSION_STATE_REGISTRY: readonly ScopeVersionState[] = Object.
   "CUSTOMER_ACCEPTED",
   "CONTRACT_REVIEW",
   "CONTRACT_EXECUTED",
+  "SERVICE_ORDER",
   "CONTROL_READY",
   "CONTROL_ACTIVE",
   "FIELD_READY",
@@ -136,7 +138,8 @@ export const SCOPEVERSION_TRANSITION_REGISTRY: readonly ScopeVersionTransition[]
   { transitionId: "SVT-CUSTOMER-REVIEW-ACCEPTED", from: "CUSTOMER_REVIEW", to: "CUSTOMER_ACCEPTED", description: "Customer acceptance is recorded." },
   { transitionId: "SVT-CUSTOMER-ACCEPTED-CONTRACT-REVIEW", from: "CUSTOMER_ACCEPTED", to: "CONTRACT_REVIEW", description: "Customer accepted scope enters contract review." },
   { transitionId: "SVT-CONTRACT-REVIEW-EXECUTED", from: "CONTRACT_REVIEW", to: "CONTRACT_EXECUTED", description: "Contract execution is recorded." },
-  { transitionId: "SVT-CONTRACT-EXECUTED-CONTROL-READY", from: "CONTRACT_EXECUTED", to: "CONTROL_READY", description: "Contract executed scope becomes ready for Control." },
+  { transitionId: "SVT-CONTRACT-EXECUTED-SERVICE-ORDER", from: "CONTRACT_EXECUTED", to: "SERVICE_ORDER", description: "Contract executed scope receives Service Order authority." },
+  { transitionId: "SVT-SERVICE-ORDER-CONTROL-READY", from: "SERVICE_ORDER", to: "CONTROL_READY", description: "Service Order authority becomes ready for Control." },
   { transitionId: "SVT-CONTROL-READY-ACTIVE", from: "CONTROL_READY", to: "CONTROL_ACTIVE", description: "Control activates work authority." },
   { transitionId: "SVT-CONTROL-ACTIVE-FIELD-READY", from: "CONTROL_ACTIVE", to: "FIELD_READY", description: "Control active work becomes ready for Field." },
   { transitionId: "SVT-FIELD-READY-ACTIVE", from: "FIELD_READY", to: "FIELD_ACTIVE", description: "Field execution authority begins." },
@@ -153,6 +156,7 @@ export const SCOPEVERSION_TRANSITION_REQUIREMENTS: readonly ScopeVersionTransiti
   { requirementId: "REQ-VENDOR-ACCEPTED", targetState: "VENDOR_ACCEPTED", requiredCloseTypes: ["VENDOR_ACCEPTANCE_CLOSE"], requiredEvidence: true, requiredAuthorityRoles: ["VENDOR", "TERALINX_MARKETPLACE"] },
   { requirementId: "REQ-CUSTOMER-ACCEPTED", targetState: "CUSTOMER_ACCEPTED", requiredCloseTypes: ["CUSTOMER_ACCEPTANCE_CLOSE"], requiredEvidence: true, requiredAuthorityRoles: ["CUSTOMER", "TERALINX_SALES"] },
   { requirementId: "REQ-CONTRACT-EXECUTED", targetState: "CONTRACT_EXECUTED", requiredCloseTypes: ["CONTRACT_CLOSE"], requiredEvidence: true, requiredAuthorityRoles: ["LEGAL"] },
+  { requirementId: "REQ-SERVICE-ORDER", targetState: "SERVICE_ORDER", requiredCloseTypes: ["SERVICE_ORDER_CLOSE"], requiredEvidence: true, requiredAuthorityRoles: ["TERALINX_OPERATIONS", "TERALINX_SALES", "LEGAL", "SYSTEM"], notes: "Service Order requires validated Customer Acceptance and contract authority before ScopeVersion execution truth." },
   { requirementId: "REQ-CONTROL-ACTIVE", targetState: "CONTROL_ACTIVE", requiredCloseTypes: ["CONTROL_CLOSE"], requiredEvidence: true, requiredAuthorityRoles: ["TERALINX_OPERATIONS", "SYSTEM"] },
   { requirementId: "REQ-FIELD-ACTIVE", targetState: "FIELD_ACTIVE", requiredCloseTypes: ["FIELD_CLOSE"], requiredEvidence: true, requiredAuthorityRoles: ["FIELD_OPERATOR", "TERALINX_OPERATIONS", "SYSTEM"] },
   { requirementId: "REQ-COMPLETE", targetState: "COMPLETE", requiredCloseTypes: ["COMPLETION_CLOSE"], requiredEvidence: true, requiredAuthorityRoles: ["TERALINX_OPERATIONS", "FIELD_OPERATOR", "SYSTEM"] },
@@ -160,4 +164,3 @@ export const SCOPEVERSION_TRANSITION_REQUIREMENTS: readonly ScopeVersionTransiti
   { requirementId: "REQ-SUPERSEDED", targetState: "SUPERSEDED", requiredCloseTypes: ["DESIGN_CLOSE"], requiredEvidence: true, requiredAuthorityRoles: ["TERALINX_ENGINEERING"] },
   { requirementId: "REQ-CANCELLED", targetState: "CANCELLED", requiredCloseTypes: ["COMMERCIAL_CLOSE"], requiredEvidence: true, requiredAuthorityRoles: ["TERALINX_SALES", "CUSTOMER"] },
 ]);
-

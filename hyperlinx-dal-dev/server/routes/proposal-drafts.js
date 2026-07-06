@@ -15,6 +15,7 @@ import {
 } from "./_shared.js";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
 import { loadCommercialDraftIofPackageForProposal } from "./commercial-iof-packages.js";
+import { assembleDraftIofPackageFromProposal } from "./engineering-certification.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 
 const ROLE_KEYS = ["contributors", "reviewers", "approvers", "executives", "customerReviewers", "salesEngineering"];
@@ -984,7 +985,11 @@ async function handleApprove(req, res, id, user) {
   let draftIofAssemblyError = "";
   try {
     draftPackage = await loadCommercialDraftIofPackageForProposal(saved.proposalId);
-    if (!draftPackage) draftIofAssemblyError = "Commercial Draft IOF Package JSON has not been assembled for this Proposal.";
+    if (!draftPackage) {
+      const assembly = await assembleDraftIofPackageFromProposal({ proposalId: saved.proposalId }, user, { idempotent: true });
+      draftPackage = assembly.draftPackage ?? assembly.iofPackage ?? null;
+    }
+    if (!draftPackage) draftIofAssemblyError = "Draft IOF Package has not been assembled for this Proposal.";
   } catch (error) {
     draftIofAssemblyError = error instanceof Error ? error.message : String(error);
   }

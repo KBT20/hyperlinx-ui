@@ -183,6 +183,18 @@ const certifiedPackage = {
   runtimeObjectIds: objects.map((object) => object.objectId),
   runtimeRelationshipIds: ["REL-SPRINT21-001"],
   runtimeEvidenceIds: ["EVIDENCE-SPRINT21-001"],
+  customerAcceptance: {
+    customerAcceptanceId: "CUST-ACCEPT-SPRINT21-001",
+    acceptedProposalId: "PROPOSAL-SPRINT21",
+    status: "ACCEPTED",
+    acceptedAt: "2026-07-02T11:30:00.000Z",
+  },
+  serviceOrder: {
+    serviceOrderId: "SO-SPRINT21-001",
+    customerAcceptanceId: "CUST-ACCEPT-SPRINT21-001",
+    status: "AUTHORIZED",
+    authorizedAt: "2026-07-02T11:45:00.000Z",
+  },
 };
 
 const certificate = {
@@ -230,12 +242,16 @@ assert(scopeVersion.canonicalTruth.engineeringDoctrine.doctrineStatus === "PASS"
 assert(scopeVersion.canonicalTruth.validationSnapshot.packageValidation.status === "PASS", "ScopeVersion must contain validation snapshot.");
 assert(scopeVersion.canonicalTruth.digitalCertificationMetadata.assemblyFingerprint, "ScopeVersion must contain digital certification metadata.");
 assert(scopeVersion.canonicalTruth.downstreamReadiness.find((item) => item.key === "engineering")?.status === "PASS", "Engineering readiness must initially PASS.");
-assert(scopeVersion.canonicalTruth.downstreamReadiness.filter((item) => item.key !== "engineering").every((item) => item.status === "PENDING"), "Downstream readiness must initially be PENDING.");
+assert(scopeVersion.canonicalTruth.downstreamReadiness.find((item) => item.key === "serviceOrder")?.status === "PASS", "Service Order readiness must PASS before ScopeVersion authority.");
+assert(scopeVersion.canonicalTruth.downstreamReadiness.filter((item) => !["engineering", "serviceOrder"].includes(item.key)).every((item) => item.status === "PENDING"), "Downstream readiness after Service Order must initially be PENDING.");
+assert(scopeVersion.canonicalTruth.customerAcceptanceId === "CUST-ACCEPT-SPRINT21-001", "ScopeVersion must preserve Customer Acceptance authority.");
+assert(scopeVersion.canonicalTruth.serviceOrderId === "SO-SPRINT21-001", "ScopeVersion must preserve Service Order authority.");
 
 const promotedPackage = markCertifiedPackagePromoted(certifiedPackage, scopeVersion, certificate);
 assert(promotedPackage.engineeringCertificationLocked === true, "Certified IOF Package must become read-only after promotion.");
 assert(promotedPackage.scopeVersionCreated === true, "Certified IOF Package must record ScopeVersion creation.");
 assert(promotedPackage.scopeVersionId === scopeVersion.scopeVersionId, "Certified IOF Package must reference created ScopeVersion.");
+assert(promotedPackage.serviceOrderId === "SO-SPRINT21-001", "Certified IOF Package promotion must preserve Service Order authority.");
 
 const revisionScopeVersion = createScopeVersionFromCertifiedPackage(
   {

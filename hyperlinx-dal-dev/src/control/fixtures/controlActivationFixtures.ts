@@ -72,12 +72,24 @@ function contractCloseFor(scopeVersionId: string): ScopeVersionCloseEvent {
   });
 }
 
+function serviceOrderCloseFor(scopeVersionId: string): ScopeVersionCloseEvent {
+  return close({
+    scopeVersionId,
+    closeId: `${scopeVersionId}-SERVICE-ORDER-CLOSE`,
+    closeType: "SERVICE_ORDER_CLOSE",
+    actorId: "ops-001",
+    actorRole: "TERALINX_OPERATIONS",
+    previousState: "CONTRACT_EXECUTED",
+    resultingState: "SERVICE_ORDER",
+  });
+}
+
 function readyInput(scopeVersionId: string, overrides: Partial<ControlActivationReadinessInput> = {}): ControlActivationReadinessInput {
   return {
     ...baseTrace,
     scopeVersionId,
-    lifecycleState: "CONTRACT_EXECUTED",
-    closes: [contractCloseFor(scopeVersionId)],
+    lifecycleState: "SERVICE_ORDER",
+    closes: [contractCloseFor(scopeVersionId), serviceOrderCloseFor(scopeVersionId)],
     actorId: "ops-001",
     actorRole: "TERALINX_OPERATIONS",
     references: {
@@ -108,7 +120,10 @@ export const controlActivationReadinessInputFixtures: readonly ControlActivation
     corridorId: "CORRIDOR-AI-WEST-TEXAS",
   }),
   readyInput("SV-CONTROL-MISSING-CONTRACT", {
-    closes: [],
+    closes: [serviceOrderCloseFor("SV-CONTROL-MISSING-CONTRACT")],
+  }),
+  readyInput("SV-CONTROL-MISSING-SERVICE-ORDER", {
+    closes: [contractCloseFor("SV-CONTROL-MISSING-SERVICE-ORDER")],
   }),
   readyInput("SV-CONTROL-MISSING-ENGINEERING", {
     references: {
