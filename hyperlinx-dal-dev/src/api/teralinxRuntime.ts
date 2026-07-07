@@ -858,6 +858,80 @@ function unwrapList<T>(data: any, keys: string[]): T[] {
   return Array.isArray(items) ? items : [];
 }
 
+export const COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT = "/api/commercial/routes";
+
+export type CommercialRouteRepositoryDiagnostics = {
+  endpointSelected?: string;
+  endpointRegistered?: boolean;
+  endpointUsed?: string;
+  clientMethod?: string;
+  repositoryIdentifier?: string;
+  repositoryType?: string;
+  persistenceResult?: string;
+  restoreResult?: string;
+  authoritySource?: string;
+  recordCount?: number;
+  noOsrmRegeneration?: boolean;
+  noScopeVersionCreation?: boolean;
+  noInventoryMutation?: boolean;
+  [key: string]: unknown;
+};
+
+type CommercialRouteRepositoryClientMethod =
+  | "listCommercialRoutes"
+  | "loadCommercialRoute"
+  | "saveCommercialRoute"
+  | "verifyCommercialRoute";
+
+function logCommercialRouteRepositoryDiagnostics(action: string, data: any) {
+  const diagnostics = data?.routeRepositoryDiagnostics as CommercialRouteRepositoryDiagnostics | undefined;
+  if (!diagnostics) return;
+  console.info("[CommercialRouteRepository]", {
+    action,
+    endpointSelected: diagnostics.endpointSelected,
+    endpointRegistered: diagnostics.endpointRegistered,
+    endpointUsed: diagnostics.endpointUsed,
+    clientMethod: diagnostics.clientMethod,
+    repositoryIdentifier: diagnostics.repositoryIdentifier,
+    persistenceResult: diagnostics.persistenceResult,
+    restoreResult: diagnostics.restoreResult,
+    authoritySource: diagnostics.authoritySource,
+    recordCount: diagnostics.recordCount,
+  });
+}
+
+function commercialRouteRepositoryHeaders(
+  clientMethod: CommercialRouteRepositoryClientMethod,
+  session?: TeralinxAuthSession | null,
+  headers: Record<string, string> = {},
+) {
+  return authHeaders(session, {
+    ...headers,
+    "X-Teralinx-Route-Client-Method": clientMethod,
+    "X-Teralinx-Route-Endpoint": COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT,
+  });
+}
+
+async function commercialRouteRepositoryRequest<T>(
+  clientMethod: CommercialRouteRepositoryClientMethod,
+  pathSuffix = "",
+  session?: TeralinxAuthSession | null,
+  init: Omit<RequestInit, "headers"> & { headers?: Record<string, string> } = {},
+) {
+  const endpointUsed = `${COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT}${pathSuffix}`;
+  console.info("[CommercialRouteRepositoryClient]", {
+    clientMethod,
+    endpointUsed,
+    endpointSelected: COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT,
+  });
+  const data = await requestJson<any>(endpointUsed, {
+    ...init,
+    headers: commercialRouteRepositoryHeaders(clientMethod, session, init.headers ?? {}),
+  });
+  logCommercialRouteRepositoryDiagnostics(clientMethod, data);
+  return data as T;
+}
+
 export async function loginTeralinxUser(username: string, password: string) {
   return requestJson<TeralinxAuthSession>("/api/auth/login", {
     method: "POST",
@@ -936,26 +1010,41 @@ export async function openCommercialOpportunity<T>(opportunityId: string, sessio
 }
 
 export async function listCommercialRoutes<T>(session?: TeralinxAuthSession | null) {
-  const data = await requestJson<any>("/api/commercial/routes", {
-    headers: authHeaders(session),
-  });
+  const data = await commercialRouteRepositoryRequest<any>("listCommercialRoutes", "", session);
   return unwrapList<T>(data, ["commercialRoutes", "routes"]);
 }
 
 export async function loadCommercialRoute<T>(routeRepositoryId: string, session?: TeralinxAuthSession | null) {
-  const data = await requestJson<any>(`/api/commercial/routes/${encodeURIComponent(routeRepositoryId)}`, {
-    headers: authHeaders(session),
-  });
+  const data = await commercialRouteRepositoryRequest<any>("loadCommercialRoute", `/${encodeURIComponent(routeRepositoryId)}`, session);
   return (data.commercialRoute ?? data.route ?? data) as T;
 }
 
 export async function saveCommercialRoute<T extends { routeRepositoryId: string }>(record: T, session?: TeralinxAuthSession | null) {
-  const data = await requestJson<any>("/api/commercial/routes", {
+  const data = await commercialRouteRepositoryRequest<any>("saveCommercialRoute", "", session, {
     method: "POST",
-    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ commercialRoute: record }),
   });
   return (data.commercialRoute ?? data.route ?? data) as T;
+}
+
+export async function verifyCommercialRoute<T extends { routeRepositoryId: string; geometryHash?: string }>(
+  routeRepositoryId: string,
+  expected: { geometryHash?: string } = {},
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await commercialRouteRepositoryRequest<any>("verifyCommercialRoute", `/${encodeURIComponent(routeRepositoryId)}`, session);
+  const route = (data.commercialRoute ?? data.route ?? data) as T;
+  if (expected.geometryHash && route.geometryHash && route.geometryHash !== expected.geometryHash) {
+    throw new Error(`Commercial Route Repository verification failed. Expected geometry hash ${expected.geometryHash}; found ${route.geometryHash}.`);
+  }
+  console.info("[CommercialRouteRepositoryClient]", {
+    clientMethod: "verifyCommercialRoute",
+    endpointUsed: `${COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT}/${routeRepositoryId}`,
+    repositoryIdentifier: routeRepositoryId,
+    verificationResult: "PASS",
+  });
+  return route;
 }
 
 export async function cloneCommercialOpportunity<T>(opportunityId: string, session?: TeralinxAuthSession | null) {

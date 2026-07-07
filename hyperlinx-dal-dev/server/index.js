@@ -10,7 +10,7 @@ import { handleCertifiedRoutes } from "./routes/certified-routes.js";
 import { handleCloseEvents } from "./routes/close-events.js";
 import { handleCommercialIofPackages } from "./routes/commercial-iof-packages.js";
 import { handleCommercialOpportunities } from "./routes/commercial-opportunities.js";
-import { handleCommercialRoutes } from "./routes/commercial-routes.js";
+import { COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY, handleCommercialRoutes } from "./routes/commercial-routes.js";
 import { handleControlWorkItems } from "./routes/control-work-items.js";
 import { handleCustomerDesignImports } from "./routes/customer-design-imports.js";
 import { handleEngineeringDrafts } from "./routes/engineering-drafts.js";
@@ -31,6 +31,64 @@ import { handleRuntimeWorkspaceSession } from "./routes/runtime-workspace-sessio
 import { handleScopeVersions } from "./routes/scopeversions.js";
 import { handleServiceOrders } from "./routes/service-orders.js";
 import { handleTwinState } from "./routes/twin-state.js";
+
+export const REGISTERED_API_ROUTES = [
+  { basePath: "/api/auth", handler: "handleAuth" },
+  { basePath: "/api/runtime", handler: "handleRuntime" },
+  { basePath: "/api/accounts", handler: "handleAccounts" },
+  { basePath: "/api/accounts/contacts", handler: "handleAccounts" },
+  { basePath: "/api/activity", handler: "handleActivity" },
+  { basePath: "/api/geocode", handler: "handleGeocode" },
+  { basePath: "/api/certified-routes", handler: "handleCertifiedRoutes" },
+  { basePath: "/api/scopeversions", handler: "handleScopeVersions" },
+  { basePath: "/api/customer-design-imports", handler: "handleCustomerDesignImports" },
+  { basePath: "/api/commercial/opportunities", handler: "handleCommercialOpportunities" },
+  {
+    basePath: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.endpoint,
+    handler: "handleCommercialRoutes",
+    canonical: true,
+    authority: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY,
+  },
+  { basePath: "/api/commercial/iof-packages", handler: "handleCommercialIofPackages" },
+  { basePath: "/api/engineering/drafts", handler: "handleEngineeringDrafts" },
+  { basePath: "/api/engineering/packages", handler: "handleEngineeringPackages" },
+  { basePath: "/api/engineering/certification", handler: "handleEngineeringCertification" },
+  { basePath: "/api/proposals", handler: "handleProposalDrafts" },
+  { basePath: "/api/service-orders", handler: "handleServiceOrders" },
+  { basePath: "/api/products", handler: "handleProductFulfillment" },
+  { basePath: "/api/fulfillment/plans", handler: "handleProductFulfillment" },
+  { basePath: "/api/runtime/lifecycle", handler: "handleRuntimeLifecycleBridge" },
+  { basePath: "/api/runtime/workspace-session", handler: "handleRuntimeWorkspaceSession" },
+  { basePath: "/api/runtime/rehydrate", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/evidence", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/runtime/evidence", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/inventory", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/runtime/inventories", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/runtime/objects", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/runtime/relationships", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/runtime/validation", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/runtime/history", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/connectors", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/runtime/connectors", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/runtime/search", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/runtime/workspaces", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/runtime/commit", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/runtime/commits", handler: "handleRuntimeFoundation" },
+  { basePath: "/api/candidate-sites", handler: "handleCandidateSites" },
+  { basePath: "/api/opportunity-seeds", handler: "handleOpportunitySeeds" },
+  { basePath: "/api/inventory-graphs", handler: "handleInventoryGraphs" },
+  { basePath: "/api/baseline-graphs", handler: "handleInventoryGraphs" },
+  { basePath: "/api/marketplace/quotes", handler: "handleMarketplaceQuotes" },
+  { basePath: "/api/iof-packages", handler: "handleIofPackages" },
+  { basePath: "/api/close-events", handler: "handleCloseEvents" },
+  { basePath: "/api/control/work-items", handler: "handleControlWorkItems" },
+  { basePath: "/api/field/closures", handler: "handleFieldClosures" },
+  { basePath: "/api/twin/state", handler: "handleTwinState" },
+];
+
+function registeredApiRouteMap() {
+  return Object.fromEntries(REGISTERED_API_ROUTES.map((route) => [route.basePath, true]));
+}
 
 const routes = [
   handleAuth,
@@ -112,11 +170,37 @@ const server = http.createServer(async (req, res) => {
     for (const route of routes) {
       if (await route(req, res, url.pathname)) return;
     }
+    if (url.pathname === "/api/routes" && req.method === "GET") {
+      jsonResponse(res, 200, {
+        startupModel: "node:http createServer route handler array",
+        expressAppUse: [],
+        registeredApiRoutes: REGISTERED_API_ROUTES,
+        registeredApiRouteCount: REGISTERED_API_ROUTES.length,
+        commercialRouteRepository: {
+          endpointSelected: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.endpoint,
+          endpointRegistered: REGISTERED_API_ROUTES.some((route) => route.basePath === COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.endpoint),
+          repositoryIdentifier: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.repositoryIdentifier,
+          authoritySource: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.authoritySource,
+          canonical: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.canonical,
+        },
+      });
+      return;
+    }
     if (url.pathname === "/health") {
       jsonResponse(res, 200, {
         ok: true,
         service: "hyperlinx-dal-dev",
         dataRoot: DATA_ROOT,
+        startupModel: "node:http createServer route handler array",
+        expressAppUse: [],
+        registeredApiRoutes: registeredApiRouteMap(),
+        registeredApiRouteCount: REGISTERED_API_ROUTES.length,
+        commercialRouteRepository: {
+          endpointSelected: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.endpoint,
+          endpointRegistered: REGISTERED_API_ROUTES.some((route) => route.basePath === COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.endpoint),
+          repositoryIdentifier: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.repositoryIdentifier,
+          authoritySource: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.authoritySource,
+        },
         routes: {
           auth: true,
           runtime: true,
@@ -137,6 +221,7 @@ const server = http.createServer(async (req, res) => {
           contactLibrary: true,
           customerDesignImports: true,
           commercialOpportunities: true,
+          commercialRoutes: true,
           engineeringDrafts: true,
           engineeringPackages: true,
           engineeringCertification: true,

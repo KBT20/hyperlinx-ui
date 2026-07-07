@@ -44,6 +44,7 @@ import {
 import type { IlaPlanningControls } from "../../commercial/IlaPlanningEngine";
 import { authorityModeConfidence, type ConstraintValue, type ConstraintAuthorityMode } from "../../commercial/ConstraintAuthority";
 import {
+  COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT,
   advanceRuntimeLifecycleBridge,
   approveProposalRuntimeObject,
   assignDraftIofPackageEngineer,
@@ -70,6 +71,12 @@ import {
   type RuntimeRehydrationState,
   type RuntimeLifecycleBridgeState,
 } from "../../api/teralinxRuntime";
+import {
+  evaluateProposalAuthorityState,
+  logProposalAuthorityStateHydration,
+  proposalCustomerReviewStateFromRepository,
+  proposalRepositoryReportsCommercialApproved,
+} from "../../kernel/ProposalAuthorityState";
 import { useDALState } from "../../dal/DALState";
 import { useTeralinxAuth } from "../../identity/TeralinxAuth";
 import type { GovernedAccount, GovernedContact, RuntimeHistoryEvent } from "../../api/accountLibrary";
@@ -1718,49 +1725,6 @@ function commercialAccountFromGoverned(
 
 function proposalRuntimeStatusLabel(status: string | undefined) {
   return status ? status.replaceAll("_", " ") : "No commercial proposal";
-}
-
-function canonicalProposalRepositoryStatus(status: string | undefined | null) {
-  const text = String(status ?? "");
-  if (text === "CUSTOMER_APPROVED") return "COMMERCIAL_APPROVED";
-  if (text === "CUSTOMER_COMMENTS" || text === "IN_CUSTOMER_REVIEW") return "CUSTOMER_REVIEW";
-  if (text === "COMMERCIAL_DRAFT") return "DRAFT";
-  if (text === "SUBMITTED_TO_ENGINEERING") return "ENGINEERING_SUBMITTED";
-  return text;
-}
-
-function proposalRepositoryReportsCommercialApproved(record: ProposalRuntimeObject | null | undefined) {
-  return canonicalProposalRepositoryStatus(record?.status) === "COMMERCIAL_APPROVED";
-}
-
-function proposalCustomerReviewStateFromRepository(record: ProposalRuntimeObject | null | undefined): CustomerReviewStatus {
-  const status = canonicalProposalRepositoryStatus(record?.status);
-  if (status === "COMMERCIAL_APPROVED" || record?.approvalState === "APPROVED") return "ACCEPTED";
-  if (["WAITING_CUSTOMER_REVIEW", "CUSTOMER_REVIEW"].includes(status)) return "IN_REVIEW";
-  if (status === "CUSTOMER_CHANGES_REQUESTED") return "CUSTOMER_DRAFT";
-  if (status === "CUSTOMER_REJECTED") return "REJECTED";
-  return "NOT_STARTED";
-}
-
-function proposalAuthoritySnapshot(record: ProposalRuntimeObject | null | undefined, dashboardStatus = "") {
-  const repositoryStatus = canonicalProposalRepositoryStatus(record?.status);
-  const customerReviewState = proposalCustomerReviewStateFromRepository(record);
-  return {
-    proposalId: record?.proposalId ?? "",
-    repositoryStatus,
-    approvalState: record?.approvalState ?? "",
-    customerReviewState,
-    commercialStatus: repositoryStatus,
-    dashboardStatus: dashboardStatus || proposalRuntimeStatusLabel(repositoryStatus),
-    engineeringEligibility: repositoryStatus === "COMMERCIAL_APPROVED" ? "ELIGIBLE" : "BLOCKED",
-  };
-}
-
-function logProposalAuthorityHydration(source: string, record: ProposalRuntimeObject | null | undefined, dashboardStatus = "") {
-  console.info("[ProposalStateAuthority:UI]", {
-    source,
-    ...proposalAuthoritySnapshot(record, dashboardStatus),
-  });
 }
 
 function displayTimestamp(value: string | null | undefined) {
@@ -4202,7 +4166,7 @@ export default function GoogleRfpWorkspace() {
           .map(({ proposalRecordId: _proposalRecordId, proposalRecordType: _proposalRecordType, organization: _organization, createdAt: _createdAt, updatedAt: _updatedAt, ...proposal }) => proposal as AcceptedProposal);
         records.forEach((record) => {
           if (record?.proposalId || record?.proposalRecordId || record?.acceptedProposalId) {
-            logProposalAuthorityHydration("Proposal Repository restore:list", record as ProposalRuntimeObject, proposalRuntimeStatusLabel(record?.status));
+            logProposalAuthorityStateHydration("Proposal Repository restore:list", record as ProposalRuntimeObject, proposalRuntimeStatusLabel(record?.status));
           }
         });
         setProposalSnapshots(snapshots);
@@ -4236,7 +4200,7 @@ export default function GoogleRfpWorkspace() {
     const records = await ProposalRepository.listProposals<any>(session);
     records.forEach((record) => {
       if (record?.proposalId || record?.proposalRecordId || record?.acceptedProposalId) {
-        logProposalAuthorityHydration("Proposal Repository restore:refresh", record as ProposalRuntimeObject, proposalRuntimeStatusLabel(record?.status));
+        logProposalAuthorityStateHydration("Proposal Repository restore:refresh", record as ProposalRuntimeObject, proposalRuntimeStatusLabel(record?.status));
       }
     });
     setProposalRuntimeRecords(records.filter((record) => record?.proposalId || record?.objectType === "PROPOSAL" || record?.readiness) as ProposalRuntimeObject[]);
@@ -5445,7 +5409,7 @@ export default function GoogleRfpWorkspace() {
     if ((expectedRouteSnapshot?.routeRepositoryId ?? "") && routeRepositoryId !== expectedRouteSnapshot?.routeRepositoryId) {
       throw new Error(`Saved Opportunity routeRepositoryId mismatch. Expected ${expectedRouteSnapshot?.routeRepositoryId}; found ${routeRepositoryId || "empty"}.`);
     }
-    const reloadedRoute = routeRepositoryId ? await RouteRepository.loadRoute(routeRepositoryId, session) : null;
+    const reloadedRoute = routeRepositoryId ? await RouteRepository.verifyRoute(routeRepositoryId, { geometryHash: expectedRouteSnapshot?.geometryHash }, session) : null;
     if (expectedRouteSnapshot) {
       requireRouteSnapshotIntegrity(reloadedRoute, "Verify immediately after save");
       const expectedHash = routeSnapshotHash(expectedRouteSnapshot);
@@ -5938,7 +5902,7 @@ export default function GoogleRfpWorkspace() {
           geometryHash: routeSnapshot.geometryHash,
         });
         routeSnapshot = routeSnapshotWithIntegrity(await RouteRepository.saveRoute(routeSnapshot, session));
-        const verifiedRouteSnapshot = routeSnapshotWithIntegrity(await RouteRepository.loadRoute(routeSnapshot.routeRepositoryId, session));
+        const verifiedRouteSnapshot = routeSnapshotWithIntegrity(await RouteRepository.verifyRoute(routeSnapshot.routeRepositoryId, { geometryHash: routeSnapshot.geometryHash }, session));
         requireRouteSnapshotIntegrity(verifiedRouteSnapshot, "Save Opportunity Route Repository verification");
         if (routeSnapshotHash(verifiedRouteSnapshot) !== routeSnapshotHash(routeSnapshot)) {
           throw new Error("Route Repository verification failed before Opportunity save: geometry hash changed after reload.");
@@ -6794,7 +6758,7 @@ export default function GoogleRfpWorkspace() {
         geometryHash: routeSnapshotToSave.geometryHash,
       });
       const savedRouteSnapshot = routeSnapshotWithIntegrity(await RouteRepository.saveRoute(routeSnapshotToSave, session));
-      const verifiedRouteSnapshot = routeSnapshotWithIntegrity(await RouteRepository.loadRoute(savedRouteSnapshot.routeRepositoryId, session));
+      const verifiedRouteSnapshot = routeSnapshotWithIntegrity(await RouteRepository.verifyRoute(savedRouteSnapshot.routeRepositoryId, { geometryHash: routeSnapshotToSave.geometryHash }, session));
       requireRouteSnapshotIntegrity(verifiedRouteSnapshot, "Route Repository");
       if (routeSnapshotHash(verifiedRouteSnapshot) !== routeSnapshotHash(routeSnapshotToSave)) {
         throw new Error("Route Repository creation failed: geometry hash changed after reload.");
@@ -7788,7 +7752,7 @@ export default function GoogleRfpWorkspace() {
       ? "Customer Twin failed to load for this opportunity. Existing network context is unavailable until the import or inventory service is restored."
       : `Customer Twin is ${customerInventoryLoadStatus.toLowerCase()}. Keep the map visible, but do not treat existing network context as loaded yet.`
     : null;
-  const activeProposalAuthoritySnapshot = proposalAuthoritySnapshot(activeProposalRuntime, proposalStatusLabel);
+  const activeProposalAuthoritySnapshot = evaluateProposalAuthorityState(activeProposalRuntime, proposalStatusLabel);
   const activeProposalStatus = activeProposalAuthoritySnapshot.repositoryStatus;
   const activeProposalApprovalState = String(activeProposalRuntime?.approvalState ?? "");
   const proposalSubmitted = Boolean(activeProposalRuntime && !["", "DRAFT", "CREATED"].includes(activeProposalStatus));
@@ -7874,7 +7838,7 @@ export default function GoogleRfpWorkspace() {
       !submittedToEngineering,
   );
   useEffect(() => {
-    logProposalAuthorityHydration("Commercial Dashboard hydration", activeProposalRuntime, activeProposalAuthoritySnapshot.dashboardStatus);
+    logProposalAuthorityStateHydration("Commercial Dashboard hydration", activeProposalRuntime, activeProposalAuthoritySnapshot.dashboardStatus);
   }, [
     activeProposalAuthoritySnapshot.approvalState,
     activeProposalAuthoritySnapshot.dashboardStatus,
@@ -8069,7 +8033,7 @@ export default function GoogleRfpWorkspace() {
       { id: "customers", label: "Customer Repository", endpoint: "GET /api/accounts / POST /api/accounts / PUT /api/accounts/:id", storage: "server/data/accounts/*.json", records: customerRecords },
       { id: "customer-twin", label: "Customer Twin Repository", endpoint: "GET /api/runtime/inventories + GET /api/runtime/objects", storage: "server/data/runtime-inventories/*.json + server/data/runtime-objects/*.json", records: twinRecords },
       { id: "opportunities", label: "Opportunity Repository", endpoint: "GET /api/commercial/opportunities / POST /api/commercial/opportunities / POST /api/commercial/opportunities/:id/open", storage: "server/data/commercial-opportunities/*.json", records: opportunityRecords },
-      { id: "routes", label: "Route Repository", endpoint: "GET /api/commercial/routes / POST /api/commercial/routes / GET /api/commercial/routes/:id / PUT /api/commercial/routes/:id", storage: "server/data/commercial-routes/*.json", records: routeRecords },
+      { id: "routes", label: "Route Repository", endpoint: `GET ${COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT} / POST ${COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT} / GET ${COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT}/:id / PUT ${COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT}/:id`, storage: "server/data/commercial-routes/*.json", records: routeRecords },
       { id: "proposals", label: "Proposal Repository", endpoint: "GET /api/proposals / POST /api/proposals / POST /api/proposals/:id/open", storage: "server/data/proposal-drafts/*.json", records: proposalRecords },
       { id: "revisions", label: "Revision Repository", endpoint: "Embedded append-only revisionHistory on Opportunity Repository records", storage: "server/data/commercial-opportunities/*.json#/revisionHistory", records: revisionRecords },
     ];

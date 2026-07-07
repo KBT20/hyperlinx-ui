@@ -1,5 +1,33 @@
-import { DIRS, handleJsonCollection, nowIso, routeMatch } from "./_shared.js";
+import {
+  DIRS,
+  createId,
+  errorResponse,
+  handleOptions,
+  jsonResponse,
+  listRecords,
+  loadRecord,
+  nowIso,
+  persistRecord,
+  readRequestJson,
+  routeMatch,
+  sortedByUpdated,
+  unwrapBody,
+} from "./_shared.js";
 import { requireAnyPermission } from "./authority.js";
+
+export const COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT = "/api/commercial/routes";
+
+export const COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY = {
+  endpoint: COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT,
+  canonical: true,
+  repositoryIdentifier: "COMMERCIAL_ROUTE_REPOSITORY",
+  authoritySource: "Commercial Route Repository",
+  storage: "server/data/commercial-routes/*.json",
+  dirKey: "commercialRoutes",
+  methods: ["GET", "POST", "PUT"],
+  noScopeVersionCreation: true,
+  noInventoryMutation: true,
+};
 
 function hashCommercialGeometry(geometry = []) {
   const source = geometry
@@ -12,6 +40,51 @@ function hashCommercialGeometry(geometry = []) {
     hash = Math.imul(hash, 16777619);
   }
   return `rg-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+function routeRepositoryDiagnostics({
+  method,
+  clientMethod = "SERVER_DIRECT",
+  endpointUsed = COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT,
+  routeRepositoryId = "",
+  recordCount,
+  persistenceResult = "NOT_APPLICABLE",
+  restoreResult = "NOT_APPLICABLE",
+  authoritySource = "COMMERCIAL_ROUTE_REPOSITORY",
+  detail = "",
+} = {}) {
+  return {
+    endpointSelected: COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT,
+    endpointRegistered: true,
+    endpointUsed,
+    clientMethod,
+    method,
+    repositoryIdentifier: routeRepositoryId || "COMMERCIAL_ROUTE_REPOSITORY",
+    repositoryType: "COMMERCIAL_ROUTE_REPOSITORY",
+    persistenceResult,
+    restoreResult,
+    authoritySource,
+    storagePath: "server/data/commercial-routes",
+    physicalStorage: DIRS.commercialRoutes,
+    recordCount,
+    noOsrmRegeneration: true,
+    noScopeVersionCreation: true,
+    noInventoryMutation: true,
+    detail,
+  };
+}
+
+function logRouteRepositoryDiagnostics(diagnostics) {
+  console.info("[CommercialRouteRepository]", diagnostics);
+  return diagnostics;
+}
+
+function routeClientMethod(req) {
+  return String(req.headers["x-teralinx-route-client-method"] ?? "SERVER_DIRECT");
+}
+
+function routeEndpointUsed(req) {
+  return String(req.headers["x-teralinx-route-endpoint"] ?? COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT);
 }
 
 function normalizeCommercialRoute(record = {}) {
@@ -63,21 +136,136 @@ function normalizeCommercialRoute(record = {}) {
 }
 
 export async function handleCommercialRoutes(req, res, pathname) {
-  const match = routeMatch(pathname, "/api/commercial/routes");
+  const match = routeMatch(pathname, COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT);
   if (!match) return false;
+  if (handleOptions(req, res)) return true;
+
   if (req.method === "GET") {
     if (!requireAnyPermission(req, res, ["opportunity.read", "opportunity.manage"], "You do not have authority to read Commercial Routes.")) return true;
   } else if (["POST", "PUT"].includes(String(req.method))) {
     if (!requireAnyPermission(req, res, ["opportunity.manage"], "You do not have authority to create or update Commercial Routes.")) return true;
   }
-  return handleJsonCollection(req, res, pathname, {
-    basePath: "/api/commercial/routes",
-    dir: DIRS.commercialRoutes,
-    idKey: "routeRepositoryId",
-    listKey: "commercialRoutes",
-    itemKey: "commercialRoute",
-    pluralBodyKeys: ["commercialRoutes", "routes", "items", "data"],
-    idPrefix: "commercial-route",
-    normalize: normalizeCommercialRoute,
-  });
+
+  if (!match.base && req.method === "GET" && ["_authority", "_diagnostics"].includes(match.id)) {
+    jsonResponse(res, 200, {
+      authority: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY,
+      routeRepositoryDiagnostics: logRouteRepositoryDiagnostics(routeRepositoryDiagnostics({
+        method: req.method,
+        clientMethod: routeClientMethod(req),
+        endpointUsed: routeEndpointUsed(req),
+        restoreResult: "AUTHORITY_CONFIRMED",
+        authoritySource: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.authoritySource,
+        detail: "Commercial Route Repository canonical endpoint is registered.",
+      })),
+    });
+    return true;
+  }
+
+  if (match.base && req.method === "GET") {
+    const records = sortedByUpdated((await listRecords(DIRS.commercialRoutes)).map(normalizeCommercialRoute));
+    jsonResponse(res, 200, {
+      commercialRoutes: records,
+      routes: records,
+      routeRepositoryDiagnostics: logRouteRepositoryDiagnostics(routeRepositoryDiagnostics({
+        method: req.method,
+        clientMethod: routeClientMethod(req),
+        endpointUsed: routeEndpointUsed(req),
+        recordCount: records.length,
+        restoreResult: "ROUTE_REPOSITORY_LIST_LOADED",
+        authoritySource: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.authoritySource,
+      })),
+    });
+    return true;
+  }
+
+  if (!match.base && req.method === "GET") {
+    try {
+      const record = normalizeCommercialRoute(await loadRecord(DIRS.commercialRoutes, match.id));
+      jsonResponse(res, 200, {
+        commercialRoute: record,
+        route: record,
+        routeRepositoryDiagnostics: logRouteRepositoryDiagnostics(routeRepositoryDiagnostics({
+          method: req.method,
+          clientMethod: routeClientMethod(req),
+          endpointUsed: routeEndpointUsed(req),
+          routeRepositoryId: record.routeRepositoryId,
+          persistenceResult: "PERSISTED",
+          restoreResult: "ROUTE_REPOSITORY_LOADED",
+          authoritySource: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.authoritySource,
+        })),
+      });
+    } catch {
+      jsonResponse(res, 404, {
+        error: `commercialRoute not found: ${match.id}`,
+        routeRepositoryDiagnostics: logRouteRepositoryDiagnostics(routeRepositoryDiagnostics({
+          method: req.method,
+          clientMethod: routeClientMethod(req),
+          endpointUsed: routeEndpointUsed(req),
+          routeRepositoryId: match.id,
+          restoreResult: "ROUTE_REPOSITORY_NOT_FOUND",
+          authoritySource: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.authoritySource,
+        })),
+      });
+    }
+    return true;
+  }
+
+  if ((match.base || match.id === "bulk" || match.action === "bulk") && req.method === "POST") {
+    const body = await readRequestJson(req);
+    const input = unwrapBody(body, "commercialRoute", ["commercialRoutes", "routes", "items", "data"]);
+    const records = Array.isArray(input) ? input : [input];
+    const saved = [];
+    for (const record of records) {
+      const routeRepositoryId = String(record?.routeRepositoryId ?? record?.routeSnapshotId ?? createId("commercial-route"));
+      const normalized = normalizeCommercialRoute({
+        ...record,
+        routeRepositoryId,
+      });
+      saved.push(await persistRecord(DIRS.commercialRoutes, normalized.routeRepositoryId, normalized));
+    }
+    const diagnostics = logRouteRepositoryDiagnostics(routeRepositoryDiagnostics({
+      method: req.method,
+      clientMethod: routeClientMethod(req),
+      endpointUsed: routeEndpointUsed(req),
+      routeRepositoryId: saved[0]?.routeRepositoryId,
+      recordCount: saved.length,
+      persistenceResult: "ROUTE_REPOSITORY_PERSISTED_ONCE",
+      restoreResult: "READY_FOR_RESTORE",
+      authoritySource: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.authoritySource,
+    }));
+    if (Array.isArray(input) || match.action === "bulk") {
+      jsonResponse(res, 201, { commercialRoutes: saved, routes: saved, items: saved, routeRepositoryDiagnostics: diagnostics });
+    } else {
+      jsonResponse(res, 201, { commercialRoute: saved[0], route: saved[0], routeRepositoryDiagnostics: diagnostics });
+    }
+    return true;
+  }
+
+  if (!match.base && req.method === "PUT") {
+    const body = await readRequestJson(req);
+    const input = unwrapBody(body, "commercialRoute");
+    const normalized = normalizeCommercialRoute({
+      ...input,
+      routeRepositoryId: input?.routeRepositoryId ?? match.id,
+      updatedAt: nowIso(),
+    });
+    const saved = await persistRecord(DIRS.commercialRoutes, normalized.routeRepositoryId, normalized);
+    jsonResponse(res, 200, {
+      commercialRoute: saved,
+      route: saved,
+      routeRepositoryDiagnostics: logRouteRepositoryDiagnostics(routeRepositoryDiagnostics({
+        method: req.method,
+        clientMethod: routeClientMethod(req),
+        endpointUsed: routeEndpointUsed(req),
+        routeRepositoryId: saved.routeRepositoryId,
+        persistenceResult: "ROUTE_REPOSITORY_UPDATED_ONCE",
+        restoreResult: "READY_FOR_RESTORE",
+        authoritySource: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.authoritySource,
+      })),
+    });
+    return true;
+  }
+
+  errorResponse(res, 405, "Commercial Route Repository method not allowed.");
+  return true;
 }

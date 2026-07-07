@@ -11,6 +11,7 @@ import {
   saveCommercialRoute,
   saveCommercialOpportunity,
   saveProposalDraft,
+  verifyCommercialRoute,
   type EngineeringPackageRuntime,
   type ProposalRuntimeObject,
   type TeralinxAuthSession,
@@ -115,6 +116,7 @@ export interface RouteRepository {
   listRoutes(session?: TeralinxAuthSession | null): Promise<CommercialRouteRepositoryRecord[]>;
   loadRoute(routeRepositoryId: string, session?: TeralinxAuthSession | null): Promise<CommercialRouteRepositoryRecord>;
   saveRoute(record: CommercialRouteRepositoryRecord, session?: TeralinxAuthSession | null): Promise<CommercialRouteRepositoryRecord>;
+  verifyRoute(routeRepositoryId: string, expected?: { geometryHash?: string }, session?: TeralinxAuthSession | null): Promise<CommercialRouteRepositoryRecord>;
 }
 
 export interface CustomerRepository {
@@ -147,6 +149,7 @@ export const RouteRepository: RouteRepository = {
   listRoutes: listCommercialRoutes,
   loadRoute: loadCommercialRoute,
   saveRoute: saveCommercialRoute,
+  verifyRoute: verifyCommercialRoute,
 };
 
 export const EngineeringRepository: EngineeringRepository = {
