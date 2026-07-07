@@ -24,11 +24,12 @@ export const CONSTITUTIONAL_LAYER_CHAIN = [
   "SPINE_OBJECT_INSTANTIATION",
   "KERNEL_EXECUTION_GRAPH",
   "CONSTITUTIONAL_ASSEMBLY",
+  "DRAFT_IOF_PACKAGE",
   "ENGINEERING_CERTIFICATION",
-  "DRAFT_IOF_APPROVAL",
   "PROPOSAL",
   "CUSTOMER_ACCEPTANCE",
   "SERVICE_ORDER",
+  "CUSTOMER_SIGNATURE",
   "SCOPEVERSION",
   "MARKETPLACE",
   "CONTROL",
@@ -46,6 +47,7 @@ export type ConstitutionalLayerIntegrityBlockerCode =
   | "MISSING_CUSTOMER_ACCEPTANCE_AUTHORITY"
   | "SERVICE_ORDER_WITHOUT_CUSTOMER_ACCEPTANCE"
   | "SCOPEVERSION_WITHOUT_SERVICE_ORDER"
+  | "SCOPEVERSION_WITHOUT_SIGNED_SERVICE_ORDER"
   | "CUSTOMER_ACCEPTANCE_DIRECT_EXECUTION_TRUTH"
   | "FIELD_CLOSE_OUTSIDE_SCOPEVERSION"
   | "PAYMENT_ELIGIBLE_WITHOUT_VALIDATED_CLOSE";
@@ -100,6 +102,17 @@ const CUSTOMER_ACCEPTED_STATUSES = new Set([
   "APPROVED",
   "PASS",
   "READY",
+  "COMPLETE",
+  "COMPLETED",
+]);
+
+const SERVICE_ORDER_SIGNED_STATUSES = new Set([
+  "SIGNED",
+  "CUSTOMER_SIGNED",
+  "FULLY_SIGNED",
+  "EXECUTED",
+  "FULLY_EXECUTED",
+  "COUNTERSIGNED",
   "COMPLETE",
   "COMPLETED",
 ]);
@@ -238,8 +251,12 @@ export function isExecutionScopeVersion(scopeVersion: ScopeVersion | null | unde
   return (
     type === "SCOPEVERSION_AUTHORITY" ||
     source === "CERTIFIEDIOFPACKAGE" ||
+    source === "CERTIFIEDDRAFTIOFPACKAGE" ||
+    Boolean(scopeVersion.certifiedDraftIofPackageId) ||
     Boolean(scopeVersion.certifiedIofPackageId) ||
+    authority === "SCOPEVERSION_FROM_CERTIFIED_DRAFT_IOF_PACKAGE" ||
     authority === "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE" ||
+    authority === "SCOPEVERSION_ORDER_FOR_EXECUTION" ||
     authority === "SCOPEVERSION_OPERATIONAL_BASELINE" ||
     authority === "CERTIFIED_SCOPEVERSION"
   );
@@ -300,6 +317,43 @@ export function hasServiceOrderAuthority(scopeVersion: ScopeVersion | null | und
       SERVICE_ORDER_READY_STATUSES.has(status) ||
       SERVICE_ORDER_READY_STATUSES.has(readinessStatus(scopeVersion, "serviceOrder")) ||
       SERVICE_ORDER_READY_STATUSES.has(executionGateStatus(scopeVersion, "serviceOrder")),
+  );
+}
+
+export function hasSignedServiceOrderAuthority(scopeVersion: ScopeVersion | null | undefined) {
+  if (!scopeVersion) return false;
+  const source = truth(scopeVersion);
+  const serviceOrder = serviceOrderRecord(scopeVersion);
+  const top = asRecord(scopeVersion);
+  const directValue = nestedValue(
+    source,
+    "signedServiceOrderId",
+    "serviceOrderSignatureId",
+    "customerSignatureId",
+    "serviceOrderSignedAt",
+    "customerSignedAt",
+    "signedAt",
+  ) ?? nestedValue(top, "signedServiceOrderId", "serviceOrderSignatureId", "customerSignatureId", "serviceOrderSignedAt", "customerSignedAt", "signedAt");
+  const recordValue = nestedValue(
+    serviceOrder,
+    "signedServiceOrderId",
+    "serviceOrderSignatureId",
+    "signatureId",
+    "customerSignatureId",
+    "serviceOrderSignedAt",
+    "customerSignedAt",
+    "signedAt",
+    "executedAt",
+  );
+  const status = upper(serviceOrder.signatureStatus ?? serviceOrder.customerSignatureStatus ?? serviceOrder.status ?? source.serviceOrderSignatureStatus);
+  return Boolean(
+    directValue ||
+      recordValue ||
+      SERVICE_ORDER_SIGNED_STATUSES.has(status) ||
+      SERVICE_ORDER_SIGNED_STATUSES.has(readinessStatus(scopeVersion, "customerSignature")) ||
+      SERVICE_ORDER_SIGNED_STATUSES.has(readinessStatus(scopeVersion, "signedServiceOrder")) ||
+      SERVICE_ORDER_SIGNED_STATUSES.has(executionGateStatus(scopeVersion, "customerSignature")) ||
+      SERVICE_ORDER_SIGNED_STATUSES.has(executionGateStatus(scopeVersion, "signedServiceOrder")),
   );
 }
 
@@ -373,6 +427,7 @@ export function validateConstitutionalLayerIntegrity(input: ConstitutionalLayerI
   if (scopeVersion && isExecutionScopeVersion(scopeVersion)) {
     const hasCustomerAcceptance = hasCustomerAcceptanceAuthority(scopeVersion, input.closeEvents);
     const hasServiceOrder = hasServiceOrderAuthority(scopeVersion);
+    const hasSignedServiceOrder = hasSignedServiceOrderAuthority(scopeVersion);
 
     if (!hasCustomerAcceptance) {
       blockers.push(blocker({
@@ -407,6 +462,18 @@ export function validateConstitutionalLayerIntegrity(input: ConstitutionalLayerI
         requiredAuthority: "Service Order authority",
         nextLegalAction: "Create or attach the Service Order, then request ScopeVersion creation.",
         message: "Execution ScopeVersion cannot be created before Service Order authority.",
+      }));
+    }
+
+    if (hasServiceOrder && !hasSignedServiceOrder) {
+      blockers.push(blocker({
+        code: "SCOPEVERSION_WITHOUT_SIGNED_SERVICE_ORDER",
+        blockedLayer: "SCOPEVERSION",
+        missingLayer: "CUSTOMER_SIGNATURE",
+        missingArtifacts: ["signed Service Order", "customer signature evidence"],
+        requiredAuthority: "Signed Service Order authority",
+        nextLegalAction: "Capture customer signature on the Service Order before requesting ScopeVersion creation.",
+        message: "Execution ScopeVersion cannot be created before signed Service Order authority.",
       }));
     }
 

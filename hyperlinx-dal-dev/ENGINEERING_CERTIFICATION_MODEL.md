@@ -2,15 +2,25 @@
 
 Status: Sprint 13.4 Runtime Model
 
-Engineering Certification is the pre-execution gate between Draft IOF Package assembly and executable ScopeVersion authority.
+Engineering Certification certifies the Draft IOF Package.
+
+It does not create ScopeVersion.
+
+Engineering Certification means:
+
+"The Draft IOF Package is complete, constructable, constitutionally valid, and ready for customer commitment."
 
 ## Authority
 
 - Commercial owns Proposal creation and revision.
 - Customer owns Proposal approval.
-- Runtime assembles the Draft IOF Package from approved Proposal references.
-- Engineering owns technical review and certification.
-- Execution authority begins only when a Certified IOF Package generates a ScopeVersion.
+- Runtime assembles the Draft IOF Package from Commercial Planning inputs before Engineering Certification.
+- Engineering owns technical review and certifies the Draft IOF Package only.
+- Proposal is a commercial projection of the currently certified Draft IOF Package.
+- Customer change requests return to Draft IOF Package revision, Engineering re-certification, and a new Proposal.
+- Service Order owns commercial authorization.
+- Service Order references the Certified Draft IOF Package, Proposal, Customer Acceptance, and commercial terms.
+- A signed Service Order triggers Runtime ScopeVersion creation.
 
 ## Review Queue
 
@@ -40,4 +50,18 @@ Package certification requires:
 - completed Engineering Certification checklist
 - certification confidence greater than zero
 
-Successful package certification creates a Certified IOF Package, an Execution Authorization Certificate, Runtime History, Runtime Evidence, and an executable ScopeVersion.
+Successful package certification marks the Draft IOF Package as the Certified Draft IOF Package and persists certification evidence.
+
+Compatibility records may carry `Certified IOF Package` identifiers, but they are references to the same Certified Draft IOF Package, not separate engineering truth.
+
+It does not create an Execution Authorization Certificate or executable ScopeVersion.
+
+ScopeVersion creation is reserved for the signed Service Order runtime gate.
+
+## Commercial Projections
+
+Proposal and Service Order shall not recreate engineering.
+
+They reference the Certified Draft IOF Package and may project its technical content for customer review and commercial authorization.
+
+Commercial Release 2 legal sections are placeholders only until the legal and business content model is explicitly implemented.

@@ -4,18 +4,18 @@ Scope: `hyperlinx-dal-dev` only.
 
 ## Route Engineering
 
-- May mutate: CertifiedRoute, ScopeVersion approval lifecycle.
-- Must not mutate: Field closures, Control work completion, Twin projection.
-- Events produced: route certification events, `scopeversion.approved`.
-- APIs called: `/api/certified-routes`, `/api/scopeversions`.
-- Projection responsibility: render and review route evidence before approval.
+- May mutate: Draft IOF Package engineering review state, route certification evidence, Certified Draft IOF Package status.
+- Must not mutate: ScopeVersion creation, ScopeVersion approval lifecycle, Service Order authorization, Field closures, Control work completion, Twin projection.
+- Events produced: route certification events, engineering certification evidence, Draft IOF Package re-certification events.
+- APIs called: `/api/engineering/certification`, `/api/certified-routes`.
+- Projection responsibility: render and review Draft IOF Package engineering truth before customer commitment.
 
 ## Prism
 
-- May mutate: OpportunitySeed, candidate ScopeVersion seed.
+- May mutate: OpportunitySeed, candidate design seed.
 - Must not mutate: approved ScopeVersion lifecycle, Control work, Field closures.
-- Events produced: `prism.opportunity.created`, `prism.scopeversion.seeded`, `prism.route.scanned`, `prism.constraint.detected`.
-- APIs called: `/api/opportunity-seeds`, `/api/candidate-sites`, `/api/scopeversions`.
+- Events produced: `prism.opportunity.created`, `prism.design.seeded`, `prism.route.scanned`, `prism.constraint.detected`.
+- APIs called: `/api/opportunity-seeds`, `/api/candidate-sites`.
 - Projection responsibility: opportunity discovery and candidate ranking.
 
 ## Marketplace

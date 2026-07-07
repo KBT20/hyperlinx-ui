@@ -57,6 +57,24 @@ function firstReadyScope(scopes: ScopeVersion[], selectedId: string) {
   return scopes.find((scope) => scope.scopeVersionId === selectedId) ?? scopes[0] ?? null;
 }
 
+function hasSignedServiceOrder(pkg: CertifiedIofPackageRuntime | null | undefined) {
+  const serviceOrder = asRecord(pkg?.serviceOrder);
+  return Boolean(
+    pkg?.serviceOrderSignatureId ||
+      pkg?.customerSignatureId ||
+      pkg?.serviceOrderSignedAt ||
+      pkg?.customerSignedAt ||
+      serviceOrder.serviceOrderSignatureId ||
+      serviceOrder.signatureId ||
+      serviceOrder.customerSignatureId ||
+      serviceOrder.serviceOrderSignedAt ||
+      serviceOrder.customerSignedAt ||
+      serviceOrder.signedAt ||
+      serviceOrder.executedAt ||
+      ["SIGNED", "CUSTOMER_SIGNED", "FULLY_SIGNED", "EXECUTED", "FULLY_EXECUTED", "COUNTERSIGNED", "COMPLETE", "COMPLETED"].includes(String(serviceOrder.signatureStatus ?? serviceOrder.customerSignatureStatus ?? serviceOrder.status ?? "").toUpperCase()),
+  );
+}
+
 export default function ScopeVersionWorkspace() {
   const { session, can } = useTeralinxAuth();
   const {
@@ -65,12 +83,12 @@ export default function ScopeVersionWorkspace() {
     setSelectedScopeVersion,
     setSelectedScopeVersionId,
   } = useDALState();
-  const canPromote = Boolean(session && (can("scopeversion.authority") || can("workspace.engineering.write")));
+  const canPromote = Boolean(session && can("scopeversion.authority"));
   const [scopeVersions, setScopeVersions] = useState<ScopeVersion[]>([]);
   const [certifiedPackages, setCertifiedPackages] = useState<CertifiedIofPackageRuntime[]>([]);
   const [selectedCertifiedId, setSelectedCertifiedId] = useState("");
-  const [changeSummary, setChangeSummary] = useState("Initial ScopeVersion authority from Certified IOF Package.");
-  const [engineeringReason, setEngineeringReason] = useState("Engineering certified IOF Package promoted to operational baseline.");
+  const [changeSummary, setChangeSummary] = useState("Initial ScopeVersion authority from signed Service Order.");
+  const [engineeringReason, setEngineeringReason] = useState("Runtime promoted executed Service Order and Certified Draft IOF Package into the Order for Execution.");
   const [status, setStatus] = useState("ScopeVersion authority workspace ready.");
   const [pending, setPending] = useState(false);
 
@@ -115,6 +133,11 @@ export default function ScopeVersionWorkspace() {
   const notes = asArray(truth.engineeringNotes);
   const quantities = asRecord(truth.constructionQuantities);
   const mapSpec = useMemo(() => activeScope ? renderScopeVersion(activeScope) : null, [activeScope]);
+  const selectedCertifiedPackage = useMemo(
+    () => certifiedPackages.find((pkg) => pkg.certifiedPackageId === selectedCertifiedId) ?? null,
+    [certifiedPackages, selectedCertifiedId],
+  );
+  const selectedCertifiedHasSignature = hasSignedServiceOrder(selectedCertifiedPackage);
 
   function selectScope(scopeVersionId: string) {
     const scope = scopeVersions.find((item) => item.scopeVersionId === scopeVersionId) ?? null;
@@ -124,7 +147,11 @@ export default function ScopeVersionWorkspace() {
 
   async function promoteCertifiedPackage() {
     if (!selectedCertifiedId) {
-      setStatus("Select a Certified IOF Package before promotion.");
+      setStatus("Select a Certified Draft IOF Package before promotion.");
+      return;
+    }
+    if (!selectedCertifiedHasSignature) {
+      setStatus("Signed Service Order authority is required before ScopeVersion creation.");
       return;
     }
     setPending(true);
@@ -139,7 +166,7 @@ export default function ScopeVersionWorkspace() {
       const scope = result.scopeVersion as ScopeVersion;
       setSelectedScopeVersion(scope);
       setSelectedScopeVersionId(scope.scopeVersionId);
-      setStatus(`${scope.scopeVersionId} created from ${result.certifiedPackage.certifiedPackageId}.`);
+      setStatus(`${scope.scopeVersionId} created from Certified Draft IOF ${result.certifiedPackage.certifiedDraftIofPackageId ?? result.certifiedPackage.sourcePackageId ?? result.certifiedPackage.certifiedPackageId}.`);
       await refresh();
     } catch (error) {
       setStatus(`ScopeVersion promotion failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -154,7 +181,7 @@ export default function ScopeVersionWorkspace() {
         <div>
           <div className="dal-kicker">SCOPEVERSION AUTHORITY</div>
           <h2>ScopeVersion</h2>
-          <p>Immutable operational baseline derived exclusively from the Engineering Certified IOF Package.</p>
+          <p>Order for Execution created only after signed Service Order authority.</p>
         </div>
         <button type="button" onClick={() => void refresh()} disabled={pending}>Refresh</button>
       </div>
@@ -162,16 +189,16 @@ export default function ScopeVersionWorkspace() {
       <div className="dal-grid compact">
         <section className="dal-panel">
           <div className="dal-panel-title-row">
-            <h3>Promote Certified IOF</h3>
-            <span className={`dal-badge ${canPromote ? "pass" : "warning"}`}>{canPromote ? "ENGINEERING" : "READ ONLY"}</span>
+            <h3>Create From Signed Service Order</h3>
+            <span className={`dal-badge ${canPromote ? "pass" : "warning"}`}>{canPromote ? "SCOPEVERSION AUTHORITY" : "READ ONLY"}</span>
           </div>
           <label>
-            Certified IOF Package
+            Certified Draft IOF Package
             <select value={selectedCertifiedId} onChange={(event) => setSelectedCertifiedId(event.target.value)}>
               <option value="">Select Certified Package</option>
               {certifiedPackages.map((pkg) => (
                 <option key={pkg.certifiedPackageId} value={pkg.certifiedPackageId}>
-                  {pkg.certifiedPackageId} / {pkg.scopeVersionId ? `Promoted ${pkg.scopeVersionId}` : "Ready"}
+                  {pkg.certifiedDraftIofPackageId ?? pkg.sourcePackageId ?? pkg.certifiedPackageId} / {pkg.scopeVersionId ? `Promoted ${pkg.scopeVersionId}` : hasSignedServiceOrder(pkg) ? "Signed SO ready" : "Signed SO required"}
                 </option>
               ))}
             </select>
@@ -181,11 +208,11 @@ export default function ScopeVersionWorkspace() {
             <input value={changeSummary} onChange={(event) => setChangeSummary(event.target.value)} />
           </label>
           <label>
-            Engineering Reason
+            Promotion Reason
             <input value={engineeringReason} onChange={(event) => setEngineeringReason(event.target.value)} />
           </label>
-          <button type="button" onClick={() => void promoteCertifiedPackage()} disabled={!canPromote || pending || !selectedCertifiedId}>
-            Promote to ScopeVersion
+          <button type="button" onClick={() => void promoteCertifiedPackage()} disabled={!canPromote || pending || !selectedCertifiedId || !selectedCertifiedHasSignature}>
+            Create ScopeVersion
           </button>
           <div className="dal-status">{status}</div>
         </section>
@@ -340,7 +367,7 @@ export default function ScopeVersionWorkspace() {
       ) : (
         <section className="dal-panel">
           <h3>No ScopeVersion Selected</h3>
-          <div className="dal-status">Promote a Certified IOF Package or select an existing ScopeVersion.</div>
+          <div className="dal-status">Promote a Certified Draft IOF Package or select an existing ScopeVersion.</div>
         </section>
       )}
     </section>

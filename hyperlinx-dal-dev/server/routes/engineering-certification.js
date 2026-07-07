@@ -14,6 +14,13 @@ import {
   unwrapBody,
 } from "./_shared.js";
 import { requireAnyPermission } from "./authority.js";
+import {
+  findEngineeringPackageForDraft,
+  listEngineeringPackages,
+  loadEngineeringPackage,
+  resolveEngineeringPackageReferences,
+  updateEngineeringPackageStatus,
+} from "./engineering-packages.js";
 import { persistScopeVersion } from "./scopeversions.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 import {
@@ -42,6 +49,10 @@ function asArray(value) {
   return [value];
 }
 
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
 function unique(values) {
   return [...new Set(asArray(values).filter(Boolean).map(String))];
 }
@@ -56,6 +67,14 @@ function stableIdPart(value, fallback = "UNKNOWN") {
 function numeric(value, fallback = 0) {
   const next = Number(value);
   return Number.isFinite(next) ? next : fallback;
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
 }
 
 function routeParts(pathname) {
@@ -596,6 +615,110 @@ function hashCertifiedAssembly(payload) {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
+function routeRepositoryIdForPackage(record = {}) {
+  return String(
+    record.routeRepositoryId ??
+      asRecord(record.routeRepositoryRef).routeRepositoryId ??
+      asRecord(record.routeRepositorySnapshot).routeRepositoryId ??
+      asRecord(record.commercialDraftSnapshot).routeRepositoryId ??
+      asRecord(record.proposalSummary).routeRepositoryId ??
+      "",
+  );
+}
+
+function commercialEstimateForPackage(record = {}) {
+  const commercialSummary = asRecord(record.commercialSummary);
+  return {
+    estimateId: String(record.estimateId ?? commercialSummary.estimateId ?? record.proposalId ?? record.packageId ?? ""),
+    pricingSummary: asRecord(record.pricingSummary ?? commercialSummary.pricingSummary),
+    marginSummary: asRecord(record.marginSummary ?? commercialSummary.marginSummary),
+    confidenceSummary: asRecord(record.confidenceSummary ?? commercialSummary.confidenceSummary),
+    routeMiles: numeric(record.routeMiles, numeric(commercialSummary.routeMiles, 0)),
+    routeFeet: numeric(record.routeFeet, numeric(commercialSummary.routeFeet, 0)),
+    source: "CERTIFIED_DRAFT_IOF_PACKAGE_COMMERCIAL_ESTIMATE_REFERENCE",
+  };
+}
+
+function normalizeStationPlan(input = {}, draft = {}, user = {}, timestamp = nowIso()) {
+  const plan = asRecord(input);
+  const routeRepositoryId = routeRepositoryIdForPackage(draft);
+  const stations = asArray(plan.stations).map((station, index) => {
+    const record = asRecord(station);
+    return {
+      stationId: String(record.stationId ?? record.id ?? `${draft.packageId}:STATION:${String(index + 1).padStart(4, "0")}`),
+      label: String(record.label ?? record.stationLabel ?? record.stationId ?? `STA-${String(index + 1).padStart(4, "0")}`),
+      stationFeet: numeric(record.stationFeet ?? record.measureFeet ?? record.feet, index * 5280),
+      milepost: numeric(record.milepost, numeric(record.stationFeet ?? record.measureFeet ?? record.feet, index * 5280) / 5280),
+      coordinate: record.coordinate,
+    };
+  });
+  const objectAssignments = asArray(plan.objectAssignments).map((assignment, index) => {
+    const record = asRecord(assignment);
+    return {
+      objectId: String(record.objectId ?? `${draft.packageId}:OBJECT:${String(index + 1).padStart(3, "0")}`),
+      objectType: String(record.objectType ?? "ENGINEERING_OBJECT"),
+      stationId: String(record.stationId ?? ""),
+      stationLabel: String(record.stationLabel ?? record.station ?? ""),
+      stationRange: String(record.stationRange ?? ""),
+      assignmentMethod: String(record.assignmentMethod ?? "MANUAL_CERTIFICATION_DEFAULT"),
+    };
+  });
+  return {
+    ...plan,
+    stationPlanId: String(plan.stationPlanId ?? `STATION-PLAN-${draft.packageId}`),
+    draftIofPackageId: String(plan.draftIofPackageId ?? draft.packageId ?? ""),
+    opportunityId: String(plan.opportunityId ?? draft.opportunityId ?? ""),
+    routeRepositoryId,
+    stationIntervalFeet: numeric(plan.stationIntervalFeet, 5280),
+    routeLengthFeet: numeric(plan.routeLengthFeet, numeric(draft.routeFeet, numeric(asRecord(draft.commercialSummary).routeFeet, 0))),
+    generatedBy: String(plan.generatedBy ?? user.name ?? ""),
+    generatedAt: String(plan.generatedAt ?? timestamp),
+    certifiedBy: String(plan.certifiedBy ?? user.name ?? ""),
+    certifiedAt: String(plan.certifiedAt ?? timestamp),
+    status: "CERTIFIED",
+    stations,
+    objectAssignments,
+    immutable: true,
+    noScopeVersionCreation: true,
+  };
+}
+
+function normalizeEngineeringApprovedObjectBudget(input = {}, draft = {}, user = {}, timestamp = nowIso()) {
+  const budget = asRecord(input);
+  const objectBudgets = asArray(budget.objectBudgets ?? budget.rows).map((item, index) => {
+    const record = asRecord(item);
+    return {
+      objectId: String(record.objectId ?? `${draft.packageId}:OBJECT:${String(index + 1).padStart(3, "0")}`),
+      objectType: String(record.objectType ?? "ENGINEERING_OBJECT"),
+      stationReference: String(record.stationReference ?? record.station ?? ""),
+      stationRange: String(record.stationRange ?? ""),
+      commercialBudget: numeric(record.commercialBudget, 0),
+      engineeringApprovedBudget: numeric(record.engineeringApprovedBudget, numeric(record.commercialBudget, 0)),
+      confirmed: Boolean(record.confirmed),
+      notes: String(record.notes ?? ""),
+    };
+  });
+  const totalApprovedBudget = numeric(
+    budget.totalApprovedBudget ?? budget.engineeringApprovedBudget,
+    objectBudgets.reduce((sum, row) => sum + numeric(row.engineeringApprovedBudget), 0),
+  );
+  return {
+    ...budget,
+    budgetId: String(budget.budgetId ?? `ENG-BUDGET-${draft.packageId}`),
+    draftIofPackageId: String(budget.draftIofPackageId ?? draft.packageId ?? ""),
+    opportunityId: String(budget.opportunityId ?? draft.opportunityId ?? ""),
+    routeRepositoryId: routeRepositoryIdForPackage(draft),
+    approvedBy: String(budget.approvedBy ?? user.name ?? ""),
+    approvedById: String(budget.approvedById ?? user.userId ?? ""),
+    approvedAt: String(budget.approvedAt ?? timestamp),
+    totalApprovedBudget,
+    objectBudgets,
+    allObjectsConfirmed: objectBudgets.length ? objectBudgets.every((row) => row.confirmed) : Boolean(budget.allObjectsConfirmed),
+    immutable: true,
+    noScopeVersionCreation: true,
+  };
+}
+
 function runtimeHistoryEvent(record, user, eventType, details = "", metadata = {}) {
   const timestamp = nowIso();
   return {
@@ -691,6 +814,263 @@ async function loadDraftPackage(packageId) {
   return normalizeDraftPackage(await loadRecord(DIRS.iofPackages, packageId));
 }
 
+async function resolveEngineeringPackageForCertification(packageReferenceId) {
+  let engineeringPackage = await loadEngineeringPackage(packageReferenceId).catch(() => null);
+  if (!engineeringPackage) {
+    engineeringPackage = await findEngineeringPackageForDraft(packageReferenceId);
+  }
+  if (!engineeringPackage) return null;
+  const referenceIntegrity = await resolveEngineeringPackageReferences(engineeringPackage);
+  const draftPackageId = engineeringPackage.draftIOFPackageId ?? engineeringPackage.draftIofPackageId;
+  const draft = referenceIntegrity.resolved?.draftIofPackage
+    ? normalizeDraftPackage(referenceIntegrity.resolved.draftIofPackage)
+    : await loadDraftPackage(draftPackageId).catch(() => null);
+  if (!draft) return null;
+  return {
+    engineeringPackage,
+    referenceIntegrity,
+    draft,
+    opportunity: referenceIntegrity.resolved?.opportunity ?? null,
+    routeRepository: referenceIntegrity.resolved?.routeRepository ?? null,
+    proposal: referenceIntegrity.resolved?.proposal ?? null,
+  };
+}
+
+function repositoryValidationCheck(key, label, id, ok, required, detail, repositoryPath) {
+  const status = ok ? "PASS" : required ? "FAIL" : "WARNING";
+  return {
+    key,
+    label,
+    status,
+    id: firstText(id, "missing"),
+    required,
+    detail,
+    repositoryPath,
+  };
+}
+
+function buildEngineeringRepositoryValidationReport(draftRecord, engineeringPackage, referenceIntegrity = {}) {
+  const draft = asRecord(draftRecord);
+  const refs = asRecord(referenceIntegrity.resolved);
+  const checks = asRecord(referenceIntegrity.checks);
+  const paths = asRecord(referenceIntegrity.repositoryPaths);
+  const routeRepository = asRecord(refs.routeRepository);
+  const proposedObjects = asArray(draft.proposedIofUnits);
+  const stationAuthority = asRecord(draft.stationAuthority);
+  const stationIndexedGraph = asRecord(draft.stationIndexedGraph);
+  const stationObjectManifest = asRecord(draft.stationObjectManifest);
+  const projectedObjectManifest = asRecord(draft.projectedObjectManifest);
+  const projectedObjects = asArray(projectedObjectManifest.projectedObjects ?? draft.projectedObjects);
+  const missingObjectTypes = proposedObjects.filter((object) => !firstText(
+    object?.unitType,
+    object?.objectType,
+    object?.type,
+    object?.classification,
+  ));
+  const routeVertexCount = asArray(routeRepository.commercialGeometry).length;
+  const repositoryChecks = [
+    repositoryValidationCheck(
+      "engineeringPackage",
+      "Engineering Package",
+      engineeringPackage?.engineeringPackageId,
+      Boolean(checks.engineeringPackage),
+      true,
+      "Engineering Repository package envelope restored.",
+      paths.engineeringPackage,
+    ),
+    repositoryValidationCheck(
+      "draftIofPackage",
+      "Draft IOF Package",
+      engineeringPackage?.draftIOFPackageId ?? engineeringPackage?.draftIofPackageId ?? draft.packageId,
+      Boolean(checks.draftIofPackage),
+      true,
+      "Draft IOF Package reference resolved before projection.",
+      paths.draftIofPackage,
+    ),
+    repositoryValidationCheck(
+      "proposal",
+      "Proposal",
+      engineeringPackage?.proposalId ?? draft.proposalId,
+      Boolean(checks.commercialProposal),
+      true,
+      "Proposal reference resolved from Proposal Repository.",
+      paths.commercialProposal,
+    ),
+    repositoryValidationCheck(
+      "workbook",
+      "Workbook",
+      engineeringPackage?.commercialWorkbookId ?? draft.commercialWorkbookId,
+      Boolean(checks.commercialWorkbook),
+      true,
+      "Commercial Workbook reference resolved without rebuilding workbook data.",
+      paths.commercialWorkbook,
+    ),
+    repositoryValidationCheck(
+      "estimate",
+      "Estimate",
+      engineeringPackage?.estimateId ?? draft.estimateId,
+      Boolean(checks.commercialEstimate),
+      true,
+      "Commercial Estimate reference resolved without recalculation.",
+      paths.commercialEstimate,
+    ),
+    repositoryValidationCheck(
+      "routeRepository",
+      "Route Repository",
+      engineeringPackage?.routeRepositoryId ?? draft.routeRepositoryId,
+      Boolean(checks.routeRepository),
+      true,
+      `${routeVertexCount.toLocaleString()} route vertices resolved from Route Repository.`,
+      paths.routeRepository,
+    ),
+    repositoryValidationCheck(
+      "measuredCenterline",
+      "Measured Centerline",
+      engineeringPackage?.measuredCenterlineId ?? draft.measuredCenterlineId,
+      Boolean(checks.measuredCenterline),
+      true,
+      "Measured centerline restored before Engineering projection.",
+      paths.measuredCenterline,
+    ),
+    repositoryValidationCheck(
+      "stationGraph",
+      "Station Graph",
+      engineeringPackage?.stationGraphId ?? draft.stationGraphId ?? stationIndexedGraph.stationGraphId ?? stationIndexedGraph.graphId,
+      Boolean(checks.stationGraph),
+      true,
+      `${asArray(stationIndexedGraph.nodes).length.toLocaleString()} station graph nodes restored.`,
+      paths.stationGraph,
+    ),
+    repositoryValidationCheck(
+      "stationAuthorityIds",
+      "Station Authority IDs",
+      asArray(engineeringPackage?.stationAuthorityIds).join(", ") || asArray(stationAuthority.stationAuthorityIds).join(", ") || stationAuthority.authorityId,
+      Boolean(checks.stationAuthorityIds),
+      true,
+      `${asArray(stationAuthority.stations).length.toLocaleString()} station authority records restored.`,
+      paths.stationAuthorityIds,
+    ),
+    repositoryValidationCheck(
+      "stationObjectManifest",
+      "Station Object Manifest",
+      engineeringPackage?.stationObjectManifestId ?? draft.stationObjectManifestId ?? stationObjectManifest.manifestId,
+      Boolean(checks.stationObjectManifest),
+      true,
+      `${asArray(stationObjectManifest.objects).length.toLocaleString()} station-indexed object rows restored.`,
+      paths.stationObjectManifest,
+    ),
+    repositoryValidationCheck(
+      "projectedObjectManifest",
+      "Projected Object Manifest",
+      engineeringPackage?.projectedObjectManifestId ?? draft.projectedObjectManifestId ?? projectedObjectManifest.manifestId,
+      Boolean(checks.projectedObjectManifest && checks.projectedObjects),
+      true,
+      `${projectedObjects.length.toLocaleString()} projected IOF objects restored. No coordinate-only objects allowed.`,
+      paths.projectedObjectManifest,
+    ),
+    repositoryValidationCheck(
+      "objectValidation",
+      "Object Validation",
+      draft.packageId,
+      proposedObjects.length > 0 && missingObjectTypes.length === 0,
+      false,
+      missingObjectTypes.length
+        ? `${missingObjectTypes.length.toLocaleString()} package object(s) are missing type metadata. Continuing certification.`
+        : `${proposedObjects.length.toLocaleString()} package object(s) available for projection validation.`,
+      "Draft IOF Package projection",
+    ),
+    repositoryValidationCheck(
+      "repositoryIntegrity",
+      "Repository Integrity",
+      engineeringPackage?.referenceHash,
+      Boolean(referenceIntegrity.ok),
+      true,
+      "All required Engineering Package references must resolve before projection.",
+      "Engineering Repository reference integrity",
+    ),
+  ];
+  const blockingFailures = repositoryChecks.filter((check) => check.required && check.status === "FAIL");
+  const warningChecks = repositoryChecks.filter((check) => check.status === "WARNING");
+  const readyForStationPlanning = blockingFailures.length === 0;
+  const readyForCertification = readyForStationPlanning && proposedObjects.length > 0 && missingObjectTypes.length === 0;
+  const readinessChecks = [
+    ...repositoryChecks,
+    repositoryValidationCheck(
+      "readyForStationPlanning",
+      "Ready for Station Review",
+      draft.packageId,
+      readyForStationPlanning,
+      false,
+      readyForStationPlanning ? "Station projection is complete and ready for Engineering Station Review." : "Repository references must resolve before Station Review.",
+      "Engineering Certification readiness",
+    ),
+    repositoryValidationCheck(
+      "readyForCertification",
+      "Ready for Certification",
+      draft.packageId,
+      readyForCertification,
+      false,
+      readyForCertification ? "Repository and object validation passed; manual Engineering gates still apply." : "Certification remains locked until repository and object validation pass.",
+      "Engineering Certification readiness",
+    ),
+  ];
+  return {
+    reportId: `ENG-READINESS-${engineeringPackage?.engineeringPackageId ?? draft.packageId}`,
+    status: blockingFailures.length ? "FAIL" : warningChecks.length ? "WARNING" : "PASS",
+    checks: readinessChecks,
+    warnings: readinessChecks.filter((check) => check.status !== "PASS"),
+    readiness: {
+      readyForProjection: blockingFailures.length === 0,
+      readyForStationPlanning,
+      readyForCertification,
+    },
+    repositoryAuthority: "ENGINEERING_REPOSITORY",
+    baselineGraphRequired: false,
+    reasoningRequired: false,
+    deterministicDoctrineFallback: true,
+    generatedAt: nowIso(),
+    noRegeneration: true,
+    noScopeVersionCreation: true,
+  };
+}
+
+function decorateDraftPackageWithEngineeringPackage(draftRecord, engineeringPackage, referenceIntegrity) {
+  const draft = normalizeDraftPackage(draftRecord);
+  const repositoryValidation = buildEngineeringRepositoryValidationReport(draft, engineeringPackage, referenceIntegrity);
+  const sanitizedIntegrity = {
+    ...referenceIntegrity,
+    resolved: undefined,
+  };
+  return normalizeDraftPackage({
+    ...draft,
+    engineeringPackageId: engineeringPackage.engineeringPackageId,
+    engineeringPackage,
+    engineeringRepositoryRestore: {
+      engineeringPackageId: engineeringPackage.engineeringPackageId,
+      status: engineeringPackage.engineeringStatus ?? engineeringPackage.status,
+      referenceIntegrity: sanitizedIntegrity,
+      repositoryAuthority: "ENGINEERING_REPOSITORY",
+      restoredFromEngineeringRepository: true,
+      noCommercialRepositoryBrowsing: true,
+      noRegeneration: true,
+      noScopeVersionCreation: true,
+    },
+    engineeringRepositoryValidation: repositoryValidation,
+    engineeringReadinessReport: repositoryValidation,
+    routeRepositoryId: draft.routeRepositoryId ?? engineeringPackage.routeRepositoryId,
+    commercialProposalId: engineeringPackage.proposalId ?? engineeringPackage.commercialProposalId,
+    commercialWorkbookId: engineeringPackage.commercialWorkbookId,
+    estimateId: engineeringPackage.estimateId,
+    productDoctrineId: engineeringPackage.productDoctrineId,
+    customerTwinId: engineeringPackage.customerTwinId,
+    noRouteRegeneration: true,
+    noEstimateRegeneration: true,
+    noWorkbookRegeneration: true,
+    noProposalRegeneration: true,
+    noScopeVersionCreation: true,
+  });
+}
+
 async function decorateDraftPackageForResponse(record) {
   const draft = normalizeDraftPackage(record);
   const proposal = draft.proposalId ? await loadRecord(DIRS.proposalDrafts, draft.proposalId).catch(() => null) : null;
@@ -753,38 +1133,41 @@ async function persistEngineeringIntakeStatus(packageRecord, user, status, extra
   return next;
 }
 
-async function openDraftPackageForEngineering(packageId, user) {
-  const raw = await loadRecord(DIRS.iofPackages, packageId).catch(() => null);
-  if (!raw) return null;
-  const draft = normalizeDraftPackage(raw);
-  if (draft.status !== "SUBMITTED_TO_ENGINEERING") return decorateDraftPackageForResponse(draft);
-  const opened = await persistDraftPackage({
-    ...draft,
-    status: "UNDER_ENGINEERING_REVIEW",
-    workflowStatus: "ENGINEERING_CERTIFICATION",
-    lifecycleState: "UNDER_ENGINEERING_REVIEW",
-    authority: "ENGINEERING_CERTIFICATION",
-    engineeringStatus: "UNDER_REVIEW",
-    engineeringReadiness: "UNDER_ENGINEERING_REVIEW",
-    assignedEngineerId: draft.assignedEngineerId || user.userId,
-    assignedEngineer: draft.assignedEngineer || user.name,
-    engineeringOpenedAt: nowIso(),
-    engineeringOpenedBy: user.name,
-    engineeringOpenedById: user.userId,
-    noScopeVersionCreation: true,
-  }, user, "runtime.iof_package.engineering_opened", "Engineering opened the submitted Draft IOF Package without proposal regeneration.");
-  await persistEngineeringIntakeStatus(opened, user, "UNDER_ENGINEERING_REVIEW", {
-    openedAt: opened.engineeringOpenedAt,
+async function openDraftPackageForEngineering(packageReferenceId, user) {
+  const resolved = await resolveEngineeringPackageForCertification(packageReferenceId);
+  if (!resolved) return null;
+  const { draft, referenceIntegrity } = resolved;
+  let { engineeringPackage } = resolved;
+  if ((engineeringPackage.engineeringStatus ?? engineeringPackage.status) === "ENGINEERING_PENDING") {
+    engineeringPackage = await updateEngineeringPackageStatus(engineeringPackage.engineeringPackageId, user, "STATION_PLANNING", {
+      stationPlanningStatus: "READY_FOR_STATION_PLANNING",
+      stationPlanningStartedAt: nowIso(),
+      stationPlanningStartedBy: user.name,
+      stationPlanningStartedById: user.userId,
+      noRegeneration: true,
+      noScopeVersionCreation: true,
+    }) ?? engineeringPackage;
+  }
+  await persistEngineeringIntakeStatus(draft, user, "STATION_PLANNING", {
+    engineeringPackageId: engineeringPackage.engineeringPackageId,
+    openedAt: nowIso(),
     openedBy: user.name,
     openedById: user.userId,
   });
-  return decorateDraftPackageForResponse(opened);
+  return decorateDraftPackageWithEngineeringPackage(
+    await decorateDraftPackageForResponse(draft),
+    engineeringPackage,
+    referenceIntegrity,
+  );
 }
 
-function packageQueueItem(record) {
+function packageQueueItem(record, engineeringPackage = null) {
   const draft = normalizeDraftPackage(record);
+  const packageRecord = engineeringPackage ?? {};
   return {
-    packageId: draft.packageId,
+    engineeringPackageId: packageRecord.engineeringPackageId ?? draft.engineeringPackageId ?? draft.packageId,
+    packageId: packageRecord.engineeringPackageId ?? draft.engineeringPackageId ?? draft.packageId,
+    draftIofPackageId: packageRecord.draftIOFPackageId ?? packageRecord.draftIofPackageId ?? draft.packageId,
     packageName: draft.packageName,
     packageReadiness: draft.packageReadiness,
     packageCompleteness: draft.packageCompleteness,
@@ -797,36 +1180,38 @@ function packageQueueItem(record) {
     assemblyConfidence: draft.assemblyConfidence,
     engineeringReadiness: draft.engineeringReadiness,
     assemblyReport: draft.assemblyReport,
-    packageStatus: draft.status,
+    packageStatus: packageRecord.engineeringStatus ?? packageRecord.status ?? draft.status,
     assignedEngineer: draft.assignedEngineer || draft.assignedEngineerId || "Unassigned",
     assignedEngineerId: draft.assignedEngineerId,
     priority: draft.priority,
-    submissionDate: draft.submittedAt,
-    submittedAt: draft.submittedAt,
+    submissionDate: packageRecord.submittedDate ?? draft.submittedAt,
+    submittedAt: packageRecord.submittedDate ?? draft.submittedAt,
     customer: draft.customerSummary?.name ?? draft.customerId,
     customerId: draft.customerId,
     opportunity: draft.opportunityId,
     opportunityId: draft.opportunityId,
-    proposalId: draft.proposalId,
+    proposalId: packageRecord.proposalId ?? packageRecord.commercialProposalId ?? draft.proposalId,
+    routeRepositoryId: packageRecord.routeRepositoryId,
+    commercialWorkbookId: packageRecord.commercialWorkbookId,
+    estimateId: packageRecord.estimateId,
+    productDoctrineId: packageRecord.productDoctrineId,
+    commercialStatus: packageRecord.commercialStatus ?? "SUBMITTED_TO_ENGINEERING",
+    repositoryAuthority: packageRecord.authority ?? "ENGINEERING_REPOSITORY",
     proposedUnitCount: draft.packageReadiness.proposedUnitCount,
     certifiedUnitCount: draft.packageReadiness.certifiedUnitCount,
-    status: draft.status,
-    updatedAt: draft.updatedAt,
+    status: packageRecord.engineeringStatus ?? packageRecord.status ?? draft.status,
+    updatedAt: packageRecord.updatedAt ?? draft.updatedAt,
   };
 }
 
 export async function listReviewQueue() {
-  const records = await listRecords(DIRS.iofPackages);
-  const isOpenEngineeringReview = (record) => {
-    const status = String(record.status ?? "");
-    const workflowStatus = String(record.workflowStatus ?? "");
-    if (["CERTIFIED", "CLOSED", "ARCHIVED"].includes(status)) return false;
-    return status === "SUBMITTED_TO_ENGINEERING" || workflowStatus === "ENGINEERING_REVIEW";
-  };
-  return sortedByUpdated(records
-    .map(normalizeDraftPackage)
-    .filter(isOpenEngineeringReview)
-    .map(packageQueueItem));
+  const records = await listEngineeringPackages({ openOnly: true });
+  const items = await Promise.all(records.map(async (engineeringPackage) => {
+    const draft = await loadDraftPackage(engineeringPackage.draftIOFPackageId ?? engineeringPackage.draftIofPackageId).catch(() => null);
+    if (!draft) return null;
+    return packageQueueItem(draft, engineeringPackage);
+  }));
+  return sortedByUpdated(items.filter(Boolean));
 }
 
 function unitsFromProposal(proposal, packageId) {
@@ -1102,7 +1487,7 @@ async function updateUnit(req, res, user, packageId, unitId, action) {
     return;
   }
   if (draft.status === "CERTIFIED") {
-    errorResponse(res, 409, "Certified IOF Packages are frozen. Create a new proposal revision cycle.");
+    errorResponse(res, 409, "Certified Draft IOF Packages are frozen. Create a new proposal revision cycle.");
     return;
   }
   const body = await readRequestJson(req);
@@ -1241,6 +1626,9 @@ const STATION_ATTACHED_OBJECT_TYPES = new Set([
   "SPLICE_CASE",
   "MARKER",
   "PULL_POINT",
+  "CONDUIT",
+  "FIBER",
+  "ROUTE_CENTERLINE",
 ]);
 
 function objectIdentity(record = {}) {
@@ -1264,7 +1652,10 @@ function objectStation(record = {}) {
 }
 
 function stationFeet(record = {}, stationReference = "") {
-  const stations = asArray(record.stations);
+  const stations = [
+    ...asArray(record.stations),
+    ...asArray(asRecord(record.stationAuthority).stations),
+  ];
   const station = stations.find((item) =>
     String(item?.stationId ?? item?.id ?? "") === stationReference ||
     String(item?.label ?? item?.stationLabel ?? "") === stationReference
@@ -1272,6 +1663,55 @@ function stationFeet(record = {}, stationReference = "") {
   if (!station) return undefined;
   const feet = numeric(station.stationFeet ?? station.measureFeet ?? station.feet, Number.NaN);
   return Number.isFinite(feet) ? feet : undefined;
+}
+
+function stationRecord(record = {}, stationReference = "") {
+  const stations = [
+    ...asArray(record.stations),
+    ...asArray(asRecord(record.stationAuthority).stations),
+  ];
+  return stations.find((item) =>
+    String(item?.stationId ?? item?.id ?? "") === stationReference ||
+    String(item?.label ?? item?.stationLabel ?? "") === stationReference
+  );
+}
+
+function deterministicMoveHash(value) {
+  return `move-${createHash("sha256").update(JSON.stringify(value ?? null)).digest("hex").slice(0, 12)}`;
+}
+
+function patchObjectStationProjection(item = {}, targetStation = {}, move = {}, body = {}) {
+  const stationId = String(targetStation.stationId ?? move.newStation ?? "");
+  const stationLabel = String(targetStation.stationLabel ?? targetStation.label ?? stationId);
+  const stationValue = numeric(targetStation.stationValue ?? targetStation.measureFeet ?? targetStation.stationFeet, numeric(item.stationValue, 0));
+  const offset = numeric(body.offset, numeric(item.offset, 0));
+  const side = String(body.side ?? item.side ?? "CENTERLINE");
+  const orientation = String(body.orientation ?? item.orientation ?? "ALONG_ROUTE");
+  const projectedCoordinate = targetStation.coordinate ?? item.projectedCoordinate ?? item.coordinate;
+  return {
+    ...item,
+    stationId,
+    station: stationId,
+    stationLabel,
+    stationValue,
+    offset,
+    side,
+    orientation,
+    projectedCoordinate,
+    coordinate: projectedCoordinate,
+    coordinateAuthority: "STATION_PLUS_OFFSET_ORIENTATION",
+    projectionStatus: "PROJECTED",
+    projectionHash: deterministicMoveHash({
+      objectId: objectIdentity(item),
+      stationId,
+      stationValue,
+      offset,
+      side,
+      orientation,
+      projectedCoordinate,
+      moveId: move.moveId,
+    }),
+  };
 }
 
 function patchPackageObjectCollections(draft, objectId, patcher) {
@@ -1302,7 +1742,7 @@ async function handleAddConstraint(req, res, user, packageId) {
     return;
   }
   if (draft.status === "CERTIFIED") {
-    errorResponse(res, 409, "Certified IOF Packages are frozen. Create a new Commercial revision cycle.");
+    errorResponse(res, 409, "Certified Draft IOF Packages are frozen. Create a new Commercial revision cycle.");
     return;
   }
   const body = await readRequestJson(req);
@@ -1339,7 +1779,7 @@ async function handleMoveObject(req, res, user, packageId) {
     return;
   }
   if (draft.status === "CERTIFIED") {
-    errorResponse(res, 409, "Certified IOF Packages are frozen. Create a new Commercial revision cycle.");
+    errorResponse(res, 409, "Certified Draft IOF Packages are frozen. Create a new Commercial revision cycle.");
     return;
   }
   const body = await readRequestJson(req);
@@ -1364,6 +1804,7 @@ async function handleMoveObject(req, res, user, packageId) {
   const previousStation = objectStation(object);
   const previousFeet = stationFeet(draft, previousStation);
   const newFeet = stationFeet(draft, target);
+  const targetStationRecord = stationRecord(draft, target) ?? {};
   const distanceDelta = Number.isFinite(previousFeet) && Number.isFinite(newFeet)
     ? Math.round(newFeet - previousFeet)
     : numeric(body.distanceDelta, 0);
@@ -1374,6 +1815,11 @@ async function handleMoveObject(req, res, user, packageId) {
     objectType: type,
     previousStation,
     newStation: target,
+    stationValue: numeric(targetStationRecord.stationValue ?? targetStationRecord.measureFeet ?? targetStationRecord.stationFeet, newFeet),
+    offset: numeric(body.offset, numeric(object.offset, 0)),
+    side: String(body.side ?? object.side ?? "CENTERLINE"),
+    orientation: String(body.orientation ?? object.orientation ?? "ALONG_ROUTE"),
+    projectedCoordinate: targetStationRecord.coordinate ?? object.projectedCoordinate ?? object.coordinate,
     distanceDelta,
     reason,
     authority,
@@ -1383,18 +1829,37 @@ async function handleMoveObject(req, res, user, packageId) {
     impactSummary: String(body.impactSummary ?? `Object station reference changed by ${distanceDelta} ft. Station geometry was not moved.`),
   };
   const patched = patchPackageObjectCollections(draft, objectId, (item) => ({
-    ...item,
-    stationId: target,
-    station: target,
+    ...patchObjectStationProjection(item, targetStationRecord, move, body),
     metadata: {
       ...(item.metadata ?? {}),
       stationId: target,
+      stationValue: move.stationValue,
       previousStation,
       latestObjectMoveId: move.moveId,
     },
     engineeringDecision: "OBJECT_STATION_REFERENCE_MOVED",
     updatedAt: timestamp,
   }));
+  const patchManifestCollection = (items) => asArray(items).map((item) => (
+    objectIdentity(item) === objectId ? patchObjectStationProjection(item, targetStationRecord, move, body) : item
+  ));
+  const projectedObjectManifest = asRecord(patched.projectedObjectManifest);
+  const stationObjectManifest = asRecord(patched.stationObjectManifest);
+  const objectStationAttachments = asArray(patched.objectStationAttachments).map((attachment) => {
+    if (String(attachment?.objectId ?? "") !== objectId) return attachment;
+    return {
+      ...attachment,
+      stationId: target,
+      stationValue: move.stationValue,
+      stationRange: `${String(targetStationRecord.stationLabel ?? targetStationRecord.label ?? target)}-${String(targetStationRecord.stationLabel ?? targetStationRecord.label ?? target)}`,
+      coordinateAuthority: "STATION_PLUS_OFFSET_ORIENTATION",
+      attachmentMethod: "ENGINEERING_STATION_MOVE",
+      attachmentStatus: "ASSIGNED",
+      status: "PROJECTED",
+      projectedCoordinate: move.projectedCoordinate,
+      projectionHash: deterministicMoveHash({ attachmentId: attachment.attachmentId, moveId: move.moveId }),
+    };
+  });
   const revision = {
     revisionId: `${draft.packageId}:ENGINEERING-REVISION:OBJECT-MOVE:${Date.now()}`,
     revisionType: "OBJECT_MOVE",
@@ -1406,6 +1871,18 @@ async function handleMoveObject(req, res, user, packageId) {
   };
   const saved = await persistDraftPackage({
     ...patched,
+    objectStationAttachments,
+    projectedObjects: patchManifestCollection(patched.projectedObjects),
+    projectedObjectManifest: {
+      ...projectedObjectManifest,
+      projectedObjects: patchManifestCollection(projectedObjectManifest.projectedObjects),
+      updatedAt: timestamp,
+    },
+    stationObjectManifest: {
+      ...stationObjectManifest,
+      objects: patchManifestCollection(stationObjectManifest.objects),
+      updatedAt: timestamp,
+    },
     objectMoveHistory: [...asArray(draft.objectMoveHistory), move],
     engineeringRevisionMetadata: [...asArray(draft.engineeringRevisionMetadata), revision],
     updatedAt: timestamp,
@@ -1420,7 +1897,7 @@ async function handleCreateRouteRedline(req, res, user, packageId) {
     return;
   }
   if (draft.status === "CERTIFIED") {
-    errorResponse(res, 409, "Certified IOF Packages are frozen. Create a new Commercial revision cycle.");
+    errorResponse(res, 409, "Certified Draft IOF Packages are frozen. Create a new Commercial revision cycle.");
     return;
   }
   const body = await readRequestJson(req);
@@ -1486,7 +1963,7 @@ async function handleRecordDoctrineException(req, res, user, packageId) {
     return;
   }
   if (draft.status === "CERTIFIED") {
-    errorResponse(res, 409, "Certified IOF Packages are frozen. Create a new Commercial revision cycle.");
+    errorResponse(res, 409, "Certified Draft IOF Packages are frozen. Create a new Commercial revision cycle.");
     return;
   }
   const body = await readRequestJson(req);
@@ -1524,9 +2001,18 @@ function createExecutionCertificate(certifiedPackage, checklist, user, scopeVers
   const timestamp = nowIso();
   const certifiedUnits = asArray(certifiedPackage.certifiedIofUnits);
   const certificateId = `EXEC-AUTH-${certifiedPackage.certifiedPackageId}`;
+  const certifiedDraftIofPackageId = String(
+    certifiedPackage.certifiedDraftIofPackageId ??
+      certifiedPackage.technicalSourcePackageId ??
+      certifiedPackage.sourcePackageId ??
+      certifiedPackage.sourceDraftPackageId ??
+      certifiedPackage.draftPackageId ??
+      "",
+  );
   const fingerprintPayload = {
     proposalId: certifiedPackage.proposalId,
-    draftPackageId: certifiedPackage.sourcePackageId,
+    draftPackageId: certifiedDraftIofPackageId,
+    certifiedDraftIofPackageId,
     certifiedPackageId: certifiedPackage.certifiedPackageId,
     productId: certifiedPackage.productId,
     fulfillmentPlanId: certifiedPackage.fulfillmentPlanId,
@@ -1554,7 +2040,9 @@ function createExecutionCertificate(certifiedPackage, checklist, user, scopeVers
     approvalAuthorityContactIds: certifiedPackage.approvalAuthorityContactIds,
     sofRecipientContactIds: certifiedPackage.sofRecipientContactIds,
     customerContactEmails: certifiedPackage.customerContactEmails,
-    draftIofPackageId: certifiedPackage.sourcePackageId,
+    draftIofPackageId: certifiedDraftIofPackageId,
+    certifiedDraftIofPackageId,
+    technicalSourcePackageId: certifiedDraftIofPackageId,
     certifiedIofPackageId: certifiedPackage.certifiedPackageId,
     scopeVersionId,
     engineeringApproverId: user.userId,
@@ -1562,10 +2050,12 @@ function createExecutionCertificate(certifiedPackage, checklist, user, scopeVers
     certificationTimestamp: timestamp,
     engineeringChecklist: checklist,
     authorityTransfer: {
-      from: "ENGINEERING",
-      to: "EXECUTION",
-      status: scopeVersionId ? "TRANSFERRED" : "PENDING_SCOPEVERSION",
+      from: "EXECUTED_SERVICE_ORDER",
+      to: "SCOPEVERSION",
+      status: scopeVersionId ? "TRANSFERRED" : "PENDING_EXECUTED_SERVICE_ORDER",
       transferredAt: scopeVersionId ? timestamp : undefined,
+      certifiedDraftIofPackageId,
+      noAdditionalEngineeringReviewAfterSignature: true,
     },
     runtimeObjectCount: unique(certifiedPackage.runtimeObjectIds).length,
     relationshipCount: unique(certifiedPackage.runtimeRelationshipIds).length,
@@ -1574,7 +2064,7 @@ function createExecutionCertificate(certifiedPackage, checklist, user, scopeVers
     assemblyFingerprint: hashCertifiedAssembly(fingerprintPayload),
     createdAt: timestamp,
     updatedAt: timestamp,
-    status: scopeVersionId ? "EXECUTION_AUTHORIZED" : "CERTIFIED_PACKAGE_PENDING_SCOPEVERSION",
+    status: scopeVersionId ? "RUNTIME_PROMOTED_TO_SCOPEVERSION" : "CERTIFIED_DRAFT_IOF_PACKAGE_PENDING_SIGNED_SERVICE_ORDER",
     immutable: Boolean(scopeVersionId),
   };
 }
@@ -1596,7 +2086,7 @@ async function persistCertificationEvidence(certifiedPackage, certificate, user)
   const evidenceId = `EVIDENCE-${certificate.certificateId}`;
   const evidence = {
     evidenceId,
-    sourceType: "EXECUTION_AUTHORIZATION_CERTIFICATE",
+    sourceType: "ENGINEERING_CERTIFICATION_EVIDENCE",
     sourceName: certificate.certificateId,
     sourceSystem: "Engineering Certification Runtime",
     authority: "ENGINEERING_REVIEW",
@@ -1611,6 +2101,7 @@ async function persistCertificationEvidence(certifiedPackage, certificate, user)
       productId: certifiedPackage.productId,
       fulfillmentPlanId: certifiedPackage.fulfillmentPlanId,
       draftIofPackageId: certifiedPackage.sourcePackageId,
+      certifiedDraftIofPackageId: certifiedPackage.certifiedDraftIofPackageId ?? certifiedPackage.technicalSourcePackageId ?? certifiedPackage.sourcePackageId,
       certifiedIofPackageId: certifiedPackage.certifiedPackageId,
       scopeVersionId: certificate.scopeVersionId,
       certifiedBy: user.userId,
@@ -1631,6 +2122,8 @@ async function persistCertificationEvidence(certifiedPackage, certificate, user)
       certificationConfidence: certificate.certificationConfidence,
       noMarketplaceCreation: true,
       noContractCreation: true,
+      singleEngineeringTruth: true,
+      noEngineeringRecreation: true,
     },
   };
   await persistRecord(DIRS.runtimeEvidence, evidenceId, evidence);
@@ -1649,6 +2142,8 @@ async function generateScopeVersion(certifiedPackage, certificate, user, options
   const proposedScopeVersion = createScopeVersionFromCertifiedPackage(certifiedPackage, certificate, user, {
     previousScopeVersion,
     parentScopeVersionId: previousScopeVersionId,
+    customerAcceptance: options.customerAcceptance,
+    serviceOrder: options.serviceOrder,
     changeSummary: options.changeSummary,
     engineeringReason: options.engineeringReason,
     approvedBy: options.approvedBy,
@@ -1665,7 +2160,7 @@ async function generateScopeVersion(certifiedPackage, certificate, user, options
   const nextCertificate = {
     ...certificate,
     scopeVersionId: scopeVersion.scopeVersionId,
-    status: "EXECUTION_AUTHORIZED",
+    status: "RUNTIME_PROMOTED_TO_SCOPEVERSION",
     immutable: true,
     authorityTransfer: {
       ...certificate.authorityTransfer,
@@ -1693,7 +2188,7 @@ async function generateScopeVersion(certifiedPackage, certificate, user, options
   }
   await persistCertificate(nextCertificate);
   await persistCertificationEvidence(nextCertified, nextCertificate, user);
-  await appendHistory(nextCertified, user, "runtime.authority_transfer.engineering_to_execution", "Authority transferred from Engineering Certification to executable ScopeVersion.", {
+  await appendHistory(nextCertified, user, "runtime.authority_transfer.signed_service_order_to_scopeversion", "Authority transferred from signed Service Order to executable ScopeVersion.", {
     scopeVersionId: scopeVersion.scopeVersionId,
     certificateId: nextCertificate.certificateId,
   });
@@ -1747,6 +2242,20 @@ async function handleCertifyPackage(req, res, user, packageId) {
   }
   const timestamp = nowIso();
   const certifiedPackageId = String(body.certifiedPackageId ?? `CERT-IOF-${draft.packageId}`);
+  const certifiedDraftIofPackageId = String(draft.packageId);
+  const routeRepositoryId = routeRepositoryIdForPackage(draft);
+  const commercialEstimate = commercialEstimateForPackage(draft);
+  const stationPlan = normalizeStationPlan(body.stationPlan ?? body.stationPlanEvidence ?? {}, draft, user, timestamp);
+  const engineeringApprovedObjectBudget = normalizeEngineeringApprovedObjectBudget(
+    body.engineeringApprovedObjectBudget ?? body.objectBudget ?? body.budgetReview ?? {},
+    draft,
+    user,
+    timestamp,
+  );
+  const engineeringApprovedBudgetTotal = numeric(
+    body.engineeringApprovedBudget ?? body.engineeringApprovedBudgetTotal,
+    engineeringApprovedObjectBudget.totalApprovedBudget,
+  );
   const constraintSummary = {
     total: asArray(draft.engineeringConstraints).length,
     resolved: asArray(draft.engineeringConstraints).filter((constraint) => String(constraint?.status ?? "").toUpperCase() === "RESOLVED").length,
@@ -1755,9 +2264,43 @@ async function handleCertifyPackage(req, res, user, packageId) {
   };
   const approvedExceptions = asArray(draft.doctrineExceptions);
   const doctrineStatus = approvedExceptions.length ? "PASS_WITH_APPROVED_EXCEPTIONS" : "PASS";
+  const certificationRevision = numeric(draft.packageRevision ?? draft.revision, 1);
+  const certificationHash = hashCertifiedAssembly({
+    certifiedPackageId,
+    certifiedDraftIofPackageId,
+    opportunityId: draft.opportunityId,
+    routeRepositoryId,
+    proposalId: draft.proposalId,
+    commercialEstimate,
+    stationPlanId: stationPlan.stationPlanId,
+    stationPlan,
+    engineeringApprovedObjectBudget,
+    engineeringApprovedBudgetTotal,
+    certifiedIofUnitIds: units.map((unit) => unit.unitId).sort(),
+    reviewer: user.userId,
+    timestamp,
+  });
   const certifiedPackage = {
     ...draft,
     certifiedPackageId,
+    certifiedDraftIofPackageId,
+    technicalSourcePackageId: certifiedDraftIofPackageId,
+    sourceEngineeringTruthId: certifiedDraftIofPackageId,
+    singleEngineeringTruth: true,
+    noEngineeringRecreation: true,
+    readyForCustomerCommitment: true,
+    routeRepositoryId,
+    commercialEstimate,
+    stationPlanId: stationPlan.stationPlanId,
+    stationPlan,
+    engineeringApprovedObjectBudget,
+    engineeringApprovedBudget: engineeringApprovedBudgetTotal,
+    engineeringApprovedBudgetTotal,
+    engineeringReviewer: user.name,
+    engineeringReviewerId: user.userId,
+    certificationTimestamp: timestamp,
+    certificationRevision,
+    certificationHash,
     sourcePackageId: draft.packageId,
     packageId: certifiedPackageId,
     sourceDraftPackageId: draft.packageId,
@@ -1771,6 +2314,7 @@ async function handleCertifyPackage(req, res, user, packageId) {
     status: "CERTIFIED",
     workflowStatus: "CERTIFIED_IOF_PACKAGE",
     authority: "ENGINEERING_CERTIFIED_IOF_PACKAGE",
+    engineeringTruthAuthority: "CERTIFIED_DRAFT_IOF_PACKAGE",
     lifecycleState: "CERTIFIED",
     certificationDate: timestamp,
     certifiedAt: timestamp,
@@ -1801,17 +2345,29 @@ async function handleCertifyPackage(req, res, user, packageId) {
     notes: body.notes ?? checklist.notes ?? "",
     readiness: {
       status: "CERTIFIED_IOF_PACKAGE_READY",
-      readyForScopeVersionCreation: true,
+      readyForScopeVersionCreation: false,
       scopeVersionCreated: false,
+      eligibleForSignedServiceOrder: true,
+      serviceOrderReady: true,
+      awaitCustomerSignature: true,
+      scopeVersionFuture: true,
+      readyForCustomerCommitment: true,
+      singleEngineeringTruth: true,
       noScopeVersionCreationDuringCertification: true,
     },
-    readinessForScopeVersionPromotion: true,
+    serviceOrderStatus: "SERVICE_ORDER_READY",
+    signatureStatus: "AWAITING_CUSTOMER_SIGNATURE",
+    scopeVersionStatus: "BLOCKED_UNTIL_SIGNED_SERVICE_ORDER",
+    scopeVersionFuture: true,
+    readinessForScopeVersionPromotion: false,
+    readinessForSignedServiceOrder: true,
     certifiedId: certifiedPackageId,
     certifiedIofUnits: units.map((unit) => ({ ...unit, immutable: true, status: "CERTIFIED" })),
     proposedIofUnits: units.map((unit) => ({ ...unit, immutable: true, status: "CERTIFIED" })),
     immutable: true,
     executionAuthorized: false,
     noScopeVersionCreation: true,
+    noAdditionalEngineeringReviewAfterSignature: true,
     noServiceOrderCreation: true,
     noMarketplaceCreation: true,
     noControlCreation: true,
@@ -1835,6 +2391,28 @@ async function handleCertifyPackage(req, res, user, packageId) {
     lifecycleState: "CERTIFIED",
     engineeringStatus: "CERTIFIED",
     certifiedPackageId,
+    certifiedDraftIofPackageId,
+    technicalSourcePackageId: certifiedDraftIofPackageId,
+    sourceEngineeringTruthId: certifiedDraftIofPackageId,
+    singleEngineeringTruth: true,
+    noEngineeringRecreation: true,
+    readyForCustomerCommitment: true,
+    routeRepositoryId,
+    commercialEstimate,
+    stationPlanId: stationPlan.stationPlanId,
+    stationPlan,
+    engineeringApprovedObjectBudget,
+    engineeringApprovedBudget: engineeringApprovedBudgetTotal,
+    engineeringApprovedBudgetTotal,
+    engineeringReviewer: user.name,
+    engineeringReviewerId: user.userId,
+    certificationTimestamp: timestamp,
+    certificationRevision,
+    certificationHash,
+    serviceOrderStatus: "SERVICE_ORDER_READY",
+    signatureStatus: "AWAITING_CUSTOMER_SIGNATURE",
+    scopeVersionStatus: "BLOCKED_UNTIL_SIGNED_SERVICE_ORDER",
+    scopeVersionFuture: true,
     certifiedId: certifiedPackageId,
     certificationDate: timestamp,
     certifiedAt: timestamp,
@@ -1842,6 +2420,7 @@ async function handleCertifyPackage(req, res, user, packageId) {
     certifiedById: user.userId,
     proposedIofUnits: units.map((unit) => ({ ...unit, immutable: true })),
     noScopeVersionCreation: true,
+    noAdditionalEngineeringReviewAfterSignature: true,
     immutable: true,
   }, user, "runtime.iof_package.certified", "Draft IOF Package certified by Engineering.");
   await appendHistory(frozenDraft, user, "runtime.engineering_checklist.completed", "Engineering Certification checklist completed.", { checklist });
@@ -1850,21 +2429,44 @@ async function handleCertifyPackage(req, res, user, packageId) {
     certifiedBy: user.name,
     certifiedById: user.userId,
     certifiedPackageId,
+    certifiedDraftIofPackageId,
+    stationPlanId: stationPlan.stationPlanId,
+    engineeringApprovedBudgetTotal,
+    certificationHash,
+    serviceOrderStatus: "SERVICE_ORDER_READY",
+    signatureStatus: "AWAITING_CUSTOMER_SIGNATURE",
+    scopeVersionStatus: "BLOCKED_UNTIL_SIGNED_SERVICE_ORDER",
+    readyForCustomerCommitment: true,
   });
+  const engineeringPackage = await findEngineeringPackageForDraft(draft.packageId).then((record) => (
+    record
+      ? updateEngineeringPackageStatus(record.engineeringPackageId, user, "ENGINEERING_CERTIFIED", {
+          stationPlanId: stationPlan.stationPlanId,
+          certifiedIofPackageId: certifiedPackageId,
+          serviceOrderStatus: "SERVICE_ORDER_READY",
+          signatureStatus: "AWAITING_CUSTOMER_SIGNATURE",
+          scopeVersionStatus: "BLOCKED_UNTIL_SIGNED_SERVICE_ORDER",
+          certifiedAt: timestamp,
+          certifiedBy: user.name,
+          certifiedById: user.userId,
+        })
+      : null
+  )).catch(() => null);
   jsonResponse(res, 200, {
     draftPackage: frozenDraft,
     certifiedIofPackage: certifiedPackage,
+    engineeringPackage,
   });
 }
 
 async function handleGenerateScopeVersion(req, res, user, certifiedPackageId) {
   const certified = await loadRecord(DIRS.certifiedIofPackages, certifiedPackageId).catch(() => null);
   if (!certified) {
-    errorResponse(res, 404, `Certified IOF Package not found: ${certifiedPackageId}`);
+    errorResponse(res, 404, `Certified Draft IOF Package not found: ${certifiedPackageId}`);
     return;
   }
   if (certified.status !== "CERTIFIED") {
-    errorResponse(res, 409, "Only Certified IOF Packages may generate ScopeVersions.");
+    errorResponse(res, 409, "Only Certified Draft IOF Packages may generate ScopeVersions.");
     return;
   }
   const certificate = certified.executionAuthorizationCertificateId
@@ -1877,6 +2479,8 @@ async function handleGenerateScopeVersion(req, res, user, certifiedPackageId) {
     generated = await generateScopeVersion(certified, nextCertificate, user, {
       previousScopeVersionId: body.previousScopeVersionId ?? body.parentScopeVersionId,
       parentScopeVersionId: body.parentScopeVersionId,
+      customerAcceptance: body.customerAcceptance,
+      serviceOrder: body.serviceOrder ?? body.signedServiceOrder,
       changeSummary: body.changeSummary,
       engineeringReason: body.engineeringReason,
       approvedBy: body.approvedBy,
@@ -1899,6 +2503,7 @@ async function handleGenerateScopeVersion(req, res, user, certifiedPackageId) {
     proposalId: generated.certifiedPackage.proposalId,
     packageId: generated.certifiedPackage.sourcePackageId,
     certifiedPackageId: generated.certifiedPackage.certifiedPackageId,
+    certifiedDraftIofPackageId: generated.certifiedPackage.certifiedDraftIofPackageId ?? generated.certifiedPackage.sourcePackageId,
     scopeVersionId: generated.scopeVersion.scopeVersionId,
     currentRuntimeObject: generated.scopeVersion.scopeVersionId,
     currentAuthority: "SCOPEVERSION",
@@ -1910,7 +2515,7 @@ async function handleGenerateScopeVersion(req, res, user, certifiedPackageId) {
     engineeringRevision: generated.certifiedPackage.packageRevision,
     sessionState: "ACTIVE",
     lastActivity: "EXECUTION_AUTHORIZED",
-  }, user, "AUTHORITY_TRANSFER_ENGINEERING_TO_SCOPEVERSION", "Certified IOF Package promoted into immutable ScopeVersion authority.");
+  }, user, "AUTHORITY_TRANSFER_SIGNED_SERVICE_ORDER_TO_SCOPEVERSION", "Signed Service Order promoted Certified Draft IOF Package into immutable ScopeVersion authority.");
   jsonResponse(res, 200, {
     ...generated,
     certifiedIofPackage: generated.certifiedPackage,
@@ -1933,9 +2538,12 @@ export async function handleEngineeringCertification(req, res, pathname) {
   if (handleOptions(req, res)) return true;
 
   const readOnly = req.method === "GET";
+  const requiresScopeVersionAuthority = req.method === "POST" && parts[0] === "certified-packages" && parts[1] && parts[2] === "generate-scopeversion";
   const user = readOnly
     ? requireAnyPermission(req, res, ["workspace.engineering.read", "workspace.engineering.write", "scopeversion.authority"], "You do not have authority to read Engineering Certification.")
-    : requireAnyPermission(req, res, ["workspace.engineering.write", "scopeversion.authority"], "Only Engineering may certify IOF Packages.");
+    : requiresScopeVersionAuthority
+      ? requireAnyPermission(req, res, ["scopeversion.authority"], "Only Runtime ScopeVersion authority may create ScopeVersions after executed Service Order.")
+      : requireAnyPermission(req, res, ["workspace.engineering.write", "scopeversion.authority"], "Only Engineering may certify IOF Packages.");
   if (!user) return true;
 
   if (req.method === "GET" && (parts.length === 0 || parts[0] === "queue")) {
@@ -1949,7 +2557,13 @@ export async function handleEngineeringCertification(req, res, pathname) {
   }
 
   if (req.method === "GET" && parts[0] === "draft-packages" && parts.length === 1) {
-    jsonResponse(res, 200, { draftPackages: sortedByUpdated((await listRecords(DIRS.iofPackages)).map(normalizeDraftPackage)) });
+    const engineeringPackages = await listEngineeringPackages({ openOnly: true });
+    const draftPackages = (await Promise.all(engineeringPackages.map(async (engineeringPackage) => {
+      const resolved = await resolveEngineeringPackageForCertification(engineeringPackage.engineeringPackageId).catch(() => null);
+      if (!resolved) return null;
+      return decorateDraftPackageWithEngineeringPackage(resolved.draft, engineeringPackage, resolved.referenceIntegrity);
+    }))).filter(Boolean);
+    jsonResponse(res, 200, { draftPackages: sortedByUpdated(draftPackages), engineeringPackages });
     return true;
   }
 
@@ -2044,7 +2658,7 @@ export async function handleEngineeringCertification(req, res, pathname) {
 
   if (req.method === "GET" && parts[0] === "certified-packages" && parts[1]) {
     const certified = await loadRecord(DIRS.certifiedIofPackages, parts[1]).catch(() => null);
-    if (!certified) errorResponse(res, 404, `Certified IOF Package not found: ${parts[1]}`);
+    if (!certified) errorResponse(res, 404, `Certified Draft IOF Package not found: ${parts[1]}`);
     else jsonResponse(res, 200, { certifiedIofPackage: certified });
     return true;
   }
@@ -2061,7 +2675,7 @@ export async function handleEngineeringCertification(req, res, pathname) {
 
   if (req.method === "GET" && parts[0] === "certificates" && parts[1]) {
     const certificate = await loadRecord(DIRS.executionAuthorizationCertificates, parts[1]).catch(() => null);
-    if (!certificate) errorResponse(res, 404, `Execution Authorization Certificate not found: ${parts[1]}`);
+    if (!certificate) errorResponse(res, 404, `Certification evidence not found: ${parts[1]}`);
     else jsonResponse(res, 200, { executionAuthorizationCertificate: certificate });
     return true;
   }

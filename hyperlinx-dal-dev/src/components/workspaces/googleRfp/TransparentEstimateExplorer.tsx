@@ -653,8 +653,8 @@ function LineTable({ lineItems }: { lineItems: TransparentEstimateLineItem[] }) 
           </tr>
         </thead>
         <tbody>
-          {lineItems.map((line) => (
-            <tr key={line.lineItemId}>
+          {lineItems.map((line, index) => (
+            <tr key={`${line.lineItemId}-${index}`}>
               <td>{line.description}</td>
               <td>{line.quantity.display}</td>
               <td>{line.production.display}</td>
@@ -1284,8 +1284,8 @@ function SectionDetails({
                   </tr>
                 </thead>
                 <tbody>
-                  {[...estimate.humanAuditTrail].reverse().map((entry) => (
-                    <tr key={entry.auditId}>
+                  {[...estimate.humanAuditTrail].reverse().map((entry, index) => (
+                    <tr key={`${entry.auditId}-${index}`}>
                       <td>{new Date(entry.timestamp).toLocaleString()}</td>
                       <td>{entry.user}</td>
                       <td>{entry.label}</td>
@@ -1318,8 +1318,8 @@ function SectionDetails({
                 </tr>
               </thead>
               <tbody>
-                {estimate.auditTrail.map((entry) => (
-                  <tr key={entry.auditId}>
+                {estimate.auditTrail.map((entry, index) => (
+                  <tr key={`${entry.auditId}-${index}`}>
                     <td>{entry.label}</td>
                     <td>{entry.value}</td>
                     <td>{entry.unit}</td>

@@ -8,9 +8,13 @@ export function userHasPermission(user: TeralinxUser | null | undefined, permiss
 export function canAccessWorkspace(user: TeralinxUser | null | undefined, workspace: DALWorkspace) {
   if (!user) return false;
   if (userHasPermission(user, "platform.admin")) return true;
-  if (workspace === "googleRfp") return userHasPermission(user, "workspace.commercial");
+  if (workspace === "googleRfp" || workspace === "design" || workspace === "serviceOrder") {
+    return userHasPermission(user, "workspace.commercial") || userHasPermission(user, "workspace.proposal");
+  }
   if (workspace === "translate") return userHasPermission(user, "workspace.translate");
-  if (workspace === "preliminaryProposal" || workspace === "proposedNetwork") return userHasPermission(user, "workspace.proposal");
+  if (workspace === "preliminaryProposal" || workspace === "proposedNetwork") {
+    return userHasPermission(user, "workspace.proposal") || userHasPermission(user, "workspace.commercial");
+  }
   if (workspace === "routeEngineering") {
     return userHasPermission(user, "workspace.engineering.write") ||
       userHasPermission(user, "workspace.salesEngineering");

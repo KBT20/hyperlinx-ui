@@ -75,28 +75,41 @@ Select Account
   -> Import Existing Networks
   -> Import or Design Proposed Network
   -> Review Suggested Design Template
-  -> Build Commercial Proposal
+  -> Commercial Planning
+  -> Draft IOF Package
+  -> Engineering Certification
+  -> Proposal
   -> Customer Collaboration
   -> Customer Acceptance
-  -> Transfer Ownership to Engineering
+  -> Service Order
+  -> Signature-ready Service Order
 ```
 
-The customer acceptance event ends Sales ownership.
+Signed Service Order readiness is the commercial authorization boundary for CIP-013.
 
 ## Engineering Boundary
 
-Engineering receives the accepted proposal package and validates geometry, stationing, constraints, constructability, materials, and evidence.
+Engineering certifies the Draft IOF Package: geometry, stationing, constraints, constructability, materials, dependencies, sequence, and evidence.
 
-Only Engineering may create a ScopeVersion.
+The Draft IOF Package is the single engineering truth through the commercial lifecycle.
 
-Kernel orchestration begins at Engineering Review, after Sales has completed the commercial process.
+Engineering Certification does not create ScopeVersion.
+
+Engineering Certification means the Draft IOF Package is complete, constructable, constitutionally valid, and ready for customer commitment.
+
+Proposal and Service Order reference the Certified Draft IOF Package. They do not recreate engineering truth.
+
+Runtime ScopeVersion creation begins only after a signed Service Order.
 
 ```text
-Accepted Proposal
-  -> Engineering Review
-  -> ScopeVersion
-  -> Service Order Form
+Draft IOF Package
+  -> Engineering Certification
+  -> Proposal
+  -> Customer Acceptance
+  -> Service Order
+  -> Signature-ready Service Order
   -> Customer Signature
+  -> ScopeVersion Created
   -> Marketplace
   -> Control
   -> Field
@@ -104,7 +117,11 @@ Accepted Proposal
   -> Operational Intelligence
 ```
 
-Commercial Planning does not generate execution paperwork. Service Order Form generation occurs only after Engineering certifies the ScopeVersion.
+Commercial Planning does not create ScopeVersion, Marketplace, Control, Field, Twin, or Operational Intelligence authority. Service Order readiness is commercial authorization only; the signed Service Order is the Runtime trigger for ScopeVersion creation.
+
+ScopeVersion is the Order for Execution. Proposal is not executed. Service Order is not executed. Draft IOF Package is not executed. ScopeVersion is executed.
+
+If the customer requests changes during review, Commercial returns to Draft IOF Package revision, Engineering re-certification, and a new Proposal.
 
 ## Current DAL Implementation Slice
 

@@ -46,11 +46,13 @@ Customer Ask
   -> Spine Object Instantiation
   -> Kernel Execution Graph
   -> Constitutional Assembly
+  -> Draft IOF Package
   -> Engineering Certification
-  -> Draft IOF Approval
   -> Proposal
+  -> Customer Review
   -> Customer Acceptance
   -> Service Order
+  -> Customer Signature
   -> ScopeVersion
   -> Marketplace
   -> Control
@@ -74,15 +76,30 @@ Engineering answers:
 - Is it present?
 - Is it addressed?
 - Is it placed correctly?
-- Is it certifiable?
+- Is the Draft IOF Package complete, constructable, constitutionally valid, and ready for customer commitment?
+
+Draft IOF Package answers:
+
+- What is the single engineering truth?
+- What technical content may Proposal and Service Order project?
+
+Proposal answers:
+
+- What commercial offer projects the currently certified Draft IOF Package?
 
 Service Order answers:
 
 - Has the customer authorized this exact fulfillment?
+- Does the authorization reference the Certified Draft IOF Package, Proposal, Customer Acceptance, and commercial terms?
+
+Customer Signature answers:
+
+- Has the customer signed the Service Order that authorizes this exact fulfillment?
 
 ScopeVersion answers:
 
-- What is the immutable execution truth?
+- What is the Order for Execution?
+- What is the immutable execution truth against which downstream execution must operate?
 
 Control answers:
 
@@ -119,9 +136,15 @@ The runtime shall not:
 
 - create fake readiness
 - bypass Engineering
+- create separate engineering representations for Proposal, Service Order, or ScopeVersion
+- let Proposal or Service Order recreate engineering truth outside the Certified Draft IOF Package
+- execute Proposal
+- execute Service Order
+- execute Draft IOF Package
 - create Service Order without acceptance
-- create ScopeVersion without Service Order
+- create ScopeVersion without signed Service Order
 - allow Customer Acceptance to create execution truth directly
+- allow Engineering Certification to create execution truth directly
 - allow Field to close objects not in ScopeVersion
 - allow payment without validation
 
@@ -132,9 +155,10 @@ Runtime validation must enforce these gates:
 - lifecycle stages cannot be skipped
 - missing authority blocks advancement
 - blocked state explains required next legal action
-- ScopeVersion cannot be created before Service Order
+- ScopeVersion cannot be created before signed Service Order
 - Service Order cannot be created before Customer Acceptance
 - Customer Acceptance cannot create execution truth directly
+- Engineering Certification cannot create ScopeVersion
 - Field cannot close objects outside ScopeVersion
 - payment cannot become eligible without validated Close
 
@@ -154,9 +178,14 @@ If Product Doctrine is wrong, the audit is wrong.
 If addressing is missing, objects are ungoverned.
 If instantiation is missing, Engineering has nothing to certify.
 If Engineering is skipped, ScopeVersion is invalid.
+If Proposal recreates engineering, commercial truth has forked from engineering truth.
 If Service Order is missing, execution has no commercial authority.
-If ScopeVersion is missing, Field has no truth to execute.
+If Customer Signature is missing, Service Order has not triggered ScopeVersion creation.
+If ScopeVersion is missing, there is no Order for Execution.
+If ScopeVersion is missing, Marketplace, Control, Field, Closure, Operational Twin, and Operational Intelligence have no execution order to execute against.
 If Closure is missing, payment is not earned.
+
+If the customer requests changes, the lifecycle returns to Draft IOF Package Revision, Engineering Re-certification, and New Proposal. Proposal revisions are projections of the currently certified Draft IOF Package.
 
 ## Constitutional Rule
 
@@ -170,8 +199,17 @@ No Service Order.
 No Service Order.
 No ScopeVersion.
 
+No Signed Service Order.
+No ScopeVersion.
+
 No ScopeVersion.
 No Execution.
+
+No ScopeVersion.
+No Order for Execution.
+
+No Certified Draft IOF Package reference.
+No Proposal, Service Order, or ScopeVersion derivation.
 
 ## Future CIP References
 
@@ -181,8 +219,8 @@ Future CIPs must cite this doctrine when defining or modifying any of these laye
 - Proposal Artifact
 - Customer Acceptance
 - Service Order
+- Customer Signature
 - ScopeVersion
 - Control
 - Field
 - Closure
-

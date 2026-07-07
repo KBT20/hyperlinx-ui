@@ -795,6 +795,12 @@ export type ScopeVersion = {
   approvedBy?: string;
   approvedTimestamp?: string;
   certifiedIofPackageId?: string;
+  certifiedDraftIofPackageId?: string;
+  technicalSourcePackageId?: string;
+  canonicalDefinition?: string;
+  orderForExecution?: boolean;
+  executionBeginsAtScopeVersion?: boolean;
+  downstreamExecutionRequiresScopeVersion?: boolean;
   parentCertifiedPackageId?: string;
   relationshipType?: ScopeVersionRelationshipType;
   inventoryId?: string;
@@ -804,7 +810,7 @@ export type ScopeVersion = {
   candidateSiteId?: string;
   sourceOpportunityId?: string;
   createdBy?: string;
-  source: "InventoryGraph" | "GraphExtension" | "OpportunitySeed" | "PrismOpportunity" | "DesignCandidate" | "CustomerDesignRequest" | "CertifiedIofPackage" | "FieldClosure" | "Manual";
+  source: "InventoryGraph" | "GraphExtension" | "OpportunitySeed" | "PrismOpportunity" | "DesignCandidate" | "CustomerDesignRequest" | "CertifiedIofPackage" | "CertifiedDraftIofPackage" | "FieldClosure" | "Manual";
   status: ScopeVersionStatus;
   certificationState: ScopeVersionCertificationState;
   isImmutable?: boolean;

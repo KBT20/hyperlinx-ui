@@ -24,6 +24,7 @@ export default function DesignWorkspace() {
   const defaultFixture = matchSelectedFixture(selectedDesignLaunchResult?.session);
   const defaultIndex = Math.max(0, fixtures.indexOf(defaultFixture));
   const [selectedFixtureIndex, setSelectedFixtureIndex] = useState(defaultIndex);
+  const [designNotice, setDesignNotice] = useState("Commercial Design is using customer/product doctrine as commercial input.");
   const fixture = fixtures[selectedFixtureIndex] ?? defaultFixture;
   const selectedSession = selectedFixtureIndex === defaultIndex ? selectedDesignLaunchResult?.session : null;
   const session = selectedSession ?? fixture.session;
@@ -34,8 +35,8 @@ export default function DesignWorkspace() {
       <section className="dal-workspace wide">
         <div className="dal-workspace-header">
           <div>
-            <h2>Design</h2>
-            <p>Layer 1 design doctrine workspace. No routing or engineering execution occurs here.</p>
+            <h2>Commercial Design</h2>
+            <p>Commercial doctrine and design inputs only. No Engineering Certification map or ScopeVersion execution occurs here.</p>
           </div>
         </div>
         <section className="dal-panel">
@@ -53,8 +54,8 @@ export default function DesignWorkspace() {
     <section className="dal-workspace wide">
       <div className="dal-workspace-header">
         <div>
-          <h2>Design</h2>
-          <p>Deterministic Layer 1 doctrine explains how this network class should behave before any route generation exists.</p>
+          <h2>Commercial Design</h2>
+          <p>Commercial route, pricing, civil mix, ILA planning, and constraints projected before customer commitment.</p>
         </div>
         <select value={selectedFixtureIndex} onChange={(event) => setSelectedFixtureIndex(Number(event.currentTarget.value))} aria-label="Design doctrine fixture">
           {fixtures.map((item, index) => (
@@ -194,13 +195,19 @@ export default function DesignWorkspace() {
         </div>
         <div className="dal-actions">
           <button type="button" disabled={!canOpenProposedGraph} onClick={() => setWorkspace("proposedNetwork")}>
-            Open Proposed Network
+            Preview Proposed Route
+          </button>
+          <button type="button" onClick={() => setWorkspace("preliminaryProposal")}>
+            Create Proposal
+          </button>
+          <button type="button" onClick={() => setDesignNotice("Draft IOF Source is created from accepted Proposal and Certified Draft IOF Package readiness in the commercial runtime path.")}>
+            Create Draft IOF Source
           </button>
           <button type="button" onClick={() => setWorkspace("teralinxRoute")}>
-            Back to Teralinx Route
+            Back to Route Intake
           </button>
         </div>
-        <div className="dal-status">No routing, geometry creation, pathfinding, stationing, ScopeVersion creation, inventory mutation, persistence, or API calls occur here.</div>
+        <div className="dal-status">{designNotice} No Engineering Certification map, stationing controls, ScopeVersion creation, Marketplace, Control, Field, or Twin execution occurs here.</div>
       </section>
 
       <section className="dal-panel">

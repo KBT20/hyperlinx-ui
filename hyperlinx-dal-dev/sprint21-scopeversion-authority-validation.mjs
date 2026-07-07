@@ -43,14 +43,15 @@ const renderer = read(files.renderer);
 const appWiring = `${read(files.dalState)}\n${read(files.dalApp)}\n${read(files.dalNav)}`;
 
 assert(engineeringRoute.includes("../scopeversion-authority-engine.js"), "Engineering Certification must use the ScopeVersion Authority engine.");
-assert(engineeringRoute.includes("generate-scopeversion"), "Engineering must expose Certified IOF Package promotion.");
-assert(engineeringRoute.includes("markCertifiedPackagePromoted"), "Engineering promotion must mark the Certified IOF Package read-only.");
+assert(engineeringRoute.includes("generate-scopeversion"), "Runtime must expose Certified Draft IOF Package promotion after executed Service Order.");
+assert(engineeringRoute.includes("Only Runtime ScopeVersion authority may create ScopeVersions after executed Service Order."), "Engineering write authority alone must not create ScopeVersions.");
+assert(engineeringRoute.includes("markCertifiedPackagePromoted"), "Runtime promotion must mark the Certified Draft IOF Package read-only.");
 assert(!commercialRoute.includes("generate-scopeversion"), "Commercial routes must not generate ScopeVersions.");
 assert(!commercialRoute.includes("persistScopeVersion"), "Commercial routes must not persist ScopeVersions.");
 assert(scopeRoute.includes("Commercial cannot create ScopeVersion"), "ScopeVersion route must reject Commercial-created ScopeVersions.");
 assert(scopeRoute.includes("cannot be overwritten"), "ScopeVersion route must reject overwrite creation.");
 assert(appWiring.includes('"scopeVersion"'), "ScopeVersion workspace must be registered in DAL shell/navigation.");
-assert(workspace.includes("generateScopeVersionFromCertifiedIofPackage"), "ScopeVersion workspace must promote Certified IOF Packages through Engineering.");
+assert(workspace.includes("generateScopeVersionFromCertifiedIofPackage"), "ScopeVersion workspace must request Runtime promotion from Certified Draft IOF Package and signed Service Order.");
 assert(workspace.includes("renderScopeVersion"), "ScopeVersion workspace must render from ScopeVersion canonical truth.");
 assert(!workspace.includes("OSRMLateralRouter"), "ScopeVersion workspace must not invoke OSRM routing.");
 assert(!workspace.includes("/api/baseline-graphs"), "ScopeVersion workspace must not depend on baseline graph discovery.");
@@ -63,8 +64,8 @@ assert(renderer.includes("geographicBasis.routeGeometry"), "ScopeVersion rendere
   "certifiedObjects",
   "certifiedGraph",
   "downstreamReadiness",
-  "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE",
-  "SCOPEVERSION_OPERATIONAL_BASELINE",
+  "SCOPEVERSION_FROM_CERTIFIED_DRAFT_IOF_PACKAGE",
+  "SCOPEVERSION_ORDER_FOR_EXECUTION",
   "markCertifiedPackagePromoted",
   "validateScopeVersionAuthority",
 ].forEach((symbol) => {
@@ -96,6 +97,14 @@ const certifiedPackage = {
   certifiedPackageId: "CERT-IOF-SPRINT21-001",
   packageId: "CERT-IOF-SPRINT21-001",
   sourcePackageId: "DRAFT-IOF-SPRINT21-001",
+  sourceDraftPackageId: "DRAFT-IOF-SPRINT21-001",
+  certifiedDraftIofPackageId: "DRAFT-IOF-SPRINT21-001",
+  technicalSourcePackageId: "DRAFT-IOF-SPRINT21-001",
+  sourceEngineeringTruthId: "DRAFT-IOF-SPRINT21-001",
+  singleEngineeringTruth: true,
+  noEngineeringRecreation: true,
+  readyForCustomerCommitment: true,
+  noAdditionalEngineeringReviewAfterSignature: true,
   status: "CERTIFIED",
   workflowStatus: "CERTIFIED_IOF_PACKAGE",
   authority: "ENGINEERING_CERTIFIED_IOF_PACKAGE",
@@ -192,8 +201,11 @@ const certifiedPackage = {
   serviceOrder: {
     serviceOrderId: "SO-SPRINT21-001",
     customerAcceptanceId: "CUST-ACCEPT-SPRINT21-001",
-    status: "AUTHORIZED",
+    status: "SIGNED",
     authorizedAt: "2026-07-02T11:45:00.000Z",
+    signedAt: "2026-07-02T11:55:00.000Z",
+    serviceOrderSignatureId: "SO-SIG-SPRINT21-001",
+    customerSignatureId: "CUSTOMER-SIG-SPRINT21-001",
   },
 };
 
@@ -211,13 +223,29 @@ const user = {
   workspaceId: "engineering",
 };
 
-assert(routeCoordinatesFromCertifiedPackage(certifiedPackage).length === 1615, "Certified IOF Package geometry extraction must preserve 1,615 coordinates.");
+assert(routeCoordinatesFromCertifiedPackage(certifiedPackage).length === 1615, "Certified Draft IOF Package geometry extraction must preserve 1,615 coordinates.");
+
+let unsignedServiceOrderBlocked = false;
+try {
+  createScopeVersionFromCertifiedPackage({
+    ...certifiedPackage,
+    serviceOrder: {
+      serviceOrderId: "SO-SPRINT21-UNSIGNED",
+      customerAcceptanceId: "CUST-ACCEPT-SPRINT21-001",
+      status: "AUTHORIZED",
+      authorizedAt: "2026-07-02T11:45:00.000Z",
+    },
+  }, { certificate, user });
+} catch (error) {
+  unsignedServiceOrderBlocked = String(error?.message ?? error).includes("signed Service Order");
+}
+assert(unsignedServiceOrderBlocked, "Unsigned Service Order must not create ScopeVersion authority.");
 
 const scopeVersion = createScopeVersionFromCertifiedPackage(certifiedPackage, {
   certificate,
   user,
   changeSummary: "Initial certified package promotion.",
-  engineeringReason: "Engineering package ready for operational baseline.",
+  engineeringReason: "Engineering package ready for Order for Execution.",
   approvedBy: "Engineering Certifier",
   approvedTimestamp: "2026-07-02T12:05:00.000Z",
 });
@@ -226,8 +254,21 @@ const validation = validateScopeVersionAuthority(scopeVersion);
 assert(validation.status === "PASS", `ScopeVersion authority validation failed: ${validation.failures.join(" ")}`);
 assert(scopeVersion.scopeVersionId.includes("ScopeVersion-0001"), "Initial ScopeVersion must use revision label ScopeVersion-0001.");
 assert(scopeVersion.isImmutable === true, "ScopeVersion must be immutable.");
+assert(scopeVersion.orderForExecution === true, "ScopeVersion must be the Order for Execution.");
 assert(scopeVersion.source === "CertifiedIofPackage", "ScopeVersion source must be CertifiedIofPackage.");
-assert(scopeVersion.canonicalTruth.constitutionalAuthority === "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE", "ScopeVersion authority must derive from Certified IOF Package.");
+assert(scopeVersion.canonicalTruth.constitutionalAuthority === "SCOPEVERSION_FROM_CERTIFIED_DRAFT_IOF_PACKAGE", "ScopeVersion authority must derive from Certified Draft IOF Package.");
+assert(scopeVersion.canonicalTruth.authority === "SCOPEVERSION_ORDER_FOR_EXECUTION", "ScopeVersion canonical authority must mark the Order for Execution.");
+assert(scopeVersion.canonicalTruth.canonicalDefinition === "ScopeVersion is the Order for Execution.", "ScopeVersion canonical definition must be preserved.");
+assert(scopeVersion.canonicalTruth.downstreamExecutionRequiresScopeVersion === true, "Downstream execution must require ScopeVersion.");
+assert(scopeVersion.canonicalTruth.nonExecutableArtifacts.includes("PROPOSAL"), "Proposal must remain non-executable.");
+assert(scopeVersion.canonicalTruth.nonExecutableArtifacts.includes("SERVICE_ORDER"), "Service Order must remain non-executable.");
+assert(scopeVersion.canonicalTruth.nonExecutableArtifacts.includes("DRAFT_IOF_PACKAGE"), "Draft IOF Package must remain non-executable.");
+assert(scopeVersion.canonicalTruth.executionConsumers.includes("CONTROL"), "Control must execute against ScopeVersion.");
+assert(scopeVersion.certifiedDraftIofPackageId === "DRAFT-IOF-SPRINT21-001", "ScopeVersion must reference the Certified Draft IOF Package.");
+assert(scopeVersion.canonicalTruth.certifiedDraftIofPackageId === "DRAFT-IOF-SPRINT21-001", "Canonical truth must preserve Certified Draft IOF Package reference.");
+assert(scopeVersion.canonicalTruth.singleEngineeringTruth === true, "ScopeVersion must preserve the Draft IOF Package as single engineering truth.");
+assert(scopeVersion.canonicalTruth.noEngineeringRecreation === true, "ScopeVersion must not recreate engineering truth.");
+assert(scopeVersion.canonicalTruth.noAdditionalEngineeringReviewAfterSignature === true, "Runtime promotion must not require additional Engineering review after signature.");
 assert(scopeVersion.canonicalTruth.routeGeometry.length === 1615, "ScopeVersion must contain certified route geometry.");
 assert(scopeVersion.canonicalTruth.certifiedGeometry.coordinates.length === 1615, "ScopeVersion must contain canonical certified LineString geometry.");
 assert(scopeVersion.canonicalTruth.spine.geometry.coordinates.length === 1615, "ScopeVersion must contain certified spine geometry.");
@@ -243,15 +284,20 @@ assert(scopeVersion.canonicalTruth.validationSnapshot.packageValidation.status =
 assert(scopeVersion.canonicalTruth.digitalCertificationMetadata.assemblyFingerprint, "ScopeVersion must contain digital certification metadata.");
 assert(scopeVersion.canonicalTruth.downstreamReadiness.find((item) => item.key === "engineering")?.status === "PASS", "Engineering readiness must initially PASS.");
 assert(scopeVersion.canonicalTruth.downstreamReadiness.find((item) => item.key === "serviceOrder")?.status === "PASS", "Service Order readiness must PASS before ScopeVersion authority.");
-assert(scopeVersion.canonicalTruth.downstreamReadiness.filter((item) => !["engineering", "serviceOrder"].includes(item.key)).every((item) => item.status === "PENDING"), "Downstream readiness after Service Order must initially be PENDING.");
+assert(scopeVersion.canonicalTruth.downstreamReadiness.find((item) => item.key === "customerSignature")?.status === "PASS", "Customer Signature readiness must PASS before ScopeVersion authority.");
+assert(scopeVersion.canonicalTruth.downstreamReadiness.filter((item) => !["engineering", "serviceOrder", "customerSignature"].includes(item.key)).every((item) => item.status === "PENDING"), "Downstream readiness after signed Service Order must initially be PENDING.");
 assert(scopeVersion.canonicalTruth.customerAcceptanceId === "CUST-ACCEPT-SPRINT21-001", "ScopeVersion must preserve Customer Acceptance authority.");
 assert(scopeVersion.canonicalTruth.serviceOrderId === "SO-SPRINT21-001", "ScopeVersion must preserve Service Order authority.");
+assert(scopeVersion.canonicalTruth.serviceOrderSignatureId === "SO-SIG-SPRINT21-001", "ScopeVersion must preserve signed Service Order authority.");
 
 const promotedPackage = markCertifiedPackagePromoted(certifiedPackage, scopeVersion, certificate);
-assert(promotedPackage.engineeringCertificationLocked === true, "Certified IOF Package must become read-only after promotion.");
-assert(promotedPackage.scopeVersionCreated === true, "Certified IOF Package must record ScopeVersion creation.");
-assert(promotedPackage.scopeVersionId === scopeVersion.scopeVersionId, "Certified IOF Package must reference created ScopeVersion.");
-assert(promotedPackage.serviceOrderId === "SO-SPRINT21-001", "Certified IOF Package promotion must preserve Service Order authority.");
+assert(promotedPackage.engineeringCertificationLocked === true, "Certified Draft IOF Package must become read-only after promotion.");
+assert(promotedPackage.scopeVersionCreated === true, "Certified Draft IOF Package must record ScopeVersion creation.");
+assert(promotedPackage.scopeVersionId === scopeVersion.scopeVersionId, "Certified Draft IOF Package must reference created ScopeVersion.");
+assert(promotedPackage.certifiedDraftIofPackageId === "DRAFT-IOF-SPRINT21-001", "Promoted package must preserve Certified Draft IOF Package reference.");
+assert(promotedPackage.singleEngineeringTruth === true, "Promoted package must preserve single engineering truth.");
+assert(promotedPackage.serviceOrderId === "SO-SPRINT21-001", "Certified Draft IOF Package promotion must preserve Service Order authority.");
+assert(promotedPackage.serviceOrderSignatureId === "SO-SIG-SPRINT21-001", "Certified Draft IOF Package promotion must preserve signed Service Order authority.");
 
 const revisionScopeVersion = createScopeVersionFromCertifiedPackage(
   {

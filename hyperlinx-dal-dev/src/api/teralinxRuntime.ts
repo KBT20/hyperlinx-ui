@@ -132,6 +132,7 @@ export type ProposalRuntimeStatus =
   | "COMMERCIAL_REVISION"
   | "CUSTOMER_CHANGES_REQUESTED"
   | "CUSTOMER_APPROVED"
+  | "COMMERCIAL_APPROVED"
   | "READY_FOR_IOF_PACKAGE"
   | "SALES_ENGINEERING_REVIEW"
   | "CERTIFIED_IOF_PACKAGE"
@@ -227,7 +228,9 @@ export type ProposalRuntimeObject = {
 };
 
 export type EngineeringReviewQueueItem = {
+  engineeringPackageId?: string;
   packageId: string;
+  draftIofPackageId?: string;
   packageName?: string;
   packageReadiness: Record<string, unknown>;
   packageCompleteness?: number;
@@ -251,10 +254,61 @@ export type EngineeringReviewQueueItem = {
   opportunity: string;
   opportunityId: string;
   proposalId: string;
+  routeRepositoryId?: string;
+  commercialWorkbookId?: string;
+  estimateId?: string;
+  productDoctrineId?: string;
+  commercialStatus?: string;
+  repositoryAuthority?: string;
   proposedUnitCount: number;
   certifiedUnitCount: number;
   status: string;
   updatedAt: string;
+};
+
+export type EngineeringPackageRuntime = {
+  engineeringPackageId: string;
+  customerId?: string;
+  opportunityId: string;
+  customerTwinId: string;
+  proposalId: string;
+  commercialProposalId?: string;
+  commercialWorkbookId: string;
+  workbookId?: string;
+  draftIOFPackageId: string;
+  draftIofPackageId?: string;
+  routeRepositoryId: string;
+  measuredCenterlineId?: string;
+  stationGraphId?: string;
+  stationAuthorityIds?: string[];
+  stationObjectManifestId?: string;
+  projectedObjectManifestId?: string;
+  estimateId: string;
+  productDoctrineId: string;
+  submittedBy: string;
+  submittedById?: string;
+  submittedAt: string;
+  submittedDate?: string;
+  commercialStatus?: string;
+  engineeringStatus: string;
+  status?: string;
+  serviceOrderState: string;
+  serviceOrderStatus?: string;
+  scopeVersionState: string;
+  scopeVersionStatus?: string;
+  authority: "ENGINEERING_REPOSITORY" | string;
+  repositoryType?: "ENGINEERING_PACKAGE" | string;
+  referenceOnly: true;
+  referenceHash?: string;
+  referenceIntegrity?: Record<string, unknown>;
+  stationPlanId?: string | null;
+  futureInventoryManifestId?: string | null;
+  certifiedIOFPackageId?: string | null;
+  certifiedIofPackageId?: string | null;
+  noScopeVersionCreation: true;
+  createdAt: string;
+  updatedAt: string;
+  [key: string]: unknown;
 };
 
 export type IofPackageManifestEntry = {
@@ -362,6 +416,9 @@ export type ProposedIofUnit = {
 export type DraftIofPackageRuntime = {
   packageId: string;
   draftPackageId: string;
+  engineeringPackageId?: string;
+  engineeringPackage?: EngineeringPackageRuntime;
+  engineeringRepositoryRestore?: Record<string, unknown>;
   packageName?: string;
   packageType: string;
   status: string;
@@ -631,8 +688,32 @@ export type ProposalCustomerRecipientInput = {
 
 export type CertifiedIofPackageRuntime = DraftIofPackageRuntime & {
   certifiedPackageId: string;
+  certifiedDraftIofPackageId?: string;
+  technicalSourcePackageId?: string;
+  sourceEngineeringTruthId?: string;
   sourcePackageId: string;
   sourceDraftPackageId?: string;
+  singleEngineeringTruth?: boolean;
+  noEngineeringRecreation?: boolean;
+  readyForCustomerCommitment?: boolean;
+  noAdditionalEngineeringReviewAfterSignature?: boolean;
+  routeRepositoryId?: string;
+  proposalId: string;
+  commercialEstimate?: Record<string, unknown>;
+  stationPlanId?: string;
+  stationPlan?: Record<string, unknown>;
+  engineeringApprovedObjectBudget?: Record<string, unknown>;
+  engineeringApprovedBudget?: number;
+  engineeringApprovedBudgetTotal?: number;
+  engineeringReviewer?: string;
+  engineeringReviewerId?: string;
+  certificationTimestamp?: string;
+  certificationRevision?: number;
+  certificationHash?: string;
+  serviceOrderStatus?: string;
+  signatureStatus?: string;
+  scopeVersionStatus?: string;
+  scopeVersionFuture?: boolean;
   certificationDate?: string;
   certifiedAt: string;
   certifiedBy: string;
@@ -653,6 +734,54 @@ export type CertifiedIofPackageRuntime = DraftIofPackageRuntime & {
   scopeVersionId?: string;
   executionAuthorized?: boolean;
   immutable: boolean;
+};
+
+export type ServiceOrderRuntime = {
+  serviceOrderId: string;
+  serviceOrderNumber?: string;
+  objectType: "SERVICE_ORDER_FORM" | string;
+  authority: "COMMERCIAL_AUTHORIZATION" | string;
+  constitutionalRole?: string;
+  lifecycleState: string;
+  status: string;
+  authorizationStatus: string;
+  signatureStatus: string;
+  readyForSignature: boolean;
+  customer: Record<string, unknown>;
+  customerId?: string;
+  customerName?: string;
+  accountId?: string;
+  opportunityId?: string;
+  proposalId: string;
+  proposalNumber?: string;
+  acceptedProposalId: string;
+  acceptedProposalRevision: string | number;
+  customerAcceptance: Record<string, unknown>;
+  customerAcceptanceId?: string;
+  certifiedDraftIofPackageId: string;
+  draftIofPackageId: string;
+  draftIofPackageRevision?: string | number;
+  engineeringCertificationId: string;
+  certifiedPackageId: string;
+  futureScopeVersionId: string;
+  executionOrderReference: string;
+  product: Record<string, unknown>;
+  routeSummary: Record<string, unknown>;
+  pricingSummary: Record<string, unknown>;
+  objectSummary: Record<string, unknown>;
+  scheduleSummary: Record<string, unknown>;
+  assumptions: unknown[];
+  commercialTerms: Record<string, unknown>;
+  legalPlaceholders: Array<Record<string, unknown>>;
+  sourceReferences: Record<string, unknown>;
+  runtimePromotion: Record<string, unknown>;
+  signature: Record<string, unknown>;
+  noScopeVersionCreation: boolean;
+  noEngineeringRecreation: boolean;
+  noEngineeringObjectsPersisted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  [key: string]: unknown;
 };
 
 export type EngineeringIntakeRecord = {
@@ -685,8 +814,10 @@ export type ExecutionAuthorizationCertificate = {
   certificateId: string;
   proposalId: string;
   draftIofPackageId: string;
+  certifiedDraftIofPackageId?: string;
+  technicalSourcePackageId?: string;
   certifiedIofPackageId: string;
-  scopeVersionId: string;
+  scopeVersionId?: string;
   engineeringApproverId: string;
   engineeringApprover: string;
   certificationTimestamp: string;
@@ -802,6 +933,29 @@ export async function openCommercialOpportunity<T>(opportunityId: string, sessio
     headers: authHeaders(session, { "Content-Type": "application/json" }),
   });
   return (data.opportunity ?? data) as T;
+}
+
+export async function listCommercialRoutes<T>(session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/commercial/routes", {
+    headers: authHeaders(session),
+  });
+  return unwrapList<T>(data, ["commercialRoutes", "routes"]);
+}
+
+export async function loadCommercialRoute<T>(routeRepositoryId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/commercial/routes/${encodeURIComponent(routeRepositoryId)}`, {
+    headers: authHeaders(session),
+  });
+  return (data.commercialRoute ?? data.route ?? data) as T;
+}
+
+export async function saveCommercialRoute<T extends { routeRepositoryId: string }>(record: T, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/commercial/routes", {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ commercialRoute: record }),
+  });
+  return (data.commercialRoute ?? data.route ?? data) as T;
 }
 
 export async function cloneCommercialOpportunity<T>(opportunityId: string, session?: TeralinxAuthSession | null) {
@@ -1024,6 +1178,32 @@ export async function listEngineeringReviewQueue(session?: TeralinxAuthSession |
   return unwrapList<EngineeringReviewQueueItem>(data, ["engineeringReviewQueue", "queue", "items"]);
 }
 
+export async function listEngineeringPackages(session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/engineering/packages", {
+    headers: authHeaders(session),
+  });
+  return unwrapList<EngineeringPackageRuntime>(data, ["engineeringPackages", "items", "data"]);
+}
+
+export async function openEngineeringPackage(engineeringPackageId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/engineering/packages/${encodeURIComponent(engineeringPackageId)}`, {
+    headers: authHeaders(session),
+  });
+  return (data.engineeringPackage ?? data) as EngineeringPackageRuntime;
+}
+
+export async function saveEngineeringPackage(
+  engineeringPackage: Partial<EngineeringPackageRuntime>,
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>("/api/engineering/packages", {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ engineeringPackage }),
+  });
+  return (data.engineeringPackage ?? data) as EngineeringPackageRuntime;
+}
+
 export async function listDraftIofPackagesForCertification(session?: TeralinxAuthSession | null) {
   const data = await requestJson<any>("/api/engineering/certification/draft-packages", {
     headers: authHeaders(session),
@@ -1057,17 +1237,26 @@ export async function saveCommercialDraftIofPackage(
 
 export async function submitDraftIofPackageToEngineering(
   packageId: string,
-  input: { draftPackage?: DraftIofPackageRuntime } = {},
+  _input: { draftPackage?: DraftIofPackageRuntime } = {},
   session?: TeralinxAuthSession | null,
 ) {
+  const transactionRequest = {
+    packageId,
+    draftIOFPackageId: packageId,
+    transactionType: "COMMERCIAL_TO_ENGINEERING_HANDOFF",
+    referenceOnly: true,
+  };
   return requestJson<{
     draftPackage: DraftIofPackageRuntime;
     iofPackage: DraftIofPackageRuntime;
     engineeringIntake: EngineeringIntakeRecord;
+    engineeringPackage: EngineeringPackageRuntime;
+    commercialOpportunity?: Record<string, unknown> | null;
+    engineeringTransactionLog?: Record<string, unknown>[];
   }>(`/api/commercial/iof-packages/${encodeURIComponent(packageId)}/submit-engineering`, {
     method: "POST",
     headers: authHeaders(session, { "Content-Type": "application/json" }),
-    body: JSON.stringify(input),
+    body: JSON.stringify(transactionRequest),
   });
 }
 
@@ -1279,12 +1468,18 @@ export async function certifyDraftIofPackage(
   input: {
     certifiedPackageId?: string;
     checklist: Record<string, unknown>;
+    stationPlan?: Record<string, unknown>;
+    engineeringApprovedObjectBudget?: Record<string, unknown>;
+    engineeringApprovedBudget?: number;
+    manualHandoff?: Record<string, unknown>;
+    notes?: string;
   },
   session?: TeralinxAuthSession | null,
 ) {
   return requestJson<{
     draftPackage: DraftIofPackageRuntime;
     certifiedIofPackage: CertifiedIofPackageRuntime;
+    engineeringPackage?: EngineeringPackageRuntime | null;
     executionAuthorizationCertificate?: ExecutionAuthorizationCertificate;
     scopeVersion?: Record<string, unknown>;
   }>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/certify`, {
@@ -1308,11 +1503,61 @@ export async function openCertifiedIofPackage(certifiedPackageId: string, sessio
   return (data.certifiedIofPackage ?? data) as CertifiedIofPackageRuntime;
 }
 
+export async function listServiceOrders(session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/service-orders", {
+    headers: authHeaders(session),
+  });
+  return unwrapList<ServiceOrderRuntime>(data, ["serviceOrders", "items"]);
+}
+
+export async function generateServiceOrder(
+  input: {
+    proposalId?: string;
+    certifiedPackageId?: string;
+    proposal?: ProposalRuntimeObject;
+    certifiedPackage?: CertifiedIofPackageRuntime;
+    customerAcceptance?: Record<string, unknown>;
+    commercialTerms?: Record<string, unknown>;
+  },
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>("/api/service-orders", {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return (data.serviceOrder ?? data) as ServiceOrderRuntime;
+}
+
+export async function markServiceOrderReadyForSignature(serviceOrderId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/service-orders/${encodeURIComponent(serviceOrderId)}/mark-ready-signature`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+  });
+  return (data.serviceOrder ?? data) as ServiceOrderRuntime;
+}
+
+export async function recordServiceOrderSignaturePlaceholder(
+  serviceOrderId: string,
+  input: { placeholderId?: string; note?: string } = {},
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>(`/api/service-orders/${encodeURIComponent(serviceOrderId)}/record-signature-placeholder`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return (data.serviceOrder ?? data) as ServiceOrderRuntime;
+}
+
 export async function generateScopeVersionFromCertifiedIofPackage(
   certifiedPackageId: string,
   input: {
     previousScopeVersionId?: string;
     parentScopeVersionId?: string;
+    customerAcceptance?: Record<string, unknown>;
+    serviceOrder?: Record<string, unknown>;
+    signedServiceOrder?: Record<string, unknown>;
     changeSummary?: string;
     engineeringReason?: string;
     approvedBy?: string;

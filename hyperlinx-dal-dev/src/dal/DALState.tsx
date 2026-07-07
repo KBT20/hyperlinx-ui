@@ -25,6 +25,7 @@ export type DALWorkspace =
   | "design"
   | "proposedNetwork"
   | "preliminaryProposal"
+  | "serviceOrder"
   | "prism"
   | "siteDecision"
   | "routeEngineering"

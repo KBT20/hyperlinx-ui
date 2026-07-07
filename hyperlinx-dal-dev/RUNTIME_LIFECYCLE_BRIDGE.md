@@ -15,8 +15,15 @@ It does not add Marketplace, Contracts, Control, Field, or Operational Intellige
 5. Customer Review
 6. Draft IOF Package
 7. Engineering Queue
+8. Engineering Certification
+9. Proposal
+10. Customer Acceptance
+11. Service Order
+12. Customer Signature
 
-Engineering Certification, Certified IOF Package, Execution Authorization, and executable ScopeVersion remain governed by the Engineering Certification model.
+Engineering Certification certifies the Draft IOF Package as the Certified Draft IOF Package and stops at customer commitment readiness.
+
+Runtime promotion to executable ScopeVersion remains governed by executed Service Order authority.
 
 ## Orchestrator
 
@@ -61,4 +68,3 @@ The bridge uses deterministic identifiers for:
 - Customer approval triggers Draft IOF Package assembly.
 - Engineering receives the Draft IOF Package in the Engineering Review Queue.
 - ScopeVersion is not created by this bridge.
-

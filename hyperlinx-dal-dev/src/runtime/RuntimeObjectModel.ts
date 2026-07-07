@@ -917,7 +917,7 @@ export function buildRuntimeCommitFromCustomerDesign(
     {
       checkId: "SCOPEVERSION_REFERENCE_PRESENT",
       status: fields.scopeVersionId ? "PASS" : "FAIL",
-      message: "Customer Design Request carries a candidate ScopeVersion reference.",
+      message: "Customer Design Request carries a candidate design reference.",
       details: { scopeVersionId: fields.scopeVersionId },
     },
     {
@@ -965,7 +965,7 @@ export function buildRuntimeCommitFromCustomerDesign(
       objectId: record.importId,
       objectName: record.sourceFileName,
       timestamp,
-      details: "Customer Design Request evidence prepared as design intent with candidate ScopeVersion.",
+      details: "Customer Design Request evidence prepared as design intent with candidate design reference.",
       metadata: {
         lane: "CUSTOMER_DESIGN_REQUEST",
         designId: record.designId,

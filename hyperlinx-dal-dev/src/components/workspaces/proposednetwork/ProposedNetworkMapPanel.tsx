@@ -375,6 +375,14 @@ export default function ProposedNetworkMapPanel({
   const inventoryRouteKey = commercialMapLayers
     .map((layer) => `${layer.id}:${layer.visibility}:${layer.renderState}:${layer.featureCount}`)
     .join("|");
+  const opportunityOverlayRouteKey = useMemo(() => {
+    const path = commercialOpportunityOverlay?.corridorGeometry ?? [];
+    const first = path[0];
+    const last = path.at(-1);
+    return path.length && first && last
+      ? `${path.length}:${first[0].toFixed(5)},${first[1].toFixed(5)}:${last[0].toFixed(5)},${last[1].toFixed(5)}`
+      : "NO_OPPORTUNITY_OVERLAY";
+  }, [commercialOpportunityOverlay?.corridorGeometry]);
   const sortedCustomerTwinRouteLayers = useMemo(
     () => [...routeVisibleCustomerTwinLayers].sort((a, b) => customerTwinLayerRank(a) - customerTwinLayerRank(b)),
     [routeVisibleCustomerTwinLayers],
@@ -449,11 +457,11 @@ export default function ProposedNetworkMapPanel({
   }
 
   useEffect(() => {
-    const routeKey = `${graph.proposedGraphId}:${graph.centerlineRouteId ?? "NO_CENTERLINE"}:${compare?.secondaryGraph.proposedGraphId ?? "SINGLE"}:${inventoryRouteKey}`;
+    const routeKey = `${graph.proposedGraphId}:${graph.centerlineRouteId ?? "NO_CENTERLINE"}:${compare?.secondaryGraph.proposedGraphId ?? "SINGLE"}:${inventoryRouteKey}:${opportunityOverlayRouteKey}`;
     if (fittedRouteRef.current === routeKey) return;
     fittedRouteRef.current = routeKey;
     fitViewForCoordinates(coordinates, "initial-route-load");
-  }, [compare?.secondaryGraph.proposedGraphId, coordinates, graph.centerlineRouteId, graph.proposedGraphId, inventoryRouteKey]);
+  }, [compare?.secondaryGraph.proposedGraphId, coordinates, graph.centerlineRouteId, graph.proposedGraphId, inventoryRouteKey, opportunityOverlayRouteKey]);
 
   useEffect(() => {
     const previous = previousViewRef.current;

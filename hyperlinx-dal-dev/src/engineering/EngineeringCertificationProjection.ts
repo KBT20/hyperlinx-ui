@@ -15,9 +15,12 @@ export const ENGINEERING_CERTIFICATION_WORKFLOW = [
   { key: "commercialAssembly", label: "Commercial Assembly", status: "complete" },
   { key: "draftIofPackage", label: "Draft IOF Package", status: "complete" },
   { key: "engineeringReview", label: "Engineering Review", status: "active" },
-  { key: "certifiedIofPackage", label: "Certified IOF Package", status: "pending" },
-  { key: "scopeVersion", label: "ScopeVersion", status: "pending" },
+  { key: "certifiedDraftIofPackage", label: "Certified Draft IOF Package", status: "pending" },
+  { key: "proposal", label: "Proposal", status: "pending" },
+  { key: "customerAcceptance", label: "Customer Acceptance", status: "pending" },
   { key: "serviceOrder", label: "Service Order", status: "pending" },
+  { key: "customerSignature", label: "Customer Signature", status: "pending" },
+  { key: "scopeVersion", label: "ScopeVersion", status: "future" },
 ] as const;
 
 export const PD001_COMPLIANCE_CATEGORIES = [
@@ -116,6 +119,18 @@ export interface EngineeringComplianceRow {
   detail: string;
 }
 
+export interface EngineeringProjectionValidationWarning {
+  warningId: string;
+  severity: "WARNING";
+  source: "Projection Validation";
+  propertyPath: string;
+  objectId?: string;
+  layer?: string;
+  missingField: string;
+  defaultApplied: string;
+  message: string;
+}
+
 export interface EngineeringCertificationProjection {
   packageId: string;
   draftPackageId: string;
@@ -155,6 +170,8 @@ export interface EngineeringCertificationProjection {
   instantiationHealth?: unknown;
   hierarchySummary?: unknown;
   compliance: EngineeringComplianceRow[];
+  projectionValidationStatus: "PASS" | "WARNING";
+  projectionValidationWarnings: EngineeringProjectionValidationWarning[];
   mapSpec: MapKernelRenderSpec;
   stationMoveAllowed: false;
   sourceDraftPackage: DraftIofPackageRuntime;
@@ -183,6 +200,74 @@ function asArray<T = unknown>(value: unknown): T[] {
 
 function asString(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+function normalizedProjectionString(value: unknown, fallback = "UNKNOWN") {
+  const text = typeof value === "string" ? value.trim() : value === undefined || value === null ? "" : String(value).trim();
+  return text || fallback;
+}
+
+function normalizedProjectionUpper(value: unknown, fallback = "UNKNOWN") {
+  return normalizedProjectionString(value, fallback).toUpperCase();
+}
+
+function projectionLabel(value: unknown, fallback = "UNKNOWN") {
+  return normalizedProjectionString(value, fallback).replaceAll("_", " ");
+}
+
+function pushProjectionWarning(
+  warnings: EngineeringProjectionValidationWarning[] | undefined,
+  args: {
+    propertyPath: string;
+    missingField: string;
+    defaultApplied?: string;
+    objectId?: string;
+    layer?: string;
+  },
+) {
+  if (!warnings) return;
+  const warningId = `PROJECTION-VALIDATION-${args.propertyPath.replace(/[^A-Za-z0-9_-]+/g, "-")}`;
+  if (warnings.some((warning) => warning.warningId === warningId)) return;
+  warnings.push({
+    warningId,
+    severity: "WARNING",
+    source: "Projection Validation",
+    propertyPath: args.propertyPath,
+    objectId: args.objectId,
+    layer: args.layer,
+    missingField: args.missingField,
+    defaultApplied: args.defaultApplied ?? "UNKNOWN",
+    message: `Projection Validation missing required property ${args.propertyPath}. Default applied: ${args.defaultApplied ?? "UNKNOWN"}. Projection continued with warnings.`,
+  });
+}
+
+function requiredProjectionString(
+  value: unknown,
+  fallback: string,
+  warnings: EngineeringProjectionValidationWarning[] | undefined,
+  propertyPath: string,
+  context: { objectId?: string; layer?: string } = {},
+) {
+  const text = typeof value === "string" ? value.trim() : value === undefined || value === null ? "" : String(value).trim();
+  if (text) return text;
+  pushProjectionWarning(warnings, {
+    propertyPath,
+    missingField: propertyPath.split(".").pop() ?? propertyPath,
+    defaultApplied: fallback,
+    objectId: context.objectId,
+    layer: context.layer,
+  });
+  return fallback;
+}
+
+function requiredProjectionUpper(
+  value: unknown,
+  fallback: string,
+  warnings: EngineeringProjectionValidationWarning[] | undefined,
+  propertyPath: string,
+  context: { objectId?: string; layer?: string } = {},
+) {
+  return requiredProjectionString(value, fallback, warnings, propertyPath, context).toUpperCase();
 }
 
 function asNumber(value: unknown, fallback = 0) {
@@ -564,17 +649,28 @@ function uniqueStrings(values: unknown[]) {
   return result;
 }
 
-function objectTypeFor(record: Record<string, unknown>) {
+function objectTypeFor(
+  record: Record<string, unknown>,
+  warnings?: EngineeringProjectionValidationWarning[],
+  objectId = "",
+  index = 0,
+) {
   const metadata = asRecord(record.metadata);
-  return asString(
+  return requiredProjectionUpper(
     metadata.structureType ??
-      record.structureType ??
-      record.unitType ??
-      record.objectType ??
-      record.type ??
-      record.classification,
+    record.structureType ??
+    record.unitType ??
+    record.objectType ??
+    record.type ??
+    record.classification,
     "ENGINEERING_OBJECT",
-  ).toUpperCase();
+    warnings,
+    `engineeringPackage.objects[${index}].objectType`,
+    {
+      objectId,
+      layer: normalizedProjectionString(record.layer ?? record.layerId ?? metadata.layer ?? metadata.layerId, "Undefined"),
+    },
+  );
 }
 
 function objectIdFor(record: Record<string, unknown>, packageId: string, index: number) {
@@ -584,12 +680,15 @@ function objectIdFor(record: Record<string, unknown>, packageId: string, index: 
   );
 }
 
-function objectMovable(record: Record<string, unknown>) {
-  const objectType = objectTypeFor(record);
+function objectMovable(objectType: string) {
   return STATION_ATTACHED_OBJECT_TYPES.has(objectType);
 }
 
-function normalizeObjects(draft: DraftIofPackageRuntime, stations: EngineeringPackageStation[]): EngineeringPackageObject[] {
+function normalizeObjects(
+  draft: DraftIofPackageRuntime,
+  stations: EngineeringPackageStation[],
+  warnings: EngineeringProjectionValidationWarning[],
+): EngineeringPackageObject[] {
   const loose = draft as Record<string, unknown>;
   const attachments = new Map(
     objectStationAttachmentsFromPackage(draft).map((attachment) => [attachment.objectId, attachment as unknown as Record<string, unknown>]),
@@ -619,7 +718,7 @@ function normalizeObjects(draft: DraftIofPackageRuntime, stations: EngineeringPa
     const renderFallbackStation = fallbackStation ?? nearestStation(stations, index, source.length);
     const coordinate = coordinateFrom(attachment.coordinate ?? record.coordinate ?? record.geometry ?? metadata.coordinate) ?? renderFallbackStation?.coordinate;
     const quantity = record.quantity ?? record.commercialQuantity ?? record.engineeringQuantity ?? metadata.quantity;
-    const objectType = objectTypeFor(record);
+    const objectType = objectTypeFor(record, warnings, objectId, index);
     return {
       objectId,
       objectType,
@@ -635,7 +734,7 @@ function normalizeObjects(draft: DraftIofPackageRuntime, stations: EngineeringPa
       engineeringNotes: asString(record.engineeringNotes ?? record.engineeringNote ?? metadata.engineeringNotes, ""),
       constraintLinks: uniqueStrings([record.constraintLinks, metadata.constraintLinks]),
       currentReviewStatus: asString(record.status ?? record.engineeringDecision ?? metadata.status, "PENDING"),
-      movable: objectMovable(record),
+      movable: objectMovable(objectType),
       attachmentMethod,
       attachmentStatus,
       attachmentId: asString(attachment.attachmentId, ""),
@@ -777,15 +876,29 @@ function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<Enginee
 }
 
 function objectStyle(object: EngineeringPackageObject) {
-  if (object.objectType.includes("ILA") || object.objectType.includes("REGEN")) return { fill: "#f97316", stroke: "#7c2d12", radius: 8 };
-  if (object.objectType.includes("VAULT") || object.objectType.includes("HANDHOLE")) return { fill: "#facc15", stroke: "#713f12", radius: 6 };
-  if (object.objectType.includes("FIBER")) return { fill: "#38bdf8", stroke: "#075985", radius: 5 };
-  if (object.objectType.includes("CONDUIT")) return { fill: "#34d399", stroke: "#065f46", radius: 5 };
+  const objectType = normalizedProjectionUpper(object.objectType, "ENGINEERING_OBJECT");
+  if (objectType.includes("ILA") || objectType.includes("REGEN")) return { fill: "#f97316", stroke: "#7c2d12", radius: 8 };
+  if (objectType.includes("VAULT") || objectType.includes("HANDHOLE")) return { fill: "#facc15", stroke: "#713f12", radius: 6 };
+  if (objectType.includes("FIBER")) return { fill: "#38bdf8", stroke: "#075985", radius: 5 };
+  if (objectType.includes("CONDUIT")) return { fill: "#34d399", stroke: "#065f46", radius: 5 };
   return { fill: "#fb7185", stroke: "#881337", radius: 6 };
 }
 
-function objectAddressLayer(objectType: string, addressType: string) {
-  const type = objectType.toUpperCase();
+function objectAddressLayer(
+  objectType: unknown,
+  addressType: unknown,
+  warnings?: EngineeringProjectionValidationWarning[],
+  context: { objectId?: string; index?: number; layer?: string } = {},
+) {
+  const index = context.index ?? 0;
+  const type = requiredProjectionUpper(
+    objectType,
+    "UNKNOWN",
+    warnings,
+    `engineeringPackage.objectAddresses[${index}].objectType`,
+    context,
+  );
+  const normalizedAddressType = normalizedProjectionUpper(addressType, "UNKNOWN");
   if (type.includes("HANDHOLE") || type.includes("MANHOLE")) return "PD002A_HANDHOLES_MANHOLES";
   if (type.includes("VAULT")) return "PD002A_VAULTS";
   if (type.includes("SPLICE")) return "PD002A_SPLICE_CASES";
@@ -794,7 +907,7 @@ function objectAddressLayer(objectType: string, addressType: string) {
   if (type.includes("CONDUIT") || type.includes("DUCT") || type.includes("INNERDUCT") || type.includes("FUTUREPATH")) return "PD002A_CONDUIT";
   if (type.includes("FIBER") || type.includes("LOCATE_WIRE") || type.includes("TEST_SECTION")) return "PD002A_FIBER";
   if (type.includes("CROSSING")) return "PD002A_CROSSINGS";
-  if (addressType === "UNASSIGNED_REVIEW") return "PD002A_PENDING_REVIEW_OBJECTS";
+  if (normalizedAddressType === "UNASSIGNED_REVIEW") return "PD002A_PENDING_REVIEW_OBJECTS";
   return "PD002A_ADDRESSED_REVIEW_OBJECTS";
 }
 
@@ -915,15 +1028,31 @@ function packageGraphPrimitives(projection: Omit<EngineeringCertificationProject
 function objectAddressingPrimitives(projection: Omit<EngineeringCertificationProjection, "mapSpec">, packageId: string): MapKernelPrimitive[] {
   const primitives: MapKernelPrimitive[] = [];
   const addresses = projection.objectAddresses ?? [];
-  addresses.forEach((address) => {
-    const sourceLayer = objectAddressLayer(address.objectType, address.addressType);
-    if (address.addressType === "POINT" && address.stationAddress?.coordinate) {
+  addresses.forEach((address, index) => {
+    const objectId = normalizedProjectionString(address.objectId, `OBJECT-ADDRESS-${index + 1}`);
+    const objectType = requiredProjectionString(
+      address.objectType,
+      "UNKNOWN",
+      projection.projectionValidationWarnings,
+      `engineeringPackage.objectAddresses[${index}].objectType`,
+      { objectId, layer: "PD002A_OBJECT_ADDRESSES" },
+    );
+    const addressType = requiredProjectionString(
+      address.addressType,
+      "UNKNOWN",
+      projection.projectionValidationWarnings,
+      `engineeringPackage.objectAddresses[${index}].addressType`,
+      { objectId, layer: "PD002A_OBJECT_ADDRESSES" },
+    );
+    const normalizedAddressType = normalizedProjectionUpper(addressType, "UNKNOWN");
+    const sourceLayer = objectAddressLayer(objectType, addressType, projection.projectionValidationWarnings, { objectId, index, layer: "PD002A_OBJECT_ADDRESSES" });
+    if (normalizedAddressType === "POINT" && address.stationAddress?.coordinate) {
       primitives.push({
-        id: `${address.objectId}:pd002a-address-point`,
+        id: `${objectId}:pd002a-address-point`,
         layerId: "object",
         kind: "point",
         coordinate: address.stationAddress.coordinate,
-        label: address.objectType,
+        label: objectType,
         style: objectAddressStyle(address),
         payload: address,
         metadata: {
@@ -934,19 +1063,19 @@ function objectAddressingPrimitives(projection: Omit<EngineeringCertificationPro
           stationId: address.stationAddress.stationId,
           stationLabel: address.stationAddress.stationLabel,
           addressStatus: address.addressStatus,
-          addressType: address.addressType,
+          addressType,
         },
-        ref: { kind: "Object", id: address.objectId, objectId: address.objectId, stationId: address.stationAddress.stationId, scopeVersionId: "draft-iof-certification" },
+        ref: { kind: "Object", id: objectId, objectId, stationId: address.stationAddress.stationId, scopeVersionId: "draft-iof-certification" },
       });
       return;
     }
-    if (address.addressType === "RANGE" && address.fromStationAddress?.coordinate && address.toStationAddress?.coordinate) {
+    if (normalizedAddressType === "RANGE" && address.fromStationAddress?.coordinate && address.toStationAddress?.coordinate) {
       primitives.push({
-        id: `${address.objectId}:pd002a-address-range`,
+        id: `${objectId}:pd002a-address-range`,
         layerId: "iofPackage",
         kind: "line",
         coordinates: [address.fromStationAddress.coordinate, address.toStationAddress.coordinate],
-        label: address.objectType.replaceAll("_", " "),
+        label: projectionLabel(objectType),
         style: objectAddressStyle(address),
         payload: address,
         metadata: {
@@ -957,21 +1086,29 @@ function objectAddressingPrimitives(projection: Omit<EngineeringCertificationPro
           fromStationId: address.fromStationAddress.stationId,
           toStationId: address.toStationAddress.stationId,
           addressStatus: address.addressStatus,
-          addressType: address.addressType,
+          addressType,
         },
-        ref: { kind: "ProductionUnit", id: address.objectId, objectId: address.objectId, scopeVersionId: "draft-iof-certification" },
+        ref: { kind: "ProductionUnit", id: objectId, objectId, scopeVersionId: "draft-iof-certification" },
       });
     }
   });
-  projection.addressedReviewObjects?.forEach((reviewObject) => {
+  projection.addressedReviewObjects?.forEach((reviewObject, index) => {
     const address = reviewObject.objectAddress;
     if (!address?.stationAddress?.coordinate) return;
+    const reviewObjectId = normalizedProjectionString(reviewObject.reviewObjectId, `PD002A-REVIEW-${index + 1}`);
+    const reviewType = requiredProjectionString(
+      reviewObject.reviewType,
+      "UNASSIGNED_REVIEW",
+      projection.projectionValidationWarnings,
+      `engineeringPackage.addressedReviewObjects[${index}].reviewType`,
+      { objectId: reviewObjectId, layer: "PD002A_ADDRESSED_REVIEW_OBJECTS" },
+    );
     primitives.push({
-      id: `${reviewObject.reviewObjectId}:pd002a-addressed-review`,
+      id: `${reviewObjectId}:pd002a-addressed-review`,
       layerId: "object",
       kind: "point",
       coordinate: address.stationAddress.coordinate,
-      label: reviewObject.reviewType.replaceAll("_", " "),
+      label: projectionLabel(reviewType, "UNASSIGNED_REVIEW"),
       style: { fill: "#a855f7", stroke: "#581c87", radius: 7, opacity: 0.88 },
       payload: reviewObject,
       metadata: {
@@ -981,16 +1118,36 @@ function objectAddressingPrimitives(projection: Omit<EngineeringCertificationPro
         packageId,
         addressStatus: reviewObject.addressStatus,
       },
-      ref: { kind: "Object", id: reviewObject.reviewObjectId, objectId: reviewObject.reviewObjectId, stationId: address.stationAddress.stationId, scopeVersionId: "draft-iof-certification" },
+      ref: { kind: "Object", id: reviewObjectId, objectId: reviewObjectId, stationId: address.stationAddress.stationId, scopeVersionId: "draft-iof-certification" },
     });
   });
   return primitives;
 }
 
-function spineObjectLayer(objectType: string, objectClass: string, reviewStatus: string) {
-  const type = objectType.toUpperCase();
-  const klass = objectClass.toUpperCase();
-  if (reviewStatus.includes("DISPOSITION") || klass === "CONSTRAINT") return "SPINE_OBJECT_REVIEW_OBJECTS";
+function spineObjectLayer(
+  objectType: unknown,
+  objectClass: unknown,
+  reviewStatus: unknown,
+  warnings?: EngineeringProjectionValidationWarning[],
+  context: { objectId?: string; index?: number; layer?: string } = {},
+) {
+  const index = context.index ?? 0;
+  const type = requiredProjectionUpper(
+    objectType,
+    "SPINE_OBJECT",
+    warnings,
+    `engineeringPackage.instantiatedSpineObjects[${index}].objectType`,
+    context,
+  );
+  const klass = requiredProjectionUpper(
+    objectClass,
+    "UNKNOWN",
+    warnings,
+    `engineeringPackage.instantiatedSpineObjects[${index}].objectClass`,
+    context,
+  );
+  const normalizedReviewStatus = normalizedProjectionUpper(reviewStatus, "");
+  if (normalizedReviewStatus.includes("DISPOSITION") || klass === "CONSTRAINT") return "SPINE_OBJECT_REVIEW_OBJECTS";
   if (type.includes("HANDHOLE")) return "SPINE_OBJECT_HANDHOLES";
   if (type.includes("MANHOLE")) return "SPINE_OBJECT_MANHOLES";
   if (type.includes("VAULT")) return "SPINE_OBJECT_VAULTS";
@@ -1022,14 +1179,26 @@ function stationAddressCoordinate(address: Record<string, unknown>) {
 
 function instantiatedSpineObjectPrimitives(projection: Omit<EngineeringCertificationProjection, "mapSpec">, packageId: string): MapKernelPrimitive[] {
   const primitives: MapKernelPrimitive[] = [];
-  (projection.instantiatedSpineObjects ?? []).forEach((value) => {
+  (projection.instantiatedSpineObjects ?? []).forEach((value, index) => {
     const object = asRecord(value);
     const spineObjectId = asString(object.spineObjectId, asString(object.objectId));
     if (!spineObjectId) return;
-    const objectType = asString(object.objectType, "SPINE_OBJECT");
-    const objectClass = asString(object.objectClass, "UNKNOWN");
-    const reviewStatus = asString(object.reviewStatus);
-    const sourceLayer = spineObjectLayer(objectType, objectClass, reviewStatus);
+    const objectType = requiredProjectionString(
+      object.objectType,
+      "SPINE_OBJECT",
+      projection.projectionValidationWarnings,
+      `engineeringPackage.instantiatedSpineObjects[${index}].objectType`,
+      { objectId: spineObjectId, layer: "SPINE_OBJECTS" },
+    );
+    const objectClass = requiredProjectionString(
+      object.objectClass,
+      "UNKNOWN",
+      projection.projectionValidationWarnings,
+      `engineeringPackage.instantiatedSpineObjects[${index}].objectClass`,
+      { objectId: spineObjectId, layer: "SPINE_OBJECTS" },
+    );
+    const reviewStatus = normalizedProjectionString(object.reviewStatus, "");
+    const sourceLayer = spineObjectLayer(objectType, objectClass, reviewStatus, projection.projectionValidationWarnings, { objectId: spineObjectId, index, layer: "SPINE_OBJECTS" });
     const stationAddress = asRecord(object.stationAddress);
     const fromStationAddress = asRecord(object.fromStationAddress);
     const toStationAddress = asRecord(object.toStationAddress);
@@ -1049,7 +1218,7 @@ function instantiatedSpineObjectPrimitives(projection: Omit<EngineeringCertifica
         layerId: "iofPackage",
         kind: "line",
         coordinates: [from, to],
-        label: objectType.replaceAll("_", " "),
+        label: projectionLabel(objectType, "SPINE_OBJECT"),
         style: spineObjectStyle(objectType, objectClass),
         payload,
         metadata: {
@@ -1074,7 +1243,7 @@ function instantiatedSpineObjectPrimitives(projection: Omit<EngineeringCertifica
       layerId: "object",
       kind: "point",
       coordinate: point,
-      label: objectType.replaceAll("_", " "),
+      label: projectionLabel(objectType, "SPINE_OBJECT"),
       style: spineObjectStyle(objectType, objectClass),
       payload,
       metadata: {
@@ -1317,8 +1486,9 @@ export function buildEngineeringCertificationProjection(draft: DraftIofPackageRu
   const executionZones = executionZonesFromPackage(draft);
   const routeCoordinates = routeCoordinatesFromPackage(draft);
   const centerlineCoordinates = centerlineCoordinatesFromPackage(draft, routeCoordinates);
+  const projectionValidationWarnings: EngineeringProjectionValidationWarning[] = [];
   const stations = normalizeStations(draft, routeCoordinates);
-  const objects = normalizeObjects(draft, stations);
+  const objects = normalizeObjects(draft, stations, projectionValidationWarnings);
   const constraints = constraintsFromPackage(draft);
   const routeLength = asNumber(measuredSpine?.routeLengthFeet ?? asRecord(loose.quantitySummary).routeFeet ?? asRecord(draft.commercialSummary).routeFeet, routeCoordinates.length ? asNumber(asRecord(draft.commercialSummary).routeMiles) * 5280 : 0);
   const facilityCount = objects.filter((object) => object.objectType.includes("ILA") || object.objectType.includes("REGEN") || object.objectType.includes("FACILITY")).length;
@@ -1361,11 +1531,14 @@ export function buildEngineeringCertificationProjection(draft: DraftIofPackageRu
     instantiationHealth: loose.instantiationHealth,
     hierarchySummary: loose.hierarchySummary,
     stationMoveAllowed: false,
+    projectionValidationStatus: "PASS",
+    projectionValidationWarnings,
     sourceDraftPackage: draft,
   };
   const compliance = buildCompliance(draft, partial);
   const projectionWithoutMap = { ...partial, compliance };
   const mapSpec = renderCertificationSpec(projectionWithoutMap);
+  const projectionValidationStatus = projectionValidationWarnings.length ? "WARNING" : "PASS";
   debugEngineeringProjection({
     packageId: draft.packageId,
     routeLengthFt: routeLength,
@@ -1378,6 +1551,7 @@ export function buildEngineeringCertificationProjection(draft: DraftIofPackageRu
   });
   return {
     ...projectionWithoutMap,
+    projectionValidationStatus,
     mapSpec,
   };
 }
@@ -1418,6 +1592,13 @@ export function buildEngineeringCertificationChecklist(
     redlineRevisionHistory: asArray((projection.sourceDraftPackage as Record<string, unknown>).redlineRevisionHistory),
     objectMoveHistory: asArray((projection.sourceDraftPackage as Record<string, unknown>).objectMoveHistory),
     finalEngineeringManifest: projection.sourceDraftPackage.engineeringManifest ?? projection.sourceDraftPackage.manifest,
-    readinessForScopeVersionPromotion: complianceOk && constraintsOk,
+    certifiedDraftIofPackageId: projection.sourceDraftPackage.packageId,
+    technicalSourcePackageId: projection.sourceDraftPackage.packageId,
+    singleEngineeringTruth: true,
+    noEngineeringRecreation: true,
+    readyForCustomerCommitment: complianceOk && constraintsOk,
+    noAdditionalEngineeringReviewAfterSignature: true,
+    readinessForSignedServiceOrder: complianceOk && constraintsOk,
+    readinessForScopeVersionPromotion: false,
   };
 }

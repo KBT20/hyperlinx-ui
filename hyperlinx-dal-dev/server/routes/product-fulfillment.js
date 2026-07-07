@@ -129,7 +129,7 @@ function defaultProductDefinition([productId, productName, productFamily, produc
     },
     runtime: {
       runtimeObjectTemplates: ["PRODUCT", "FULFILLMENT_PLAN", "PRODUCT_CONFIGURATION"],
-      scopeVersionTemplates: ["SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE"],
+      scopeVersionTemplates: ["SCOPEVERSION_ORDER_FOR_EXECUTION", "SCOPEVERSION_FROM_CERTIFIED_DRAFT_IOF_PACKAGE", "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE"],
       authorityModel: "PRODUCT_DEFINITION_SINGLE_SOURCE",
       lifecycleStates: ["SELECTED", "CONFIGURED", "FULFILLMENT_PLANNED", "ENGINEERING_VALIDATED", "OPERATIONAL"],
       runtimeHistoryTemplates: ["PRODUCT_SELECTED", "INVENTORY_RESOLVED", "FULFILLMENT_PLAN_CREATED"],

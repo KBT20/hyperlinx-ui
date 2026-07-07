@@ -5,11 +5,16 @@ export const SCOPEVERSION_AUTHORITY_READINESS = [
   { key: "business", label: "Business", status: "PENDING" },
   { key: "legal", label: "Legal", status: "PENDING" },
   { key: "serviceOrder", label: "Service Order", status: "PENDING" },
+  { key: "customerSignature", label: "Customer Signature", status: "PENDING" },
   { key: "control", label: "Control", status: "PENDING" },
   { key: "marketplace", label: "Marketplace", status: "PENDING" },
   { key: "field", label: "Field", status: "PENDING" },
   { key: "operationalTwin", label: "Operational Twin", status: "PENDING" },
 ];
+
+export const SCOPEVERSION_CERTIFIED_DRAFT_IOF_AUTHORITY = "SCOPEVERSION_FROM_CERTIFIED_DRAFT_IOF_PACKAGE";
+export const SCOPEVERSION_LEGACY_CERTIFIED_IOF_AUTHORITY = "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE";
+export const SCOPEVERSION_ORDER_FOR_EXECUTION_AUTHORITY = "SCOPEVERSION_ORDER_FOR_EXECUTION";
 
 function asRecord(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -210,7 +215,7 @@ function certifiedSpine(certifiedPackage, routeCoordinates, routeLengthFeet, rou
       type: "LineString",
       coordinates,
     },
-    source: "CERTIFIED_IOF_PACKAGE",
+    source: "CERTIFIED_DRAFT_IOF_PACKAGE",
     authority: "SCOPEVERSION",
   };
 }
@@ -286,7 +291,7 @@ function certifiedObjects(certifiedPackage, scopeVersionId, stations, timestamp)
       measureFeet,
       quantity: numeric(record.quantity ?? record.engineeringQuantity ?? record.commercialQuantity ?? metadata.quantity, 1),
       unit: String(record.unit ?? metadata.unit ?? "EA"),
-      specification: String(record.specification ?? metadata.specification ?? record.constructionMethod ?? "Certified IOF Package object"),
+      specification: String(record.specification ?? metadata.specification ?? record.constructionMethod ?? "Certified Draft IOF Package object"),
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -302,7 +307,7 @@ function certifiedGraph(certifiedPackage, routeCoordinates) {
   const routeSegments = asArray(certifiedPackage.routeSegments);
   return {
     graphId: String(graph.graphId ?? `${certifiedPackage.certifiedPackageId ?? certifiedPackage.packageId}:GRAPH`),
-    source: "CERTIFIED_IOF_PACKAGE",
+    source: "CERTIFIED_DRAFT_IOF_PACKAGE",
     nodes: asArray(graph.nodes),
     edges: asArray(graph.edges),
     routeSegments,
@@ -332,15 +337,34 @@ function scopeVersionId(certifiedPackage, revision, previousScopeVersion) {
   return `${revisionLabel(revision)}-${stableIdPart(certifiedPackage.certifiedPackageId ?? certifiedPackage.packageId ?? "CERTIFIED-IOF")}`;
 }
 
+function certifiedDraftIofPackageId(certifiedPackage = {}) {
+  return String(
+    certifiedPackage.certifiedDraftIofPackageId ??
+      certifiedPackage.technicalSourcePackageId ??
+      certifiedPackage.sourceDraftPackageId ??
+      certifiedPackage.sourcePackageId ??
+      certifiedPackage.draftIofPackageId ??
+      certifiedPackage.draftPackageId ??
+      "",
+  );
+}
+
+function certifiedPackageRecordId(certifiedPackage = {}) {
+  return String(certifiedPackage.certifiedPackageId ?? certifiedPackage.packageId ?? certifiedDraftIofPackageId(certifiedPackage) ?? "");
+}
+
 function readinessSnapshot(options = {}) {
   return SCOPEVERSION_AUTHORITY_READINESS.map((item) => ({
     ...item,
-    status: item.key === "serviceOrder" && options.serviceOrderAuthorized ? "PASS" : item.status,
+    status:
+      ["serviceOrder", "customerSignature"].includes(item.key) && options.signedServiceOrder
+        ? "PASS"
+        : item.status,
     authority:
       item.key === "engineering"
-        ? "CERTIFIED_IOF_PACKAGE"
-        : item.key === "serviceOrder" && options.serviceOrderAuthorized
-          ? "SERVICE_ORDER"
+        ? "CERTIFIED_DRAFT_IOF_PACKAGE"
+        : ["serviceOrder", "customerSignature"].includes(item.key) && options.signedServiceOrder
+          ? "SIGNED_SERVICE_ORDER"
           : "DOWNSTREAM_PENDING",
   }));
 }
@@ -351,6 +375,10 @@ function acceptedStatus(value) {
 
 function authorizedStatus(value) {
   return ["PASS", "READY", "CREATED", "APPROVED", "AUTHORIZED", "EXECUTED", "ACCEPTED", "COMPLETE", "COMPLETED"].includes(String(value ?? "").toUpperCase());
+}
+
+function signedStatus(value) {
+  return ["SIGNED", "CUSTOMER_SIGNED", "FULLY_SIGNED", "EXECUTED", "FULLY_EXECUTED", "COUNTERSIGNED", "COMPLETE", "COMPLETED"].includes(String(value ?? "").toUpperCase());
 }
 
 function customerAcceptanceArtifact(certifiedPackage = {}, options = {}) {
@@ -399,11 +427,37 @@ function serviceOrderId(certifiedPackage = {}, serviceOrder = {}) {
   );
 }
 
+function serviceOrderSignatureId(certifiedPackage = {}, serviceOrder = {}) {
+  return String(
+    serviceOrder.serviceOrderSignatureId ??
+      serviceOrder.signatureId ??
+      serviceOrder.customerSignatureId ??
+      certifiedPackage.serviceOrderSignatureId ??
+      certifiedPackage.customerSignatureId ??
+      "",
+  );
+}
+
+function serviceOrderSignedAt(certifiedPackage = {}, serviceOrder = {}) {
+  return String(
+    serviceOrder.serviceOrderSignedAt ??
+      serviceOrder.customerSignedAt ??
+      serviceOrder.signedAt ??
+      serviceOrder.executedAt ??
+      certifiedPackage.serviceOrderSignedAt ??
+      certifiedPackage.customerSignedAt ??
+      certifiedPackage.signedAt ??
+      "",
+  );
+}
+
 function assertConstitutionalLayerIntegrityForScopeVersion(certifiedPackage = {}, options = {}) {
   const acceptance = customerAcceptanceArtifact(certifiedPackage, options);
   const serviceOrder = serviceOrderArtifact(certifiedPackage, options);
   const acceptanceId = customerAcceptanceId(certifiedPackage, acceptance, serviceOrder);
   const orderId = serviceOrderId(certifiedPackage, serviceOrder);
+  const signatureId = serviceOrderSignatureId(certifiedPackage, serviceOrder);
+  const signedAt = serviceOrderSignedAt(certifiedPackage, serviceOrder);
   const hasCustomerAcceptance = Boolean(
     acceptanceId ||
       acceptance.acceptedAt ||
@@ -417,6 +471,11 @@ function assertConstitutionalLayerIntegrityForScopeVersion(certifiedPackage = {}
       serviceOrder.authorizedAt ||
       authorizedStatus(serviceOrder.status ?? serviceOrder.authorizationStatus ?? certifiedPackage.serviceOrderStatus),
   );
+  const hasSignedServiceOrder = Boolean(
+    signatureId ||
+      signedAt ||
+      signedStatus(serviceOrder.signatureStatus ?? serviceOrder.customerSignatureStatus ?? serviceOrder.status ?? certifiedPackage.serviceOrderSignatureStatus),
+  );
 
   if (!hasCustomerAcceptance) {
     throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: Service Order requires Customer Acceptance. Missing validated CUSTOMER_ACCEPTANCE_CLOSE or accepted proposal artifact. Next legal action: record and validate Customer Acceptance.");
@@ -424,8 +483,11 @@ function assertConstitutionalLayerIntegrityForScopeVersion(certifiedPackage = {}
   if (!hasServiceOrder) {
     throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: ScopeVersion cannot be created before Service Order. Missing Service Order artifact. Next legal action: create or attach Service Order authority, then request ScopeVersion creation.");
   }
+  if (!hasSignedServiceOrder) {
+    throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: ScopeVersion cannot be created before signed Service Order. Missing customer signature evidence. Next legal action: capture customer signature on the Service Order, then request ScopeVersion creation.");
+  }
 
-  return { acceptance, serviceOrder, acceptanceId, serviceOrderId: orderId };
+  return { acceptance, serviceOrder, acceptanceId, serviceOrderId: orderId, serviceOrderSignatureId: signatureId, serviceOrderSignedAt: signedAt };
 }
 
 function graphSummary(graph, stations, objects) {
@@ -439,7 +501,7 @@ function graphSummary(graph, stations, objects) {
 
 export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, options = {}) {
   if (String(certifiedPackage.status ?? "").toUpperCase() !== "CERTIFIED") {
-    throw new Error("Only Certified IOF Packages may be promoted to ScopeVersion authority.");
+    throw new Error("Only Certified Draft IOF Packages may be promoted to ScopeVersion authority.");
   }
   const timestamp = options.createdAt ?? nowIso();
   const previousScopeVersion = options.previousScopeVersion;
@@ -447,7 +509,7 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
   const scopeVersionIdValue = scopeVersionId(certifiedPackage, revision, previousScopeVersion);
   const routeCoordinates = routeCoordinatesFromCertifiedPackage(certifiedPackage);
   if (routeCoordinates.length < 2) {
-    throw new Error("Certified IOF Package cannot create ScopeVersion without certified route geometry.");
+    throw new Error("Certified Draft IOF Package cannot create ScopeVersion without certified route geometry.");
   }
   const routeLengthFeet = routeLengthFeetFromPackage(certifiedPackage);
   const routeMiles = routeMilesFromPackage(certifiedPackage, routeLengthFeet);
@@ -474,7 +536,7 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
   ]);
   const certificate = asRecord(options.certificate);
   const user = asRecord(options.user);
-  const approvedBy = String(options.approvedBy ?? user.name ?? certifiedPackage.certifiedBy ?? certifiedPackage.engineer ?? "Engineering");
+  const approvedBy = String(options.approvedBy ?? user.name ?? "Runtime");
   const approvedTimestamp = String(options.approvedTimestamp ?? timestamp);
   const parentScopeVersionId = previousScopeVersion?.scopeVersionId ?? options.parentScopeVersionId ?? certifiedPackage.parentScopeVersionId;
   const rootScopeVersionId = previousScopeVersion?.rootScopeVersionId ?? previousScopeVersion?.scopeVersionId ?? parentScopeVersionId ?? scopeVersionIdValue;
@@ -492,6 +554,8 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     productDoctrineAssembly: certifiedPackage.productDoctrineAssembly,
   };
   const layerIntegrityAuthority = assertConstitutionalLayerIntegrityForScopeVersion(certifiedPackage, options);
+  const certifiedPackageId = certifiedPackageRecordId(certifiedPackage);
+  const certifiedDraftPackageId = certifiedDraftIofPackageId(certifiedPackage);
   const certifiedIofUnitIds = asArray(certifiedPackage.certifiedIofUnits).map((unit) => unit.unitId);
   const engineeringDoctrine = {
     doctrineStatus: certifiedPackage.doctrineStatus,
@@ -514,8 +578,10 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
   const digitalCertificationMetadata = {
     certificateId: certificate.certificateId,
     scopeVersionId: scopeVersionIdValue,
-    certifiedIofPackageId: certifiedPackage.certifiedPackageId,
-    sourceDraftPackageId: certifiedPackage.sourcePackageId ?? certifiedPackage.sourceDraftPackageId,
+    certifiedIofPackageId: certifiedPackageId,
+    certifiedDraftIofPackageId: certifiedDraftPackageId,
+    technicalSourcePackageId: certifiedDraftPackageId,
+    sourceDraftPackageId: certifiedDraftPackageId,
     certifiedAt: certifiedPackage.certifiedAt ?? certifiedPackage.certificationDate,
     certifiedBy: certifiedPackage.certifiedBy ?? certifiedPackage.engineer,
     certifiedById: certifiedPackage.certifiedById ?? certifiedPackage.engineerId,
@@ -525,7 +591,8 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
   };
   const assemblyFingerprint = hashPayload({
     scopeVersionId: scopeVersionIdValue,
-    certifiedIofPackageId: certifiedPackage.certifiedPackageId,
+    certifiedIofPackageId: certifiedPackageId,
+    certifiedDraftIofPackageId: certifiedDraftPackageId,
     routeCoordinates,
     spine,
     stations,
@@ -537,20 +604,36 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     digitalCertificationMetadata,
   });
   digitalCertificationMetadata.assemblyFingerprint = assemblyFingerprint;
-  const downstreamReadiness = readinessSnapshot({ serviceOrderAuthorized: true });
+  const downstreamReadiness = readinessSnapshot({ signedServiceOrder: true });
   const canonicalTruth = {
     lifecycleState: "CERTIFIED",
     lifecycleTimestamp: timestamp,
-    constitutionalAuthority: "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE",
-    authority: "SCOPEVERSION_OPERATIONAL_BASELINE",
+    constitutionalAuthority: SCOPEVERSION_CERTIFIED_DRAFT_IOF_AUTHORITY,
+    authority: SCOPEVERSION_ORDER_FOR_EXECUTION_AUTHORITY,
+    canonicalDefinition: "ScopeVersion is the Order for Execution.",
+    orderForExecution: true,
+    executionBeginsAtScopeVersion: true,
+    preScopeVersionArtifactsArePlanningOnly: true,
+    downstreamExecutionRequiresScopeVersion: true,
+    nonExecutableArtifacts: ["PROPOSAL", "SERVICE_ORDER", "DRAFT_IOF_PACKAGE"],
+    executionConsumers: ["MARKETPLACE", "CONTROL", "FIELD", "CLOSURE", "OPERATIONAL_TWIN", "OPERATIONAL_INTELLIGENCE"],
     immutable: true,
-    parentCertifiedPackageId: certifiedPackage.certifiedPackageId,
-    certifiedIofPackageId: certifiedPackage.certifiedPackageId,
-    sourceDraftPackageId: certifiedPackage.sourcePackageId ?? certifiedPackage.sourceDraftPackageId,
+    parentCertifiedPackageId: certifiedPackageId,
+    certifiedIofPackageId: certifiedPackageId,
+    certifiedDraftIofPackageId: certifiedDraftPackageId,
+    technicalSourcePackageId: certifiedDraftPackageId,
+    sourceDraftPackageId: certifiedDraftPackageId,
+    engineeringTruthAuthority: "CERTIFIED_DRAFT_IOF_PACKAGE",
+    singleEngineeringTruth: true,
+    noEngineeringRecreation: true,
+    noAdditionalEngineeringReviewAfterSignature: true,
     executionAuthorizationCertificateId: certificate.certificateId,
     customerAcceptanceId: layerIntegrityAuthority.acceptanceId,
     customerAcceptance: layerIntegrityAuthority.acceptance,
     serviceOrderId: layerIntegrityAuthority.serviceOrderId,
+    serviceOrderSignatureId: layerIntegrityAuthority.serviceOrderSignatureId,
+    serviceOrderSignedAt: layerIntegrityAuthority.serviceOrderSignedAt,
+    customerSignatureId: layerIntegrityAuthority.serviceOrderSignatureId,
     serviceOrder: layerIntegrityAuthority.serviceOrder,
     proposalId: certifiedPackage.proposalId,
     accountId: certifiedPackage.accountId,
@@ -574,8 +657,8 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     parentScopeVersionId,
     rootScopeVersionId,
     previousRevision,
-    changeSummary: options.changeSummary ?? certifiedPackage.changeSummary ?? (previousScopeVersion ? "Engineering revision promoted from Certified IOF Package." : "Initial ScopeVersion authority from Certified IOF Package."),
-    engineeringReason: options.engineeringReason ?? certifiedPackage.engineeringReason ?? "Engineering certified IOF Package promoted to operational baseline.",
+    changeSummary: options.changeSummary ?? certifiedPackage.changeSummary ?? (previousScopeVersion ? "Engineering revision promoted from Certified Draft IOF Package." : "Initial ScopeVersion authority from Certified Draft IOF Package."),
+    engineeringReason: options.engineeringReason ?? certifiedPackage.engineeringReason ?? "Runtime promoted the executed Service Order and Certified Draft IOF Package into the ScopeVersion Order for Execution.",
     approvedBy,
     approvedTimestamp,
     customer: {
@@ -617,7 +700,7 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     routeLength: {
       feet: routeLengthFeet,
       miles: routeMiles,
-      source: "CERTIFIED_IOF_PACKAGE",
+      source: "CERTIFIED_DRAFT_IOF_PACKAGE",
     },
     constraintHistory: constraints,
     constraints,
@@ -635,6 +718,7 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
       businessApproval: "PENDING",
       legalApproval: "PENDING",
       serviceOrder: "PASS",
+      customerSignature: "PASS",
       control: "PENDING",
       marketplace: "PENDING",
       field: "PENDING",
@@ -659,7 +743,7 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
       certifiedGeometry: routeCoordinates,
       spineGeometry: spine.coordinates,
       buildPath: {
-        source: "CERTIFIED_IOF_PACKAGE",
+        source: "CERTIFIED_DRAFT_IOF_PACKAGE",
         coordinates: routeCoordinates,
       },
     },
@@ -667,7 +751,7 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
       buildFeet: routeLengthFeet,
       buildMiles: routeMiles,
       routeStatus: "VALID",
-      certificationReadiness: "SCOPEVERSION_AUTHORITY_CREATED",
+      certificationReadiness: "SCOPEVERSION_ORDER_FOR_EXECUTION_CREATED",
       certifiedGeometrySnapshot: routeCoordinates,
       certifiedGeometryHash: hashPayload(routeCoordinates),
       constraints,
@@ -680,10 +764,16 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     },
     authorityModel: {
       commercial: "ENDED_AT_DRAFT_IOF_PACKAGE",
-      engineering: "ENDED_AT_CERTIFIED_IOF_PACKAGE",
-      scopeVersion: "OPERATIONAL_AUTHORITY_BEGINS",
+      engineering: "ENDED_AT_CERTIFIED_DRAFT_IOF_PACKAGE",
+      engineeringTruth: "CERTIFIED_DRAFT_IOF_PACKAGE",
+      proposal: "COMMERCIAL_PROJECTION_OF_CERTIFIED_DRAFT_IOF_PACKAGE",
+      serviceOrder: "COMMERCIAL_AUTHORIZATION_REFERENCING_CERTIFIED_DRAFT_IOF_PACKAGE",
+      runtimePromotion: "SIGNED_SERVICE_ORDER_TRIGGERED_RUNTIME_PROMOTION",
+      scopeVersion: "ORDER_FOR_EXECUTION",
+      downstreamExecution: "EXECUTES_ONLY_AGAINST_SCOPEVERSION",
       business: "MAY_AUTHORIZE_WITHOUT_ENGINEERING_MUTATION",
       legal: "MAY_AUTHORIZE_WITHOUT_ENGINEERING_MUTATION",
+      noAdditionalEngineeringReviewAfterSignature: true,
     },
   };
   return {
@@ -692,6 +782,10 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     source: "CertifiedIofPackage",
     status: "CERTIFIED",
     certificationState: "CERTIFIED",
+    canonicalDefinition: "ScopeVersion is the Order for Execution.",
+    orderForExecution: true,
+    executionBeginsAtScopeVersion: true,
+    downstreamExecutionRequiresScopeVersion: true,
     isImmutable: true,
     immutable: true,
     revision,
@@ -704,11 +798,15 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     engineeringReason: canonicalTruth.engineeringReason,
     approvedBy,
     approvedTimestamp,
-    certifiedIofPackageId: certifiedPackage.certifiedPackageId,
-    parentCertifiedPackageId: certifiedPackage.certifiedPackageId,
+    certifiedIofPackageId: certifiedPackageId,
+    certifiedDraftIofPackageId: certifiedDraftPackageId,
+    technicalSourcePackageId: certifiedDraftPackageId,
+    parentCertifiedPackageId: certifiedPackageId,
     executionAuthorizationCertificateId: certificate.certificateId,
     customerAcceptanceId: layerIntegrityAuthority.acceptanceId,
     serviceOrderId: layerIntegrityAuthority.serviceOrderId,
+    serviceOrderSignatureId: layerIntegrityAuthority.serviceOrderSignatureId,
+    serviceOrderSignedAt: layerIntegrityAuthority.serviceOrderSignedAt,
     proposalId: certifiedPackage.proposalId,
     productId: certifiedPackage.productId,
     productName: certifiedPackage.productName,
@@ -726,13 +824,14 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     geometry: routeCoordinates,
     graphSummary: canonicalTruth.graphSummary,
     certifiedRouteReference: {
-      certifiedRouteId: certifiedPackage.certifiedPackageId,
-      sourceCertifiedPackageId: certifiedPackage.certifiedPackageId,
+      certifiedRouteId: certifiedPackageId,
+      sourceCertifiedPackageId: certifiedPackageId,
+      certifiedDraftIofPackageId: certifiedDraftPackageId,
       routeAuthorityState: "CERTIFIED_ROUTE",
       certifiedAt: certifiedPackage.certifiedAt ?? certifiedPackage.certificationDate ?? timestamp,
       certifiedBy: certifiedPackage.certifiedBy ?? certifiedPackage.engineer ?? approvedBy,
     },
-    iofPackageIds: unique([certifiedPackage.sourcePackageId, certifiedPackage.certifiedPackageId]),
+    iofPackageIds: unique([certifiedDraftPackageId, certifiedPackageId]),
     runtimeObjectIds: unique(certifiedPackage.runtimeObjectIds),
     runtimeRelationshipIds: unique(certifiedPackage.runtimeRelationshipIds),
     runtimeEvidenceIds: unique(certifiedPackage.runtimeEvidenceIds),
@@ -743,11 +842,14 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     updatedAt: timestamp,
     events: [{
       eventId: `event-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      type: "scopeversion.created_from_certified_iof_package",
+      type: "scopeversion.created_from_signed_service_order",
       entityId: scopeVersionIdValue,
       entityType: "ScopeVersion",
       payload: {
-        certifiedIofPackageId: certifiedPackage.certifiedPackageId,
+        certifiedIofPackageId: certifiedPackageId,
+        certifiedDraftIofPackageId: certifiedDraftPackageId,
+        serviceOrderId: layerIntegrityAuthority.serviceOrderId,
+        serviceOrderSignatureId: layerIntegrityAuthority.serviceOrderSignatureId,
         executionAuthorizationCertificateId: certificate.certificateId,
         revision,
         revisionLabel: revisionLabel(revision),
@@ -764,6 +866,11 @@ export function markCertifiedPackagePromoted(certifiedPackage, scopeVersion, cer
   const truth = asRecord(scopeVersion.canonicalTruth);
   return {
     ...certifiedPackage,
+    certifiedDraftIofPackageId: certifiedPackage.certifiedDraftIofPackageId ?? truth.certifiedDraftIofPackageId ?? certifiedDraftIofPackageId(certifiedPackage),
+    technicalSourcePackageId: certifiedPackage.technicalSourcePackageId ?? truth.technicalSourcePackageId ?? certifiedDraftIofPackageId(certifiedPackage),
+    singleEngineeringTruth: true,
+    noEngineeringRecreation: true,
+    noAdditionalEngineeringReviewAfterSignature: true,
     scopeVersionId: scopeVersion.scopeVersionId,
     scopeVersionRevision: scopeVersion.revision,
     scopeVersionCreated: true,
@@ -771,6 +878,8 @@ export function markCertifiedPackagePromoted(certifiedPackage, scopeVersion, cer
     executionAuthorizationCertificateId: certificate.certificateId,
     customerAcceptanceId: scopeVersion.customerAcceptanceId ?? truth.customerAcceptanceId,
     serviceOrderId: scopeVersion.serviceOrderId ?? truth.serviceOrderId,
+    serviceOrderSignatureId: scopeVersion.serviceOrderSignatureId ?? truth.serviceOrderSignatureId,
+    serviceOrderSignedAt: scopeVersion.serviceOrderSignedAt ?? truth.serviceOrderSignedAt,
     executionAuthorized: true,
     engineeringCertificationLocked: true,
     engineeringReadOnly: true,
@@ -793,11 +902,35 @@ export function validateScopeVersionAuthority(scopeVersion = {}) {
     if (!condition) failures.push(message);
   };
   requireValue(scopeVersion.scopeVersionId, "ScopeVersion ID is required.");
-  requireValue(scopeVersion.certifiedIofPackageId || truth.certifiedIofPackageId, "Certified IOF Package reference is required.");
+  requireValue(scopeVersion.certifiedDraftIofPackageId || truth.certifiedDraftIofPackageId || scopeVersion.certifiedIofPackageId || truth.certifiedIofPackageId, "Certified Draft IOF Package reference is required.");
   requireValue(scopeVersion.customerAcceptanceId || truth.customerAcceptanceId || asRecord(truth.customerAcceptance).acceptedProposalId, "Customer Acceptance reference is required before ScopeVersion authority.");
   requireValue(scopeVersion.serviceOrderId || truth.serviceOrderId || asRecord(truth.serviceOrder).serviceOrderId, "Service Order reference is required before ScopeVersion authority.");
+  requireValue(
+    scopeVersion.serviceOrderSignatureId ||
+      truth.serviceOrderSignatureId ||
+      truth.customerSignatureId ||
+      truth.serviceOrderSignedAt ||
+      truth.customerSignedAt ||
+      asRecord(truth.serviceOrder).serviceOrderSignatureId ||
+      asRecord(truth.serviceOrder).signatureId ||
+      asRecord(truth.serviceOrder).customerSignatureId ||
+      asRecord(truth.serviceOrder).signedAt ||
+      asRecord(truth.serviceOrder).customerSignedAt ||
+      asRecord(truth.serviceOrder).executedAt,
+    "Signed Service Order reference is required before ScopeVersion authority.",
+  );
+  const legacyOperationalBaseline = truth.authority === "SCOPEVERSION_OPERATIONAL_BASELINE";
   requireValue(scopeVersion.isImmutable === true || scopeVersion.immutable === true || truth.immutable === true, "ScopeVersion must be immutable.");
-  requireValue(truth.constitutionalAuthority === "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE", "ScopeVersion authority must derive from Certified IOF Package.");
+  requireValue(scopeVersion.orderForExecution === true || truth.orderForExecution === true || legacyOperationalBaseline, "ScopeVersion must be the Order for Execution.");
+  requireValue(truth.authority === SCOPEVERSION_ORDER_FOR_EXECUTION_AUTHORITY || truth.authority === "SCOPEVERSION_OPERATIONAL_BASELINE", "ScopeVersion authority must mark the Order for Execution.");
+  requireValue(truth.downstreamExecutionRequiresScopeVersion === true || legacyOperationalBaseline, "Downstream execution must require ScopeVersion.");
+  requireValue(
+    truth.constitutionalAuthority === SCOPEVERSION_CERTIFIED_DRAFT_IOF_AUTHORITY ||
+      truth.constitutionalAuthority === SCOPEVERSION_LEGACY_CERTIFIED_IOF_AUTHORITY,
+    "ScopeVersion authority must derive from Certified Draft IOF Package.",
+  );
+  requireValue(truth.singleEngineeringTruth === true || Boolean(truth.certifiedDraftIofPackageId), "ScopeVersion must preserve the Certified Draft IOF Package as single engineering truth.");
+  requireValue(truth.noAdditionalEngineeringReviewAfterSignature === true, "Runtime promotion must not require additional Engineering review after signature.");
   requireValue(coordinatesFrom(truth.routeGeometry ?? truth.geometry ?? scopeVersion.geometry).length > 1, "Certified geometry is required.");
   requireValue(asRecord(truth.spine ?? truth.certifiedSpine).spineId, "Certified spine is required.");
   requireValue(asArray(truth.stations ?? truth.certifiedStations).length > 0, "Certified stations are required.");
@@ -811,7 +944,8 @@ export function validateScopeVersionAuthority(scopeVersion = {}) {
   const readiness = asArray(truth.downstreamReadiness);
   requireValue(readiness.some((item) => item.key === "engineering" && item.status === "PASS"), "Engineering readiness must be PASS.");
   requireValue(readiness.some((item) => item.key === "serviceOrder" && item.status === "PASS"), "Service Order readiness must be PASS.");
-  requireValue(readiness.filter((item) => !["engineering", "serviceOrder"].includes(item.key)).every((item) => item.status === "PENDING"), "Downstream readiness after Service Order must be PENDING.");
+  requireValue(readiness.some((item) => item.key === "customerSignature" && item.status === "PASS"), "Customer Signature readiness must be PASS.");
+  requireValue(readiness.filter((item) => !["engineering", "serviceOrder", "customerSignature"].includes(item.key)).every((item) => item.status === "PENDING"), "Downstream readiness after signed Service Order must be PENDING.");
   return {
     status: failures.length ? "FAIL" : "PASS",
     failures,

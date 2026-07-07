@@ -1,13 +1,17 @@
-# Certified IOF Package Model
+# Certified Draft IOF Package Model
 
-Status: Sprint 13.4 Runtime Model
+Status: Active constitutional model. Legacy compatibility name: Certified IOF Package.
 
-A Certified IOF Package is the frozen Engineering-approved execution spine. It is generated from a Draft IOF Package only after every Proposed IOF Unit has been certified.
+The Certified Draft IOF Package is the frozen Engineering-approved Draft IOF Package.
+
+It is not a separate engineering representation.
+
+It is the same Draft IOF Package after Engineering certifies that it is complete, constructable, constitutionally valid, and ready for customer commitment.
 
 ## Required References
 
 - source Draft IOF Package
-- Proposal
+- Proposal projection reference
 - Customer
 - Opportunity
 - Existing Inventory
@@ -17,22 +21,37 @@ A Certified IOF Package is the frozen Engineering-approved execution spine. It i
 - Runtime Object references
 - Runtime Relationship references
 - Runtime Evidence references
-- Certified IOF Units
+- Certified IOF Units, if unit-level certification exists in the package
 
 ## Immutability
 
-Certified IOF Packages are immutable. Normal IOF package update routes reject changes after certification. Rework must go back through Commercial Proposal revision, Customer approval, Draft IOF assembly, and Engineering certification.
+Certified Draft IOF Packages are immutable. Normal IOF package update routes reject changes after certification.
+
+Customer-requested changes must go through:
+
+```text
+Customer Review
+  -> Draft IOF Package Revision
+  -> Engineering Re-certification
+  -> New Proposal
+```
 
 ## Runtime Behavior
 
 Certification persists:
 
-- Certified IOF Package
+- Certified Draft IOF Package reference
 - frozen Certified IOF Units
 - Runtime History
 - Runtime Evidence
 - Runtime Object mirror
-- Execution Authorization Certificate
-- executable ScopeVersion
 
-No Marketplace, Contract, Procurement, Control, Field, or Operational Intelligence artifact is created during certification.
+Certification does not create ScopeVersion.
+
+Certification does not create Service Order.
+
+Certification does not create execution authorization.
+
+No Marketplace, Contract, Procurement, Control, Field, Operational Twin, or Operational Intelligence artifact is created during certification.
+
+Proposal and Service Order reference the Certified Draft IOF Package and shall not recreate engineering truth.

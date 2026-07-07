@@ -492,11 +492,11 @@ export default function NetworkAffinityWorkspace() {
     const routeCertification = routeCertificationBySiteId[record.site.candidateId];
     const snapCertification = snapCertificationBySiteId[record.site.candidateId];
     if (!canUseSnapForRoute(snapCertification)) {
-      setStatus("Certified street snap evidence is required before child ScopeVersion creation.");
+      setStatus("Certified street snap evidence is required before candidate design creation.");
       return;
     }
     if (!canCreateScopeVersionFromRoute(routeCertification)) {
-      setStatus(`Child ScopeVersion blocked by Certification Authority: ${routeCertification?.certificationAuthority?.state ?? "ENGINEER_REVIEW_REQUIRED"}.`);
+      setStatus(`Candidate design blocked by Certification Authority: ${routeCertification?.certificationAuthority?.state ?? "ENGINEER_REVIEW_REQUIRED"}.`);
       return;
     }
     const scope = createCandidateScopeVersionFromServiceability({
@@ -511,7 +511,7 @@ export default function NetworkAffinityWorkspace() {
     setActiveScopePreview(saved);
     setSelectedScopeVersion(saved);
     setSelectedScopeVersionId(saved.scopeVersionId);
-    setStatus(`Created child candidate ScopeVersion ${saved.scopeVersionId}. Parent ${saved.parentScopeVersionId} remains unchanged.`);
+    setStatus(`Created candidate design ${saved.scopeVersionId}. Parent ${saved.parentScopeVersionId} remains unchanged.`);
   }
 
   function previewChildScopeVersion(record = activeRecord) {
@@ -523,7 +523,7 @@ export default function NetworkAffinityWorkspace() {
     const snapCertification = snapCertificationBySiteId[record.site.candidateId];
     if (!canUseSnapForRoute(snapCertification)) {
       setActiveScopePreview(null);
-      setStatus("Certify the street snap before previewing a child ScopeVersion.");
+      setStatus("Certify the street snap before previewing a candidate design.");
       return;
     }
     if (!canCreateScopeVersionFromRoute(routeCertification)) {

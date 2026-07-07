@@ -81,8 +81,8 @@ export default function PreliminaryProposalWorkspace() {
     <section className="dal-workspace wide">
       <div className="dal-workspace-header">
         <div>
-          <h2>Preliminary Proposal</h2>
-          <p>Sales-facing proposed inventory and preliminary quote package before Route Engineering certification.</p>
+          <h2>Proposal Readiness</h2>
+          <p>Commercial projection of the currently certified Draft IOF Package for customer review and acceptance.</p>
         </div>
         <select value={selectedFixtureIndex} onChange={(event) => handleFixtureChange(Number(event.currentTarget.value))} aria-label="Preliminary proposal fixture">
           {fixtures.map((item, index) => (
@@ -110,23 +110,23 @@ export default function PreliminaryProposalWorkspace() {
         </div>
         <div className="dal-actions">
           <button type="button" disabled={!activeGraph} onClick={handleGenerateQuote}>
-            Generate Preliminary Quote
+            Generate Proposal Projection
           </button>
           <button type="button" disabled title="Placeholder only. Export is intentionally not implemented in Phase 6.9C.">
-            Export Proposal
+            Export Proposal Placeholder
           </button>
           <button type="button" disabled={!quotePackage || quotePackage.readiness === "BLOCKED"} onClick={handleCustomerAccepted}>
-            Customer Accepted ProposedGraph
+            Customer Acceptance
           </button>
           <button type="button" disabled={!quotePackage || quotePackage.readiness === "BLOCKED"} onClick={handleCustomerDeclined}>
-            Customer Declined ProposedGraph
+            Customer Declined
           </button>
           <button type="button" disabled={!canSendToRouteEngineering} onClick={() => setWorkspace("routeEngineering")}>
-            Send to Route Engineering
+            Send Customer Change To Engineering
           </button>
         </div>
         <div className="dal-status">
-          No engineering work is created here. Route Engineering navigation is available only after Customer Accepted and remains a handoff candidate.
+          Proposal revisions project the current Draft IOF Package. Customer changes return to Draft IOF Package revision and Engineering re-certification.
         </div>
       </section>
     </section>

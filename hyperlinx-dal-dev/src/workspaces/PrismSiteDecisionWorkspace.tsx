@@ -2664,7 +2664,7 @@ export default function PrismSiteDecisionWorkspace() {
               onSelectionChange={setMapSelection}
             />
           ) : (
-            <div className="dal-status">Analyze or select a certified site decision to render candidate ScopeVersion truth through the Map Kernel.</div>
+            <div className="dal-status">Analyze or select a certified site decision to render candidate design truth through the Map Kernel.</div>
           )}
           <div className="dal-status">
             Rendering path: {"ScopeVersion -> ScopeVersionRenderer -> MapKernel"}. Selection: {mapSelection ? `${mapSelection.kind} ${mapSelection.featureRef.id}` : "none"}.

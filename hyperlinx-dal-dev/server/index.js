@@ -10,9 +10,11 @@ import { handleCertifiedRoutes } from "./routes/certified-routes.js";
 import { handleCloseEvents } from "./routes/close-events.js";
 import { handleCommercialIofPackages } from "./routes/commercial-iof-packages.js";
 import { handleCommercialOpportunities } from "./routes/commercial-opportunities.js";
+import { handleCommercialRoutes } from "./routes/commercial-routes.js";
 import { handleControlWorkItems } from "./routes/control-work-items.js";
 import { handleCustomerDesignImports } from "./routes/customer-design-imports.js";
 import { handleEngineeringDrafts } from "./routes/engineering-drafts.js";
+import { handleEngineeringPackages } from "./routes/engineering-packages.js";
 import { handleEngineeringCertification } from "./routes/engineering-certification.js";
 import { handleFieldClosures } from "./routes/field-closures.js";
 import { handleGeocode } from "./routes/geocode.js";
@@ -27,6 +29,7 @@ import { handleRuntimeFoundation } from "./routes/runtime-foundation.js";
 import { handleRuntimeLifecycleBridge } from "./routes/runtime-lifecycle-bridge.js";
 import { handleRuntimeWorkspaceSession } from "./routes/runtime-workspace-session.js";
 import { handleScopeVersions } from "./routes/scopeversions.js";
+import { handleServiceOrders } from "./routes/service-orders.js";
 import { handleTwinState } from "./routes/twin-state.js";
 
 const routes = [
@@ -39,10 +42,13 @@ const routes = [
   handleScopeVersions,
   handleCustomerDesignImports,
   handleCommercialOpportunities,
+  handleCommercialRoutes,
   handleCommercialIofPackages,
   handleEngineeringDrafts,
+  handleEngineeringPackages,
   handleEngineeringCertification,
   handleProposalDrafts,
+  handleServiceOrders,
   handleProductFulfillment,
   handleRuntimeLifecycleBridge,
   handleRuntimeWorkspaceSession,
@@ -132,8 +138,10 @@ const server = http.createServer(async (req, res) => {
           customerDesignImports: true,
           commercialOpportunities: true,
           engineeringDrafts: true,
+          engineeringPackages: true,
           engineeringCertification: true,
           proposalDrafts: true,
+          serviceOrders: true,
           productLibrary: true,
           fulfillmentPlans: true,
           scopeVersions: true,

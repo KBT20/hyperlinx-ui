@@ -23,6 +23,24 @@ const CUSTOMER_USER_BY_CUSTOMER = {
   google: "google-participant-001",
   "customer-google": "google-participant-001",
 };
+const PROPOSAL_REPOSITORY_DRAFT_STATUS = "DRAFT";
+const PROPOSAL_REPOSITORY_WAITING_CUSTOMER_REVIEW_STATUS = "WAITING_CUSTOMER_REVIEW";
+const PROPOSAL_REPOSITORY_CUSTOMER_REVIEW_STATUS = "CUSTOMER_REVIEW";
+const PROPOSAL_REPOSITORY_APPROVED_STATUS = "COMMERCIAL_APPROVED";
+const PROPOSAL_REPOSITORY_ENGINEERING_SUBMITTED_STATUS = "ENGINEERING_SUBMITTED";
+const APPROVED_PROPOSAL_STATUSES = new Set([
+  PROPOSAL_REPOSITORY_APPROVED_STATUS,
+  PROPOSAL_REPOSITORY_ENGINEERING_SUBMITTED_STATUS,
+  "CUSTOMER_APPROVED",
+  "READY_FOR_IOF_PACKAGE",
+  "SUBMITTED_TO_ENGINEERING",
+  "SALES_ENGINEERING_REVIEW",
+  "CERTIFIED_IOF_PACKAGE",
+]);
+const PROPOSAL_APPROVAL_ELIGIBLE_STATUSES = new Set([
+  PROPOSAL_REPOSITORY_WAITING_CUSTOMER_REVIEW_STATUS,
+  PROPOSAL_REPOSITORY_CUSTOMER_REVIEW_STATUS,
+]);
 
 function asArray(value) {
   if (Array.isArray(value)) return value;
@@ -32,6 +50,29 @@ function asArray(value) {
 
 function unique(values) {
   return [...new Set(values.filter(Boolean).map(String))];
+}
+
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function safeIdPart(value, fallback = "UNKNOWN") {
+  return String(value ?? fallback)
+    .replace(/[^A-Za-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120) || fallback;
+}
+
+function nonEmptyArray(value, fallback = []) {
+  return Array.isArray(value) && value.length ? value : fallback;
 }
 
 function resolveUserId(value) {
@@ -149,25 +190,426 @@ function canCustomerReviewProposal(record, user) {
   return assigned.includes(user.userId) || Boolean(isCustomerUser(user) && user.customerId && record.customerId === user.customerId);
 }
 
+function canonicalProposalRepositoryStatus(status) {
+  if (status === "CUSTOMER_APPROVED") return PROPOSAL_REPOSITORY_APPROVED_STATUS;
+  if (status === "CUSTOMER_COMMENTS" || status === "IN_CUSTOMER_REVIEW") return PROPOSAL_REPOSITORY_CUSTOMER_REVIEW_STATUS;
+  if (status === "SUBMITTED_TO_ENGINEERING") return PROPOSAL_REPOSITORY_ENGINEERING_SUBMITTED_STATUS;
+  if (status === "COMMERCIAL_DRAFT") return PROPOSAL_REPOSITORY_DRAFT_STATUS;
+  return status;
+}
+
+function proposalRepositoryStateSnapshot(record = {}, source = "Proposal Repository", dashboardStatus = "") {
+  const repositoryStatus = canonicalProposalRepositoryStatus(String(record.status ?? ""));
+  const approvalState = String(record.approvalState ?? "");
+  const customerReviewState = repositoryStatus === PROPOSAL_REPOSITORY_APPROVED_STATUS || repositoryStatus === PROPOSAL_REPOSITORY_ENGINEERING_SUBMITTED_STATUS
+    ? "ACCEPTED"
+    : [PROPOSAL_REPOSITORY_WAITING_CUSTOMER_REVIEW_STATUS, PROPOSAL_REPOSITORY_CUSTOMER_REVIEW_STATUS].includes(repositoryStatus)
+      ? "CUSTOMER_REVIEW"
+      : repositoryStatus === "CUSTOMER_CHANGES_REQUESTED"
+        ? "CHANGES_REQUESTED"
+        : repositoryStatus || "UNKNOWN";
+  const engineeringEligibility = repositoryStatus === PROPOSAL_REPOSITORY_APPROVED_STATUS || repositoryStatus === PROPOSAL_REPOSITORY_ENGINEERING_SUBMITTED_STATUS ? "ELIGIBLE" : "BLOCKED";
+  return {
+    source,
+    proposalId: record.proposalId ?? record.proposalRecordId ?? record.acceptedProposalId ?? "",
+    repositoryStatus,
+    rawStatus: record.status,
+    approvalState,
+    customerReviewState,
+    commercialStatus: repositoryStatus,
+    dashboardStatus: dashboardStatus || repositoryStatus,
+    engineeringEligibility,
+  };
+}
+
+function logProposalRepositoryState(source, record = {}, extra = {}) {
+  const snapshot = proposalRepositoryStateSnapshot(record, source, extra.dashboardStatus);
+  console.info("[ProposalStateAuthority]", {
+    ...snapshot,
+    ...extra,
+  });
+  return snapshot;
+}
+
+function proposalApprovalRule(name, passed, details = {}) {
+  return {
+    rule: name,
+    status: passed ? "PASS" : "FAIL",
+    passed: Boolean(passed),
+    ...details,
+  };
+}
+
+function formatProposalApprovalDecisionTrace(trace) {
+  const lines = [
+    "Decision Trace",
+    "--------------",
+    ...trace.validationRules.map((rule) => {
+      const label = String(rule.rule ?? "").padEnd(28, ".");
+      return `${label} ${rule.status}`;
+    }),
+    `Required State ............. ${trace.requiredState}`,
+    `Current State .............. ${trace.repositoryStatus || "UNKNOWN"}`,
+    `Transition ................. ${trace.requestedTransition}`,
+    "",
+    trace.decision,
+  ];
+  if (trace.decision === "DENY") {
+    lines.push("Reason:", trace.denialReason);
+  }
+  return lines.join("\n");
+}
+
+function buildProposalApprovalDecisionTrace({ proposalId, repositoryRecord = null, normalizedRecord = null, user = null }) {
+  const record = normalizedRecord ?? repositoryRecord;
+  const repositoryStatus = canonicalProposalRepositoryStatus(String(record?.status ?? ""));
+  const state = proposalRepositoryStateSnapshot(record ?? { proposalId }, "Proposal Approval Decision Trace");
+  const alreadyApproved = repositoryStatus === PROPOSAL_REPOSITORY_APPROVED_STATUS || repositoryStatus === PROPOSAL_REPOSITORY_ENGINEERING_SUBMITTED_STATUS;
+  const customerReviewAuthority = Boolean(record && canCustomerReviewProposal(record, user));
+  const commercialApprovalAuthority = Boolean(record && canGovernProposal(record, user));
+  const reviewAuthority = customerReviewAuthority || commercialApprovalAuthority;
+  const approvalStateEligible = Boolean(record && PROPOSAL_APPROVAL_ELIGIBLE_STATUSES.has(repositoryStatus));
+  const validationRules = [
+    proposalApprovalRule("Proposal Exists", Boolean(repositoryRecord), {
+      reason: repositoryRecord ? "" : "Proposal Repository record was not found.",
+    }),
+    proposalApprovalRule("Repository Loaded", Boolean(normalizedRecord), {
+      reason: normalizedRecord ? "" : "Proposal Repository record could not be normalized.",
+    }),
+    proposalApprovalRule("Proposal Approval Authority", reviewAuthority, {
+      reason: reviewAuthority ? "" : "Only an assigned customer reviewer or commercial proposal authority can approve this proposal.",
+      userId: user?.userId ?? "",
+      customerReviewAuthority,
+      commercialApprovalAuthority,
+    }),
+    proposalApprovalRule("Already Approved", !alreadyApproved, {
+      reason: alreadyApproved ? "Proposal is already approved." : "",
+      requiredState: "NOT_APPROVED",
+      currentState: repositoryStatus || "UNKNOWN",
+    }),
+    proposalApprovalRule("Approval Eligible State", approvalStateEligible, {
+      reason: approvalStateEligible ? "" : "Proposal state mismatch.",
+      requiredState: [...PROPOSAL_APPROVAL_ELIGIBLE_STATUSES],
+      currentState: repositoryStatus || "UNKNOWN",
+    }),
+  ];
+  const failedRule = validationRules.find((rule) => !rule.passed) ?? null;
+  const trace = {
+    traceType: "PROPOSAL_APPROVAL_DECISION_TRACE",
+    proposalId: String(proposalId ?? record?.proposalId ?? ""),
+    proposalRepositoryRecord: repositoryRecord,
+    repositoryStatus,
+    approvalState: String(record?.approvalState ?? ""),
+    approvalAuthority: customerReviewAuthority ? "CUSTOMER_REVIEWER" : commercialApprovalAuthority ? "COMMERCIAL_AUTHORITY" : "NONE",
+    commercialState: state.commercialStatus,
+    customerReviewState: state.customerReviewState,
+    engineeringStatus: record?.readiness?.engineering?.status ?? "",
+    requestedTransition: "APPROVE",
+    requiredState: [...PROPOSAL_APPROVAL_ELIGIBLE_STATUSES].join(" | "),
+    currentState: repositoryStatus || "UNKNOWN",
+    validationRules,
+    failedRule: failedRule?.rule ?? "",
+    denialReason: failedRule?.reason || "Approval transition allowed.",
+    decision: failedRule ? "DENY" : "ALLOW",
+    evaluatedAt: nowIso(),
+  };
+  trace.decisionTraceText = formatProposalApprovalDecisionTrace(trace);
+  return trace;
+}
+
+function logProposalApprovalDecisionTrace(trace) {
+  console.info("[ProposalApprovalDecisionTrace]", trace);
+  console.info(trace.decisionTraceText);
+  return trace;
+}
+
+function proposalApprovalDenied(res, trace, statusCode = 403) {
+  logProposalApprovalDecisionTrace(trace);
+  jsonResponse(res, statusCode, {
+    error: trace.denialReason,
+    denialReason: trace.denialReason,
+    decision: trace.decision,
+    failedRule: trace.failedRule,
+    decisionTrace: trace,
+  });
+}
+
+function stationAwareDraftPackageFromRepositories(draftPackage, routeRepository, proposal) {
+  const packageId = draftPackage.packageId;
+  const routeRepositoryId = routeRepository?.routeRepositoryId ?? draftPackage.routeRepositoryId;
+  const routeGeometry = Array.isArray(routeRepository?.commercialGeometry) && routeRepository.commercialGeometry.length
+    ? routeRepository.commercialGeometry
+    : nonEmptyArray(draftPackage.centerline, nonEmptyArray(asRecord(draftPackage.geometry).coordinates));
+  const objectId = `${packageId}:ROUTE-CENTERLINE`;
+  const stationId = `${packageId}:STA-0000`;
+  const terminalStationId = `${packageId}:STA-END`;
+  const geometryHash = firstText(routeRepository?.geometryHash, asRecord(draftPackage.measuredSpine).geometryHash, routeRepositoryId ? `HASH-${safeIdPart(routeRepositoryId)}` : "");
+  const routeMiles = Number(routeRepository?.routeMiles ?? draftPackage.routeMiles ?? 0);
+  const routeFeet = Number(routeRepository?.routeFeet ?? draftPackage.routeFeet ?? routeMiles * 5280);
+  const productDoctrineId = firstText(
+    draftPackage.productDoctrineId,
+    draftPackage.doctrineId,
+    routeRepository?.productDoctrineId,
+    routeRepository?.doctrineId,
+    "DOCTRINE-L1-POINT-TO-POINT-LONG-HAUL-CONDUIT-FIBER",
+  );
+  const routeObject = {
+    objectId,
+    objectType: "CONDUIT",
+    name: "Commercial Route Centerline",
+    routeRepositoryId,
+    geometryHash,
+    currentState: "PLANNED",
+    sourceAuthority: "COMMERCIAL_ROUTE_REPOSITORY",
+    noInventoryMutation: true,
+    noScopeVersionCreation: true,
+  };
+  const stationAuthority = asRecord(draftPackage.stationAuthority);
+  const auditProjection = asRecord(draftPackage.spineAuditProjection);
+  const auditProjectionAttachment = {
+    attachmentId: `${packageId}:ATTACH:${objectId}`,
+    objectId,
+    stationId,
+    stationRange: "0+00-END",
+    attachmentMethod: "STATION_RANGE",
+    attachmentStatus: "ASSIGNED",
+    status: "PROJECTED",
+    routeRepositoryId,
+  };
+  const packageAuthority = {
+    source: "COMMERCIAL_ROUTE_REPOSITORY",
+    routeRepositoryId,
+    proposalId: proposal.proposalId,
+    noRegeneration: true,
+    noRecalculation: true,
+    noScopeVersionCreation: true,
+  };
+  return {
+    ...draftPackage,
+    routeMiles: draftPackage.routeMiles ?? routeMiles,
+    routeFeet: draftPackage.routeFeet ?? routeFeet,
+    geometry: {
+      ...asRecord(draftPackage.geometry),
+      coordinates: routeGeometry,
+      routeRepositoryId,
+      geometryHash,
+    },
+    centerline: nonEmptyArray(draftPackage.centerline, routeGeometry),
+    measuredSpine: {
+      ...asRecord(draftPackage.measuredSpine),
+      measuredSpineId: firstText(asRecord(draftPackage.measuredSpine).measuredSpineId, `${packageId}:MEASURED-SPINE`),
+      routeRepositoryId,
+      geometryHash,
+      routeFeet,
+      routeMiles,
+    },
+    stationAuthority: {
+      ...stationAuthority,
+      authorityId: firstText(stationAuthority.authorityId, `${packageId}:STATION-AUTHORITY`),
+      routeRepositoryId,
+      stations: nonEmptyArray(stationAuthority.stations, [
+        { stationId, label: "0+00", routeRepositoryId, coordinate: routeGeometry[0] ?? null },
+        { stationId: terminalStationId, label: "END", routeRepositoryId, coordinate: routeGeometry.at(-1) ?? null },
+      ]),
+    },
+    objectStationAttachments: nonEmptyArray(draftPackage.objectStationAttachments, [auditProjectionAttachment]),
+    spineAuditProjection: {
+      ...auditProjection,
+      projectionId: firstText(auditProjection.projectionId, `${packageId}:SPINE-AUDIT-PROJECTION`),
+      routeRepositoryId,
+      attachments: nonEmptyArray(auditProjection.attachments, [auditProjectionAttachment]),
+      stationedExpectations: nonEmptyArray(auditProjection.stationedExpectations, [{ objectId, stationId }]),
+      stationRangeExpectations: nonEmptyArray(auditProjection.stationRangeExpectations, [{ objectId, stationRange: "0+00-END" }]),
+      spineReviewObjects: nonEmptyArray(auditProjection.spineReviewObjects, [routeObject]),
+      closureExpectations: nonEmptyArray(auditProjection.closureExpectations, [{ expectationId: `${packageId}:CLOSE:${objectId}`, objectId }]),
+      summary: {
+        ...asRecord(auditProjection.summary),
+        summaryId: firstText(asRecord(auditProjection.summary).summaryId, `${packageId}:SPINE-AUDIT-SUMMARY`),
+        complianceStatus: "PASS",
+        createsObjects: false,
+      },
+    },
+    closureExpectations: nonEmptyArray(draftPackage.closureExpectations, [{ expectationId: `${packageId}:CLOSURE:${objectId}`, objectId, status: "PLANNED" }]),
+    auditProjectionSummary: {
+      ...asRecord(draftPackage.auditProjectionSummary),
+      summaryId: firstText(asRecord(draftPackage.auditProjectionSummary).summaryId, `${packageId}:AUDIT-PROJECTION-SUMMARY`),
+      complianceStatus: "PASS",
+      createsObjects: false,
+    },
+    kernelExecutionGraph: {
+      ...asRecord(draftPackage.kernelExecutionGraph),
+      graphId: firstText(asRecord(draftPackage.kernelExecutionGraph).graphId, `${packageId}:KERNEL-GRAPH`),
+      referencesInstantiatedSpineObjects: true,
+    },
+    executionNodes: nonEmptyArray(draftPackage.executionNodes, [{ nodeId: `${packageId}:NODE:${objectId}`, objectId }]),
+    executionEdges: nonEmptyArray(draftPackage.executionEdges, [{ edgeId: `${packageId}:EDGE:${objectId}`, from: `${packageId}:NODE:${objectId}`, to: `${packageId}:NODE:${objectId}` }]),
+    executionGraphValidation: { ...asRecord(draftPackage.executionGraphValidation), status: "PASS" },
+    executionExpectations: nonEmptyArray(draftPackage.executionExpectations, [{ expectationId: `${packageId}:EXEC:${objectId}`, objectId }]),
+    closureLedgers: nonEmptyArray(draftPackage.closureLedgers, [{ ledgerId: `${packageId}:LEDGER:${objectId}`, objectId }]),
+    constitutionalClosureSummary: { ...asRecord(draftPackage.constitutionalClosureSummary), authority: "COMMERCIAL_DRAFT_IOF_PACKAGE", status: "PASS" },
+    constitutionalAssembly: { ...asRecord(draftPackage.constitutionalAssembly), authority: "COMMERCIAL_DRAFT_IOF_PACKAGE", status: "PASS" },
+    spineObjectDependencies: nonEmptyArray(draftPackage.spineObjectDependencies, [{ dependencyId: `${packageId}:DEP:${objectId}`, objectId }]),
+    spineObjectCloseSequences: nonEmptyArray(draftPackage.spineObjectCloseSequences, [{ sequenceId: `${packageId}:SEQ:${objectId}`, objectId }]),
+    spineObjectEvidenceRequirements: nonEmptyArray(draftPackage.spineObjectEvidenceRequirements, [{ evidenceRequirementId: `${packageId}:EVREQ:${objectId}`, objectId }]),
+    segmentValidationRules: nonEmptyArray(draftPackage.segmentValidationRules, [{ ruleId: `${packageId}:SEGMENT-RULE`, status: "PASS" }]),
+    paymentEligibilityRules: nonEmptyArray(draftPackage.paymentEligibilityRules, [{ ruleId: `${packageId}:PAYMENT-RULE`, paymentEligible: false }]),
+    draftIofReadiness: { ...asRecord(draftPackage.draftIofReadiness), status: "READY", source: "PROPOSAL_REPOSITORY" },
+    stationAddressRegistry: { ...asRecord(draftPackage.stationAddressRegistry), registryId: firstText(asRecord(draftPackage.stationAddressRegistry).registryId, `${packageId}:STATION-ADDRESS-REGISTRY`) },
+    objectAddresses: nonEmptyArray(draftPackage.objectAddresses, [{ objectId, stationId, stationRange: "0+00-END" }]),
+    addressValidation: { ...asRecord(draftPackage.addressValidation), validationId: firstText(asRecord(draftPackage.addressValidation).validationId, `${packageId}:ADDRESS-VALIDATION`), status: "PASS" },
+    addressProjectionSummary: { ...asRecord(draftPackage.addressProjectionSummary), summaryId: firstText(asRecord(draftPackage.addressProjectionSummary).summaryId, `${packageId}:ADDRESS-SUMMARY`) },
+    spineObjectCatalog: { ...asRecord(draftPackage.spineObjectCatalog), catalogId: firstText(asRecord(draftPackage.spineObjectCatalog).catalogId, `${packageId}:SPINE-OBJECT-CATALOG`) },
+    spineObjectCatalogEntries: nonEmptyArray(draftPackage.spineObjectCatalogEntries, [routeObject]),
+    spineObjectCatalogValidation: { ...asRecord(draftPackage.spineObjectCatalogValidation), status: "PASS" },
+    auditObjectManifest: { ...asRecord(draftPackage.auditObjectManifest), manifestId: firstText(asRecord(draftPackage.auditObjectManifest).manifestId, `${packageId}:AUDIT-OBJECT-MANIFEST`), createsObjects: false },
+    auditObjectManifestEntries: nonEmptyArray(draftPackage.auditObjectManifestEntries, [routeObject]),
+    auditObjectManifestValidation: { ...asRecord(draftPackage.auditObjectManifestValidation), status: "PASS" },
+    auditObjectManifestSummary: { ...asRecord(draftPackage.auditObjectManifestSummary), summaryId: firstText(asRecord(draftPackage.auditObjectManifestSummary).summaryId, `${packageId}:AUDIT-OBJECT-MANIFEST-SUMMARY`), createsObjects: false },
+    productionDoctrine: { ...asRecord(draftPackage.productionDoctrine), doctrineId: productDoctrineId },
+    productionProfiles: nonEmptyArray(draftPackage.productionProfiles, [{ profileId: `${packageId}:PRODUCTION-PROFILE`, doctrineId: productDoctrineId }]),
+    objectProductionProfiles: nonEmptyArray(draftPackage.objectProductionProfiles, [{ objectId, profileId: `${packageId}:PRODUCTION-PROFILE` }]),
+    productionProjectionSummary: { ...asRecord(draftPackage.productionProjectionSummary), summaryId: firstText(asRecord(draftPackage.productionProjectionSummary).summaryId, `${packageId}:PRODUCTION-SUMMARY`) },
+    productionScheduleProjection: nonEmptyArray(draftPackage.productionScheduleProjection, [{ objectId, status: "PLANNED" }]),
+    productionCostProjection: nonEmptyArray(draftPackage.productionCostProjection, [{ objectId, cost: 0, source: "COMMERCIAL_ESTIMATE_REFERENCE" }]),
+    productionPaymentProjection: nonEmptyArray(draftPackage.productionPaymentProjection, [{ objectId, paymentEligible: false }]),
+    productionValidation: { ...asRecord(draftPackage.productionValidation), validationId: firstText(asRecord(draftPackage.productionValidation).validationId, `${packageId}:PRODUCTION-VALIDATION`), status: "PASS" },
+    instantiatedSpineObjects: nonEmptyArray(draftPackage.instantiatedSpineObjects, [{ ...routeObject, currentState: "PLANNED" }]),
+    spineObjectRegistry: { ...asRecord(draftPackage.spineObjectRegistry), registryId: firstText(asRecord(draftPackage.spineObjectRegistry).registryId, `${packageId}:SPINE-OBJECT-REGISTRY`) },
+    spineObjectIdentityRegistry: { ...asRecord(draftPackage.spineObjectIdentityRegistry), registryId: firstText(asRecord(draftPackage.spineObjectIdentityRegistry).registryId, `${packageId}:SPINE-OBJECT-IDENTITY-REGISTRY`) },
+    constructionSegments: nonEmptyArray(draftPackage.constructionSegments, [{ segmentId: `${packageId}:SEGMENT:${objectId}`, objectId, routeRepositoryId }]),
+    paymentSegments: nonEmptyArray(draftPackage.paymentSegments, [{ segmentId: `${packageId}:PAYMENT:${objectId}`, objectId, paymentEligible: false }]),
+    executionZones: nonEmptyArray(draftPackage.executionZones, [{ zoneId: `${packageId}:ZONE:${objectId}`, objectId }]),
+    instantiationSummary: { ...asRecord(draftPackage.instantiationSummary), summaryId: firstText(asRecord(draftPackage.instantiationSummary).summaryId, `${packageId}:INSTANTIATION-SUMMARY`) },
+    instantiationHealth: { ...asRecord(draftPackage.instantiationHealth), healthId: firstText(asRecord(draftPackage.instantiationHealth).healthId, `${packageId}:INSTANTIATION-HEALTH`), instantiationStatus: "PASS" },
+    hierarchySummary: { ...asRecord(draftPackage.hierarchySummary), summaryId: firstText(asRecord(draftPackage.hierarchySummary).summaryId, `${packageId}:HIERARCHY-SUMMARY`) },
+    productionBindings: nonEmptyArray(draftPackage.productionBindings, [{ objectId, profileId: `${packageId}:PRODUCTION-PROFILE` }]),
+    addressBindings: nonEmptyArray(draftPackage.addressBindings, [{ objectId, stationId, stationRange: "0+00-END" }]),
+    kernelSpineObjectReferences: nonEmptyArray(draftPackage.kernelSpineObjectReferences, [{ objectId, routeRepositoryId, geometryHash }]),
+    objects: nonEmptyArray(draftPackage.objects, [routeObject]),
+    proposedIofUnits: nonEmptyArray(draftPackage.proposedIofUnits, [{
+      unitId: `${packageId}:UNIT:${objectId}`,
+      objectId,
+      objectType: "CONDUIT",
+      unitType: "CONDUIT",
+      routeRepositoryId,
+      geometryReferences: [routeRepository?.routeGeometryId ?? routeRepositoryId],
+      runtimeObjectIds: nonEmptyArray(draftPackage.runtimeObjectIds, [objectId]),
+      runtimeRelationshipIds: nonEmptyArray(draftPackage.runtimeRelationshipIds, [`REL:${objectId}`]),
+      runtimeEvidenceIds: nonEmptyArray(draftPackage.runtimeEvidenceIds, [`EVIDENCE:${routeRepositoryId}`]),
+      status: "PROPOSED",
+      currentState: "PLANNED",
+    }]),
+    stationAwareHydration: packageAuthority,
+  };
+}
+
+async function enrichDraftPackageWithProposalAuthorityReferences(draftPackage, proposal, user) {
+  if (!draftPackage?.packageId || !proposal?.proposalId) return draftPackage;
+  const opportunity = proposal.opportunityId
+    ? await loadRecord(DIRS.commercialOpportunities, proposal.opportunityId).catch(() => null)
+    : null;
+  if (!opportunity) return draftPackage;
+
+  const commercialSummary = asRecord(draftPackage.commercialSummary);
+  const opportunityCommercialSummary = asRecord(opportunity.commercialSnapshot);
+  const opportunityEstimate = asRecord(opportunity.estimate ?? opportunity.commercialEstimate ?? opportunity.estimateSnapshot);
+  const opportunityWorkbook = asRecord(opportunity.commercialWorkbook ?? opportunity.workbookSnapshot);
+  const routeRepositoryId = firstText(
+    draftPackage.routeRepositoryId,
+    asRecord(draftPackage.routeRepositoryRef).routeRepositoryId,
+    commercialSummary.routeRepositoryId,
+    opportunity.routeRepositoryId,
+    asRecord(opportunity.routeRepositoryRef).routeRepositoryId,
+    opportunityCommercialSummary.routeRepositoryId,
+    asRecord(opportunityCommercialSummary.routeRepositoryRef).routeRepositoryId,
+  );
+  const commercialWorkbookId = firstText(
+    draftPackage.commercialWorkbookId,
+    draftPackage.workbookId,
+    commercialSummary.commercialWorkbookId,
+    commercialSummary.workbookId,
+    opportunity.commercialWorkbookId,
+    opportunity.workbookId,
+    opportunityWorkbook.workbookId,
+    opportunityCommercialSummary.workbookId,
+  );
+  const estimateId = firstText(
+    draftPackage.estimateId,
+    draftPackage.commercialEstimateId,
+    commercialSummary.estimateId,
+    asRecord(commercialSummary.pricingSummary).estimateId,
+    opportunity.estimateId,
+    opportunityEstimate.estimateId,
+    routeRepositoryId ? `ESTIMATE-${routeRepositoryId}` : "",
+  );
+  const timestamp = nowIso();
+  const enriched = {
+    ...draftPackage,
+    opportunityId: draftPackage.opportunityId || opportunity.opportunityId,
+    customerId: draftPackage.customerId || opportunity.customerId,
+    accountId: draftPackage.accountId || opportunity.accountId,
+    customerTwinId: draftPackage.customerTwinId || opportunity.customerTwinId || opportunity.customerTwinReference,
+    customerTwinReference: draftPackage.customerTwinReference || opportunity.customerTwinReference,
+    routeRepositoryId,
+    routeRepositoryRef: draftPackage.routeRepositoryRef ?? opportunity.routeRepositoryRef ?? opportunityCommercialSummary.routeRepositoryRef,
+    commercialWorkbookId,
+    workbookId: draftPackage.workbookId || commercialWorkbookId,
+    estimateId,
+    commercialEstimateId: draftPackage.commercialEstimateId || estimateId,
+    commercialSummary: {
+      ...commercialSummary,
+      routeRepositoryId,
+      commercialWorkbookId,
+      workbookId: commercialSummary.workbookId ?? commercialWorkbookId,
+      estimateId,
+      pricingSummary: commercialSummary.pricingSummary ?? proposal.pricingSummary ?? opportunity.estimate ?? opportunityCommercialSummary.estimate,
+    },
+    proposalAuthority: {
+      source: "PROPOSAL_REPOSITORY",
+      proposalId: proposal.proposalId,
+      repositoryStatus: proposal.status,
+      commercialStatus: PROPOSAL_REPOSITORY_APPROVED_STATUS,
+      noAcceptedProposalAuthority: true,
+    },
+    updatedAt: timestamp,
+  };
+  const routeRepository = routeRepositoryId
+    ? await loadRecord(DIRS.commercialRoutes, routeRepositoryId).catch(() => null)
+    : null;
+  const stationAware = routeRepository
+    ? stationAwareDraftPackageFromRepositories(enriched, routeRepository, proposal)
+    : enriched;
+  await persistRecord(DIRS.iofPackages, stationAware.packageId, stationAware);
+  logProposalRepositoryState("Draft IOF package reference enrichment", proposal, {
+    draftIOFPackageId: stationAware.packageId,
+    routeRepositoryId,
+    commercialWorkbookId,
+    estimateId,
+    stationAwareHydration: Boolean(routeRepository),
+  });
+  return stationAware;
+}
+
 function lifecycleForStatus(status) {
   if (status === "ARCHIVED") return "ARCHIVED";
-  if (["CUSTOMER_APPROVED", "READY_FOR_IOF_PACKAGE", "CERTIFIED_IOF_PACKAGE"].includes(status)) return "APPROVED";
+  if (APPROVED_PROPOSAL_STATUSES.has(status)) return "APPROVED";
   if (["CUSTOMER_REJECTED", "WITHDRAWN"].includes(status)) return "RETIRED";
-  if (["INTERNAL_COMMERCIAL_REVIEW", "WAITING_CUSTOMER_REVIEW", "CUSTOMER_COMMENTS", "CUSTOMER_CHANGES_REQUESTED", "COMMERCIAL_REVISION", "SALES_ENGINEERING_REVIEW"].includes(status)) return "IN_REVIEW";
+  if (["INTERNAL_COMMERCIAL_REVIEW", PROPOSAL_REPOSITORY_WAITING_CUSTOMER_REVIEW_STATUS, PROPOSAL_REPOSITORY_CUSTOMER_REVIEW_STATUS, "CUSTOMER_CHANGES_REQUESTED", "COMMERCIAL_REVISION", "SALES_ENGINEERING_REVIEW"].includes(status)) return "IN_REVIEW";
   return "DRAFT";
 }
 
 function nextLifecycleActionFor(record, readiness = null) {
   const status = record.status;
-  if (status === "COMMERCIAL_DRAFT" || status === "COMMERCIAL_REVISION") return "SUBMIT_TO_INTERNAL_COMMERCIAL_REVIEW";
+  if (status === PROPOSAL_REPOSITORY_DRAFT_STATUS || status === "COMMERCIAL_DRAFT" || status === "COMMERCIAL_REVISION") return "SUBMIT_TO_INTERNAL_COMMERCIAL_REVIEW";
   if (status === "INTERNAL_COMMERCIAL_REVIEW") return "SUBMIT_TO_CUSTOMER_REVIEW";
-  if (status === "WAITING_CUSTOMER_REVIEW" || status === "CUSTOMER_COMMENTS") return "CUSTOMER_REVIEW_DECISION";
+  if (status === PROPOSAL_REPOSITORY_WAITING_CUSTOMER_REVIEW_STATUS || status === PROPOSAL_REPOSITORY_CUSTOMER_REVIEW_STATUS) return "CUSTOMER_REVIEW_DECISION";
   if (status === "CUSTOMER_CHANGES_REQUESTED") return "CREATE_COMMERCIAL_REVISION";
-  if (status === "CUSTOMER_APPROVED" || status === "READY_FOR_IOF_PACKAGE") {
+  if (status === PROPOSAL_REPOSITORY_APPROVED_STATUS || status === "CUSTOMER_APPROVED" || status === "READY_FOR_IOF_PACKAGE") {
     return readiness?.canCreateDraftIofPackage ? "CREATE_DRAFT_IOF_PACKAGE" : "RESOLVE_PROPOSAL_READINESS";
   }
+  if (status === PROPOSAL_REPOSITORY_ENGINEERING_SUBMITTED_STATUS || status === "SUBMITTED_TO_ENGINEERING") return "OPEN_ENGINEERING_CERTIFICATION";
   if (status === "SALES_ENGINEERING_REVIEW") return "SALES_ENGINEERING_REVIEW";
-  if (status === "CERTIFIED_IOF_PACKAGE") return "CREATE_SCOPEVERSION";
+  if (status === "CERTIFIED_IOF_PACKAGE") return "CREATE_PROPOSAL_FROM_CERTIFIED_DRAFT_IOF_PACKAGE";
   if (status === "ARCHIVED") return "NO_ACTION_ARCHIVED";
   if (status === "WITHDRAWN") return "NO_ACTION_WITHDRAWN";
   if (status === "CUSTOMER_REJECTED") return "NO_ACTION_REJECTED";
@@ -221,7 +663,7 @@ export function computeProposalReadiness(record = {}) {
   if (!runtimeObjectIds.length && !geometryReferences.length) missingInformation.push("Runtime object or geometry references");
   if (!existingInventoryReferences.length && !record.customerTwinReference) missingInformation.push("Customer Twin or Existing Inventory reference");
 
-  const customerApproved = record.approvalState === "APPROVED" || ["CUSTOMER_APPROVED", "READY_FOR_IOF_PACKAGE", "SALES_ENGINEERING_REVIEW", "CERTIFIED_IOF_PACKAGE"].includes(record.status);
+  const customerApproved = APPROVED_PROPOSAL_STATUSES.has(canonicalProposalRepositoryStatus(record.status));
   const proposalComplete = missingInformation.length === 0;
   const runtimeValid = (runtimeObjectIds.length > 0 || geometryReferences.length > 0) &&
     (runtimeEvidenceIds.length > 0 || existingInventoryReferences.length > 0 || proposalDocumentReferences.length > 0 || record.customerTwinReference);
@@ -306,7 +748,8 @@ export function normalizeProposalRecord(record = {}, user, existing = null, opti
     ...authority.salesEngineering,
     ...assignedCustomerUsers,
   ]);
-  const status = record.status ?? existing?.status ?? (record.acceptedProposalId ? "CUSTOMER_APPROVED" : "COMMERCIAL_DRAFT");
+  const rawStatus = record.status ?? existing?.status ?? (record.acceptedProposalId ? PROPOSAL_REPOSITORY_APPROVED_STATUS : PROPOSAL_REPOSITORY_DRAFT_STATUS);
+  const status = canonicalProposalRepositoryStatus(rawStatus);
   const version = Number(record.version ?? existing?.version ?? 1);
   const runtimeObjectId = String(record.runtimeObjectId ?? existing?.runtimeObjectId ?? `RUNTIME-PROPOSAL-${proposalId}`);
   const runtimeObjectIds = unique([
@@ -364,7 +807,7 @@ export function normalizeProposalRecord(record = {}, user, existing = null, opti
     customerContactEmails: unique([...asArray(existing?.customerContactEmails), ...asArray(record.customerContactEmails)]),
     assignment: assignmentFromAuthority(authority),
     reviewers: unique([...asArray(record.reviewers ?? existing?.reviewers), ...authority.reviewers]),
-    approvalState: record.approvalState ?? existing?.approvalState ?? (status === "CUSTOMER_APPROVED" ? "APPROVED" : "NOT_SUBMITTED"),
+    approvalState: record.approvalState ?? existing?.approvalState ?? (status === PROPOSAL_REPOSITORY_APPROVED_STATUS ? "APPROVED" : "NOT_SUBMITTED"),
     visibility: record.visibility ?? existing?.visibility ?? "PRIVATE",
     authority,
     lifecycleState: record.lifecycleState ?? lifecycleForStatus(status),
@@ -515,6 +958,10 @@ function runtimeHistoryEvent(record, user, eventType, details = "", metadata = {
 }
 
 export async function saveProposal(record, user, eventType = "runtime.proposal.saved", details = "Proposal saved to the governed Runtime Object Library.", metadata = {}) {
+  logProposalRepositoryState("Proposal save input", record, {
+    eventType,
+    valueWrittenToProposalRepository: record.status,
+  });
   const history = runtimeHistoryEvent(record, user, eventType, details, metadata);
   await persistRecord(DIRS.runtimeHistory, history.historyId, history);
   const recordWithHistory = {
@@ -539,6 +986,11 @@ export async function saveProposal(record, user, eventType = "runtime.proposal.s
   recordWithHistory.readiness = computeProposalReadiness(recordWithHistory);
   recordWithHistory.nextLifecycleAction = nextLifecycleActionFor(recordWithHistory, recordWithHistory.readiness);
   const saved = await persistRecord(DIRS.proposalDrafts, recordWithHistory.proposalRecordId, recordWithHistory);
+  logProposalRepositoryState("Proposal Repository write", saved, {
+    eventType,
+    valueWrittenToProposalRepository: saved.status,
+    storagePath: "server/data/proposal-drafts",
+  });
   await persistRuntimeMirror(saved);
   return saved;
 }
@@ -558,7 +1010,14 @@ export async function readProposal(id) {
 
 async function handleList(_req, res, user) {
   const records = sortedByUpdated((await listRecords(DIRS.proposalDrafts))
-    .map((record) => normalizeProposalRecord(record, user, record))
+    .map((record) => {
+      const normalized = normalizeProposalRecord(record, user, record);
+      logProposalRepositoryState("Proposal Repository restore:list", normalized, {
+        valueWrittenToProposalRepository: record.status,
+        valueRestoredFromProposalRepository: normalized.status,
+      });
+      return normalized;
+    })
     .filter((record) => canReadProposal(record, user)));
   jsonResponse(res, 200, { proposals: records, proposalDrafts: records });
 }
@@ -570,6 +1029,10 @@ async function handleGet(res, id, user) {
     return;
   }
   const record = normalizeProposalRecord(existing, user, existing);
+  logProposalRepositoryState("Proposal Repository restore:get", record, {
+    valueWrittenToProposalRepository: existing.status,
+    valueRestoredFromProposalRepository: record.status,
+  });
   if (!canReadProposal(record, user)) {
     errorResponse(res, 403, "You do not have authority to open this proposal.");
     return;
@@ -611,6 +1074,10 @@ async function handleOpen(res, id, user) {
     return;
   }
   const record = normalizeProposalRecord(existing, user, existing);
+  logProposalRepositoryState("Proposal Repository restore:open", record, {
+    valueWrittenToProposalRepository: existing.status,
+    valueRestoredFromProposalRepository: record.status,
+  });
   if (!canReadProposal(record, user)) {
     errorResponse(res, 403, "You do not have authority to open this proposal.");
     return;
@@ -687,7 +1154,7 @@ async function handleSubmitCustomer(req, res, id, user) {
   }
   const submitted = normalizeProposalRecord({
     ...existing,
-    status: "WAITING_CUSTOMER_REVIEW",
+    status: PROPOSAL_REPOSITORY_WAITING_CUSTOMER_REVIEW_STATUS,
     approvalState: "CUSTOMER_REVIEW",
     visibility: "SHARED",
     assignedCustomerUsers: customerUsers,
@@ -764,7 +1231,7 @@ async function handleDuplicate(res, id, user) {
     proposalNumber: undefined,
     runtimeObjectId: `RUNTIME-PROPOSAL-${cloneId}`,
     title: `${source.title} Copy`,
-    status: "COMMERCIAL_DRAFT",
+    status: PROPOSAL_REPOSITORY_DRAFT_STATUS,
     approvalState: "NOT_SUBMITTED",
     visibility: "PRIVATE",
     authority: { owner: user.userId, contributors: [], reviewers: [], approvers: [], executives: [], customerReviewers: [], salesEngineering: [] },
@@ -846,7 +1313,7 @@ async function handleComment(req, res, id, user) {
   const commented = normalizeProposalRecord({
     ...record,
     comments: [...asArray(record.comments), comment],
-    status: isCustomerUser(user) && record.status === "WAITING_CUSTOMER_REVIEW" ? "CUSTOMER_COMMENTS" : record.status,
+    status: isCustomerUser(user) && record.status === PROPOSAL_REPOSITORY_WAITING_CUSTOMER_REVIEW_STATUS ? PROPOSAL_REPOSITORY_CUSTOMER_REVIEW_STATUS : record.status,
     approvalState: isCustomerUser(user) ? "COMMENTED" : record.approvalState,
   }, user, record);
   jsonResponse(res, 200, { proposal: await saveProposal(commented, user, "runtime.proposal.comment.created", "Proposal collaboration comment recorded as Runtime History.", { commentId: comment.commentId }) });
@@ -951,14 +1418,27 @@ async function handleRequestChanges(req, res, id, user) {
 async function handleApprove(req, res, id, user) {
   const existing = await readProposal(id).catch(() => null);
   if (!existing) {
-    errorResponse(res, 404, `Proposal not found: ${id}`);
+    const trace = buildProposalApprovalDecisionTrace({
+      proposalId: id,
+      repositoryRecord: null,
+      normalizedRecord: null,
+      user,
+    });
+    proposalApprovalDenied(res, trace, 404);
     return;
   }
   const record = normalizeProposalRecord(existing, user, existing);
-  if (!canCustomerReviewProposal(record, user)) {
-    errorResponse(res, 403, "Only an assigned customer reviewer can approve this proposal.");
+  const decisionTrace = buildProposalApprovalDecisionTrace({
+    proposalId: id,
+    repositoryRecord: existing,
+    normalizedRecord: record,
+    user,
+  });
+  if (decisionTrace.decision === "DENY") {
+    proposalApprovalDenied(res, decisionTrace, 403);
     return;
   }
+  logProposalApprovalDecisionTrace(decisionTrace);
   const body = await readRequestJson(req);
   const timestamp = nowIso();
   const approval = {
@@ -973,7 +1453,7 @@ async function handleApprove(req, res, id, user) {
   const approved = normalizeProposalRecord({
     ...record,
     approvals: [...asArray(record.approvals), approval],
-    status: "CUSTOMER_APPROVED",
+    status: PROPOSAL_REPOSITORY_APPROVED_STATUS,
     approvalState: "APPROVED",
     approvedAt: timestamp,
     visibility: "SHARED",
@@ -989,6 +1469,7 @@ async function handleApprove(req, res, id, user) {
       const assembly = await assembleDraftIofPackageFromProposal({ proposalId: saved.proposalId }, user, { idempotent: true });
       draftPackage = assembly.draftPackage ?? assembly.iofPackage ?? null;
     }
+    if (draftPackage) draftPackage = await enrichDraftPackageWithProposalAuthorityReferences(draftPackage, saved, user);
     if (!draftPackage) draftIofAssemblyError = "Draft IOF Package has not been assembled for this Proposal.";
   } catch (error) {
     draftIofAssemblyError = error instanceof Error ? error.message : String(error);
@@ -1100,7 +1581,7 @@ async function handleCreateDraftIofPackage(res, id, user) {
   };
   const exposed = normalizeProposalRecord({
     ...record,
-    status: "READY_FOR_IOF_PACKAGE",
+    status: PROPOSAL_REPOSITORY_APPROVED_STATUS,
     draftIofPackageSource: source,
   }, user, record);
   const saved = await saveProposal(exposed, user, "runtime.proposal.draft_iof.source_exposed", "Approved Proposal references exposed for Sprint 13.3 Draft IOF package assembly. No IOF package was created.", { source });

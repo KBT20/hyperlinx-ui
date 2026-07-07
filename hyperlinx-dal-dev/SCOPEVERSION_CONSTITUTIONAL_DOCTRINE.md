@@ -2,9 +2,15 @@
 
 ## Definition
 
-A ScopeVersion is the constitutional truth object for Hyperlinx and IOF. It is the canonical execution truth that defines a network state, candidate extension, field closure result, inventory basis, or as-built result at a bounded point in time.
+A ScopeVersion is the Order for Execution.
 
-ScopeVersion truth is deterministic, replayable, and human-governed. Machine outputs, reasoning summaries, and runtime recommendations are non-authoritative until converted into a candidate ScopeVersion and validated by certification or a validated closure event.
+It is the constitutional truth object for Hyperlinx and IOF, the first authoritative execution artifact, and the canonical execution truth for a signed fulfillment at a bounded point in time.
+
+ScopeVersion truth is deterministic, replayable, and human-governed. Machine outputs, reasoning summaries, design candidates, inventory references, and runtime recommendations are non-authoritative until promoted by a signed Service Order into ScopeVersion authority.
+
+Everything before ScopeVersion is planning and commercial authorization.
+
+Everything after ScopeVersion is execution.
 
 ## Authoritative Infrastructure Truth
 
@@ -12,17 +18,34 @@ A ScopeVersion is the authoritative representation of infrastructure truth.
 
 A ScopeVersion may originate from:
 
-- Existing Inventory
-- Design Synthesis
-- Graph Extension
-- Field Closure
-- As-Built Certification
+- signed Service Order authority over a Certified Draft IOF Package
+- governed amendment to an existing ScopeVersion
+- validated closure authority over an existing ScopeVersion
+- as-built certification derived from validated close evidence
 
-All infrastructure within IOF is represented as ScopeVersions.
+Planning and advisory artifacts are not ScopeVersions.
 
-- Inventory creates ScopeVersions.
-- Design creates ScopeVersions.
-- Closure creates ScopeVersions.
+Proposal is a commercial projection of the Certified Draft IOF Package.
+
+Service Order is a commercial authorization document that references the Certified Draft IOF Package, Proposal, Customer Acceptance, and commercial terms.
+
+Proposal, Service Order, and ScopeVersion must not create separate engineering representations.
+
+Proposal is not executed.
+
+Service Order is not executed.
+
+Draft IOF Package is not executed.
+
+ScopeVersion is executed.
+
+Marketplace, Control, Field, Closure, Operational Twin, and Operational Intelligence execute only against ScopeVersion.
+
+- Inventory creates inventory evidence and Customer Twin source truth.
+- Design creates design intent and Draft IOF inputs.
+- Engineering Certification certifies the Draft IOF Package as ready for customer commitment.
+- Signed Service Order creates the runtime trigger for ScopeVersion creation.
+- Closure can create governed child ScopeVersion truth only after an execution ScopeVersion exists.
 - Maps render ScopeVersions.
 - IOF Packages execute ScopeVersions.
 - Twin visualizes ScopeVersion lineage.
@@ -84,6 +107,8 @@ This preserves deterministic execution, immutable closure artifacts, and replaya
 IOF Packages describe work required to realize, amend, validate, or close a ScopeVersion.
 
 IOF Packages are execution-layer artifacts. They do not replace ScopeVersion truth and cannot independently mutate constitutional truth. If package execution produces validated new truth, that truth is captured by a child ScopeVersion.
+
+Before execution, the Certified Draft IOF Package is the engineering truth from which Runtime creates ScopeVersion only after the Service Order is executed.
 
 ## Map Kernel Relationship
 
@@ -300,7 +325,7 @@ The same station, node, edge, route, attachment, lateral, candidate, or certifie
 
 ## Affinity Relationship
 
-Affinity compares ScopeVersions and candidate ScopeVersions. Affinity may rank, explain, or recommend, but its output is bounded synthesis and remains advisory until certification.
+Affinity compares ScopeVersions and candidate design records. Affinity may rank, explain, or recommend, but its output is bounded synthesis and remains advisory until signed Service Order authority allows Runtime to create the ScopeVersion Order for Execution.
 
 ## Twin Lineage Relationship
 
@@ -310,4 +335,4 @@ Twin visualizes ScopeVersion lineage, execution state, and replay history. Twin 
 
 Mistral, vLLM, and other AI systems may propose, summarize, classify, or compare. Their outputs are non-authoritative until validated.
 
-AI cannot mutate ScopeVersion truth. AI may propose candidate ScopeVersions. Only validated closure events and certification can make a ScopeVersion authoritative.
+AI cannot mutate ScopeVersion truth. AI may propose candidate design packages. Only signed Service Order authority or validated closure authority can create ScopeVersion truth.

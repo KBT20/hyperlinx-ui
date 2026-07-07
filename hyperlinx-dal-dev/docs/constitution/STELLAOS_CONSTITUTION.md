@@ -60,19 +60,132 @@ Truth is transferred through constitutional authority.
 
 Truth is never duplicated.
 
+Proposal is a commercial projection.
+
+Service Order is a commercial authorization.
+
+ScopeVersion is the Order for Execution.
+
+All three reference the same Certified Draft IOF Package.
+
 Workspaces project constitutional truth.
 
 Workspaces do not own constitutional truth.
+
+## Draft IOF Package Is Engineering Truth
+
+The Draft IOF Package is the complete engineering package.
+
+It contains the technical truth required to create a future ScopeVersion.
+
+It is the single engineering truth throughout the commercial lifecycle.
+
+Engineering Certification certifies the Draft IOF Package.
+
+Proposal and Service Order shall not recreate engineering.
+
+Proposal and Service Order reference the Certified Draft IOF Package.
+
+The Service Order should pull technical content from the Certified Draft IOF Package and add only commercial authorization content.
+
+Commercial Release 2 may add legal placeholders such as terms and conditions, payment terms, insurance, warranty, signature blocks, and legal language.
+
+## ScopeVersion Order For Execution Boundary
+
+ScopeVersion is not a planning artifact.
+
+ScopeVersion is the Order for Execution.
+
+Everything before ScopeVersion is planning and commercial authorization.
+
+Everything after ScopeVersion is execution.
+
+Proposal is not executed.
+
+Service Order is not executed.
+
+Draft IOF Package is not executed.
+
+ScopeVersion is executed.
+
+Engineering Certification certifies the Draft IOF Package.
+
+Engineering does not create ScopeVersion.
+
+Engineering Certification means:
+
+"The Draft IOF Package is complete, constructable, constitutionally valid, and ready for customer commitment."
+
+Engineering is not certifying the Service Order.
+
+Engineering performs no additional certification after customer signature.
+
+Service Order does not itself equal ScopeVersion.
+
+A signed Service Order is the trigger that allows the Runtime to create ScopeVersion.
+
+Runtime rule:
+
+No Signed Service Order.
+No ScopeVersion.
+
+No ScopeVersion.
+No Execution.
+
+## Customer Change Loop
+
+If the customer requests changes, the lifecycle returns to the Draft IOF Package:
+
+```text
+Customer Review
+  -> Draft IOF Package Revision
+  -> Engineering Re-certification
+  -> New Proposal
+```
+
+Proposal revisions are projections of the currently certified Draft IOF Package.
+
+## Runtime Promotion
+
+Authority progression:
+
+Engineering certifies the Draft IOF Package.
+
+Commercial secures Customer Acceptance and Service Order execution.
+
+Runtime creates the ScopeVersion.
+
+ScopeVersion becomes the Order for Execution.
+
+Runtime receives:
+
+- Certified Draft IOF Package
+- ScopeVersion ID
+- Executed Service Order
+
+Runtime creates Production ScopeVersion.
+
+ScopeVersion becomes the Order for Execution.
+
+Execution authority begins.
+
+Marketplace, Control, Field, Closure, Operational Twin, and Operational Intelligence execute only against ScopeVersion.
+
+No additional Engineering review occurs.
 
 ## Constitutional Hierarchy
 
 ```text
 Human Intent
   -> Fulfillment Request
-  -> Commercial
-  -> Engineering
+  -> Commercial Planning
+  -> Draft IOF Package
+  -> Engineering Certification
+  -> Proposal
+  -> Customer Review
   -> Customer Acceptance
   -> Service Order
+  -> Customer Signature
   -> ScopeVersion
   -> Marketplace
   -> Control

@@ -3,7 +3,7 @@ import { useTeralinxAuth } from "../identity/TeralinxAuth";
 import { canAccessWorkspace, workspaceAccessReason } from "../identity/teralinxIdentity";
 
 type NavItem = { id: DALWorkspace; label: string };
-type NavGroup = { label: string; items: NavItem[] };
+type NavGroup = { label: string; items: NavItem[]; collapsed?: boolean };
 
 const navGroups: NavGroup[] = [
   {
@@ -18,23 +18,8 @@ const navGroups: NavGroup[] = [
     items: [
       { id: "googleRfp", label: "Commercial Planning" },
       { id: "design", label: "Commercial Design" },
-      { id: "proposedNetwork", label: "Network Preview" },
       { id: "preliminaryProposal", label: "Proposal Readiness" },
-    ],
-  },
-  {
-    label: "Discovery",
-    items: [
-      { id: "portfolio", label: "Portfolio" },
-      { id: "prism", label: "Prism" },
-      { id: "candidateSites", label: "Candidate Sites" },
-      { id: "networkAffinity", label: "Network Affinity" },
-    ],
-  },
-  {
-    label: "Decision",
-    items: [
-      { id: "siteDecision", label: "Site Decision" },
+      { id: "serviceOrder", label: "Service Order" },
     ],
   },
   {
@@ -73,6 +58,18 @@ const navGroups: NavGroup[] = [
       { id: "graphExtensions", label: "Graph Extensions" },
     ],
   },
+  {
+    label: "Preview / Future / Advanced",
+    collapsed: true,
+    items: [
+      { id: "portfolio", label: "Portfolio" },
+      { id: "prism", label: "Prism" },
+      { id: "candidateSites", label: "Candidate Sites" },
+      { id: "networkAffinity", label: "Network Affinity" },
+      { id: "siteDecision", label: "Site Decision" },
+      { id: "proposedNetwork", label: "Network Preview" },
+    ],
+  },
 ];
 
 export default function DALNavigation() {
@@ -88,10 +85,8 @@ export default function DALNavigation() {
 
   return (
     <nav className="dal-nav" aria-label="DAL workspaces">
-      {visibleGroups.map((group) => (
-        <section className="dal-nav-group" key={group.label}>
-          <div className="dal-nav-group-title">{group.label}</div>
-          {group.items.map((item) => (
+      {visibleGroups.map((group) => {
+        const items = group.items.map((item) => (
             <button
               key={item.id}
               className={workspace === item.id ? "dal-nav-item active" : "dal-nav-item"}
@@ -101,9 +96,19 @@ export default function DALNavigation() {
             >
               {item.label}
             </button>
-          ))}
-        </section>
-      ))}
+        ));
+        return group.collapsed ? (
+          <details className="dal-nav-group dal-nav-group-collapsed" key={group.label}>
+            <summary className="dal-nav-group-title">{group.label}</summary>
+            {items}
+          </details>
+        ) : (
+          <section className="dal-nav-group" key={group.label}>
+            <div className="dal-nav-group-title">{group.label}</div>
+            {items}
+          </section>
+        );
+      })}
     </nav>
   );
 }

@@ -1,34 +1,48 @@
-# Execution Authorization Model
+# Runtime Promotion Authorization Model
 
-Status: Sprint 13.4 Runtime Model
+Status: Active constitutional model
 
-Execution Authorization is the constitutional boundary where Engineering-certified truth becomes executable ScopeVersion truth.
+Runtime promotion is the constitutional boundary where a Certified Draft IOF Package and executed Service Order become executable ScopeVersion truth.
+
+ScopeVersion is the Order for Execution.
+
+Everything before ScopeVersion is planning and commercial authorization.
+
+Everything after ScopeVersion is execution.
 
 ## Rule
 
-ScopeVersion may be generated only from a Certified IOF Package.
+ScopeVersion may be generated only after:
+
+- Certified Draft IOF Package exists
+- Customer has executed the Service Order
 
 ScopeVersion may not originate from:
 
 - Proposal
 - Customer approval
 - Draft IOF Package
+- unsigned Service Order
 - Marketplace
 - Contract
 - Control
 - Field
 
-## Execution Authorization Certificate
+## Certification Evidence
 
-Sprint 13.4 creates an `EXECUTION_AUTHORIZATION_CERTIFICATE` for each certified package.
+Certification evidence records the Engineering certification of the Draft IOF Package.
 
-The certificate records:
+It may use legacy certificate-shaped storage, but it is not execution authority and does not authorize ScopeVersion creation by itself.
+
+Runtime promotion records:
 
 - Proposal ID
 - Draft IOF Package ID
-- Certified IOF Package ID
+- Certified Draft IOF Package ID
+- Executed Service Order ID
+- Customer signature evidence
 - ScopeVersion ID
-- Engineering approver
+- Runtime promotion actor
 - certification timestamp
 - Engineering checklist results
 - authority transfer
@@ -38,8 +52,14 @@ The certificate records:
 - certification confidence
 - certified assembly fingerprint
 
-The certificate is persisted in the Runtime and registered as Runtime Evidence.
+The evidence record is persisted in the Runtime and registered as Runtime Evidence.
 
 ## Downstream Gate
 
-Certification stops after ScopeVersion creation. Marketplace is the first future consumer of the executable ScopeVersion, but Marketplace is not implemented or activated in this sprint.
+Engineering Certification stops at Certified Draft IOF Package readiness.
+
+Runtime creates ScopeVersion only after executed Service Order authority exists.
+
+The created ScopeVersion becomes the Order for Execution.
+
+Marketplace is a downstream consumer of the executable ScopeVersion and is not activated by certification.

@@ -12,9 +12,12 @@ type CommercialReviewPanelProps = {
   notice?: string;
   draftIofApprovalDisabled?: boolean;
   draftIofApprovalReason?: string;
+  engineeringPackageId?: string;
+  engineeringStatus?: string;
   onSaveDraft: () => void;
   onValidate: () => void;
   onSubmitToEngineering: () => void;
+  onOpenEngineeringCertification?: () => void;
 };
 
 function text(value: unknown, fallback = "n/a") {
@@ -50,9 +53,12 @@ export function CommercialReviewPanel({
   notice,
   draftIofApprovalDisabled = false,
   draftIofApprovalReason,
+  engineeringPackageId,
+  engineeringStatus,
   onSaveDraft,
   onValidate,
   onSubmitToEngineering,
+  onOpenEngineeringCertification,
 }: CommercialReviewPanelProps) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const status = String(draftPackage?.status ?? "");
@@ -103,6 +109,8 @@ export function CommercialReviewPanel({
         <div><span>Engineering Readiness</span><b>{readinessStatus(draftPackage)}</b></div>
         <div><span>Completeness</span><b>{percent(completeness)}</b></div>
         <div><span>Estimated Confidence</span><b>{percent(confidence)}</b></div>
+        <div><span>Engineering Package</span><b>{engineeringPackageId || "Not submitted"}</b></div>
+        <div><span>Engineering Status</span><b>{engineeringStatus?.replaceAll("_", " ") ?? "Not submitted"}</b></div>
       </div>
 
       {draftPackage?.auditObjectManifest ? (
@@ -205,7 +213,12 @@ export function CommercialReviewPanel({
         <button type="button" className="secondary" onClick={() => setPreviewOpen((open) => !open)} disabled={!draftPackage}>
           Preview Package
         </button>
-        <button type="button" onClick={onSubmitToEngineering} disabled={!canEdit || locked || pending || !draftPackage || draftIofApprovalDisabled}>Submit to Engineering</button>
+        {!engineeringPackageId && !locked ? (
+          <button type="button" onClick={onSubmitToEngineering} disabled={!canEdit || pending || !draftPackage || draftIofApprovalDisabled}>Submit to Engineering</button>
+        ) : null}
+        {engineeringPackageId && onOpenEngineeringCertification ? (
+          <button type="button" onClick={onOpenEngineeringCertification} disabled={pending}>Open Engineering Certification</button>
+        ) : null}
       </div>
 
       {notice ? <div className="dal-status">{notice}</div> : null}

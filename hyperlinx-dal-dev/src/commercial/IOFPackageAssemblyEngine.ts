@@ -1543,7 +1543,7 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     ],
     engineeringNotes: [
       "All IOF units are proposed only.",
-      "Engineering certification is required before Certified IOF Package or ScopeVersion creation.",
+      "Engineering certification is required before customer commitment and references the Draft IOF Package as the single engineering truth.",
     ],
     engineeringRequirements,
     runtimeObjectIds,

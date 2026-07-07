@@ -126,10 +126,14 @@ The canonical Constitution organizes doctrine by authority:
 ```text
 Human Intent
   -> Fulfillment Request
-  -> Commercial
-  -> Engineering
+  -> Commercial Planning
+  -> Draft IOF Package
+  -> Engineering Certification
+  -> Proposal
+  -> Customer Review
   -> Customer Acceptance
   -> Service Order
+  -> Customer Signature
   -> ScopeVersion
   -> Marketplace
   -> Control
@@ -145,9 +149,17 @@ Human Intent
 
 - Evidence is proof basis, not authority.
 - Runtime Objects provide stable identity, ownership, visibility, authority, evidence links, relationship links, and history.
-- ScopeVersions are certified infrastructure truth at a bounded point in time.
+- ScopeVersion is the Order for Execution; it is not a planning artifact.
+- Everything before ScopeVersion is planning and commercial authorization.
+- Everything after ScopeVersion is execution.
+- The Draft IOF Package is the single engineering truth throughout the commercial lifecycle.
+- Proposal is a commercial projection of the Certified Draft IOF Package.
+- Service Order is a commercial authorization document that references the Certified Draft IOF Package, Proposal, Customer Acceptance, and commercial terms.
+- Proposal, Service Order, and Draft IOF Package are not executed. ScopeVersion is executed.
 - Infrastructure Lifecycle governs responsibility transfer from participant intent to operational truth.
-- Service Order owns commercial authorization before execution truth.
+- Service Order owns commercial authorization before the Order for Execution, and customer signature is required before ScopeVersion creation.
+- Engineering Certification certifies the Draft IOF Package; Engineering does not create ScopeVersion.
+- ScopeVersion is created by Runtime after executed Service Order authority promotes the same Certified Draft IOF Package, with no additional Engineering review.
 - Workspaces are responsibility lenses, not owners of independent data copies.
 - Existing Inventory creates Customer Twin source truth.
 - Customer Design Requests create design intent and proposed network objects, not Runtime Inventory.
@@ -159,8 +171,8 @@ Human Intent
 - `docs/constitution/STELLAOS_CONSTITUTION.md` is the canonical authority-organized Constitution for future doctrine and development planning.
 - `CONSTITUTION_VERSION.md` versions the Constitution independently from software releases.
 - `SPRINT_12_7_INGESTION_LANE_SEPARATION.md` supersedes older wording that can be read as Customer Design Requests creating Runtime Inventory.
-- `INFRASTRUCTURE_LIFECYCLE_DOCTRINE.md` introduces a stricter execution ScopeVersion gate: Engineering Certification and IOF Package generation precede ScopeVersion creation. Existing candidate, inventory, graph-extension, and field-closure ScopeVersion language should be reconciled against this lifecycle in the next doctrine consolidation pass.
-- `docs/cip/CONSTITUTIONAL_LAYER_INTEGRITY_DOCTRINE.md` adds the no-layer-skip rule: Customer Acceptance precedes Service Order, Service Order precedes execution ScopeVersion truth, ScopeVersion precedes Control and Field, and validated Close precedes payment eligibility.
+- `INFRASTRUCTURE_LIFECYCLE_DOCTRINE.md` introduces a stricter execution ScopeVersion gate: Engineering Certification and Draft IOF Package generation precede signed Service Order, and signed Service Order precedes ScopeVersion creation. Existing candidate, inventory, graph-extension, and field-closure ScopeVersion language should be reconciled against this lifecycle in the next doctrine consolidation pass.
+- `docs/cip/CONSTITUTIONAL_LAYER_INTEGRITY_DOCTRINE.md` adds the no-layer-skip rule: Customer Acceptance precedes Service Order, signed Service Order precedes execution ScopeVersion truth, ScopeVersion precedes Control and Field, and validated Close precedes payment eligibility.
 - Local or IndexedDB persistence paths are fallback/development mechanics unless a doctrine explicitly grants runtime authority.
 - Graph-first inventory documents should be read under Runtime Inventory and ScopeVersion authority.
 

@@ -21,6 +21,7 @@ export const DIRS = {
   fulfillmentPlans: path.join(DATA_ROOT, "fulfillment-plans"),
   iofPackages: path.join(DATA_ROOT, "iof-packages"),
   engineeringIntakes: path.join(DATA_ROOT, "engineering-intakes"),
+  engineeringPackages: path.join(DATA_ROOT, "engineering-packages"),
   certifiedIofPackages: path.join(DATA_ROOT, "certified-iof-packages"),
   executionAuthorizationCertificates: path.join(DATA_ROOT, "execution-authorization-certificates"),
   closeEvents: path.join(DATA_ROOT, "close-events"),
@@ -31,8 +32,10 @@ export const DIRS = {
   contacts: path.join(DATA_ROOT, "contacts"),
   customerDesignImports: path.join(DATA_ROOT, "customer-design-imports"),
   commercialOpportunities: path.join(DATA_ROOT, "commercial-opportunities"),
+  commercialRoutes: path.join(DATA_ROOT, "commercial-routes"),
   engineeringDrafts: path.join(DATA_ROOT, "engineering-drafts"),
   proposalDrafts: path.join(DATA_ROOT, "proposal-drafts"),
+  serviceOrders: path.join(DATA_ROOT, "service-orders"),
   activity: path.join(DATA_ROOT, "activity"),
   runtimeWorkspaces: path.join(DATA_ROOT, "runtime-workspaces"),
   runtimeEvidence: path.join(DATA_ROOT, "runtime-evidence"),
@@ -79,11 +82,19 @@ export function handleOptions(req, res) {
 }
 
 export async function readRequestJson(req) {
+  const { body } = await readRequestJsonWithRaw(req);
+  return body;
+}
+
+export async function readRequestJsonWithRaw(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
   const raw = Buffer.concat(chunks).toString("utf8");
-  if (!raw.trim()) return {};
-  return JSON.parse(raw);
+  return {
+    raw,
+    byteLength: Buffer.byteLength(raw, "utf8"),
+    body: raw.trim() ? JSON.parse(raw) : {},
+  };
 }
 
 export function nowIso() {

@@ -241,6 +241,10 @@ function readyStatus(value) {
   return ["PASS", "READY", "CREATED", "APPROVED", "AUTHORIZED", "EXECUTED", "ACCEPTED", "COMPLETE", "COMPLETED"].includes(upper(value));
 }
 
+function signedStatus(value) {
+  return ["SIGNED", "CUSTOMER_SIGNED", "FULLY_SIGNED", "EXECUTED", "FULLY_EXECUTED", "COUNTERSIGNED", "COMPLETE", "COMPLETED"].includes(upper(value));
+}
+
 function acceptedStatus(value) {
   return ["ACCEPTED", "CUSTOMER_ACCEPTED", "APPROVED", "PASS", "READY"].includes(upper(value));
 }
@@ -264,8 +268,12 @@ function isExecutionScopeVersion(scopeVersion) {
   return (
     type === "SCOPEVERSION_AUTHORITY" ||
     source === "CERTIFIEDIOFPACKAGE" ||
+    source === "CERTIFIEDDRAFTIOFPACKAGE" ||
+    Boolean(scopeVersion?.certifiedDraftIofPackageId) ||
     Boolean(scopeVersion?.certifiedIofPackageId) ||
+    authority === "SCOPEVERSION_FROM_CERTIFIED_DRAFT_IOF_PACKAGE" ||
     authority === "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE" ||
+    authority === "SCOPEVERSION_ORDER_FOR_EXECUTION" ||
     authority === "SCOPEVERSION_OPERATIONAL_BASELINE" ||
     authority === "CERTIFIED_SCOPEVERSION"
   );
@@ -321,6 +329,35 @@ function hasServiceOrderAuthority(scopeVersion) {
   );
 }
 
+function hasSignedServiceOrderAuthority(scopeVersion) {
+  const truth = asRecord(scopeVersion?.canonicalTruth);
+  const serviceOrder = serviceOrderRecord(scopeVersion);
+  return Boolean(
+    scopeVersion?.signedServiceOrderId ||
+      scopeVersion?.serviceOrderSignatureId ||
+      scopeVersion?.customerSignatureId ||
+      truth.signedServiceOrderId ||
+      truth.serviceOrderSignatureId ||
+      truth.customerSignatureId ||
+      truth.serviceOrderSignedAt ||
+      truth.customerSignedAt ||
+      truth.signedAt ||
+      serviceOrder.signedServiceOrderId ||
+      serviceOrder.serviceOrderSignatureId ||
+      serviceOrder.signatureId ||
+      serviceOrder.customerSignatureId ||
+      serviceOrder.serviceOrderSignedAt ||
+      serviceOrder.customerSignedAt ||
+      serviceOrder.signedAt ||
+      serviceOrder.executedAt ||
+      signedStatus(serviceOrder.signatureStatus ?? serviceOrder.customerSignatureStatus ?? serviceOrder.status ?? truth.serviceOrderSignatureStatus) ||
+      signedStatus(readinessStatus(scopeVersion, "customerSignature")) ||
+      signedStatus(readinessStatus(scopeVersion, "signedServiceOrder")) ||
+      signedStatus(executionGateStatus(scopeVersion, "customerSignature")) ||
+      signedStatus(executionGateStatus(scopeVersion, "signedServiceOrder"))
+  );
+}
+
 function hasPaymentEligibilityClaim(scopeVersion) {
   const truth = asRecord(scopeVersion?.canonicalTruth);
   const candidates = [
@@ -364,6 +401,9 @@ function assertConstitutionalLayerIntegrity(scopeVersion) {
     }
     if (!hasServiceOrderAuthority(scopeVersion)) {
       throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: ScopeVersion cannot be created before Service Order. Missing Service Order artifact. Next legal action: create or attach Service Order authority, then request ScopeVersion creation.");
+    }
+    if (!hasSignedServiceOrderAuthority(scopeVersion)) {
+      throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: ScopeVersion cannot be created before signed Service Order. Missing customer signature evidence. Next legal action: capture customer signature on the Service Order, then request ScopeVersion creation.");
     }
   }
   if (hasPaymentEligibilityClaim(scopeVersion) && !hasValidatedCloseEvidence(scopeVersion)) {
@@ -724,7 +764,7 @@ export async function handleScopeVersions(req, res, pathname) {
     }
     const proposedSource = String(proposed.source ?? proposed.canonicalTruth?.source ?? proposed.canonicalTruth?.sourceWorkspace ?? proposed.canonicalTruth?.authority ?? "").toUpperCase();
     if (proposedSource.includes("COMMERCIAL")) {
-      errorResponse(res, 409, "Commercial cannot create ScopeVersion. Promote a Certified IOF Package through Engineering Certification.");
+      errorResponse(res, 409, "Commercial cannot create ScopeVersion. Runtime may promote a Certified Draft IOF Package only after executed Service Order authority.");
       return true;
     }
     const scopeVersion = await persistScopeVersion(proposed);

@@ -1027,7 +1027,7 @@ export default function TranslateWorkspace() {
           />
           <div className="dal-status">{status}</div>
           <div className="dal-callout">
-            KMZ, KML, and CSV imports preserve folder/source provenance as proposed-build intent, candidate ScopeVersion, and Customer Design Library evidence.
+            KMZ, KML, and CSV imports preserve folder/source provenance as proposed-build intent, candidate design evidence, and Customer Design Library evidence.
           </div>
         </div>
 

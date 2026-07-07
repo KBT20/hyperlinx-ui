@@ -19,20 +19,26 @@ function metadataFromGraph(graph = {}) {
 }
 
 export async function handleInventoryGraphs(req, res, pathname) {
-  const match = routeMatch(pathname, "/api/inventory-graphs");
+  const match = routeMatch(pathname, "/api/inventory-graphs") ?? routeMatch(pathname, "/api/baseline-graphs");
   if (!match) return false;
   if (handleOptions(req, res)) return true;
 
   if (match.base && req.method === "GET") {
     const graphs = await listRecords(DIRS.inventoryGraphs);
-    jsonResponse(res, 200, { inventoryGraphs: sortedByUpdated(graphs.map(metadataFromGraph)), graphs: sortedByUpdated(graphs.map(metadataFromGraph)) });
+    const metadata = sortedByUpdated(graphs.map(metadataFromGraph));
+    jsonResponse(res, 200, {
+      inventoryGraphs: metadata,
+      baselineGraphs: metadata,
+      graphs: metadata,
+      baselineGraphCompatibility: true,
+    });
     return true;
   }
 
   if (!match.base && req.method === "GET") {
     try {
       const graph = await loadRecord(DIRS.inventoryGraphs, match.id);
-      jsonResponse(res, 200, { inventoryGraph: graph, graph });
+      jsonResponse(res, 200, { inventoryGraph: graph, baselineGraph: graph, graph, baselineGraphCompatibility: true });
     } catch {
       errorResponse(res, 404, `Inventory graph not found: ${match.id}`);
     }

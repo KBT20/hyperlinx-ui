@@ -80,13 +80,18 @@ function executionScope(overrides = {}) {
     status: "CERTIFIED",
     certificationState: "CERTIFIED",
     certifiedIofPackageId: "CERT-LAYER-INTEGRITY-001",
+    orderForExecution: true,
     createdAt: timestamp,
     updatedAt: timestamp,
     createdBy: "validation",
     decisionTimestamp: timestamp,
     canonicalTruth: {
       lifecycleState: "CERTIFIED",
-      constitutionalAuthority: "SCOPEVERSION_FROM_CERTIFIED_IOF_PACKAGE",
+      constitutionalAuthority: "SCOPEVERSION_FROM_CERTIFIED_DRAFT_IOF_PACKAGE",
+      authority: "SCOPEVERSION_ORDER_FOR_EXECUTION",
+      canonicalDefinition: "ScopeVersion is the Order for Execution.",
+      orderForExecution: true,
+      downstreamExecutionRequiresScopeVersion: true,
       objects: [{ objectId: "OBJ-IN-SCOPE", objectState: "PLANNED", objectType: "DUCT", stationId: "STA-001" }],
       stations: [{ stationId: "STA-001", stationState: "PLANNED", routeId: "ROUTE-001", coordinate: [-97.7, 30.2], measureFeet: 0 }],
       ...overrides.canonicalTruth,
@@ -125,6 +130,20 @@ result = integrityModule.validateConstitutionalLayerIntegrity({
     },
   }),
 });
+assert.equal(result.allowed, false);
+assert.ok(codes(result).includes("SCOPEVERSION_WITHOUT_SIGNED_SERVICE_ORDER"));
+
+result = integrityModule.validateConstitutionalLayerIntegrity({
+  scopeVersion: executionScope({
+    canonicalTruth: {
+      customerAcceptanceId: "CUST-ACCEPT-001",
+      serviceOrderId: "SO-001",
+      serviceOrderSignatureId: "SO-SIG-001",
+      customerAcceptance: { customerAcceptanceId: "CUST-ACCEPT-001", status: "ACCEPTED" },
+      serviceOrder: { serviceOrderId: "SO-001", status: "SIGNED", signedAt: "2026-07-04T00:00:30.000Z" },
+    },
+  }),
+});
 assert.equal(result.allowed, true);
 
 result = integrityModule.validateConstitutionalLayerIntegrity({
@@ -132,8 +151,9 @@ result = integrityModule.validateConstitutionalLayerIntegrity({
     canonicalTruth: {
       customerAcceptanceId: "CUST-ACCEPT-001",
       serviceOrderId: "SO-001",
+      serviceOrderSignatureId: "SO-SIG-001",
       customerAcceptance: { customerAcceptanceId: "CUST-ACCEPT-001", status: "ACCEPTED" },
-      serviceOrder: { serviceOrderId: "SO-001", status: "AUTHORIZED" },
+      serviceOrder: { serviceOrderId: "SO-001", status: "SIGNED", signedAt: "2026-07-04T00:00:30.000Z" },
     },
   }),
   closures: [{
@@ -152,8 +172,9 @@ result = integrityModule.validateConstitutionalLayerIntegrity({
     canonicalTruth: {
       customerAcceptanceId: "CUST-ACCEPT-001",
       serviceOrderId: "SO-001",
+      serviceOrderSignatureId: "SO-SIG-001",
       customerAcceptance: { customerAcceptanceId: "CUST-ACCEPT-001", status: "ACCEPTED" },
-      serviceOrder: { serviceOrderId: "SO-001", status: "AUTHORIZED" },
+      serviceOrder: { serviceOrderId: "SO-001", status: "SIGNED", signedAt: "2026-07-04T00:00:30.000Z" },
       paymentSegments: [{ paymentSegmentId: "PAY-001", paymentEligible: true }],
     },
   }),
@@ -165,8 +186,9 @@ result = integrityModule.validateConstitutionalLayerIntegrity({
     canonicalTruth: {
       customerAcceptanceId: "CUST-ACCEPT-001",
       serviceOrderId: "SO-001",
+      serviceOrderSignatureId: "SO-SIG-001",
       customerAcceptance: { customerAcceptanceId: "CUST-ACCEPT-001", status: "ACCEPTED" },
-      serviceOrder: { serviceOrderId: "SO-001", status: "AUTHORIZED" },
+      serviceOrder: { serviceOrderId: "SO-001", status: "SIGNED", signedAt: "2026-07-04T00:00:30.000Z" },
       paymentSegments: [{ paymentSegmentId: "PAY-001", paymentEligible: true }],
     },
   }),

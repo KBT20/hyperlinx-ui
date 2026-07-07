@@ -113,9 +113,11 @@ export async function testDalConnectivity() {
 export async function testBaselineGraphConnectivity() {
   const result = await testTarget(CONNECTIVITY_TARGETS.find((target) => target.key === "baseline")!);
   if (!result.reachable) {
-    throw new Error(
-      `Baseline Graph API is not reachable at ${result.endpoint}. ${result.statusCode ? `${result.statusCode} ${result.statusText ?? ""}` : result.error ?? ""}`.trim()
-    );
+    return {
+      ...result,
+      statusText: result.statusText ?? "Unavailable",
+      error: `Baseline Graph API is optional for Engineering Certification. ${result.statusCode ? `${result.statusCode} ${result.statusText ?? ""}` : result.error ?? ""}`.trim(),
+    };
   }
   return result;
 }

@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { DAL_API, DAL_APP_NAME, DAL_BASELINE_GRAPH_API, DAL_INVENTORY_GRAPH_API } from "../config/dalApi";
 import ReasoningPanel from "../components/ReasoningPanel";
 import RuntimeDiagnosticsPanel from "../components/RuntimeDiagnosticsPanel";
@@ -27,6 +27,7 @@ const PrismWorkspace = lazy(() => import("../workspaces/PrismWorkspace"));
 const PrismSiteDecisionWorkspace = lazy(() => import("../workspaces/PrismSiteDecisionWorkspace"));
 const RouteEngineeringWorkspace = lazy(() => import("../workspaces/RouteEngineeringWorkspace"));
 const ScopeVersionWorkspace = lazy(() => import("../workspaces/ScopeVersionWorkspace"));
+const ServiceOrderWorkspace = lazy(() => import("../workspaces/ServiceOrderWorkspace"));
 const TeralinxRouteWorkspace = lazy(() => import("../components/workspaces/TeralinxRouteWorkspace"));
 const TranslateWorkspace = lazy(() => import("../workspaces/TranslateWorkspace"));
 const TwinWorkspace = lazy(() => import("../workspaces/TwinWorkspace"));
@@ -44,19 +45,20 @@ function DALWorkspaceOutlet() {
                 workspace === "design" ? <DesignWorkspace /> :
                   workspace === "proposedNetwork" ? <ProposedNetworkWorkspace /> :
                     workspace === "preliminaryProposal" ? <PreliminaryProposalWorkspace /> :
-                      workspace === "prism" ? <PrismWorkspace /> :
-                        workspace === "siteDecision" ? <PrismSiteDecisionWorkspace /> :
-                          workspace === "routeEngineering" ? <RouteEngineeringWorkspace /> :
-                            workspace === "scopeVersion" ? <ScopeVersionWorkspace /> :
-                              workspace === "candidateSites" ? <CandidateSitesWorkspace /> :
-                                workspace === "networkAffinity" ? <NetworkAffinityWorkspace /> :
-                                  workspace === "portfolio" ? <PortfolioWorkspace /> :
-                                    workspace === "marketplace" ? <MarketplaceWorkspace /> :
-                                      workspace === "control" ? <ControlWorkspace /> :
-                                        workspace === "field" ? <FieldWorkspace /> :
-                                          workspace === "twin" ? <TwinWorkspace /> :
-                                            workspace === "ops" ? <OperationalIntelligenceWorkspace /> :
-                                              <TranslateWorkspace />;
+                      workspace === "serviceOrder" ? <ServiceOrderWorkspace /> :
+                        workspace === "prism" ? <PrismWorkspace /> :
+                          workspace === "siteDecision" ? <PrismSiteDecisionWorkspace /> :
+                            workspace === "routeEngineering" ? <RouteEngineeringWorkspace /> :
+                              workspace === "scopeVersion" ? <ScopeVersionWorkspace /> :
+                                workspace === "candidateSites" ? <CandidateSitesWorkspace /> :
+                                  workspace === "networkAffinity" ? <NetworkAffinityWorkspace /> :
+                                    workspace === "portfolio" ? <PortfolioWorkspace /> :
+                                      workspace === "marketplace" ? <MarketplaceWorkspace /> :
+                                        workspace === "control" ? <ControlWorkspace /> :
+                                          workspace === "field" ? <FieldWorkspace /> :
+                                            workspace === "twin" ? <TwinWorkspace /> :
+                                              workspace === "ops" ? <OperationalIntelligenceWorkspace /> :
+                                                <TranslateWorkspace />;
 
   return (
     <Suspense fallback={<div className="dal-panel dal-status">Loading workspace...</div>}>
@@ -68,8 +70,10 @@ function DALWorkspaceOutlet() {
 function reasoningWorkspace(workspace: ReturnType<typeof useDALState>["workspace"]): ReasoningWorkspace {
   if (workspace === "teralinxRoute") return "translate";
   if (workspace === "googleRfp") return "marketplace";
+  if (workspace === "design") return "marketplace";
   if (workspace === "proposedNetwork") return "translate";
   if (workspace === "preliminaryProposal") return "marketplace";
+  if (workspace === "serviceOrder") return "marketplace";
   if (workspace === "graphViewer" || workspace === "graphExtensions" || workspace === "inventoryRecovery") return "graph-viewer";
   if (workspace === "siteDecision") return "prism";
   if (workspace === "routeEngineering") return "prism";
@@ -91,6 +95,12 @@ function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]
     ];
   if (workspace === "proposedNetwork") return ["Explain this proposed network", "What should the customer review?", "What is still non-authoritative?"];
   if (workspace === "preliminaryProposal") return ["Explain this preliminary proposal", "What assumptions matter?", "What blocks Engineering Certification handoff?"];
+  if (workspace === "serviceOrder")
+    return [
+      "Summarize Service Order readiness",
+      "Which authority references are missing?",
+      "Confirm no ScopeVersion is created",
+    ];
   if (workspace === "inventory") return ["Summarize this inventory graph", "Identify graph anomalies", "What should I inspect next?"];
   if (workspace === "inventoryRecovery") return ["Which graphs are browser only?", "What should be pushed to the server?", "Summarize sync failures"];
   if (workspace === "graphViewer") return ["Explain the selected graph context", "Summarize route structure", "Suggest extension candidates"];
@@ -106,7 +116,7 @@ function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]
   if (workspace === "siteDecision")
     return [
       "Can this site be built?",
-      "Should this become a ScopeVersion?",
+      "Should this become a signed-order candidate?",
       "Which risks drive this decision?",
       "Which permits are likely required?",
       "Recommend deployment sequencing.",
@@ -117,7 +127,7 @@ function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]
       "Which PD-001 checks need exceptions?",
       "Which constraints remain unresolved?",
       "Summarize object moves and redlines.",
-      "What is ready for ScopeVersion promotion?",
+      "What is ready for signed Service Order?",
     ];
   if (workspace === "scopeVersion")
     return [
@@ -248,6 +258,20 @@ function DALReasoningOutlet() {
   );
 }
 
+function RuntimeDiagnosticsDisclosure() {
+  const [open, setOpen] = useState(false);
+  return (
+    <details
+      className="dal-runtime-diagnostics-disclosure"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>Runtime Diagnostics</summary>
+      {open ? <RuntimeDiagnosticsPanel /> : null}
+    </details>
+  );
+}
+
 function DALShell() {
   const reasoningCandidates = getReasoningEndpointCandidates();
   const { session, runtimeInfo, logout } = useTeralinxAuth();
@@ -275,7 +299,7 @@ function DALShell() {
         <DALNavigation />
         <main className="dal-main">
           <DALWorkspaceOutlet />
-          <RuntimeDiagnosticsPanel />
+          <RuntimeDiagnosticsDisclosure />
           <DALReasoningOutlet />
         </main>
       </div>

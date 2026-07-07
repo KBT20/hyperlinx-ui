@@ -1,5 +1,16 @@
 # Sprint 21 - ScopeVersion Authority Report
 
+## Constitutional Clarification
+
+This Sprint 21 report is preserved as historical implementation evidence.
+
+The active constitutional model supersedes the original immediate Engineering Certification -> ScopeVersion wording:
+
+- Engineering Certification certifies the Draft IOF Package as the Certified Draft IOF Package.
+- Proposal and Service Order reference that Certified Draft IOF Package and do not recreate engineering truth.
+- Runtime creates ScopeVersion only after executed Service Order authority exists.
+- No additional Engineering review occurs after customer signature.
+
 ## Architecture
 
 Sprint 21 creates the constitutional ScopeVersion authority layer immediately after Engineering Certification.
