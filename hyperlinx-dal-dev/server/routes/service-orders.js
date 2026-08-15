@@ -134,7 +134,10 @@ function createServiceOrder(proposal, certified, commercialTerms, user, revision
     assumptions: basis.assumptions, commercialTerms: basis.terms, technicalBasis: basis.certifiedTechnicalBasis,
     executionAuthority: { scopeVersionCreationAllowed: false, requiredEvent: "AUTHORIZED_TERALINX_COUNTERSIGNATURE", customerSignatureAloneIsNotExecutionAuthority: true },
     noMarketplaceCreation: true, noControlCreation: true, noFieldCreation: true,
-    createdBy: user.name, createdById: user.userId, createdAt: timestamp, updatedAt: timestamp,
+    createdBy: user.name, createdById: user.userId,
+    createdByPrincipalId: user.principalId ?? user.userId, createdByMembershipId: user.membershipId,
+    createdBySessionId: user.sessionId, actorDisplayNameAtAction: user.displayName ?? user.name,
+    organizationId: user.organizationId, createdAt: timestamp, updatedAt: timestamp,
   };
 }
 
@@ -171,7 +174,7 @@ async function issue(req, res, user, id) {
   if (order.status === "ISSUED" || order.status === "CUSTOMER_ACCEPTED" || order.status === "COUNTERSIGNED") return jsonResponse(res, 200, { serviceOrder: order, idempotentReplay: true });
   if (order.status !== "DRAFT") return errorResponse(res, 409, "Only a Draft Service Order may be issued.");
   const timestamp = nowIso();
-  const next = { ...order, status: "ISSUED", lifecycleState: "ISSUED", authorizationStatus: "PENDING_CUSTOMER_SIGNATURE", signatureStatus: "AWAITING_CUSTOMER_SIGNATURE", issuedAt: timestamp, issuedBy: user.name, issuedById: user.userId, updatedAt: timestamp };
+  const next = { ...order, status: "ISSUED", lifecycleState: "ISSUED", authorizationStatus: "PENDING_CUSTOMER_SIGNATURE", signatureStatus: "AWAITING_CUSTOMER_SIGNATURE", issuedAt: timestamp, issuedBy: user.name, issuedById: user.userId, issuedByPrincipalId: user.principalId ?? user.userId, issuedByMembershipId: user.membershipId, issuedBySessionId: user.sessionId, updatedAt: timestamp };
   return jsonResponse(res, 200, { serviceOrder: await persistRecord(DIRS.serviceOrders, id, next) });
 }
 
@@ -191,7 +194,7 @@ async function signAsCustomer(req, res, user, id) {
   if (body.documentHash && body.documentHash !== order.documentHash) return errorResponse(res, 409, "Customer signature references a different Service Order document hash.");
   if (body.authorityAcknowledged !== true || text(body.typedName) !== text(user.name)) return errorResponse(res, 409, "Explicit signer-authority acknowledgment and the authenticated signer's exact name are required.");
   const timestamp = nowIso();
-  const evidenceBasis = { serviceOrderId: id, documentRevision: order.documentRevision, documentHash: order.documentHash, commercialTermsHash: order.commercialTermsHash, signerUserId: user.userId, signerName: user.name, signerRole: user.role, authorityAcknowledged: true, signedAt: timestamp };
+  const evidenceBasis = { serviceOrderId: id, documentRevision: order.documentRevision, documentHash: order.documentHash, commercialTermsHash: order.commercialTermsHash, signerUserId: user.userId, signedByPrincipalId: user.principalId ?? user.userId, signedByMembershipId: user.membershipId, signedBySessionId: user.sessionId, signerName: user.name, actorDisplayNameAtAction: user.displayName ?? user.name, signerRole: user.role, organizationId: user.organizationId, authorityAcknowledged: true, signedAt: timestamp };
   const signatureHash = hash(evidenceBasis);
   const customerSignatureId = `CUSTOMER-SIGNATURE-${id}-${signatureHash.slice(0, 16)}`;
   const evidence = { customerSignatureId, objectType: "CUSTOMER_DIGITAL_SIGNATURE_EVIDENCE", status: "ACCEPTED", immutable: true, ...evidenceBasis, signatureHash, authenticatedIdentity: true, createdAt: timestamp };
@@ -241,7 +244,7 @@ async function countersign(req, res, user, id) {
   const certifiedTwin = twins[0];
   if (!certifiedTwin || certifiedTwin.certificationHash !== certified.certificationHash) return errorResponse(res, 409, "The exact Certified IOF Twin is unavailable.");
   const timestamp = nowIso();
-  const countersignBasis = { serviceOrderId: id, documentRevision: order.documentRevision, documentHash: order.documentHash, commercialTermsHash: order.commercialTermsHash, customerSignatureId: signature.customerSignatureId, customerSignatureHash: signature.signatureHash, certifiedIofPackageId: certified.certifiedPackageId, certificationHash: certified.certificationHash, countersignedById: user.userId, countersignedBy: user.name, countersignedAt: timestamp };
+  const countersignBasis = { serviceOrderId: id, documentRevision: order.documentRevision, documentHash: order.documentHash, commercialTermsHash: order.commercialTermsHash, customerSignatureId: signature.customerSignatureId, customerSignatureHash: signature.signatureHash, certifiedIofPackageId: certified.certifiedPackageId, certificationHash: certified.certificationHash, countersignedById: user.userId, countersignedByPrincipalId: user.principalId ?? user.userId, countersignedByMembershipId: user.membershipId, countersignedBySessionId: user.sessionId, countersignedBy: user.name, actorDisplayNameAtAction: user.displayName ?? user.name, organizationId: user.organizationId, countersignedAt: timestamp };
   const countersignatureHash = hash(countersignBasis);
   const countersignatureId = `TERALINX-COUNTERSIGNATURE-${id}-${countersignatureHash.slice(0,16)}`;
   const countersignature = { countersignatureId, objectType: "TERALINX_AUTHORIZATION_COUNTERSIGNATURE", status: "AUTHORIZED", immutable: true, ...countersignBasis, countersignatureHash, authority: "SCOPEVERSION_CREATION_EVENT", createdAt: timestamp };

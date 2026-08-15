@@ -306,16 +306,16 @@ function DALShell() {
           <button className="dal-navigation-trigger" type="button" aria-expanded={navigationOpen} aria-controls="dal-workspace-navigation" onClick={() => setNavigationOpen((open) => !open)}>☰ Workspaces</button>
         </div>
         <div className="dal-targets">
-          <span>User: {session?.user.name} / {session?.user.title}</span>
-          <span>Workspace: {session?.user.workspaceId ?? session?.workspace?.workspaceId ?? "unassigned"} / User ID: {session?.user.userId ?? "anonymous"}</span>
-          <span>Organization: {runtimeInfo?.organization ?? "Teralinx"} / Owner: {runtimeInfo?.workspaceOwner ?? "Teralinx"}</span>
+          <span>User: {session?.user.name} / {session?.user.title} / {session?.user.role}</span>
+          <span>Workspace: {session?.user.workspaceId ?? session?.workspace?.workspaceId ?? "unassigned"} / Principal: {session?.user.principalId ?? "anonymous"}</span>
+          <span>Organization: {session?.user.organization ?? runtimeInfo?.organization ?? "Teralinx"} / Membership: {session?.user.membershipId ?? "unassigned"}</span>
           <span>Runtime Version: {runtimeInfo?.runtimeVersion ?? "loading"} / Commit: {runtimeInfo?.gitCommit ?? "loading"}</span>
           <span>Build Date: {runtimeInfo?.buildDate ?? "loading"} / Environment: {runtimeInfo?.environment ?? "alpha"}</span>
           <span>DAL API: {DAL_API}</span>
           <span>Baseline Graph API: {DAL_BASELINE_GRAPH_API}</span>
           <span>Inventory API: {DAL_INVENTORY_GRAPH_API}</span>
           {workspace !== "routeEngineering" ? <span>Reasoning: {reasoningHealth.reasoningEnabled ? reasoningHealth.serviceStatus : "DISABLED"} / {reasoningEndpoint ? endpointBaseUrl(reasoningEndpoint) : "not configured"} / Circuit: {reasoningHealth.circuitBreakerState}</span> : null}
-          <button className="dal-header-signout" type="button" onClick={logout}>Sign Out</button>
+          <button className="dal-header-signout" type="button" onClick={() => void logout()}>Sign Out</button>
         </div>
       </header>
       <div className="dal-layout">

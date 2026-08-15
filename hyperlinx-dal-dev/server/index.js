@@ -4,7 +4,12 @@ import path from "node:path";
 import { DATA_ROOT, DIRS, PORT, PROJECT_ROOT, errorResponse, handleOptions, jsonResponse } from "./routes/_shared.js";
 import { handleAccounts } from "./routes/accounts.js";
 import { handleActivity } from "./routes/activity.js";
-import { handleAuth } from "./routes/auth.js";
+import {
+  authenticateRuntimeRequest,
+  enforceAuthenticationBoundary,
+  handleAuth,
+  initializeAuthenticationAuthority,
+} from "./routes/auth.js";
 import { handleCandidateSites } from "./routes/candidate-sites.js";
 import { handleCertificationLedger } from "./routes/certification-ledger.js";
 import { handleCertifiedRoutes } from "./routes/certified-routes.js";
@@ -192,6 +197,8 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `https://${req.headers.host ?? "runtime.invalid"}`);
     if (handleOptions(req, res)) return;
+    await authenticateRuntimeRequest(req);
+    if (enforceAuthenticationBoundary(req, res, url.pathname)) return;
     for (const route of routes) {
       if (await route(req, res, url.pathname)) return;
     }
@@ -282,6 +289,8 @@ const server = http.createServer(async (req, res) => {
     errorResponse(res, 500, err instanceof Error ? err.message : String(err));
   }
 });
+
+await initializeAuthenticationAuthority();
 
 server.listen(PORT, () => {
   const address = server.address();

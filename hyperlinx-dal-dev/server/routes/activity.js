@@ -1,13 +1,24 @@
 import { DIRS, handleJsonCollection, nowIso } from "./_shared.js";
 
-function normalizeActivity(event = {}) {
+function normalizeActivity(event = {}, context = {}) {
   const timestamp = event.timestamp ?? event.createdAt ?? nowIso();
+  const user = context.operation === "write" ? context.user : null;
   return {
     ...event,
     activityId: String(event.activityId),
     timestamp,
     createdAt: timestamp,
     updatedAt: event.updatedAt ?? timestamp,
+    ...(user ? {
+      userId: user.userId,
+      userName: user.name,
+      userRole: user.role,
+      principalId: user.principalId ?? user.userId,
+      membershipId: user.membershipId,
+      organizationId: user.organizationId,
+      authSessionId: user.sessionId,
+      actorDisplayNameAtAction: user.displayName ?? user.name,
+    } : {}),
   };
 }
 

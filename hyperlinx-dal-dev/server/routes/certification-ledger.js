@@ -708,7 +708,16 @@ export async function handleCertificationLedger(req, res, pathname) {
   if (match.base && req.method === "POST") {
     const body = await readRequestJson(req);
     const input = unwrapBody(body, "certificationLedgerEntry", ["certificationLedger", "item", "data"]) ?? {};
-    const saved = await persistCertificationLedgerEntry({ ...input, certifiedBy: input.certifiedBy ?? user.name, certifiedById: input.certifiedById ?? user.userId });
+    const saved = await persistCertificationLedgerEntry({
+      ...input,
+      organizationId: user.organizationId,
+      certifiedBy: user.name,
+      certifiedById: user.userId,
+      certifiedByPrincipalId: user.principalId ?? user.userId,
+      certifiedByMembershipId: user.membershipId,
+      certifiedBySessionId: user.sessionId,
+      actorDisplayNameAtAction: user.displayName ?? user.name,
+    });
     jsonResponse(res, 201, { certificationLedgerEntry: saved });
     return true;
   }

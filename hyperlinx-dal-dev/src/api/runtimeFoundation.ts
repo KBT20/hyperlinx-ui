@@ -15,17 +15,15 @@ function apiUrl(path: string) {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(apiUrl(path), init);
+  const response = await fetch(apiUrl(path), { ...init, credentials: init?.credentials ?? "same-origin" });
   const text = await response.text().catch(() => "");
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}${text ? `: ${text}` : ""}`);
   return (text ? JSON.parse(text) : {}) as T;
 }
 
 function authHeaders(session?: TeralinxAuthSession | null, headers: HeadersInit = {}) {
-  return {
-    ...headers,
-    ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}),
-  };
+  void session;
+  return { ...headers };
 }
 
 function unwrapList<T>(data: any, keys: string[]): T[] {

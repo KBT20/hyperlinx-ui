@@ -26,6 +26,8 @@ export type TeralinxPermission =
 
 export type TeralinxUser = {
   userId: string;
+  principalId: string;
+  membershipId: string;
   organizationId: string;
   workspaceId: string;
   username: string;
@@ -45,6 +47,7 @@ export type TeralinxUser = {
   assignments: string[];
   notifications: string[];
   pinnedObjects: string[];
+  passwordChangeRequired?: boolean;
   workspace: TeralinxWorkspace;
 };
 
@@ -64,9 +67,16 @@ export type TeralinxWorkspace = {
 };
 
 export type TeralinxAuthSession = {
-  token: string;
+  token?: string;
   user: TeralinxUser;
   workspace?: TeralinxWorkspace;
+  session?: {
+    sessionId: string;
+    issuedAt: string;
+    idleExpiresAt: string;
+    absoluteExpiresAt: string;
+    status: string;
+  };
   authenticatedAt: string;
   provider: "TERALINX_ALPHA_INTERNAL" | string;
 };
@@ -1817,7 +1827,7 @@ export class TeralinxRuntimeRequestError extends Error {
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(apiUrl(path), init);
+  const response = await fetch(apiUrl(path), { ...init, credentials: init?.credentials ?? "same-origin" });
   const text = await response.text().catch(() => "");
   if (!response.ok) {
     let body: Record<string, unknown> = {};
@@ -1832,15 +1842,12 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function authHeaders(session?: TeralinxAuthSession | null, headers: HeadersInit = {}) {
-  if (!session?.token) return withStoredAuthHeaders(headers);
-  return {
-    ...headers,
-    Authorization: `Bearer ${session.token}`,
-  };
+  void session;
+  return withStoredAuthHeaders(headers);
 }
 
 export async function downloadRuntimeArtifact(path: string, session?: TeralinxAuthSession | null) {
-  const response = await fetch(apiUrl(path), { headers: authHeaders(session) });
+  const response = await fetch(apiUrl(path), { headers: authHeaders(session), credentials: "same-origin" });
   if (!response.ok) {
     const rawText = await response.text().catch(() => "");
     let body: Record<string, unknown> = {};
@@ -1965,6 +1972,22 @@ export async function loginTeralinxUser(username: string, password: string) {
   });
 }
 
+export async function loadAuthenticatedTeralinxUser() {
+  return requestJson<TeralinxAuthSession & { authenticated: true }>("/api/auth/me");
+}
+
+export async function logoutTeralinxUser() {
+  return requestJson<{ ok: true }>("/api/auth/logout", { method: "POST" });
+}
+
+export async function changeTeralinxPassword(currentPassword: string, newPassword: string) {
+  return requestJson<{ ok: true; reauthenticationRequired: true }>("/api/auth/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
 export async function loadTeralinxRuntimeInfo() {
   return requestJson<TeralinxRuntimeInfo>("/api/runtime");
 }
@@ -2003,7 +2026,6 @@ export async function appendTeralinxActivity(session: TeralinxAuthSession, input
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${session.token}`,
     },
     body: JSON.stringify({ activityEvent: event }),
   });

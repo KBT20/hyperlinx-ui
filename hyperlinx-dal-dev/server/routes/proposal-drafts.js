@@ -833,7 +833,7 @@ export function normalizeProposalRecord(record = {}, user, existing = null, opti
   const ownerCandidate = record.ownerId ?? record.commercialOwnerId ?? record.owner ?? existing?.ownerId ?? existing?.commercialOwnerId;
   const ownerId = creating ? resolveUserId(ownerCandidate || user.userId) : String(existing.ownerId || existing.commercialOwnerId || resolveUserId(ownerCandidate) || user.userId);
   const commercialOwnerId = String(record.commercialOwnerId ?? existing?.commercialOwnerId ?? ownerId);
-  const createdById = String(existing?.createdById ?? record.createdById ?? user.userId);
+  const createdById = String(existing?.createdById ?? user.userId);
   const requestedCustomerUsers = normalizeUserIds(record.assignedCustomerUsers ?? record.customerReviewers ?? record.customerUsers);
   const priorCustomerUsers = normalizeUserIds(existing?.assignedCustomerUsers);
   const autoCustomerUsers = options.assignDefaultCustomerUser ? defaultCustomerUserIds(customerId) : [];
@@ -895,7 +895,7 @@ export function normalizeProposalRecord(record = {}, user, existing = null, opti
     fulfillmentStrategy: String(record.fulfillmentStrategy ?? existing?.fulfillmentStrategy ?? record.fulfillmentPlan?.fulfillmentStrategy ?? existing?.fulfillmentPlan?.fulfillmentStrategy ?? ""),
     fulfillmentPlan: record.fulfillmentPlan ?? existing?.fulfillmentPlan ?? null,
     organization: record.organization ?? existing?.organization ?? "Teralinx",
-    organizationId: record.organizationId ?? existing?.organizationId ?? user.organizationId,
+    organizationId: existing?.organizationId ?? user.organizationId,
     workspace: record.workspace ?? existing?.workspace ?? user.workspaceId,
     workspaceId: record.workspaceId ?? existing?.workspaceId ?? user.workspaceId,
     owner: userLabel(ownerId),
@@ -904,6 +904,12 @@ export function normalizeProposalRecord(record = {}, user, existing = null, opti
     commercialOwner: userLabel(commercialOwnerId),
     createdBy: userLabel(createdById),
     createdById,
+    createdByPrincipalId: existing?.createdByPrincipalId ?? user.principalId ?? user.userId,
+    createdByMembershipId: existing?.createdByMembershipId ?? user.membershipId,
+    updatedByPrincipalId: user.principalId ?? user.userId,
+    updatedByMembershipId: user.membershipId,
+    updatedBySessionId: user.sessionId,
+    actorDisplayNameAtAction: user.displayName ?? user.name,
     assignedTo,
     assignedCustomerUsers,
     proposalRecipientContactIds: unique([...asArray(existing?.proposalRecipientContactIds), ...asArray(record.proposalRecipientContactIds)]),

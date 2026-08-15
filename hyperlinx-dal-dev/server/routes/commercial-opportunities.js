@@ -116,7 +116,7 @@ export function normalizeCommercialOpportunity(record = {}, user, existing = nul
   const creating = !existing;
   const opportunityId = String(record.opportunityId ?? existing?.opportunityId ?? createId("commercial-opportunity"));
   const ownerId = creating ? user.userId : String(existing.ownerId || resolveUserId(existing.owner) || user.userId);
-  const createdById = String(existing?.createdById || record.createdById || user.userId);
+  const createdById = String(existing?.createdById || user.userId);
   const authority = normalizeAuthority({
     ...existing,
     ...record,
@@ -156,13 +156,19 @@ export function normalizeCommercialOpportunity(record = {}, user, existing = nul
     objectType: "OPPORTUNITY",
     customerId: record.customerId ?? existing?.customerId ?? (record.accountId === "google" ? "customer-google" : record.accountId),
     organization: record.organization ?? existing?.organization ?? "Teralinx",
-    organizationId: record.organizationId ?? existing?.organizationId ?? user.organizationId,
+    organizationId: existing?.organizationId ?? user.organizationId,
     workspace: record.workspace ?? existing?.workspace ?? user.workspaceId,
     workspaceId: record.workspaceId ?? existing?.workspaceId ?? user.workspaceId,
     owner: userLabel(ownerId),
     ownerId,
     createdBy: userLabel(createdById),
     createdById,
+    createdByPrincipalId: existing?.createdByPrincipalId ?? user.principalId ?? user.userId,
+    createdByMembershipId: existing?.createdByMembershipId ?? user.membershipId,
+    updatedByPrincipalId: user.principalId ?? user.userId,
+    updatedByMembershipId: user.membershipId,
+    updatedBySessionId: user.sessionId,
+    actorDisplayNameAtAction: user.displayName ?? user.name,
     assignedTo,
     assignment: assignmentFromAuthority(authority),
     visibility,

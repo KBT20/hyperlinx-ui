@@ -115,7 +115,7 @@ function normalizeAccount(record = {}, user, existing = null, options = {}) {
   const rawId = String(record.accountId ?? existing?.accountId ?? createId("account"));
   const accountId = cleanId(rawId);
   const ownerId = String(record.ownerId ?? existing?.ownerId ?? user.userId);
-  const createdById = String(existing?.createdById ?? record.createdById ?? user.userId);
+  const createdById = String(existing?.createdById ?? user.userId);
   const contactIds = unique([
     ...asArray(existing?.contactIds),
     ...asArray(record.contactIds),
@@ -142,13 +142,18 @@ function normalizeAccount(record = {}, user, existing = null, options = {}) {
     primaryEngineeringContact: String(record.primaryEngineeringContact ?? existing?.primaryEngineeringContact ?? "TBD"),
     procurementContact: String(record.procurementContact ?? existing?.procurementContact ?? "TBD"),
     organization: record.organization ?? existing?.organization ?? "Teralinx",
-    organizationId: record.organizationId ?? existing?.organizationId ?? user.organizationId,
+    organizationId: existing?.organizationId ?? user.organizationId,
     workspace: record.workspace ?? existing?.workspace ?? user.workspaceId,
     workspaceId: record.workspaceId ?? existing?.workspaceId ?? user.workspaceId,
     owner: userLabel(ownerId),
     ownerId,
     createdBy: userLabel(createdById),
     createdById,
+    createdByPrincipalId: existing?.createdByPrincipalId ?? user.principalId ?? user.userId,
+    createdByMembershipId: existing?.createdByMembershipId ?? user.membershipId,
+    updatedByPrincipalId: user.principalId ?? user.userId,
+    updatedByMembershipId: user.membershipId,
+    updatedBySessionId: user.sessionId,
     visibility: record.visibility ?? existing?.visibility ?? "ORGANIZATION",
     authority: record.authority ?? existing?.authority ?? {
       owner: ownerId,
@@ -186,7 +191,7 @@ function normalizeContact(record = {}, user, existing = null, account = null, op
   const accountId = cleanId(rawAccountId);
   const contactId = String(record.contactId ?? existing?.contactId ?? createId(`contact-${accountId || "account"}`));
   const ownerId = String(record.ownerId ?? existing?.ownerId ?? account?.ownerId ?? user.userId);
-  const createdById = String(existing?.createdById ?? record.createdById ?? user.userId);
+  const createdById = String(existing?.createdById ?? user.userId);
   const activityHistory = unique([
     ...asArray(existing?.activityHistory),
     ...asArray(record.activityHistory),
@@ -214,13 +219,18 @@ function normalizeContact(record = {}, user, existing = null, account = null, op
     sofRecipient: Boolean(record.sofRecipient ?? existing?.sofRecipient ?? true),
     serviceOrderRecipient: Boolean(record.serviceOrderRecipient ?? existing?.serviceOrderRecipient ?? record.sofRecipient ?? existing?.sofRecipient ?? true),
     organization: record.organization ?? existing?.organization ?? account?.organization ?? "Teralinx",
-    organizationId: record.organizationId ?? existing?.organizationId ?? account?.organizationId ?? user.organizationId,
+    organizationId: existing?.organizationId ?? account?.organizationId ?? user.organizationId,
     workspace: record.workspace ?? existing?.workspace ?? account?.workspace ?? user.workspaceId,
     workspaceId: record.workspaceId ?? existing?.workspaceId ?? account?.workspaceId ?? user.workspaceId,
     owner: userLabel(ownerId),
     ownerId,
     createdBy: userLabel(createdById),
     createdById,
+    createdByPrincipalId: existing?.createdByPrincipalId ?? user.principalId ?? user.userId,
+    createdByMembershipId: existing?.createdByMembershipId ?? user.membershipId,
+    updatedByPrincipalId: user.principalId ?? user.userId,
+    updatedByMembershipId: user.membershipId,
+    updatedBySessionId: user.sessionId,
     visibility: record.visibility ?? existing?.visibility ?? account?.visibility ?? "ORGANIZATION",
     authority: record.authority ?? existing?.authority ?? account?.authority ?? {
       owner: ownerId,

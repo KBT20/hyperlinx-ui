@@ -666,13 +666,13 @@ export async function handleJsonCollection(req, res, pathname, options) {
   } = options;
 
   if (match.base && req.method === "GET") {
-    jsonResponse(res, 200, { [listKey]: sortedByUpdated((await listRecords(dir)).map(normalize)) });
+    jsonResponse(res, 200, { [listKey]: sortedByUpdated((await listRecords(dir)).map((record) => normalize(record, { operation: "read", user: req.authUser ?? null }))) });
     return true;
   }
 
   if (!match.base && req.method === "GET") {
     try {
-      jsonResponse(res, 200, { [itemKey]: normalize(await loadRecord(dir, match.id)) });
+      jsonResponse(res, 200, { [itemKey]: normalize(await loadRecord(dir, match.id), { operation: "read", user: req.authUser ?? null }) });
     } catch {
       errorResponse(res, 404, `${itemKey} not found: ${match.id}`);
     }
@@ -688,7 +688,7 @@ export async function handleJsonCollection(req, res, pathname, options) {
       const normalized = normalize({
         ...record,
         [idKey]: record?.[idKey] ?? createId(idPrefix),
-      });
+      }, { operation: "write", user: req.authUser ?? null });
       saved.push(await persistRecord(dir, normalized[idKey], normalized));
     }
     if (Array.isArray(input) || match.action === "bulk") {
@@ -704,7 +704,7 @@ export async function handleJsonCollection(req, res, pathname, options) {
   if (!match.base && req.method === "PUT") {
     const body = await readRequestJson(req);
     const input = unwrapBody(body, singularBodyKey);
-    const normalized = normalize({ ...input, [idKey]: input?.[idKey] ?? match.id, updatedAt: nowIso() });
+    const normalized = normalize({ ...input, [idKey]: input?.[idKey] ?? match.id, updatedAt: nowIso() }, { operation: "write", user: req.authUser ?? null });
     jsonResponse(res, 200, { [itemKey]: await persistRecord(dir, normalized[idKey], normalized) });
     return true;
   }

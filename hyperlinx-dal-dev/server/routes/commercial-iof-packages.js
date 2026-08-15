@@ -1602,7 +1602,7 @@ function normalizeCommercialDraftPackage(raw, user) {
   const timestamp = nowIso();
   const proposalId = String(raw.proposalId ?? "").trim();
   const packageId = String(raw.packageId ?? raw.draftPackageId ?? `DRAFT-IOF-${stableIdPart(proposalId || "COMMERCIAL")}`);
-  const createdAt = raw.createdAt ?? timestamp;
+  const createdAt = timestamp;
   return {
     ...raw,
     packageId,
@@ -1610,10 +1610,16 @@ function normalizeCommercialDraftPackage(raw, user) {
     packageType: "ENGINEERING",
     status: raw.status ?? "DRAFT",
     workflowStatus: raw.workflowStatus ?? "ENGINEERING_REVIEW",
-    organizationId: raw.organizationId ?? user.organizationId,
-    workspaceId: raw.workspaceId ?? user.workspaceId,
+    organizationId: user.organizationId,
+    workspaceId: user.workspaceId,
     ownerId: raw.ownerId ?? user.userId,
     owner: raw.owner ?? user.name,
+    createdBy: user.name,
+    createdById: user.userId,
+    createdByPrincipalId: user.principalId ?? user.userId,
+    createdByMembershipId: user.membershipId,
+    createdBySessionId: user.sessionId,
+    actorDisplayNameAtAction: user.displayName ?? user.name,
     visibility: raw.visibility ?? "ORGANIZATION",
     authority: "COMMERCIAL_DRAFT_IOF_PACKAGE",
     lifecycleState: raw.lifecycleState ?? "IN_REVIEW",

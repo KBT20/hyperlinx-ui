@@ -1,9 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   appendTeralinxActivity,
+  changeTeralinxPassword,
   listTeralinxActivity,
+  loadAuthenticatedTeralinxUser,
   loadTeralinxRuntimeInfo,
   loginTeralinxUser,
+  logoutTeralinxUser,
   type TeralinxActivityEvent,
   type TeralinxActivityInput,
   type TeralinxAuthSession,
@@ -11,8 +14,6 @@ import {
   type TeralinxRuntimeInfo,
 } from "../api/teralinxRuntime";
 import { userHasPermission } from "./teralinxIdentity";
-
-const AUTH_STORAGE_KEY = "teralinx:auth-session:v1";
 
 type TeralinxAuthContextValue = {
   session: TeralinxAuthSession | null;
@@ -23,29 +24,21 @@ type TeralinxAuthContextValue = {
   loginError: string;
   can: (permission: TeralinxPermission) => boolean;
   login: (username: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshActivity: () => Promise<void>;
   recordActivity: (input: TeralinxActivityInput) => Promise<void>;
 };
 
 const TeralinxAuthContext = createContext<TeralinxAuthContextValue | null>(null);
+const LEGACY_AUTH_STORAGE_KEY = "teralinx:auth-session:v1";
 
-function readStoredSession() {
-  if (typeof window === "undefined") return null;
+function removeLegacyClientIdentity() {
   try {
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as TeralinxAuthSession;
-    return parsed?.token && parsed?.user ? parsed : null;
+    window.localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY);
+    window.sessionStorage.removeItem(LEGACY_AUTH_STORAGE_KEY);
   } catch {
-    return null;
+    // Storage may be disabled; authentication remains cookie-backed.
   }
-}
-
-function storeSession(session: TeralinxAuthSession | null) {
-  if (typeof window === "undefined") return;
-  if (!session) window.localStorage.removeItem(AUTH_STORAGE_KEY);
-  else window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
 }
 
 function TeralinxLoginScreen({ login, loginError, runtimeInfo, runtimeStatus }: {
@@ -63,6 +56,7 @@ function TeralinxLoginScreen({ login, loginError, runtimeInfo, runtimeStatus }: 
     setSubmitting(true);
     try {
       await login(username, password);
+      setPassword("");
     } finally {
       setSubmitting(false);
     }
@@ -70,16 +64,16 @@ function TeralinxLoginScreen({ login, loginError, runtimeInfo, runtimeStatus }: 
 
   return (
     <main className="teralinx-login-shell">
-      <section className="teralinx-login-panel" aria-label="Teralinx internal login">
+      <section className="teralinx-login-panel" aria-label="Teralinx login">
         <div>
           <div className="dal-kicker">TERALINX</div>
           <h1>Teralinx Infrastructure Operating Platform</h1>
-          <p>Internal alpha runtime. Each authenticated user receives an isolated workspace backed by the shared governed runtime.</p>
+          <p>Sign in with your individual Teralinx account. Governed company truth is shared according to your role; personal workspace state remains private.</p>
         </div>
         <form className="teralinx-login-form" onSubmit={handleSubmit}>
           <label>
-            User
-            <input value={username} onChange={(event) => setUsername(event.currentTarget.value)} autoComplete="username" placeholder="kyle, ryan, or fran" />
+            Username
+            <input value={username} onChange={(event) => setUsername(event.currentTarget.value)} autoComplete="username" />
           </label>
           <label>
             Password
@@ -101,8 +95,59 @@ function TeralinxLoginScreen({ login, loginError, runtimeInfo, runtimeStatus }: 
   );
 }
 
+function PasswordChangeScreen({ session, onComplete, onLogout }: {
+  session: TeralinxAuthSession;
+  onComplete: () => void;
+  onLogout: () => Promise<void>;
+}) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setError("New passwords do not match.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      await changeTeralinxPassword(currentPassword, newPassword);
+      onComplete();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="teralinx-login-shell">
+      <section className="teralinx-login-panel" aria-label="Password change required">
+        <div>
+          <div className="dal-kicker">SECURE YOUR ACCOUNT</div>
+          <h1>Password change required</h1>
+          <p>{session.user.name}, set a private password before entering the Teralinx workspace.</p>
+        </div>
+        <form className="teralinx-login-form" onSubmit={submit}>
+          <label>Current password<input type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.currentTarget.value)} /></label>
+          <label>New password<input type="password" autoComplete="new-password" minLength={14} value={newPassword} onChange={(event) => setNewPassword(event.currentTarget.value)} /></label>
+          <label>Confirm new password<input type="password" autoComplete="new-password" minLength={14} value={confirmPassword} onChange={(event) => setConfirmPassword(event.currentTarget.value)} /></label>
+          <button type="submit" className="primary" disabled={submitting || !currentPassword || newPassword.length < 14 || !confirmPassword}>{submitting ? "Updating..." : "Update Password"}</button>
+          <button type="button" onClick={() => void onLogout()}>Sign Out</button>
+          {error ? <div className="dal-status error">{error}</div> : null}
+        </form>
+      </section>
+    </main>
+  );
+}
+
 export function TeralinxAuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<TeralinxAuthSession | null>(() => readStoredSession());
+  const [session, setSession] = useState<TeralinxAuthSession | null>(null);
+  const [authStatus, setAuthStatus] = useState<"checking" | "anonymous" | "authenticated">("checking");
   const [runtimeInfo, setRuntimeInfo] = useState<TeralinxRuntimeInfo | null>(null);
   const [activity, setActivity] = useState<TeralinxActivityEvent[]>([]);
   const [loginError, setLoginError] = useState("");
@@ -128,66 +173,80 @@ export function TeralinxAuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    removeLegacyClientIdentity();
     void refreshRuntime();
+    void loadAuthenticatedTeralinxUser()
+      .then((current) => {
+        setSession(current);
+        setAuthStatus("authenticated");
+      })
+      .catch(() => {
+        setSession(null);
+        setAuthStatus("anonymous");
+      });
   }, [refreshRuntime]);
 
   useEffect(() => {
-    if (!session) return;
+    if (authStatus !== "authenticated" || !session || session.user.passwordChangeRequired) return;
     void refreshActivity();
-  }, [session?.token, refreshActivity]);
+  }, [authStatus, session?.session?.sessionId, session?.user.passwordChangeRequired, refreshActivity]);
 
   const login = useCallback(async (username: string, password: string) => {
     setLoginError("");
     try {
       const nextSession = await loginTeralinxUser(username, password);
       setSession(nextSession);
-      storeSession(nextSession);
-      await appendTeralinxActivity(nextSession, {
-        action: "authenticated",
-        objectType: "Runtime",
-        objectId: "teralinx-shared-runtime",
-        objectName: "Teralinx Shared Runtime",
-        details: `${nextSession.user.name} signed in to the shared runtime.`,
-      }).then((event) => setActivity((prev) => [event, ...prev].slice(0, 40))).catch(() => undefined);
+      setAuthStatus("authenticated");
+      if (!nextSession.user.passwordChangeRequired) {
+        await appendTeralinxActivity(nextSession, {
+          action: "authenticated",
+          objectType: "Runtime",
+          objectId: "teralinx-shared-runtime",
+          objectName: "Teralinx Shared Runtime",
+          details: `${nextSession.user.name} signed in to the shared runtime.`,
+        }).then((event) => setActivity((previous) => [event, ...previous].slice(0, 40))).catch(() => undefined);
+      }
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : String(error));
       throw error;
     }
   }, []);
 
-  const logout = useCallback(() => {
-    setSession(null);
-    storeSession(null);
-  }, []);
+  const logout = useCallback(async () => {
+    try {
+      if (session) await logoutTeralinxUser();
+    } catch {
+      // The server may already have expired or revoked the session.
+    } finally {
+      setSession(null);
+      setActivity([]);
+      setAuthStatus("anonymous");
+    }
+  }, [session]);
 
   const can = useCallback((permission: TeralinxPermission) => userHasPermission(session?.user, permission), [session?.user]);
 
   const recordActivity = useCallback(async (input: TeralinxActivityInput) => {
     if (!session) return;
     const saved = await appendTeralinxActivity(session, input);
-    setActivity((prev) => [saved, ...prev.filter((event) => event.activityId !== saved.activityId)].slice(0, 40));
+    setActivity((previous) => [saved, ...previous.filter((event) => event.activityId !== saved.activityId)].slice(0, 40));
   }, [session]);
 
   const value = useMemo<TeralinxAuthContextValue>(() => ({
-    session,
-    runtimeInfo,
-    activity,
-    authStatus: session ? "authenticated" : "anonymous",
-    runtimeStatus,
-    loginError,
-    can,
-    login,
-    logout,
-    refreshActivity,
-    recordActivity,
-  }), [activity, can, login, loginError, logout, recordActivity, refreshActivity, runtimeInfo, runtimeStatus, session]);
+    session, runtimeInfo, activity, authStatus, runtimeStatus, loginError,
+    can, login, logout, refreshActivity, recordActivity,
+  }), [activity, authStatus, can, login, loginError, logout, recordActivity, refreshActivity, runtimeInfo, runtimeStatus, session]);
+
+  if (authStatus === "checking") {
+    return <main className="teralinx-login-shell"><section className="teralinx-login-panel"><div className="dal-status">Verifying secure session...</div></section></main>;
+  }
 
   if (!session) {
-    return (
-      <TeralinxAuthContext.Provider value={value}>
-        <TeralinxLoginScreen login={login} loginError={loginError} runtimeInfo={runtimeInfo} runtimeStatus={runtimeStatus} />
-      </TeralinxAuthContext.Provider>
-    );
+    return <TeralinxAuthContext.Provider value={value}><TeralinxLoginScreen login={login} loginError={loginError} runtimeInfo={runtimeInfo} runtimeStatus={runtimeStatus} /></TeralinxAuthContext.Provider>;
+  }
+
+  if (session.user.passwordChangeRequired) {
+    return <TeralinxAuthContext.Provider value={value}><PasswordChangeScreen session={session} onComplete={() => void logout()} onLogout={logout} /></TeralinxAuthContext.Provider>;
   }
 
   return <TeralinxAuthContext.Provider value={value}>{children}</TeralinxAuthContext.Provider>;
