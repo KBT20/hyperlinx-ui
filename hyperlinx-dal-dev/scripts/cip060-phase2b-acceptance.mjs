@@ -130,14 +130,14 @@ async function main() {
   }
   pass("personal-state isolation and actor/organization spoof rejection");
 
-  const opportunityId = String(config.sharedOpportunityId);
+  const sharedAccountId = String(config.sharedAccountId ?? "google");
   const sharedIds = [];
   for (const name of Object.keys(principals)) {
-    const result = await call(baseUrl, `/api/commercial/opportunities/${encodeURIComponent(opportunityId)}`, { cookie: sessions[name].cookie });
-    sharedIds.push(result.body.opportunity?.opportunityId);
+    const result = await call(baseUrl, `/api/accounts/${encodeURIComponent(sharedAccountId)}`, { cookie: sessions[name].cookie });
+    sharedIds.push(result.body.account?.accountId);
   }
-  if (new Set(sharedIds).size !== 1 || sharedIds[0] !== opportunityId) throw new Error("Users did not resolve the same governed Opportunity.");
-  pass("same-organization shared governed truth");
+  if (new Set(sharedIds).size !== 1 || sharedIds[0] !== sharedAccountId) throw new Error("Users did not resolve the same governed Account.");
+  pass("same-organization shared governed truth", `Account ${sharedAccountId}; no duplicate per-user records`);
 
   await call(baseUrl, "/api/auth/users", { cookie: sessions.kyle.cookie });
   await call(baseUrl, "/api/auth/users", { cookie: sessions.ryan.cookie, expected: 403 });
