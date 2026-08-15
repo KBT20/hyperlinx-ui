@@ -28,6 +28,7 @@ import type { CandidateSite } from "../types/candidateSite";
 import type { OpportunitySeed } from "../types/portfolio";
 import { useDALState } from "../dal/DALState";
 import { useTeralinxAuth } from "../identity/TeralinxAuth";
+import { principalScopedStorageKey } from "../identity/principalScopedStorage";
 import { getAuthoritativeLifecycleState, transitionScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
 import {
   acceptEngineeringRevision,
@@ -485,7 +486,7 @@ export default function RouteEngineeringWorkspace() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.sessionStorage.setItem(ENGINEERING_WORKSPACE_MODE_KEY, engineeringMode);
+    window.sessionStorage.setItem(principalScopedStorageKey(ENGINEERING_WORKSPACE_MODE_KEY), engineeringMode);
   }, [engineeringMode]);
 
   useEffect(() => () => {

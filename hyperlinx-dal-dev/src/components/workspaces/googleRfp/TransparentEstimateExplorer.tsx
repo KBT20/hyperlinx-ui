@@ -23,6 +23,7 @@ import {
 } from "../../../commercial/ConstraintAuthority";
 import { resolveConstructionCapability, teralinxBoreRate } from "../../../commercial/CommercialPricingArchitecture";
 import { formatEstimateLabel } from "./EstimatePresentation";
+import { principalScopedStorageKey } from "../../../identity/principalScopedStorage";
 
 type ProductionKey = keyof TransparentEstimateProductionControls;
 type FinancialKey = keyof TransparentEstimateFinancialControls;
@@ -1542,8 +1543,8 @@ export default function TransparentEstimateExplorer({
   onIlaPlanningChange: (next: IlaPlanningControls) => void;
   onProjectConfigurationChange: (next: TransparentProjectConfigurationControls) => void;
 }) {
-  const storageKey = `hyperlinx:transparent-estimate:sections:${estimate.estimateId}`;
-  const versionStorageKey = `hyperlinx:transparent-estimate:versions:${estimate.estimateId}`;
+  const storageKey = principalScopedStorageKey(`hyperlinx:transparent-estimate:sections:${estimate.estimateId}`);
+  const versionStorageKey = principalScopedStorageKey(`hyperlinx:transparent-estimate:versions:${estimate.estimateId}`);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [openVersions, setOpenVersions] = useState<Record<string, boolean>>({});
   const [lastImpact, setLastImpact] = useState<{

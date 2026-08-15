@@ -14,6 +14,7 @@ import {
   type TeralinxRuntimeInfo,
 } from "../api/teralinxRuntime";
 import { userHasPermission } from "./teralinxIdentity";
+import { setPrincipalStorageScope } from "./principalScopedStorage";
 
 type TeralinxAuthContextValue = {
   session: TeralinxAuthSession | null;
@@ -177,10 +178,12 @@ export function TeralinxAuthProvider({ children }: { children: ReactNode }) {
     void refreshRuntime();
     void loadAuthenticatedTeralinxUser()
       .then((current) => {
+        setPrincipalStorageScope(current.user.principalId);
         setSession(current);
         setAuthStatus("authenticated");
       })
       .catch(() => {
+        setPrincipalStorageScope(null);
         setSession(null);
         setAuthStatus("anonymous");
       });
@@ -195,6 +198,7 @@ export function TeralinxAuthProvider({ children }: { children: ReactNode }) {
     setLoginError("");
     try {
       const nextSession = await loginTeralinxUser(username, password);
+      setPrincipalStorageScope(nextSession.user.principalId);
       setSession(nextSession);
       setAuthStatus("authenticated");
       if (!nextSession.user.passwordChangeRequired) {
@@ -218,6 +222,7 @@ export function TeralinxAuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // The server may already have expired or revoked the session.
     } finally {
+      setPrincipalStorageScope(null);
       setSession(null);
       setActivity([]);
       setAuthStatus("anonymous");

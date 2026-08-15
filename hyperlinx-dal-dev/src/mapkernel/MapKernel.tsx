@@ -15,6 +15,7 @@ import { resolvePrimitiveStyle } from "./MapStyleManager";
 import { isGeographicReferenceLayerId } from "../reference/ReferenceLayerManager";
 import { centerFromCoordinates, isCoordinate, lonLatToWorld, normalizeTileX, tileCount, validTileY, worldToLonLat, worldToTile, zoomForCoordinates } from "../gis/geo";
 import { markRuntimeDiagnostic } from "../runtime/RuntimeDiagnostics";
+import { principalScopedStorageKey } from "../identity/principalScopedStorage";
 import {
   sharedMapFeatureIdentity,
   sharedMapFeatureRole,
@@ -217,7 +218,7 @@ function safeNumber(value: unknown) {
 function readPersistedViewState(): PersistedMapKernelViewState | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(MAP_KERNEL_VIEW_STATE_KEY);
+    const raw = window.localStorage.getItem(principalScopedStorageKey(MAP_KERNEL_VIEW_STATE_KEY));
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PersistedMapKernelViewState>;
     const centerLon = safeNumber(parsed.centerLon);
@@ -247,7 +248,7 @@ function readPersistedViewState(): PersistedMapKernelViewState | null {
 function writePersistedViewState(state: PersistedMapKernelViewState) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(MAP_KERNEL_VIEW_STATE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(principalScopedStorageKey(MAP_KERNEL_VIEW_STATE_KEY), JSON.stringify(state));
   } catch (error) {
     console.warn("MAP KERNEL VIEW STATE SAVE FAILED", error);
   }
