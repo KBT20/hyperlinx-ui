@@ -190,6 +190,61 @@ export default function ProposedGraphInspectorPanel({ graph, selected }: { graph
     );
   }
 
+  if (selected.type === "commercialIofObject") {
+    const object = selected.value;
+    return (
+      <section className="dal-panel">
+        <div className="dal-panel-title-row">
+          <h3>Initial IOF Object Inspector</h3>
+          <span className="dal-badge pass">{(object.currentLifecycleState ?? object.lifecycleState ?? "PLANNED").replaceAll("_", " ")}</span>
+        </div>
+        <div className="teralinx-summary-grid">
+          <div><span>Object ID</span><b>{object.objectId}</b></div>
+          <div><span>Object Type</span><b>{object.objectType.replaceAll("_", " ")}</b></div>
+          <div><span>Station</span><b>{object.stationAddress}</b></div>
+          <div><span>Coordinate</span><b>{object.coordinate ? `${object.coordinate[1].toFixed(6)}, ${object.coordinate[0].toFixed(6)}` : `${object.latitude ?? "lat"}, ${object.longitude ?? "lng"}`}</b></div>
+          <div><span>Execution Sequence</span><b>{object.executionSequenceId ?? "Missing"}</b></div>
+          <div><span>Payment Sequence</span><b>{object.paymentSequenceId ?? "Missing"}</b></div>
+          <div><span>Close Sequence</span><b>{object.closeSequenceId ?? "Missing"}</b></div>
+          <div><span>Authority</span><b>{object.placementAuthority ?? object.engineeringAuthority ?? "DOCTRINE_PROJECTION_ENGINE"}</b></div>
+        </div>
+        <details>
+          <summary>Developer diagnostics</summary>
+          <pre className="dal-pre">{JSON.stringify(object, null, 2)}</pre>
+        </details>
+      </section>
+    );
+  }
+
+  if (selected.type === "commercialIofSpan") {
+    const span = selected.value;
+    return (
+      <section className="dal-panel">
+        <div className="dal-panel-title-row">
+          <h3>Initial IOF Span Inspector</h3>
+          <span className="dal-badge pass">{(span.lifecycleState ?? "PLANNED").replaceAll("_", " ")}</span>
+        </div>
+        <div className="teralinx-summary-grid">
+          <div><span>Span ID</span><b>{span.spanId}</b></div>
+          <div><span>Start Object</span><b>{span.startObjectId ?? "Missing"}</b></div>
+          <div><span>End Object</span><b>{span.endObjectId ?? "Missing"}</b></div>
+          <div><span>Start Station</span><b>{span.startStation ?? span.stationStart ?? "Missing"}</b></div>
+          <div><span>End Station</span><b>{span.endStation ?? span.stationEnd ?? "Missing"}</b></div>
+          <div><span>Start Measure</span><b>{fmtNumber(Number(span.startMeasure ?? span.startStationFeet ?? 0))} ft</b></div>
+          <div><span>End Measure</span><b>{fmtNumber(Number(span.endMeasure ?? span.endStationFeet ?? 0))} ft</b></div>
+          <div><span>Length</span><b>{fmtNumber(Number(span.lengthFeet ?? 0))} ft</b></div>
+          <div><span>Contained Assets</span><b>{(span.containedAssets ?? []).join(", ") || "None"}</b></div>
+          <div><span>Render Authority</span><b>{span.renderAuthority ?? "MEASURED_CENTERLINE_CLIP"}</b></div>
+          <div><span>Authority</span><b>{span.placementAuthority ?? "DOCTRINE_PROJECTION_ENGINE"}</b></div>
+        </div>
+        <details>
+          <summary>Developer diagnostics</summary>
+          <pre className="dal-pre">{JSON.stringify(span, null, 2)}</pre>
+        </details>
+      </section>
+    );
+  }
+
   const object = selected.value;
   return (
     <section className="dal-panel">

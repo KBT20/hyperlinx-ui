@@ -63,6 +63,24 @@ export interface BudgetVendorResponse {
   risks: string[];
   confidence: BudgetConfidence;
   receivedAt: string;
+  responseSeriesId?: string;
+  vendorResponseId?: string;
+  vendorResponseVersion?: number;
+  parentVendorResponseVersion?: string;
+  scopeVersionId?: string;
+  scopeVersionHash?: string;
+  marketplacePackageId?: string;
+  responseType?: "FULL_SCOPE" | "PARTIAL_SCOPE" | "CAPACITY_OFFER" | "MATERIAL_OFFER" | "NO_BID";
+  providerType?: string;
+  pricingLines?: Array<Record<string, unknown>>;
+  capacityCommitments?: Array<Record<string, unknown>>;
+  materialResponses?: Array<Record<string, unknown>>;
+  vendorAddedLines?: Array<Record<string, unknown>>;
+  exceptions?: Array<Record<string, unknown>>;
+  qualifications?: Array<Record<string, unknown>>;
+  missingDimensions?: string[];
+  completenessStatus?: "COMPLETE" | "INCOMPLETE";
+  contentHash?: string;
 }
 
 export interface BudgetLineItem {
@@ -211,4 +229,3 @@ export function summarizeBidPackageReadiness(bidPackage: BidPackage): {
     measurable: bidPackage.items.every((item) => item.quantity.quantity > 0 && Boolean(item.objectReference.objectId)),
   };
 }
-

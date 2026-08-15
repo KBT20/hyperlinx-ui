@@ -72,7 +72,7 @@ const navGroups: NavGroup[] = [
   },
 ];
 
-export default function DALNavigation() {
+export default function DALNavigation({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { workspace, setWorkspace } = useDALState();
   const { session } = useTeralinxAuth();
   const user = session?.user ?? null;
@@ -84,14 +84,18 @@ export default function DALNavigation() {
     .filter((group) => group.items.length);
 
   return (
-    <nav className="dal-nav" aria-label="DAL workspaces">
+    <nav className={`dal-nav ${open ? "open" : ""}`} aria-label="DAL workspaces" aria-hidden={!open}>
+      <div className="dal-nav-header">
+        <div><span>Navigation</span><b>Workspaces</b></div>
+        <button type="button" onClick={onClose} aria-label="Close workspace navigation">Close</button>
+      </div>
       {visibleGroups.map((group) => {
         const items = group.items.map((item) => (
             <button
               key={item.id}
               className={workspace === item.id ? "dal-nav-item active" : "dal-nav-item"}
               type="button"
-              onClick={() => setWorkspace(item.id)}
+              onClick={() => { setWorkspace(item.id); onClose(); }}
               title={workspaceAccessReason(user, item.id)}
             >
               {item.label}

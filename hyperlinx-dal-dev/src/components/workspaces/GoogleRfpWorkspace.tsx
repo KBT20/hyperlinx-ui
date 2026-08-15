@@ -34,14 +34,24 @@ import {
 } from "../../commercial/CommercialCorridorDraftEngine";
 import { routeCommercialCorridorWithOsrm, type CommercialRouteRequest, type CommercialRouteResult } from "../../commercial/CommercialOsrmRoutingEngine";
 import {
+  compareEndpointCoordinate,
+  deriveImportedRouteEndpointAuthority,
+  enrichImportedEndpointSite,
+  orientedImportedRouteGeometry,
+  reverseImportedRouteEndpointAuthority,
+  type ImportedRouteEndpointAuthority,
+  type ImportedRouteEndpointSite,
+} from "../../commercial/CommercialRouteEndpointAuthority";
+import {
   DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS,
   type TransparentEstimateControls,
   type TransparentEstimateFinancialControls,
   type TransparentEstimateHumanAuditEntry,
   type TransparentEstimateProductionControls,
+  type TransparentProjectConfigurationControls,
   type TransparentUnknownQuantity,
 } from "../../commercial/TransparentEstimatingEngine";
-import type { IlaPlanningControls } from "../../commercial/IlaPlanningEngine";
+import { invalidateIlaPlanningCache, type IlaPlanningControls } from "../../commercial/IlaPlanningEngine";
 import { authorityModeConfidence, type ConstraintValue, type ConstraintAuthorityMode } from "../../commercial/ConstraintAuthority";
 import {
   COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT,
@@ -54,7 +64,9 @@ import {
   commentProposalRuntimeObject,
   createDraftIofPackageFromProposal,
   createProposalRevision,
+  downloadRuntimeArtifact,
   duplicateProposalRuntimeObject,
+  listCommercialDraftIofPackages,
   loadRuntimeRehydration,
   listEngineeringReviewQueue,
   openEngineeringPackage,
@@ -66,6 +78,8 @@ import {
   submitProposalToCustomer,
   uploadProposalEvidence,
   type DraftIofPackageRuntime,
+  type CommercialReleasePackageRuntime,
+  type CommercialRevisionRuntime,
   type EngineeringReviewQueueItem,
   type ProposalRuntimeObject,
   type RuntimeRehydrationState,
@@ -77,14 +91,72 @@ import {
   proposalCustomerReviewStateFromRepository,
   proposalRepositoryReportsCommercialApproved,
 } from "../../kernel/ProposalAuthorityState";
+import {
+  cacheInventoryProjection,
+  findCachedInventoryProjectionForCustomer,
+  inventoryCacheStats,
+} from "../../performance/InventoryImportCache";
+import type { AsyncImportProgressState } from "../../performance/AsyncCustomerDesignImport";
+import {
+  latestRuntimePerformanceMetrics,
+  runtimePerformanceSnapshot,
+  startRuntimePerformanceOperation,
+  type RuntimePerformanceSnapshot,
+} from "../../performance/RuntimePerformanceInstrumentation";
+import { affectedWorkbookExecutionDomains } from "../../performance/WorkbookRecalculationDomains";
+import { runtimeDiagnosticsLog, runtimeDiagnosticsWarn } from "../../performance/RuntimeDiagnostics";
+import {
+  executeCorridorInBackground,
+  type CorridorAggregateProjection,
+  type CorridorExecutionMetricsSnapshot,
+  type CorridorExecutionProgress,
+  type CorridorExecutionSession,
+  type CorridorViewportProjection,
+} from "../../corridorExecution";
+import {
+  commitRouteEditSession,
+  createRouteEditPatch,
+  createRouteEditSession,
+  rollbackRouteEditSession,
+  safeApplyRouteEditPatch,
+  type RouteEditPatch,
+  type RouteEditPatchType,
+  type RouteEditRevisionRecord,
+  type RouteEditSession,
+} from "../../routeEdit";
+import {
+  buildCommercialRevisionProjection,
+  commercialChangeSetFromPatches,
+  commercialPatchFromRouteEditPatch,
+  compareCommercialRevisionProjections,
+  discardUnappliedCommercialPatches,
+  restoreOriginalCommercialRevision,
+  type CommercialChangeSet,
+  type CommercialPatch,
+  type CommercialRevisionProjection,
+} from "../../commercialChangeSet";
 import { useDALState } from "../../dal/DALState";
 import { useTeralinxAuth } from "../../identity/TeralinxAuth";
 import type { GovernedAccount, GovernedContact, RuntimeHistoryEvent } from "../../api/accountLibrary";
 import type { CustomerDesignImport, ImportedCustomerRoute } from "../../translate/CustomerDesignImport";
 import { scheduleDraftIofPackageAssembly, schedulePointToPointLongHaulDoctrineAssembly } from "../../runtime/ConstitutionalAssemblyScheduler";
+import { constitutionalProjectionCacheTelemetry } from "../../runtime/ConstitutionalProjectionCache";
+import {
+  annotateCommercialMutation,
+  beginCommercialMutation,
+  calculateCivilMixFastPath,
+  completeCommercialMutation,
+  latestCommercialMutationTrace,
+  recordCommercialMutationMilestone,
+  recordCommercialMutationOperation,
+  type CommercialMutationType,
+} from "../../performance/CommercialMutationRuntime";
 import {
   CustomerRepository,
   CustomerTwinRepository,
+  CommercialChangeSetRepository,
+  CommercialReleasePackageRepository,
+  CommercialRevisionRepository,
   ImportRepository,
   OpportunityRepository,
   ProposalRepository,
@@ -115,14 +187,17 @@ import GoogleBidVendorResponsePreviewPanel from "./googleRfp/GoogleBidVendorResp
 import { CommercialReviewPanel } from "./googleRfp/CommercialReviewPanel";
 import { evaluateConstitutionalAssemblyReview } from "../commercial/ConstitutionalAssemblyReviewPanel";
 import TransparentEstimateExplorer from "./googleRfp/TransparentEstimateExplorer";
-import ProposedNetworkMapPanel, { type CommercialIlaMapStation, type ProposedNetworkSelection } from "./proposednetwork/ProposedNetworkMapPanel";
+import { compareProposalRevisions, proposalRevisionApproval } from "../../commercial/ProposalRevisionLifecycle";
+import ProposedNetworkMapPanel, { type CommercialIlaMapStation, type CommercialIofProjectionOverlay, type ProposedNetworkSelection } from "./proposednetwork/ProposedNetworkMapPanel";
 import type { ProposedGraph } from "../../proposedGraph/ProposedGraph";
 import type { DALCoordinate } from "../../types/dal";
+import { sharedOpportunityMapProjectionFromRouteRepository } from "../../mapkernel";
 import { hashRouteGeometry } from "../../routing/ConstraintAnalysisEngine";
 import {
-  POINT_TO_POINT_LONG_HAUL_DOCTRINE,
   POINT_TO_POINT_LONG_HAUL_PRODUCT_ID,
+  type PointToPointLongHaulDoctrineInput,
 } from "../../products/pointToPointLongHaulDoctrine";
+import { PRODUCT_REGISTRY } from "../../products/ProductRegistry";
 import type { ProductDoctrineSite } from "../../products/ProductDoctrineContracts";
 import {
   executePointToPointConfigurator,
@@ -157,6 +232,7 @@ const COMMERCIAL_WORKSPACE_VIEWS: CommercialWorkspaceView[] = [
 
 interface CommercialAccountFixture {
   accountId: string;
+  accountNumber: number;
   name: string;
   accountType: string;
   status: string;
@@ -223,6 +299,7 @@ interface TemporaryImportedRoute {
   sourceFileName: string;
   evidence: Record<string, unknown>;
   importedAt: string;
+  endpointAuthority: ImportedRouteEndpointAuthority;
 }
 
 interface OpportunityRestoreStep {
@@ -390,6 +467,7 @@ interface AcceptedProposal {
 }
 
 interface CommercialOpportunityRecord {
+  transactionId?: string;
   opportunityId: string;
   objectId?: string;
   runtimeObjectId?: string;
@@ -417,6 +495,11 @@ interface CommercialOpportunityRecord {
   routeGeometry?: DALCoordinate[];
   routeFeet?: number;
   routeMiles?: number;
+  routeRevision?: number;
+  routeGeometryId?: string;
+  geometryHash?: string;
+  aSite?: ImportedRouteEndpointSite | Record<string, unknown>;
+  zSite?: ImportedRouteEndpointSite | Record<string, unknown>;
   sourceRouteFileReference?: string;
   sourceFiles?: Array<Record<string, unknown>>;
   attachments?: Array<Record<string, unknown>>;
@@ -433,6 +516,21 @@ interface CommercialOpportunityRecord {
   restoreSnapshotVersion?: string;
   commercialSnapshot?: Record<string, unknown>;
   proposalId?: string;
+  commercialRepositoryId?: string;
+  commercialRevisionId?: string;
+  revisionId?: string;
+  commercialReleasePackageId?: string;
+  commercialRevisionHash?: string;
+  commercialReleaseHash?: string;
+  changeSetIds?: string[];
+  activeChangeSetIds?: string[];
+  patchCount?: number;
+  activePatchCount?: number;
+  appliedPatchCount?: number;
+  repositoryHash?: string;
+  projectionHash?: string;
+  patchReplayTimeMs?: number;
+  projectionTimeMs?: number;
   engineeringPackageId?: string;
   draftIofPackageId?: string;
   estimateId?: string;
@@ -519,14 +617,6 @@ type ContactEditorState = {
   phone: string;
 };
 
-type Layer1ProductOption = {
-  productId: string;
-  productName: string;
-  productFamily: string;
-  defaultTermYears: number;
-  protected: boolean;
-};
-
 const COMMERCIAL_WORKFLOW: Array<{ id: CommercialWorkspaceView; label: string; summary: string }> = [
   { id: "account", label: "CRM Account", summary: "Customer, contacts, and opportunity context" },
   { id: "engagement", label: "Engagement", summary: "Opportunity record, documents, reviews, and attachments" },
@@ -539,9 +629,7 @@ const COMMERCIAL_WORKFLOW: Array<{ id: CommercialWorkspaceView; label: string; s
   { id: "handoff", label: "Engineering Handoff", summary: "Accepted proposal package for Route Engineering" },
 ];
 
-const LAYER_1_PRODUCT_OPTIONS: Layer1ProductOption[] = [
-  { productId: POINT_TO_POINT_LONG_HAUL_PRODUCT_ID, productName: POINT_TO_POINT_PRODUCT_NAME, productFamily: "Transport Infrastructure", defaultTermYears: 20, protected: false },
-];
+const LAYER_1_PRODUCT_OPTIONS = PRODUCT_REGISTRY.commercialOptions();
 
 const CARRIER_NEUTRAL_FULFILLMENT_MIX = [
   { ownershipClass: "CUSTOMER_OWNED", label: "Customer Existing Ring", percentage: 40 },
@@ -605,6 +693,7 @@ function opportunityAssignedTo(record: CommercialOpportunityRecord) {
 const COMMERCIAL_ACCOUNTS: CommercialAccountFixture[] = [
   {
     accountId: "google",
+    accountNumber: 1,
     name: "Google",
     accountType: "Hyperscaler",
     status: "Active RFP",
@@ -621,79 +710,29 @@ const COMMERCIAL_ACCOUNTS: CommercialAccountFixture[] = [
     engineeringHistory: ["No ScopeVersion created; Route Engineering not yet owner"],
     notes: "Google fixture remains the first production customer scenario for DAL Commercial Planning.",
   },
-  {
-    accountId: "fiberlight",
-    name: "FiberLight",
-    accountType: "Carrier",
-    status: "Prospect",
-    salesOwner: "Ryan",
-    primaryEngineeringContact: "TBD",
-    procurementContact: "TBD",
-    contacts: ["Carrier sales contact", "Network planning contact"],
-    activeOpportunities: ["No active DAL commercial engagement loaded"],
-    existingNetworks: ["No customer networks loaded in this workspace session"],
-    operationalObjects: ["Isolated from Google assets"],
-    commercialEngagements: ["None open"],
-    proposalHistory: ["None loaded"],
-    customerReviewHistory: ["None loaded"],
-    engineeringHistory: ["None loaded"],
-    notes: "Account data is isolated. Selecting FiberLight does not display Google corridors, proposals, or assets.",
-  },
-  {
-    accountId: "verizon",
-    name: "Verizon",
-    accountType: "Carrier",
-    status: "Prospect",
-    salesOwner: "Ryan",
-    primaryEngineeringContact: "TBD",
-    procurementContact: "TBD",
-    contacts: ["Carrier account contact"],
-    activeOpportunities: ["No active DAL commercial engagement loaded"],
-    existingNetworks: ["No customer networks loaded in this workspace session"],
-    operationalObjects: ["Isolated from Google assets"],
-    commercialEngagements: ["None open"],
-    proposalHistory: ["None loaded"],
-    customerReviewHistory: ["None loaded"],
-    engineeringHistory: ["None loaded"],
-    notes: "Account context gates downstream commercial and map data.",
-  },
-  {
-    accountId: "crown-castle",
-    name: "Crown Castle",
-    accountType: "Infrastructure provider",
-    status: "Prospect",
-    salesOwner: "Ryan",
-    primaryEngineeringContact: "TBD",
-    procurementContact: "TBD",
-    contacts: ["Infrastructure account contact"],
-    activeOpportunities: ["No active DAL commercial engagement loaded"],
-    existingNetworks: ["No customer networks loaded in this workspace session"],
-    operationalObjects: ["Isolated from Google assets"],
-    commercialEngagements: ["None open"],
-    proposalHistory: ["None loaded"],
-    customerReviewHistory: ["None loaded"],
-    engineeringHistory: ["None loaded"],
-    notes: "Future imported networks will remain account-owned assets, not proposals.",
-  },
-  {
-    accountId: "municipality",
-    name: "Municipality",
-    accountType: "Public sector",
-    status: "Prospect",
-    salesOwner: "Ryan",
-    primaryEngineeringContact: "TBD",
-    procurementContact: "TBD",
-    contacts: ["Municipal broadband lead"],
-    activeOpportunities: ["No active DAL commercial engagement loaded"],
-    existingNetworks: ["No customer networks loaded in this workspace session"],
-    operationalObjects: ["Isolated from Google assets"],
-    commercialEngagements: ["None open"],
-    proposalHistory: ["None loaded"],
-    customerReviewHistory: ["None loaded"],
-    engineeringHistory: ["None loaded"],
-    notes: "Municipal network imports will enter as customer assets with authority state.",
-  },
 ];
+
+const EMPTY_COMMERCIAL_ACCOUNT: CommercialAccountFixture = {
+  accountId: "",
+  accountNumber: 0,
+  name: "",
+  accountType: "",
+  status: "",
+  salesOwner: "",
+  primaryEngineeringContact: "",
+  procurementContact: "",
+  contacts: [],
+  activeOpportunities: [],
+  existingNetworks: [],
+  operationalObjects: [],
+  commercialEngagements: [],
+  proposalHistory: [],
+  customerReviewHistory: [],
+  engineeringHistory: [],
+  notes: "",
+};
+
+const RETIRED_DEMO_ACCOUNT_IDS = new Set(["fiberlight", "verizon", "crown-castle", "municipality"]);
 
 const ENRICHMENT_OPTIONS = [
   "Geology",
@@ -737,6 +776,22 @@ const CIVIL_MIX_CONSTRAINT_KEYS = [
   "civil.directionalBoreRockPercent",
   "civil.openTrenchPercent",
 ] as const;
+
+type CivilMixCalibrationKey = "plowPercent" | "dirtPercent" | "rockPercent" | "trenchPercent";
+
+interface CivilMixCalibration {
+  plowPercent: number;
+  dirtPercent: number;
+  rockPercent: number;
+  trenchPercent: number;
+}
+
+const STANDARD_CIVIL_MIX: CivilMixCalibration = Object.freeze({
+  plowPercent: 82,
+  dirtPercent: 12,
+  rockPercent: 0,
+  trenchPercent: 6,
+});
 
 const ESTIMATE_AUTHOR = "Teralinx";
 
@@ -1135,98 +1190,6 @@ const COMMERCIAL_NETWORKS: CommercialNetworkRecord[] = [
     noScopeVersionCreation: true,
     noInventoryAuthorityMutation: true,
   },
-  {
-    networkId: "NET-FIBERLIGHT-EXISTING",
-    accountId: "fiberlight",
-    name: "FiberLight existing backbone reference",
-    networkCategory: "FUTURE_GIS",
-    authorityState: "EXISTING_NETWORK",
-    importSource: "GIS_API",
-    sourceAssetName: "Future FiberLight connector",
-    source: "Account-owned reference placeholder",
-    importDate: "Not loaded",
-    routeMiles: null,
-    status: "Account isolated placeholder",
-    lastUpdated: "Not loaded",
-    geometryStatus: "Hidden outside FiberLight",
-    objectCount: 0,
-    revisionCount: 0,
-    confidence: "Pending import",
-    visibleByDefault: true,
-    lockedByDefault: true,
-    activeReferenceByDefault: true,
-    noScopeVersionCreation: true,
-    noInventoryAuthorityMutation: true,
-  },
-  {
-    networkId: "NET-VERIZON-REFERENCE",
-    accountId: "verizon",
-    name: "Verizon customer network placeholder",
-    networkCategory: "FUTURE_GIS",
-    authorityState: "EXISTING_NETWORK",
-    importSource: "GIS_API",
-    sourceAssetName: "Future Verizon connector",
-    source: "Account-owned reference placeholder",
-    importDate: "Not loaded",
-    routeMiles: null,
-    status: "Account isolated placeholder",
-    lastUpdated: "Not loaded",
-    geometryStatus: "Hidden outside Verizon",
-    objectCount: 0,
-    revisionCount: 0,
-    confidence: "Pending import",
-    visibleByDefault: true,
-    lockedByDefault: true,
-    activeReferenceByDefault: true,
-    noScopeVersionCreation: true,
-    noInventoryAuthorityMutation: true,
-  },
-  {
-    networkId: "NET-CROWN-CASTLE-REFERENCE",
-    accountId: "crown-castle",
-    name: "Crown Castle infrastructure reference",
-    networkCategory: "FUTURE_GIS",
-    authorityState: "EXISTING_NETWORK",
-    importSource: "GIS_API",
-    sourceAssetName: "Future Crown Castle connector",
-    source: "Account-owned reference placeholder",
-    importDate: "Not loaded",
-    routeMiles: null,
-    status: "Account isolated placeholder",
-    lastUpdated: "Not loaded",
-    geometryStatus: "Hidden outside Crown Castle",
-    objectCount: 0,
-    revisionCount: 0,
-    confidence: "Pending import",
-    visibleByDefault: true,
-    lockedByDefault: true,
-    activeReferenceByDefault: true,
-    noScopeVersionCreation: true,
-    noInventoryAuthorityMutation: true,
-  },
-  {
-    networkId: "NET-MUNICIPALITY-REFERENCE",
-    accountId: "municipality",
-    name: "Municipal broadband planning area",
-    networkCategory: "FUTURE_GIS",
-    authorityState: "IMPORTED_NETWORK",
-    importSource: "GeoJSON",
-    sourceAssetName: "Future municipal import",
-    source: "Account-owned reference placeholder",
-    importDate: "Not loaded",
-    routeMiles: null,
-    status: "Account isolated placeholder",
-    lastUpdated: "Not loaded",
-    geometryStatus: "Hidden outside Municipality",
-    objectCount: 0,
-    revisionCount: 0,
-    confidence: "Pending import",
-    visibleByDefault: true,
-    lockedByDefault: true,
-    activeReferenceByDefault: true,
-    noScopeVersionCreation: true,
-    noInventoryAuthorityMutation: true,
-  },
 ];
 
 function routeLabel(routePlan: GoogleRfpRouteBidPlan) {
@@ -1298,6 +1261,20 @@ function draftTypeLabel(type: CommercialDraftType | null) {
 
 function locationSourceLabel(source: ResolvedLocationSource) {
   return source.replaceAll("_", " ");
+}
+
+function importedEndpointResolvedLocation(accountId: string, site: ImportedRouteEndpointSite): ResolvedLocation {
+  return {
+    id: `${site.sourceGeometryId}:${site.endpoint}:${site.geometryHash}`,
+    label: site.siteName || `${site.endpoint} Endpoint`,
+    source: "IMPORTED_ROUTE",
+    inputValue: `${site.coordinate[1]},${site.coordinate[0]}`,
+    latitude: site.coordinate[1],
+    longitude: site.coordinate[0],
+    accountId,
+    domain: "SALES_DRAFT",
+    confidence: 100,
+  };
 }
 
 function isCustomerTwinLocation(location: ResolvedLocation | null | undefined) {
@@ -1497,6 +1474,10 @@ function createOpportunityRestoreState(
 
 function objectRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function recordArray(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(objectRecord(item))) : [];
 }
 
 function snapshotLabel(key: string) {
@@ -1705,6 +1686,7 @@ function commercialAccountFromGoverned(
     : (account.contacts?.length ? account.contacts : fallback?.contacts ?? []);
   return {
     accountId: account.accountId,
+    accountNumber: Number(account.accountNumber ?? fallback?.accountNumber ?? 0),
     name: account.name,
     accountType: account.accountType ?? fallback?.accountType ?? "Prospect",
     status: account.status ?? fallback?.status ?? "Prospect",
@@ -2328,13 +2310,13 @@ function LiveCommercialSessionPanel({
   selectedScopeLabel,
   pricingSummary,
   recalculating,
-  onSaveSnapshot,
+  onSaveRevision,
 }: {
   session: LiveCommercialSession | null;
   selectedScopeLabel: string;
   pricingSummary: SelectedScopePricingSummary;
   recalculating: boolean;
-  onSaveSnapshot: () => void;
+  onSaveRevision: () => void;
 }) {
   const status = recalculating ? "RECALCULATING" : session?.recalculationStatus ?? "CURRENT";
   const routeSource = session?.routeSource ?? "ORIGINAL";
@@ -2361,10 +2343,10 @@ function LiveCommercialSessionPanel({
       </div>
       {session?.errorMessage ? <div className="dal-status bid-recalculation-status">{session.errorMessage}</div> : null}
       <div className="dal-actions">
-        <button type="button" onClick={onSaveSnapshot} disabled={!session?.dirty || recalculating}>
-          Save Snapshot
+        <button type="button" onClick={onSaveRevision} disabled={!session?.dirty || recalculating}>
+          Save Revision
         </button>
-        <span className="dal-status">Save Snapshot preserves the already-current commercial state. It does not calculate or create authority.</span>
+        <span className="dal-status">Save Revision preserves the already-current commercial state through the Commercial Change Set path.</span>
       </div>
     </section>
   );
@@ -3194,7 +3176,7 @@ export default function GoogleRfpWorkspace() {
   const [assumptionStates, setAssumptionStates] = useState<BudgetAssumptionState[]>([defaultAssumptionState]);
   const [selectedAssumptionStateId, setSelectedAssumptionStateId] = useState(defaultAssumptionState.stateId);
   const [transparentEstimateControls, setTransparentEstimateControls] = useState<TransparentEstimateControls>(() => defaultTransparentEstimateControls());
-  const [commercialWorkbookOpenSections, setCommercialWorkbookOpenSections] = useState<Set<string>>(() => new Set(["proposal-summary"]));
+  const [commercialWorkbookOpenSections, setCommercialWorkbookOpenSections] = useState<Set<string>>(() => new Set(["proposal-summary", "construction-mix"]));
   const [transparentEstimateRecalculatedAt, setTransparentEstimateRecalculatedAt] = useState<string | null>(null);
   const [liveCommercialSession, setLiveCommercialSession] = useState<LiveCommercialSession | null>(null);
   const [selectedScopeId, setSelectedScopeId] = useState<string>(() => googleHeliumBidPlanFixture.routePlans[0]?.routeRequirement.routeRequirementId ?? "COMBINED_AWARD");
@@ -3205,6 +3187,8 @@ export default function GoogleRfpWorkspace() {
   const [proposalRuntimeRecords, setProposalRuntimeRecords] = useState<ProposalRuntimeObject[]>([]);
   const [proposalRuntimeNotice, setProposalRuntimeNotice] = useState("Proposal Runtime Library is waiting for a governed proposal object.");
   const [proposalRuntimeActionPending, setProposalRuntimeActionPending] = useState(false);
+  const [releaseProposalRevisionId, setReleaseProposalRevisionId] = useState("");
+  const releaseCoordinatorPendingRef = useRef(false);
   const [engineeringReviewQueue, setEngineeringReviewQueue] = useState<EngineeringReviewQueueItem[]>([]);
   const [activeDraftIofPackage, setActiveDraftIofPackage] = useState<DraftIofPackageRuntime | null>(null);
   const [commercialDraftIofPackage, setCommercialDraftIofPackage] = useState<DraftIofPackageRuntime | null>(null);
@@ -3230,7 +3214,7 @@ export default function GoogleRfpWorkspace() {
   const [accountEditorMode, setAccountEditorMode] = useState<"create" | "edit">("edit");
   const [accountDraft, setAccountDraft] = useState<AccountEditorState>(() => emptyAccountEditor(currentUserName));
   const [contactDraft, setContactDraft] = useState<ContactEditorState>(() => contactEditorDefaults());
-  const [selectedAccountId, setSelectedAccountId] = useState("google");
+  const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedProductId, setSelectedProductId] = useState(POINT_TO_POINT_LONG_HAUL_PRODUCT_ID);
   const [activeView, setActiveView] = useState<CommercialWorkspaceView>("networks");
   const [activeDesignMode, setActiveDesignMode] = useState<CommercialDesignMode>("EXTEND_EXISTING_NETWORK");
@@ -3241,11 +3225,13 @@ export default function GoogleRfpWorkspace() {
   const [commercialRouteRepositoryRecords, setCommercialRouteRepositoryRecords] = useState<CommercialRouteRepositoryRecord[]>([]);
   const [commercialLibraryLoaded, setCommercialLibraryLoaded] = useState(false);
   const [activeCommercialOpportunityId, setActiveCommercialOpportunityId] = useState("");
-  const [opportunityNameDraft, setOpportunityNameDraft] = useState("Google DFW Route");
+  const [opportunityNameDraft, setOpportunityNameDraft] = useState("");
   const [opportunityNotice, setOpportunityNotice] = useState("No opportunity loaded. New Opportunity starts with Customer Twin only.");
   const [opportunityRestoreState, setOpportunityRestoreState] = useState<OpportunityRestoreState>(() => createOpportunityRestoreState());
   const opportunityRestoreRunRef = useRef(0);
   const [generatedRouteRepositorySnapshot, setGeneratedRouteRepositorySnapshot] = useState<CommercialRouteRepositoryRecord | null>(null);
+  const [automaticIofAssemblyRouteRepositoryId, setAutomaticIofAssemblyRouteRepositoryId] = useState("");
+  const [commercialLifecycleSequencingNotice, setCommercialLifecycleSequencingNotice] = useState("Commercial lifecycle sequencing is waiting for a committed Route Repository.");
   const [routePersistencePending, setRoutePersistencePending] = useState(false);
   const [routePersistenceAuditLog, setRoutePersistenceAuditLog] = useState<RoutePersistenceAuditEntry[]>([]);
   const [routePersistenceInspector, setRoutePersistenceInspector] = useState<RoutePersistenceInspectorState | null>(null);
@@ -3266,6 +3252,8 @@ export default function GoogleRfpWorkspace() {
   const [commercialRoutingStatus, setCommercialRoutingStatus] = useState<"IDLE" | "ROUTING">("IDLE");
   const [opportunityBrowserQuery, setOpportunityBrowserQuery] = useState("");
   const [temporaryImportedRoute, setTemporaryImportedRoute] = useState<TemporaryImportedRoute | null>(null);
+  const [pendingRouteImport, setPendingRouteImport] = useState<CustomerDesignImport | null>(null);
+  const [importedEndpointReplacementConfirmed, setImportedEndpointReplacementConfirmed] = useState(false);
   const [routeImportStatus, setRouteImportStatus] = useState<RouteImportStatus>("IDLE");
   const [newOpportunityDialogOpen, setNewOpportunityDialogOpen] = useState(false);
   const [existingFiberQueryLastRunAt, setExistingFiberQueryLastRunAt] = useState<string | null>(null);
@@ -3275,6 +3263,24 @@ export default function GoogleRfpWorkspace() {
   const [customerInventoryDiagnostics, setCustomerInventoryDiagnostics] = useState<string[]>([]);
   const [existingInventoryImportStatus, setExistingInventoryImportStatus] = useState<"IDLE" | "PARSING" | "COMMITTING" | "READY" | "ERROR">("IDLE");
   const [existingInventoryImportNotice, setExistingInventoryImportNotice] = useState("Use Import Existing Network to create organization-owned Customer Twin inventory records.");
+  const [runtimePerformancePanelOpen, setRuntimePerformancePanelOpen] = useState(false);
+  const [mutationTraceRevision, setMutationTraceRevision] = useState(0);
+  const [runtimePerformance, setRuntimePerformance] = useState<RuntimePerformanceSnapshot>(() => runtimePerformanceSnapshot());
+  const [importWorkerStatus, setImportWorkerStatus] = useState<AsyncImportProgressState | "IDLE">("IDLE");
+  const [corridorExecutionSession, setCorridorExecutionSession] = useState<CorridorExecutionSession | null>(null);
+  const [corridorExecutionProgress, setCorridorExecutionProgress] = useState<CorridorExecutionProgress | null>(null);
+  const [corridorAggregateProjection, setCorridorAggregateProjection] = useState<CorridorAggregateProjection | null>(null);
+  const [corridorViewportProjection, setCorridorViewportProjection] = useState<CorridorViewportProjection | null>(null);
+  const [corridorPerformanceMetrics, setCorridorPerformanceMetrics] = useState<CorridorExecutionMetricsSnapshot | null>(null);
+  const renderCountRef = useRef(0);
+  renderCountRef.current += 1;
+  const [routeEditSession, setRouteEditSession] = useState<RouteEditSession | null>(null);
+  const [routeEditNotice, setRouteEditNotice] = useState("Route edits are inactive. Original assembled route truth is unchanged.");
+  const [routeEditRevisionPreview, setRouteEditRevisionPreview] = useState<RouteEditRevisionRecord | null>(null);
+  const [commercialChangeSetPatches, setCommercialChangeSetPatches] = useState<CommercialPatch[]>([]);
+  const [commercialChangeSetHistory, setCommercialChangeSetHistory] = useState<CommercialChangeSet[]>([]);
+  const [commercialRevisionProjection, setCommercialRevisionProjection] = useState<CommercialRevisionProjection | null>(null);
+  const [commercialChangeSetNotice, setCommercialChangeSetNotice] = useState("Commercial Revision is at Repository Truth. No Change Set patches are active.");
   const [inventoryRefreshNonce, setInventoryRefreshNonce] = useState(0);
   const [networkLayerStates, setNetworkLayerStates] = useState<Record<string, NetworkLayerState>>(() =>
     Object.fromEntries(COMMERCIAL_NETWORKS.map((network) => [network.networkId, defaultNetworkLayerState(network)])),
@@ -3286,17 +3292,26 @@ export default function GoogleRfpWorkspace() {
   const accountOptions = useMemo<CommercialAccountFixture[]>(() => {
     const byId = new Map<string, CommercialAccountFixture>();
     COMMERCIAL_ACCOUNTS.forEach((account) => byId.set(account.accountId, account));
-    governedAccounts.forEach((account) => {
+    governedAccounts.filter((account) => !RETIRED_DEMO_ACCOUNT_IDS.has(account.accountId)).forEach((account) => {
       const fallback = byId.get(account.accountId);
       const contacts = governedContacts.filter((contact) => contact.accountId === account.accountId && contact.lifecycleState !== "ARCHIVED");
       byId.set(account.accountId, commercialAccountFromGoverned(account, contacts, fallback));
     });
-    return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const usedNumbers = new Set([...byId.values()].map((account) => account.accountNumber).filter((value) => value > 0));
+    let nextNumber = 1;
+    const numbered = [...byId.values()]
+      .sort((a, b) => (a.accountNumber || Number.MAX_SAFE_INTEGER) - (b.accountNumber || Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name))
+      .map((account) => {
+        if (account.accountNumber > 0) return account;
+        while (usedNumbers.has(nextNumber)) nextNumber += 1;
+        usedNumbers.add(nextNumber);
+        return { ...account, accountNumber: nextNumber++ };
+      });
+    return numbered.sort((a, b) => a.accountNumber - b.accountNumber);
   }, [governedAccounts, governedContacts]);
   const selectedAccount =
     accountOptions.find((account) => account.accountId === selectedAccountId) ??
-    accountOptions.find((account) => account.accountId === "google") ??
-    COMMERCIAL_ACCOUNTS[0];
+    EMPTY_COMMERCIAL_ACCOUNT;
   const selectedGovernedAccount = governedAccounts.find((account) => account.accountId === selectedAccount.accountId) ?? null;
   const selectedProductOption = useMemo(
     () => LAYER_1_PRODUCT_OPTIONS.find((product) => product.productId === selectedProductId) ?? LAYER_1_PRODUCT_OPTIONS[0],
@@ -3326,15 +3341,15 @@ export default function GoogleRfpWorkspace() {
     () => governedContactsForSelectedAccount.map((contact) => contact.email).filter(Boolean),
     [governedContactsForSelectedAccount],
   );
-  async function refreshAccountLibrary(nextNotice?: string) {
+  async function refreshAccountLibrary(nextNotice?: string, targetAccountId = selectedAccountId) {
     const [accounts, contacts, history] = await Promise.all([
       CustomerRepository.listCustomers(),
-      CustomerRepository.listContacts(),
+      targetAccountId ? CustomerRepository.listContacts(targetAccountId) : Promise.resolve([]),
       CustomerRepository.listHistory(),
     ]);
     setGovernedAccounts(accounts);
-    setGovernedContacts(contacts);
-    setRuntimeHistory(history);
+    setGovernedContacts(contacts.filter((contact) => contact.accountId === targetAccountId));
+    setRuntimeHistory(history.filter((event) => event.accountId === targetAccountId || event.customerId === targetAccountId || event.customerId === customerIdForAccount(targetAccountId)));
     setAccountLibraryLoaded(true);
     if (nextNotice) setAccountNotice(nextNotice);
     else setAccountNotice(`${accounts.length.toLocaleString()} governed Accounts loaded.`);
@@ -3343,17 +3358,14 @@ export default function GoogleRfpWorkspace() {
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
-    Promise.all([CustomerRepository.listCustomers(), CustomerRepository.listContacts(), CustomerRepository.listHistory()])
-      .then(([accounts, contacts, history]) => {
+    CustomerRepository.listCustomers()
+      .then((accounts) => {
         if (cancelled) return;
         setGovernedAccounts(accounts);
-        setGovernedContacts(contacts);
-        setRuntimeHistory(history);
+        setGovernedContacts([]);
+        setRuntimeHistory([]);
         setAccountLibraryLoaded(true);
         setAccountNotice(`${accounts.length.toLocaleString()} governed Accounts loaded.`);
-        if (!accounts.some((account) => account.accountId === selectedAccountId) && accounts[0]?.accountId) {
-          setSelectedAccountId(accounts[0].accountId);
-        }
       })
       .catch((error) => {
         if (cancelled) return;
@@ -3366,14 +3378,44 @@ export default function GoogleRfpWorkspace() {
   }, [session?.token]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || !selectedAccountId) {
+      setGovernedContacts([]);
+      setRuntimeHistory([]);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([CustomerRepository.listContacts(selectedAccountId), CustomerRepository.listHistory()])
+      .then(([contacts, history]) => {
+        if (cancelled) return;
+        setGovernedContacts(contacts.filter((contact) => contact.accountId === selectedAccountId));
+        setRuntimeHistory(history.filter((event) => event.accountId === selectedAccountId || event.customerId === selectedAccountId || event.customerId === customerIdForAccount(selectedAccountId)));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setAccountNotice(`Account detail load failed: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    return () => { cancelled = true; };
+  }, [selectedAccountId, session?.token]);
+
+  useEffect(() => {
+    if (!session || !selectedAccountId) {
+      setRuntimeRehydrationState(null);
+      setRuntimeRehydrationNotice("Select an account to load its governed runtime session.");
+      return;
+    }
     let cancelled = false;
     loadRuntimeRehydration(session)
       .then((rehydration) => {
         if (cancelled) return;
+        if (rehydration.workspaceSession?.accountId && rehydration.workspaceSession.accountId !== selectedAccountId) {
+          setRuntimeRehydrationState(null);
+          setRuntimeRehydrationNotice("No governed runtime session is active for the selected account.");
+          return;
+        }
         setRuntimeRehydrationState(rehydration);
         const workspaceSession = rehydration.workspaceSession;
-        if (workspaceSession?.accountId) setSelectedAccountId(workspaceSession.accountId);
+        // Account selection is intentionally never restored automatically. A user must
+        // select an account before any customer-scoped data becomes visible or loads.
         if (workspaceSession?.productId) setSelectedProductId(workspaceSession.productId);
         if (workspaceSession?.opportunityId) setActiveCommercialOpportunityId(workspaceSession.opportunityId);
         if (rehydration.opportunity) {
@@ -3396,7 +3438,7 @@ export default function GoogleRfpWorkspace() {
     return () => {
       cancelled = true;
     };
-  }, [session?.token]);
+  }, [selectedAccountId, session?.token]);
 
   useEffect(() => {
     if (!accountEditorOpen || accountEditorMode !== "edit") return;
@@ -3429,7 +3471,9 @@ export default function GoogleRfpWorkspace() {
 
   async function handleSaveAccountDraft() {
     const name = accountDraft.name.trim();
-    const accountId = cleanAccountId(accountDraft.accountId || name);
+    const nextAccountNumber = Math.max(0, ...accountOptions.map((account) => account.accountNumber)) + 1;
+    const requestedAccountId = cleanAccountId(accountDraft.accountId);
+    const accountId = requestedAccountId || (accountEditorMode === "create" ? `account-${nextAccountNumber}` : cleanAccountId(name));
     if (!name || !accountId) {
       setAccountNotice("Account name is required.");
       return;
@@ -3438,9 +3482,12 @@ export default function GoogleRfpWorkspace() {
     try {
       const existing = governedAccounts.find((account) => account.accountId === accountId);
       const baseAccount = accountEditorMode === "edit" ? (existing ?? selectedGovernedAccount ?? {}) : (existing ?? {});
+      const fixtureAccount = accountOptions.find((account) => account.accountId === accountId);
+      const accountNumber = Number(existing?.accountNumber ?? fixtureAccount?.accountNumber ?? nextAccountNumber);
       const saved = await CustomerRepository.saveCustomer({
         ...baseAccount,
         accountId,
+        accountNumber,
         name,
         customerId: customerIdForAccount(accountId),
         accountType: accountDraft.accountType,
@@ -3465,7 +3512,7 @@ export default function GoogleRfpWorkspace() {
       setGovernedAccounts((prev) => [saved, ...prev.filter((account) => account.accountId !== saved.accountId)]);
       setSelectedAccountId(saved.accountId);
       setAccountEditorOpen(false);
-      setAccountNotice(`${saved.name} Account saved as governed workspace root.`);
+      setAccountNotice(`Account ${accountNumber} · ${saved.name} saved as a governed workspace root.`);
       void recordActivity({
         action: "saved account",
         objectType: "Account",
@@ -3474,7 +3521,7 @@ export default function GoogleRfpWorkspace() {
         customerId: saved.accountId,
         details: "Account persisted to the governed Account Library and mirrored into commercial records.",
       });
-      await refreshAccountLibrary(`${saved.name} Account Library record refreshed.`);
+      await refreshAccountLibrary(`${saved.name} Account Library record refreshed.`, saved.accountId);
     } catch (error) {
       setAccountNotice(`Account save failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -3616,6 +3663,21 @@ export default function GoogleRfpWorkspace() {
     [commercialBidPlan.routePlans, selectedScope],
   );
   const selectedAssumptionState = assumptionStates.find((state) => state.stateId === selectedAssumptionStateId) ?? assumptionStates[0];
+  const selectedCivilMixCalibration = useMemo<CivilMixCalibration>(() => {
+    const constraintValue = (key: (typeof CIVIL_MIX_CONSTRAINT_KEYS)[number], fallback: number) => {
+      const value = transparentEstimateControls.constraints?.[key]?.value;
+      return typeof value === "number" ? Math.round(value) : fallback;
+    };
+    const combinedBorePercent = selectedAssumptionState.civilMix.hddPercent;
+    const fallbackRockPercent = Math.round(combinedBorePercent * (selectedAssumptionState.borePricing.rockBorePercent / 100));
+    const fallbackDirtPercent = Math.max(0, combinedBorePercent - fallbackRockPercent);
+    return {
+      plowPercent: constraintValue("civil.plowPercent", selectedAssumptionState.civilMix.plowPercent),
+      dirtPercent: constraintValue("civil.directionalBoreDirtPercent", fallbackDirtPercent),
+      rockPercent: constraintValue("civil.directionalBoreRockPercent", fallbackRockPercent),
+      trenchPercent: constraintValue("civil.openTrenchPercent", selectedAssumptionState.civilMix.openCutPercent),
+    };
+  }, [selectedAssumptionState, transparentEstimateControls.constraints]);
   const accountCustomerDesignImports = useMemo(
     () => customerDesignImports.filter((record) => record.accountId === selectedAccount.accountId),
     [customerDesignImports, selectedAccount.accountId],
@@ -3797,10 +3859,25 @@ export default function GoogleRfpWorkspace() {
     activeApprovedProposalRuntime ??
     activeOpportunityProposalRecords[0] ??
     (activeCommercialOpportunity ? null : accountProposalRuntimeRecords[0] ?? null);
+  const savedProposalRevisions = activeProposalRuntime?.proposalRevisions ?? [];
+  const selectedReleaseProposalRevision = savedProposalRevisions.find((revision) => revision.proposalRevisionId === releaseProposalRevisionId)
+    ?? savedProposalRevisions.find((revision) => revision.proposalRevisionId === activeProposalRuntime?.proposalRevisionId)
+    ?? savedProposalRevisions.at(-1)
+    ?? null;
+  const selectedReleaseApproval = selectedReleaseProposalRevision && activeProposalRuntime
+    ? proposalRevisionApproval(selectedReleaseProposalRevision, activeProposalRuntime.approvals ?? [])
+    : null;
+  const selectedReleaseProposalEligible = Boolean(
+    selectedReleaseProposalRevision?.revisionStatus === "SAVED" &&
+    selectedReleaseProposalRevision.proposalHash &&
+    selectedReleaseApproval,
+  );
 
   useEffect(() => {
     if (activeCommercialOpportunity?.name) {
       setOpportunityNameDraft(activeCommercialOpportunity.name);
+    } else if (!selectedAccount.accountId) {
+      setOpportunityNameDraft("");
     } else {
       setOpportunityNameDraft(`${selectedAccount.name} Opportunity`);
     }
@@ -3810,6 +3887,7 @@ export default function GoogleRfpWorkspace() {
   const canReviewProposalRuntime = Boolean(session && can("proposal.review"));
   const canReadEngineeringCertification = Boolean(session && (can("workspace.engineering.read") || can("workspace.engineering.write") || can("scopeversion.authority")));
   const canWriteEngineeringCertification = Boolean(session && (can("workspace.engineering.write") || can("scopeversion.authority")));
+  const commercialDeveloperMode = Boolean(session && (can("runtime.deploy") || can("workspace.engineering.write") || can("scopeversion.authority")));
   const accountNetworkInventory = useMemo(
     () => [
       ...accountNetworkRecords,
@@ -3881,6 +3959,55 @@ export default function GoogleRfpWorkspace() {
     }),
     [accountCustomerTwin, customerTwinRouteUsesByLayerId, selectedAccount.accountId],
   );
+  useEffect(() => {
+    const metric = startRuntimePerformanceOperation("initial-render", "STARTUP", {
+      customerId: selectedAccount.accountId,
+    });
+    const frameId = window.requestAnimationFrame(() => {
+      const completed = metric.end({
+        recordsRendered: renderCountRef.current,
+        workerStatus: "INITIAL_RENDER_READY",
+      });
+      setRuntimePerformance((prev) => runtimePerformanceSnapshot({
+        ...prev,
+        initialRenderMs: completed.durationMs,
+        reactRenderCount: renderCountRef.current,
+        workerStatus: "INITIAL_RENDER_READY",
+      }));
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [selectedAccount.accountId]);
+  useEffect(() => {
+    const visibleRoutes = accountRenderableCustomerTwin.routes.length;
+    const renderedObjects = accountRenderableCustomerTwin.objects.length;
+    const visibleStations = accountRenderableCustomerTwin.stations.length;
+    const metric = startRuntimePerformanceOperation("frame", "REACT_RENDER", {
+      customerId: selectedAccount.accountId,
+      visibleRoutes,
+      renderedObjects,
+      visibleStations,
+    });
+    const completed = metric.end({
+      recordsRendered: visibleRoutes + renderedObjects + visibleStations,
+      metadata: {
+        reactRenderCount: renderCountRef.current,
+      },
+    });
+    setRuntimePerformance((prev) => runtimePerformanceSnapshot({
+      ...prev,
+      reactRenderCount: renderCountRef.current,
+      frameTimingMs: completed.durationMs,
+      visibleRoutes,
+      renderedObjects,
+      visibleStations,
+      viewportObjectCount: visibleRoutes + renderedObjects + visibleStations,
+    }));
+  }, [
+    accountRenderableCustomerTwin.objects.length,
+    accountRenderableCustomerTwin.routes.length,
+    accountRenderableCustomerTwin.stations.length,
+    selectedAccount.accountId,
+  ]);
   const opportunityScoutScope = useMemo(
     () => ({ selectedInventoryLayerIds: activeInventoryLayerIds }),
     [activeInventoryLayerIds],
@@ -4012,7 +4139,10 @@ export default function GoogleRfpWorkspace() {
     [accountRenderableCustomerTwin, opportunityBrowserQuery, opportunityScoutScope],
   );
   const commercialOpportunityOverlay = useMemo(() => {
-    const azPoints = [
+    const sharedOpportunityMap = sharedOpportunityMapProjectionFromRouteRepository(
+      activeCommercialOpportunity?.routeRepositorySnapshot ?? generatedRouteRepositorySnapshot,
+    );
+    const configuredAzPoints = [
       azOriginLocation ? {
         id: azOriginLocation.id,
         label: azOriginLocation.label,
@@ -4026,11 +4156,21 @@ export default function GoogleRfpWorkspace() {
         role: "Z" as const,
       } : null,
     ].filter((point): point is { id: string; label: string; coordinate: [number, number]; role: "A" | "Z" } => Boolean(point));
+    const azPoints = sharedOpportunityMap?.endpoints.length
+      ? sharedOpportunityMap.endpoints.map((endpoint) => ({
+          id: `${sharedOpportunityMap.routeRepositoryId}:endpoint:${endpoint.role}`,
+          label: endpoint.label,
+          coordinate: endpoint.coordinate,
+          role: endpoint.role,
+        }))
+      : configuredAzPoints;
     const temporaryRouteGeometry = temporaryImportedCommercialDraft?.geometry?.length
       ? temporaryImportedCommercialDraft.geometry
       : temporaryImportedRoute?.geometry;
     const corridorGeometry = temporaryRouteGeometry?.length
       ? temporaryRouteGeometry
+      : sharedOpportunityMap?.coordinates.length
+        ? sharedOpportunityMap.coordinates
       : selectedImportedCommercialDraft
       ? undefined
       : loadedCommercialDraftSnapshot
@@ -4062,7 +4202,7 @@ export default function GoogleRfpWorkspace() {
         : opportunityScoutQuickQuote ? `${formatRouteMiles(opportunityScoutQuickQuote.routeMiles)} mi / ${money(opportunityScoutQuickQuote.budgetCost)} lateral` : undefined,
       confidence: temporaryImportedCommercialDraft?.transparentEstimate.confidence.score ?? opportunityScoutQuickQuote?.confidence,
     };
-  }, [azDestinationLocation, azOriginLocation, commercialCorridorDraft, commercialDraftType, commercialRouteResult?.status, loadedCommercialDraftSnapshot, opportunityAttachmentResolution, opportunityScoutCandidate, opportunityScoutQuickQuote, selectedAttachmentCandidate?.id, selectedImportedCommercialDraft, temporaryImportedCommercialDraft, temporaryImportedRoute]);
+  }, [activeCommercialOpportunity?.routeRepositorySnapshot, azDestinationLocation, azOriginLocation, commercialCorridorDraft, commercialDraftType, commercialRouteResult?.status, generatedRouteRepositorySnapshot, loadedCommercialDraftSnapshot, opportunityAttachmentResolution, opportunityScoutCandidate, opportunityScoutQuickQuote, selectedAttachmentCandidate?.id, selectedImportedCommercialDraft, temporaryImportedCommercialDraft, temporaryImportedRoute]);
   const accountCustomerReviewStatus: CustomerReviewStatus = googleFixtureIsActive ? customerReviewStatus : "NOT_STARTED";
   const commercialMapLayers = useMemo(() => buildCommercialMapLayers({
     account: selectedAccount,
@@ -4125,63 +4265,83 @@ export default function GoogleRfpWorkspace() {
   ]);
 
   useEffect(() => {
+    if (!selectedAccountId) {
+      setCommercialOpportunities([]);
+      setCommercialRouteRepositoryRecords([]);
+      setCommercialLibraryLoaded(true);
+      return;
+    }
     let cancelled = false;
     setCommercialLibraryLoaded(false);
     Promise.all([
       OpportunityRepository.listOpportunities<CommercialOpportunityRecord>(session),
       RouteRepository.listRoutes(session).catch((error) => {
-        console.warn("Route Repository load failed", error instanceof Error ? error.message : String(error));
+        runtimeDiagnosticsWarn("Route Repository load failed", {
+          reason: error instanceof Error ? error.message : String(error),
+        });
         return [] as CommercialRouteRepositoryRecord[];
       }),
     ])
       .then(([records, routes]) => {
         if (cancelled) return;
-        setCommercialOpportunities(records.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
-        setCommercialRouteRepositoryRecords(routes.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
+        setCommercialOpportunities(records.filter((record) => record.accountId === selectedAccountId).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
+        setCommercialRouteRepositoryRecords(routes.filter((record) => record.accountId === selectedAccountId || record.customerId === selectedAccountId).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))));
         setCommercialLibraryLoaded(true);
       })
       .catch((error) => {
         if (cancelled) return;
-        console.warn("Opportunity Library load failed", error instanceof Error ? error.message : String(error));
+        runtimeDiagnosticsWarn("Opportunity Library load failed", {
+          reason: error instanceof Error ? error.message : String(error),
+        });
         setOpportunityNotice(`Opportunity Library unavailable: ${error instanceof Error ? error.message : String(error)}`);
         setCommercialLibraryLoaded(true);
       });
     return () => {
       cancelled = true;
     };
-  }, [session?.token]);
+  }, [selectedAccountId, session?.token]);
 
   useEffect(() => {
+    if (!selectedAccountId) {
+      setProposalSnapshots([]);
+      setAcceptedProposal(null);
+      setProposalRuntimeRecords([]);
+      setProposalRuntimeNotice("Select an account to load its Proposal Library.");
+      return;
+    }
     let cancelled = false;
     ProposalRepository.listProposals<any>(session)
       .then((records) => {
         if (cancelled) return;
-        const snapshots = records
+        const accountRecords = records.filter((record) => record?.accountId === selectedAccountId || record?.customerId === selectedAccountId || record?.customerId === customerIdForAccount(selectedAccountId));
+        const snapshots = accountRecords
           .filter((record) => record?.snapshotId)
           .sort((a, b) => String(b.timestamp ?? b.createdAt).localeCompare(String(a.timestamp ?? a.createdAt)))
           .map(({ proposalRecordId: _proposalRecordId, proposalRecordType: _proposalRecordType, organization: _organization, createdAt: _createdAt, updatedAt: _updatedAt, ...snapshot }) => snapshot as LiveProposalSnapshot);
-        const accepted = records
+        const accepted = accountRecords
           .filter((record) => record?.acceptedProposalId)
           .sort((a, b) => String(b.acceptedAt ?? b.createdAt).localeCompare(String(a.acceptedAt ?? a.createdAt)))
           .map(({ proposalRecordId: _proposalRecordId, proposalRecordType: _proposalRecordType, organization: _organization, createdAt: _createdAt, updatedAt: _updatedAt, ...proposal }) => proposal as AcceptedProposal);
-        records.forEach((record) => {
+        accountRecords.forEach((record) => {
           if (record?.proposalId || record?.proposalRecordId || record?.acceptedProposalId) {
             logProposalAuthorityStateHydration("Proposal Repository restore:list", record as ProposalRuntimeObject, proposalRuntimeStatusLabel(record?.status));
           }
         });
         setProposalSnapshots(snapshots);
         setAcceptedProposal(accepted[0] ?? null);
-        setProposalRuntimeRecords(records.filter((record) => record?.proposalId || record?.objectType === "PROPOSAL" || record?.readiness) as ProposalRuntimeObject[]);
-        setProposalRuntimeNotice(records.length ? "Proposal Runtime Library loaded." : "No governed proposal runtime objects are visible in this workspace.");
+        setProposalRuntimeRecords(accountRecords.filter((record) => record?.proposalId || record?.objectType === "PROPOSAL" || record?.readiness) as ProposalRuntimeObject[]);
+        setProposalRuntimeNotice(accountRecords.length ? "Account Proposal Library loaded." : "No governed proposals exist for this account.");
       })
       .catch((error) => {
-        console.warn("Proposal Library load failed", error instanceof Error ? error.message : String(error));
+        runtimeDiagnosticsWarn("Proposal Library load failed", {
+          reason: error instanceof Error ? error.message : String(error),
+        });
         setProposalRuntimeNotice(`Proposal Runtime Library unavailable: ${error instanceof Error ? error.message : String(error)}`);
       });
     return () => {
       cancelled = true;
     };
-  }, [session?.token]);
+  }, [selectedAccountId, session?.token]);
 
   useEffect(() => {
     setEngineeringReviewQueue([]);
@@ -4342,9 +4502,14 @@ export default function GoogleRfpWorkspace() {
     try {
       const timestamp = new Date().toISOString();
       const geometry = activeLiveSession?.activeEditableRouteGeometry ?? routePlan.stationedCorridor?.centerlineRoute.geometry ?? routePlan.proposedGraph?.centerlineRoute?.geometry ?? [];
+      const proposalRouteAuthority = activeCommercialOpportunity?.routeRepositorySnapshot ?? generatedRouteRepositorySnapshot;
       const proposalId = activeProposalRuntime?.proposalId ?? currentCommercialRecordIds.proposalId;
       const proposalRecord = {
         ...(activeProposalRuntime ?? {}),
+        saveProposalRevision: true,
+        revisionReason: activeProposalRuntime?.revisionStatus === "WORKING"
+          ? activeProposalRuntime.revisionReason ?? "Saved derived commercial proposal revision."
+          : "Saved current commercial estimate and proposal revision.",
         proposalId,
         proposalRecordId: proposalId,
         proposalRecordType: "PROPOSAL_RUNTIME_OBJECT",
@@ -4368,6 +4533,30 @@ export default function GoogleRfpWorkspace() {
         title: `${activeOpportunityDisplayName} Commercial Proposal`,
         summary: `Commercial proposal for ${activeOpportunityDisplayName}.`,
         executiveSummary: preview.executiveSummary,
+        productConfiguration: displayedTransparentEstimateControls.projectConfiguration,
+        estimateId: activeFinancialDraft?.transparentEstimate.estimateId,
+        estimateControls: displayedTransparentEstimateControls,
+        transparentEstimate: displayedTransparentEstimate,
+        constructionQuantities: displayedTransparentEstimate?.physicalQuantities,
+        estimatingDoctrineId: displayedTransparentEstimate?.estimatingDoctrineId,
+        commercialPolicyId: displayedTransparentEstimate?.commercialPolicyId,
+        commercialTerms: {
+          termMonths: selectedProductOption.defaultTermYears * 12,
+          nrc: displayedTransparentEstimate?.nrc ?? selectedPricingSummary.reconciliation.sellPriceIru,
+          monthlyOm: displayedTransparentEstimate?.mrc ?? selectedPricingSummary.reconciliation.mrcRevenue,
+          totalContractValue: displayedTransparentEstimate
+            ? displayedTransparentEstimate.nrc + displayedTransparentEstimate.mrc * selectedProductOption.defaultTermYears * 12
+            : selectedPricingSummary.reconciliation.lifecycleRevenue,
+        },
+        proposalContent: {
+          title: `${activeOpportunityDisplayName} Commercial Proposal`,
+          executiveSummary: preview.executiveSummary,
+          customerFacingPricing: {
+            nrc: displayedTransparentEstimate?.nrc ?? selectedPricingSummary.reconciliation.sellPriceIru,
+            monthlyOm: displayedTransparentEstimate?.mrc ?? selectedPricingSummary.reconciliation.mrcRevenue,
+            termMonths: selectedProductOption.defaultTermYears * 12,
+          },
+        },
         pricingSummary: selectedPricingSummary.reconciliation,
         marginSummary: {
           grossMarginDollars: selectedPricingSummary.reconciliation.grossMarginDollars,
@@ -4392,7 +4581,23 @@ export default function GoogleRfpWorkspace() {
         existingInventoryReferences: activeExistingReferenceNetworkIds,
         customerDesignReferences: selectedImportedCustomerDesignImport ? [selectedImportedCustomerDesignImport.designId] : [],
         customerTwinReference: accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
-        geometryReferences: [routePlan.routeRequirement.routeRequirementId, ...geometry.map((coordinate, index) => `${proposalId}:geometry:${index}:${coordinate.join(",")}`)].slice(0, 20),
+        routeRepositoryId: proposalRouteAuthority?.routeRepositoryId ?? activeCommercialOpportunity?.routeRepositoryId,
+        routeId: proposalRouteAuthority?.routeId,
+        routeRevision: proposalRouteAuthority?.routeRevision ?? activeCommercialOpportunity?.routeRevision,
+        routeGeometryId: proposalRouteAuthority?.routeGeometryId ?? activeCommercialOpportunity?.routeGeometryId,
+        routeGeometryHash: proposalRouteAuthority?.geometryHash ?? activeCommercialOpportunity?.geometryHash,
+        aSite: proposalRouteAuthority?.endpointAuthority?.aSite ?? activeCommercialOpportunity?.aSite,
+        zSite: proposalRouteAuthority?.endpointAuthority?.zSite ?? activeCommercialOpportunity?.zSite,
+        routeSnapshot: proposalRouteAuthority ? {
+          routeRepositoryId: proposalRouteAuthority.routeRepositoryId,
+          routeId: proposalRouteAuthority.routeId,
+          routeRevision: proposalRouteAuthority.routeRevision,
+          routeGeometryId: proposalRouteAuthority.routeGeometryId,
+          geometryHash: proposalRouteAuthority.geometryHash,
+          aSite: proposalRouteAuthority.endpointAuthority?.aSite ?? proposalRouteAuthority.aLocation,
+          zSite: proposalRouteAuthority.endpointAuthority?.zSite ?? proposalRouteAuthority.zLocation,
+        } : undefined,
+        geometryReferences: [proposalRouteAuthority?.routeGeometryId, routePlan.routeRequirement.routeRequirementId, ...geometry.map((coordinate, index) => `${proposalId}:geometry:${index}:${coordinate.join(",")}`)].filter(Boolean).slice(0, 20),
         proposalDocumentReferences: ["Executive summary", "Commercial pricing summary", "Interactive proposal map"],
         attachments: activeProposalRuntime?.attachments ?? [],
         comments: activeProposalRuntime?.comments ?? [],
@@ -4400,13 +4605,27 @@ export default function GoogleRfpWorkspace() {
         approvalState: activeProposalRuntime?.approvalState ?? "NOT_SUBMITTED",
         version: activeProposalRuntime?.version ?? 1,
         createdAt: activeProposalRuntime?.createdAt ?? timestamp,
-        updatedAt: timestamp,
+      updatedAt: timestamp,
+      noScopeVersionCreation: true,
+      noInventoryMutation: true,
+      currentAuthority: activeProposalRuntime?.currentAuthority ?? "COMMERCIAL_REVISION",
+      commercialRevisionId: activeProposalRuntime?.commercialRevisionId,
+      revisionId: activeProposalRuntime?.revisionId,
+      commercialRevisionHash: activeProposalRuntime?.commercialRevisionHash,
+      commercialRepositoryId: activeProposalRuntime?.commercialRepositoryId,
+      proposalAuthorityFlow: activeProposalRuntime?.proposalAuthorityFlow ?? {
+        inputAuthority: "COMMERCIAL_REVISION",
+        projection: "PROPOSAL_PROJECTION",
+        repository: "PROPOSAL_REPOSITORY",
+        proposalOutputUnchanged: true,
+        pricingOutputUnchanged: true,
+        workbookOutputUnchanged: true,
         noScopeVersionCreation: true,
-        noInventoryMutation: true,
-      };
+      },
+    };
       const saved = await ProposalRepository.saveProposal<any>(proposalRecord, session) as ProposalRuntimeObject;
       upsertProposalRuntimeRecord(saved);
-      setProposalRuntimeNotice(`${saved.proposalNumber} saved as ${proposalRuntimeStatusLabel(saved.status)}.`);
+      setProposalRuntimeNotice(`${saved.proposalNumber} revision ${saved.revisionNumber ?? saved.version} saved immutably.`);
       return saved;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -4450,6 +4669,7 @@ export default function GoogleRfpWorkspace() {
     try {
       const saved = await createProposalRevision(activeProposalRuntime.proposalId, {
         reason,
+        basisProposalRevisionId: activeProposalRuntime.proposalRevisionId,
         proposal: {
           pricingSummary: selectedPricingSummary.reconciliation as unknown as Record<string, unknown>,
           marginSummary: {
@@ -4591,16 +4811,21 @@ export default function GoogleRfpWorkspace() {
       setEngineeringCertificationNotice("Engineering can only assemble from a customer-approved and runtime-valid Proposal.");
       return;
     }
-    const draftSource = commercialDraftIofPackage ?? commercialDraftIofPackagePreview;
+    const draftSource = commercialDraftIofPackagePreview ?? commercialDraftIofPackage;
     if (!draftSource) {
       setEngineeringCertificationNotice("Commercial Draft IOF Package JSON is required before Engineering handoff.");
       return;
     }
     setEngineeringCertificationPending(true);
     try {
-      const draft = await saveCommercialDraftIofPackage(draftSource, session);
+      const routeRepositoryId = String(draftSource.routeRepositoryId ?? (draftSource.routeRepositoryRef as any)?.routeRepositoryId ?? generatedRouteRepositorySnapshot?.routeRepositoryId ?? "");
+      const authority = await ensureCommercialLifecycleAuthorityForDraft(draftSource, routeRepositoryId, "MANUAL_DRAFT_IOF_SAVE");
+      const draft = authority.restoredDraftPackage
+        ? authority.draftPackage
+        : await saveCommercialDraftIofPackage(authority.draftPackage, session);
       setCommercialDraftIofPackage(draft);
       setActiveDraftIofPackage(draft);
+      setCommercialLifecycleSequencingNotice(`Draft IOF Package ${draft.packageId} ${authority.restoredDraftPackage ? "restored" : "saved"} after Commercial Revision ${authority.revision.commercialRevisionId}.`);
       await refreshEngineeringReviewQueue(`${draft.packageId} saved as Commercial Draft IOF JSON. Submit to Engineering creates the Engineering Repository package.`);
       setProposalRuntimeNotice(`${draft.packageId} saved as the Draft IOF Package source. Engineering Certification will open only an Engineering Package after submission.`);
     } catch (error) {
@@ -4615,16 +4840,21 @@ export default function GoogleRfpWorkspace() {
       setProposalRuntimeNotice("Save a governed Commercial Proposal before preserving Draft IOF Package JSON.");
       return;
     }
-    const draftSource = commercialDraftIofPackage ?? commercialDraftIofPackagePreview;
+    const draftSource = commercialDraftIofPackagePreview ?? commercialDraftIofPackage;
     if (!draftSource) {
       setProposalRuntimeNotice("Commercial package assembly needs proposal, design, pricing, and validation inputs.");
       return;
     }
     setEngineeringCertificationPending(true);
     try {
-      const draft = await saveCommercialDraftIofPackage(draftSource, session);
+      const routeRepositoryId = String(draftSource.routeRepositoryId ?? (draftSource.routeRepositoryRef as any)?.routeRepositoryId ?? generatedRouteRepositorySnapshot?.routeRepositoryId ?? "");
+      const authority = await ensureCommercialLifecycleAuthorityForDraft(draftSource, routeRepositoryId, "MANUAL_DRAFT_IOF_SAVE");
+      const draft = authority.restoredDraftPackage
+        ? authority.draftPackage
+        : await saveCommercialDraftIofPackage(authority.draftPackage, session);
       setCommercialDraftIofPackage(draft);
       setActiveDraftIofPackage(draft);
+      setCommercialLifecycleSequencingNotice(`Draft IOF Package ${draft.packageId} ${authority.restoredDraftPackage ? "restored" : "saved"} after Commercial Release Package ${authority.releasePackage.commercialReleasePackageId}.`);
       setProposalRuntimeNotice(`${draft.packageId} saved as deterministic Draft IOF Package JSON.`);
       setEngineeringCertificationNotice(`${draft.packageId} saved as a Commercial Draft IOF Package. Submit it to create Engineering Intake.`);
     } catch (error) {
@@ -4646,28 +4876,79 @@ export default function GoogleRfpWorkspace() {
   }
 
   async function handleSubmitCommercialDraftIofToEngineering() {
-    const draftSource = commercialDraftIofPackage ?? commercialDraftIofPackagePreview ?? activeDraftIofPackage;
+    console.log("[HANDOFF] Submit button clicked");
+    if (releaseCoordinatorPendingRef.current) {
+      setProposalRuntimeNotice("Release to Engineering is already running for the selected Proposal Revision.");
+      return;
+    }
+    const draftSource = commercialDraftIofPackagePreview ?? commercialDraftIofPackage ?? activeDraftIofPackage;
     if (!draftSource) {
+      console.warn("[HANDOFF] Submit blocked", {
+        reason: "MISSING_DRAFT_IOF_PACKAGE",
+        activeProposalId: activeProposalRuntime?.proposalId ?? null,
+        opportunityId: activeCommercialOpportunity?.opportunityId ?? null,
+      });
       setProposalRuntimeNotice("Commercial Review needs a Draft IOF Package before Engineering submission.");
       return;
     }
-    if (!commercialDashboardHandoffReady) {
-      setProposalRuntimeNotice(`Engineering submission blocked: ${commercialDashboardHandoffMissing.join("; ")}`);
+    if (!commercialReleasePrerequisitesReady) {
+      console.warn("[HANDOFF] Submit blocked", {
+        reason: "RELEASE_PREREQUISITES_FAILED",
+        missing: commercialReleasePrerequisiteChecks.filter((check) => !check.ok).map((check) => `${check.label}: ${check.detail}`),
+        checks: commercialReleasePrerequisiteChecks.map((check) => ({
+          key: check.key,
+          ok: check.ok,
+          detail: check.detail,
+        })),
+      });
+      setProposalRuntimeNotice(`Release blocked: ${commercialReleasePrerequisiteChecks.filter((check) => !check.ok).map((check) => `${check.label}: ${check.detail}`).join("; ")}`);
       return;
     }
     if (draftSource.commercialRevisionLocked || ["SUBMITTED_TO_ENGINEERING", "UNDER_ENGINEERING_REVIEW", "CERTIFIED"].includes(String(draftSource.status ?? ""))) {
+      console.warn("[HANDOFF] Submit blocked", {
+        reason: "COMMERCIAL_ALREADY_LOCKED_OR_SUBMITTED",
+        packageId: draftSource.packageId,
+        status: draftSource.status ?? null,
+        commercialRevisionLocked: Boolean(draftSource.commercialRevisionLocked),
+      });
       setProposalRuntimeNotice(`${draftSource.packageId} is already locked for Engineering custody.`);
       return;
     }
     setEngineeringCertificationPending(true);
+    releaseCoordinatorPendingRef.current = true;
     try {
-      const result = await submitDraftIofPackageToEngineering(draftSource.packageId, undefined, session);
+      console.log("[HANDOFF] Saving Draft IOF Package before submit", {
+        packageId: draftSource.packageId,
+        status: draftSource.status ?? null,
+      });
+      const routeRepositoryId = String(draftSource.routeRepositoryId ?? (draftSource.routeRepositoryRef as any)?.routeRepositoryId ?? generatedRouteRepositorySnapshot?.routeRepositoryId ?? "");
+      const authority = await ensureCommercialLifecycleAuthorityForDraft(draftSource, routeRepositoryId, "COMMERCIAL_TO_ENGINEERING_HANDOFF", selectedReleaseProposalRevision);
+      const savedDraft = authority.restoredDraftPackage
+        ? authority.draftPackage
+        : await saveCommercialDraftIofPackage(authority.draftPackage, session);
+      setCommercialDraftIofPackage(savedDraft);
+      setActiveDraftIofPackage(savedDraft);
+      setCommercialLifecycleSequencingNotice(`Engineering handoff is using Draft IOF Package ${savedDraft.packageId} with Commercial Revision ${authority.revision.commercialRevisionId}.`);
+      console.log("[HANDOFF] Draft IOF saved; calling commercial handoff endpoint", {
+        packageId: savedDraft.packageId,
+        endpoint: `/api/commercial/iof-packages/${encodeURIComponent(savedDraft.packageId)}/submit-engineering`,
+        method: "POST",
+      });
+      const result = await submitDraftIofPackageToEngineering(savedDraft.packageId, undefined, session);
+      console.log("[HANDOFF] Commercial handoff API returned", {
+        packageId: savedDraft.packageId,
+        engineeringPackageId: result.engineeringPackage.engineeringPackageId,
+        engineeringBaselineId: result.engineeringBaseline?.engineeringBaselineId ?? null,
+      });
       const verifiedEngineeringPackage = await openEngineeringPackage(result.engineeringPackage.engineeringPackageId, session);
+      console.log("[HANDOFF] Engineering Package verification returned", {
+        engineeringPackageId: verifiedEngineeringPackage.engineeringPackageId,
+      });
       if (verifiedEngineeringPackage.engineeringPackageId !== result.engineeringPackage.engineeringPackageId) {
         throw new Error("Engineering Repository verification failed after submit.");
       }
       const draft = {
-        ...draftSource,
+        ...savedDraft,
         ...result.draftPackage,
         engineeringPackageId: verifiedEngineeringPackage.engineeringPackageId,
         engineeringPackage: verifiedEngineeringPackage,
@@ -4683,12 +4964,23 @@ export default function GoogleRfpWorkspace() {
           setActiveCommercialOpportunityId(opportunityPatch.opportunityId);
         }
       }
+      if (result.proposal) {
+        upsertProposalRuntimeRecord(result.proposal);
+      }
       await refreshEngineeringReviewQueue(`${result.engineeringPackage.engineeringPackageId} created in the Engineering Repository.`);
       setProposalRuntimeNotice(`${draft.packageId} submitted to Engineering as ${result.engineeringPackage.engineeringPackageId}. Commercial status is SUBMITTED_TO_ENGINEERING.`);
       setEngineeringCertificationNotice(`${result.engineeringPackage.engineeringPackageId} is awaiting Engineering Package restore. ScopeVersion remains blocked.`);
+      setSelectedEngineeringDraftIofPackage(null);
+      setSelectedEngineeringDraftIofPackageId(verifiedEngineeringPackage.engineeringPackageId);
+      setSelectedRouteEngineeringActivation(null);
+      setWorkspace("routeEngineering");
     } catch (error) {
+      console.error("[HANDOFF] Engineering submission failed", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
       setProposalRuntimeNotice(`Engineering submission failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
+      releaseCoordinatorPendingRef.current = false;
       setEngineeringCertificationPending(false);
     }
   }
@@ -4826,20 +5118,88 @@ export default function GoogleRfpWorkspace() {
 
   useEffect(() => {
     let cancelled = false;
-    setCustomerInventoryLoadStatus("PARSING");
-    setCustomerInventoryDiagnostics([]);
-    setCustomerNetworkGraph(null);
-    void CustomerTwinRepository.loadCustomerTwin(selectedAccount.accountId).then((result) => {
+    if (!selectedAccount.accountId) {
+      setCustomerNetworkGraph(null);
+      setCustomerInventoryLoadStatus("PENDING");
+      setCustomerInventoryDiagnostics([]);
+      return () => { cancelled = true; };
+    }
+    const cached = findCachedInventoryProjectionForCustomer(selectedAccount.accountId);
+    if (cached) {
+      setCustomerNetworkGraph(cached.loadResult.graph);
+      setCustomerInventoryLoadStatus(cached.loadResult.status);
+      setCustomerInventoryDiagnostics([
+        `Inventory projection restored from cache ${cached.cacheKey}. Background refresh started.`,
+        ...cached.loadResult.diagnostics,
+      ]);
+      setRuntimePerformance((prev) => runtimePerformanceSnapshot({
+        ...prev,
+        cacheStatus: "HIT",
+        workerStatus: "CACHE_RESTORED_BACKGROUND_REFRESH",
+        visibleRoutes: cached.projectionSummary.routeCount,
+        renderedObjects: cached.projectionSummary.objectCount,
+        visibleStations: cached.projectionSummary.stationCount,
+      }));
+    } else {
+      setCustomerInventoryLoadStatus("PENDING");
+      setCustomerInventoryDiagnostics(["Inventory cache miss. Customer Twin will load in the background."]);
+      setRuntimePerformance((prev) => runtimePerformanceSnapshot({ ...prev, cacheStatus: "MISS", workerStatus: "BACKGROUND_REFRESH" }));
+    }
+    const metric = startRuntimePerformanceOperation("inventory-import", "INVENTORY", {
+      customerId: selectedAccount.accountId,
+      cacheStatus: cached ? "HIT" : "MISS",
+    });
+    runtimeDiagnosticsLog("RuntimePerformance", {
+      operation: "inventory-import",
+      customerId: selectedAccount.accountId,
+      cacheStatus: cached ? "HIT" : "MISS",
+      workerStatus: "BACKGROUND_REFRESH",
+    });
+    window.setTimeout(() => {
+      if (cancelled) return;
+      setCustomerInventoryLoadStatus((prev) => prev === "PARSED" && cached ? prev : "PARSING");
+      void CustomerTwinRepository.loadCustomerTwin(selectedAccount.accountId).then((result) => {
       if (cancelled) return;
       setCustomerNetworkGraph(result.graph);
       setCustomerInventoryLoadStatus(result.status);
       setCustomerInventoryDiagnostics(result.diagnostics);
+      const cachedRecord = cacheInventoryProjection({
+        key: {
+          customerTwinId: `CUSTOMER-TWIN-${selectedAccount.accountId}`,
+          customerId: selectedAccount.accountId,
+          inventorySourceId: result.graph.inventorySessionVersion,
+          importHash: result.graph.graphId,
+          routeCount: result.graph.summary.routeCount,
+          lastModified: result.graph.synchronizedAt,
+        },
+        loadResult: result,
+      });
+      metric.end({
+        cacheStatus: cached ? "HIT" : "MISS",
+        recordsProcessed: result.graph.summary.routeCount + result.graph.summary.objectCount + result.graph.summary.stationCount,
+        recordsRendered: result.graph.summary.routeCount,
+      });
+      setRuntimePerformance((prev) => runtimePerformanceSnapshot({
+        ...prev,
+        cacheStatus: cached ? "HIT" : "MISS",
+        inventoryImportMs: latestRuntimePerformanceMetrics().at(-1)?.durationMs ?? prev.inventoryImportMs,
+        visibleRoutes: cachedRecord.projectionSummary.routeCount,
+        renderedObjects: cachedRecord.projectionSummary.objectCount,
+        visibleStations: cachedRecord.projectionSummary.stationCount,
+        workerStatus: "READY",
+      }));
     }).catch((error) => {
       if (cancelled) return;
-      setCustomerNetworkGraph(null);
+      if (!cached) setCustomerNetworkGraph(null);
       setCustomerInventoryLoadStatus("ERROR");
       setCustomerInventoryDiagnostics([`Customer inventory load failed: ${error instanceof Error ? error.message : String(error)}`]);
+      metric.end({ cacheStatus: cached ? "HIT" : "MISS", workerStatus: "ERROR" });
+      runtimeDiagnosticsWarn("Performance", {
+        operation: "inventory-import",
+        reason: error instanceof Error ? error.message : String(error),
+      });
     });
+    }, 0);
     return () => {
       cancelled = true;
     };
@@ -4871,8 +5231,13 @@ export default function GoogleRfpWorkspace() {
       return;
     }
 
+    const importMetric = startRuntimePerformanceOperation("inventory-import", "IMPORT", {
+      fileName: file.name,
+      customerId: selectedAccount.accountId,
+    });
     try {
       setExistingInventoryImportStatus("PARSING");
+      setImportWorkerStatus("Parsing");
       setExistingInventoryImportNotice(`Repository is importing ${file.name} for ${selectedAccount.name} Existing Inventory...`);
       setExistingInventoryImportStatus("COMMITTING");
       const { commit: response } = await CustomerTwinRepository.importExistingNetwork({
@@ -4885,11 +5250,32 @@ export default function GoogleRfpWorkspace() {
         currentOrganizationId,
         currentWorkspaceId,
         session,
+        onProgress: (state) => {
+          setImportWorkerStatus(state);
+          setExistingInventoryImportNotice(`${state}: ${file.name}`);
+          setRuntimePerformance((prev) => runtimePerformanceSnapshot({
+            ...prev,
+            workerStatus: state,
+          }));
+        },
+      });
+      const completed = importMetric.end({
+        cacheStatus: "BYPASS",
+        recordsProcessed: response.counts.runtimeObjects + response.counts.relationships + response.counts.evidence,
+        recordsRendered: response.counts.runtimeObjects,
+        workerStatus: "READY",
       });
       setExistingInventoryImportStatus("READY");
+      setImportWorkerStatus("Ready");
       setExistingInventoryImportNotice(
         `Committed ${response.counts.runtimeObjects.toLocaleString()} inventory record(s), ${response.counts.relationships.toLocaleString()} relationship(s), and ${response.counts.evidence.toLocaleString()} evidence record(s).`,
       );
+      setRuntimePerformance((prev) => runtimePerformanceSnapshot({
+        ...prev,
+        inventoryImportMs: completed.durationMs,
+        cacheStatus: "BYPASS",
+        workerStatus: "READY",
+      }));
       setCustomerInventoryLoadStatus("PARSING");
       setInventoryRefreshNonce((nonce) => nonce + 1);
       void recordActivity({
@@ -4903,12 +5289,333 @@ export default function GoogleRfpWorkspace() {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      importMetric.end({ cacheStatus: "BYPASS", workerStatus: "ERROR" });
+      setImportWorkerStatus("IDLE");
       setExistingInventoryImportStatus("ERROR");
       setExistingInventoryImportNotice(`Existing Inventory import failed: ${message}`);
+      runtimeDiagnosticsWarn("RuntimePerformance", {
+        operation: "existing-network-import",
+        fileName: file.name,
+        reason: message,
+      });
     }
   }
 
+  function activeRouteEditBase() {
+    if (!activeFinancialDraft?.transparentEstimate) return null;
+    return {
+      routeId: activeFinancialDraft.routeId ?? activeFinancialDraft.transparentEstimate.estimateId,
+      routeRepositoryId: generatedRouteRepositorySnapshot?.routeRepositoryId ?? activeCommercialOpportunity?.routeRepositoryId ?? activeCommercialOpportunity?.routeRepositoryRef?.routeRepositoryId ?? null,
+      opportunityId: activeCommercialOpportunity?.opportunityId ?? (activeCommercialOpportunityId || null),
+      estimate: activeFinancialDraft.transparentEstimate,
+      controls: transparentEstimateControls,
+      geometryVertexCount: activeFinancialDraft.geometry?.length ?? generatedRouteRepositorySnapshot?.commercialGeometry.length ?? 0,
+    };
+  }
+
+  function commercialRevisionReferenceForPatch() {
+    const proposalId = String(activeProposalRuntime?.proposalId ?? currentCommercialRecordIds.proposalId ?? "");
+    const opportunityId = String(activeCommercialOpportunity?.opportunityId ?? activeCommercialOpportunityId ?? activeProposalRuntime?.opportunityId ?? proposalId);
+    const routeRepositoryId = String(generatedRouteRepositorySnapshot?.routeRepositoryId ?? activeCommercialOpportunity?.routeRepositoryId ?? activeCommercialOpportunity?.routeRepositoryRef?.routeRepositoryId ?? activeProposalRuntime?.routeRepositoryId ?? "");
+    const revisionId = String(
+      activeProposalRuntime?.revisionId ??
+        activeProposalRuntime?.commercialRevisionId ??
+        activeCommercialOpportunity?.commercialRevisionId ??
+        `COMM-REV-${opportunityId || proposalId || "COMMERCIAL"}-V${String(activeProposalRuntime?.version ?? 1)}`,
+    );
+    return {
+      commercialRevisionId: revisionId,
+      revisionId,
+      opportunityId,
+      repositoryId: String(activeProposalRuntime?.commercialRepositoryId ?? activeCommercialOpportunity?.commercialRepositoryId ?? `COMMERCIAL-REPOSITORY-${opportunityId || proposalId || "COMMERCIAL"}`),
+      routeRepositoryId,
+      estimateId: String(activeFinancialDraft?.transparentEstimate.estimateId ?? activeProposalRuntime?.estimateId ?? activeCommercialOpportunity?.estimateId ?? ""),
+      workbookId: String(activeCommercialOpportunity?.workbookId ?? activeCommercialOpportunity?.commercialWorkbookId ?? activeProposalRuntime?.commercialWorkbookId ?? activeProposalRuntime?.workbookId ?? ""),
+      commercialWorkbookId: String(activeCommercialOpportunity?.commercialWorkbookId ?? activeCommercialOpportunity?.workbookId ?? activeProposalRuntime?.commercialWorkbookId ?? activeProposalRuntime?.workbookId ?? ""),
+      proposalId,
+      revisionHash: String(activeProposalRuntime?.commercialRevisionHash ?? activeCommercialOpportunity?.commercialRevisionHash ?? ""),
+    };
+  }
+
+  function buildLocalCommercialRevisionProjection(patches: CommercialPatch[], history: CommercialChangeSet[] = commercialChangeSetHistory) {
+    const revisionReference = commercialRevisionReferenceForPatch();
+    const activeChangeSet = patches.length
+      ? commercialChangeSetFromPatches({
+          revisionId: revisionReference.revisionId,
+          opportunityId: revisionReference.opportunityId,
+          repositoryId: revisionReference.repositoryId,
+          proposalId: revisionReference.proposalId,
+          routeRepositoryId: revisionReference.routeRepositoryId,
+          estimateId: revisionReference.estimateId,
+          workbookId: revisionReference.workbookId,
+          patches,
+          createdBy: currentUserName,
+          createdById: currentUserId,
+          revisionNumber: history.length + 1,
+        })
+      : null;
+    return buildCommercialRevisionProjection(
+      revisionReference,
+      revisionReference,
+      activeChangeSet ? [activeChangeSet, ...history] : history,
+    );
+  }
+
+  function stageCommercialChangeSetPatch(routePatch: RouteEditPatch) {
+    const revisionReference = commercialRevisionReferenceForPatch();
+    const commercialPatch = commercialPatchFromRouteEditPatch({
+      revisionId: revisionReference.revisionId,
+      patch: routePatch,
+    });
+    const nextPatches = [...commercialChangeSetPatches, commercialPatch];
+    const projection = buildLocalCommercialRevisionProjection(nextPatches);
+    setCommercialChangeSetPatches(nextPatches);
+    setCommercialRevisionProjection(projection);
+    setCommercialChangeSetNotice(`${commercialPatch.patchType} staged as Commercial Change Set patch. Repository Truth remains immutable.`);
+    runtimeDiagnosticsLog("CommercialChangeSetPatch", {
+      patchId: commercialPatch.patchId,
+      patchType: commercialPatch.patchType,
+      revisionId: commercialPatch.revisionId,
+      repositoryHash: projection.diagnostics.repositoryHash,
+      revisionHash: projection.diagnostics.revisionHash,
+      activePatchCount: projection.diagnostics.activePatchCount,
+      patchReplayTimeMs: projection.diagnostics.patchReplayTimeMs,
+      projectionTimeMs: projection.diagnostics.projectionTimeMs,
+      repositoryTruthImmutable: true,
+    });
+  }
+
+  async function saveCommercialChangeSetForRouteRevision() {
+    if (!commercialChangeSetPatches.length) return null;
+    const revisionReference = commercialRevisionReferenceForPatch();
+    const changeSet = commercialChangeSetFromPatches({
+      revisionId: revisionReference.revisionId,
+      opportunityId: revisionReference.opportunityId,
+      repositoryId: revisionReference.repositoryId,
+      proposalId: revisionReference.proposalId,
+      routeRepositoryId: revisionReference.routeRepositoryId,
+      estimateId: revisionReference.estimateId,
+      workbookId: revisionReference.workbookId,
+      repositoryHash: commercialRevisionProjection?.diagnostics.repositoryHash,
+      revisionNumber: commercialChangeSetHistory.length + 1,
+      patches: commercialChangeSetPatches,
+      createdBy: currentUserName,
+      createdById: currentUserId,
+    });
+    const saved = await CommercialChangeSetRepository.saveChangeSet(changeSet as never, session) as unknown as CommercialChangeSet;
+    const nextHistory = [saved, ...commercialChangeSetHistory];
+    setCommercialChangeSetHistory(nextHistory);
+    setCommercialChangeSetPatches([]);
+    const replayed = await CommercialChangeSetRepository.replayRevision(revisionReference.revisionId, session)
+      .catch(() => buildLocalCommercialRevisionProjection([], nextHistory)) as CommercialRevisionProjection;
+    setCommercialRevisionProjection(replayed);
+    setCommercialChangeSetNotice(`Save Revision committed ${saved.patchCount.toLocaleString()} Commercial Change Set patch(es). Repository Truth remains unchanged.`);
+    return saved;
+  }
+
+  function routeEditSessionOrCreate() {
+    const base = activeRouteEditBase();
+    if (!base) return null;
+    if (routeEditSession && routeEditSession.routeId === base.routeId) return routeEditSession;
+    return createRouteEditSession({
+      ...base,
+      createdBy: currentUserName,
+    });
+  }
+
+  function applyRouteEditPatch(patch: RouteEditPatch) {
+    const sessionToEdit = routeEditSessionOrCreate();
+    if (!sessionToEdit) return false;
+    const nextSession = safeApplyRouteEditPatch(sessionToEdit, patch);
+    setRouteEditSession(nextSession);
+    setRouteEditRevisionPreview(null);
+    const failed = nextSession.failedPatches[0]?.patchId === patch.patchId;
+    setRouteEditNotice(failed
+      ? nextSession.failedPatches[0].operatorSafeMessage
+      : `${patch.label} staged as ${patch.patchType}. Repository truth is unchanged until Save Revision.`);
+    if (!failed) stageCommercialChangeSetPatch(patch);
+    runtimeDiagnosticsLog("RouteEditSession", {
+      patchType: patch.patchType,
+      patchId: patch.patchId,
+      routeId: patch.routeId,
+      status: nextSession.status,
+      recalculationBoundary: nextSession.projection.impact.recalculationBoundary,
+      fullRouteRebuild: nextSession.projection.impact.fullRouteRebuild,
+      repositoryTruthUnchanged: nextSession.repositoryTruthUnchanged,
+    });
+    return true;
+  }
+
+  function routeEditPatch(type: RouteEditPatchType, label: string, value?: RouteEditPatch["value"], extra: Partial<RouteEditPatch> = {}) {
+    const base = activeRouteEditBase();
+    if (!base) return null;
+    return createRouteEditPatch({
+      patchType: type,
+      routeId: base.routeId,
+      createdBy: currentUserName,
+      label,
+      value,
+      ...extra,
+    });
+  }
+
+  function inferIlaRouteEditPatch(next: IlaPlanningControls) {
+    const base = routeEditSession?.projection.projectedControls.ilaPlanning ?? transparentEstimateControls.ilaPlanning;
+    if (next.intermediateIlaEnabled !== base.intermediateIlaEnabled) return null;
+    if (next.ilaMode !== base.ilaMode) return null;
+    if (next.useBookendIlas !== base.useBookendIlas) {
+      return routeEditPatch(next.useBookendIlas ? "RESTORE_BOOKEND" : "REMOVE_BOOKEND", next.useBookendIlas ? "Restore bookend ILAs" : "Remove bookend ILAs", next.useBookendIlas);
+    }
+    const selectedStationId = next.selectedStationId ?? base.selectedStationId ?? "";
+    const nextOverride = selectedStationId ? next.stationOverrides?.[selectedStationId] : undefined;
+    const previousOverride = selectedStationId ? base.stationOverrides?.[selectedStationId] : undefined;
+    if (selectedStationId && typeof nextOverride?.milepost === "number" && nextOverride.milepost !== previousOverride?.milepost) {
+      return routeEditPatch(
+        selectedStationId.includes("BOOKEND") ? "MOVE_BOOKEND" : "MOVE_ILA",
+        "Move ILA station",
+        nextOverride.milepost,
+        { targetId: selectedStationId, facilityProfileId: nextOverride.facilityProfileId },
+      );
+    }
+    if (next.desiredIntermediateIlas < base.desiredIntermediateIlas) {
+      const targetStation = (routeEditSession?.projection.projectedEstimate ?? activeFinancialDraft?.transparentEstimate)?.ilaPlan.stationObjects
+        .filter((station) => station.stationType === "INTERMEDIATE")
+        .at(-1);
+      return routeEditPatch("REMOVE_ILA", "Remove intermediate ILA", targetStation?.totalCost ?? 0, { targetId: targetStation?.stationId ?? selectedStationId });
+    }
+    if (next.desiredIntermediateIlas > base.desiredIntermediateIlas) {
+      return routeEditPatch("RESTORE_ILA", "Restore intermediate ILA", 0, { targetId: selectedStationId || `ILA-INT-${String(next.desiredIntermediateIlas).padStart(3, "0")}` });
+    }
+    if (selectedStationId && next.defaultFacilityProfileId !== base.defaultFacilityProfileId) {
+      return routeEditPatch("CHANGE_SEGMENT_UNIT_COST", "Change ILA facility profile", 0, { targetId: selectedStationId, facilityProfileId: next.defaultFacilityProfileId });
+    }
+    return null;
+  }
+
+  async function handleSaveRouteEditRevision() {
+    if (!routeEditSession) {
+      setRouteEditNotice("No active Route Edit Session is available to save.");
+      return;
+    }
+    const revision = commitRouteEditSession(routeEditSession, currentUserName);
+    setRouteEditRevisionPreview(revision);
+    let savedCommercialChangeSet: CommercialChangeSet | null = null;
+    try {
+      savedCommercialChangeSet = await saveCommercialChangeSetForRouteRevision();
+    } catch (error) {
+      setCommercialChangeSetNotice(`Unable to save Commercial Change Set: ${error instanceof Error ? error.message : String(error)}. Route Edit Session preserved.`);
+      setRouteEditNotice(`Unable to save Commercial Change Set: ${error instanceof Error ? error.message : String(error)}. Edit session preserved.`);
+      return;
+    }
+    if (!activeCommercialOpportunity) {
+      setRouteEditSession({ ...routeEditSession, status: "SAVED", updatedAt: revision.committedAt });
+      setRouteEditNotice(`${revision.routeEditRevisionId} saved as a patch-set preview. ${savedCommercialChangeSet?.changeSetId ?? "Commercial Change Set"} recorded; no Opportunity Repository record was active.`);
+      return;
+    }
+    try {
+      const nextRecord: CommercialOpportunityRecord = {
+        ...activeCommercialOpportunity,
+        revisionHistory: RevisionRepository.appendRevision(
+          { revisionHistory: (activeCommercialOpportunity.revisionHistory ?? []) as Array<Record<string, unknown>> },
+          {
+            revision: revision.routeEditRevisionId,
+            revisionType: "ROUTE_EDIT_PATCH_SET",
+            routeEditRevision: revision,
+            commercialChangeSetId: savedCommercialChangeSet?.changeSetId,
+            commercialChangeSetPatchCount: savedCommercialChangeSet?.patchCount ?? commercialChangeSetPatches.length,
+            patchSetOnly: true,
+            repositoryTruthUnchangedUntilExplicitSave: true,
+            noScopeVersionCreation: true,
+            noInventoryMutation: true,
+          },
+        ).revisionHistory,
+        updatedAt: revision.committedAt,
+      };
+      const saved = await OpportunityRepository.saveOpportunity(opportunityRecordForRepository(nextRecord), session);
+      setCommercialOpportunities((prev) => [saved, ...prev.filter((candidate) => candidate.opportunityId !== saved.opportunityId)]);
+      setActiveCommercialOpportunityId(saved.opportunityId);
+      setRouteEditSession({ ...routeEditSession, status: "SAVED", updatedAt: revision.committedAt });
+      setRouteEditNotice(`${revision.routeEditRevisionId} saved as patch set only. ${savedCommercialChangeSet?.changeSetId ?? "Commercial Change Set"} is the editable authority. Route Repository geometry and assembled route remain unchanged.`);
+    } catch (error) {
+      setRouteEditNotice(`Unable to save route edit revision: ${error instanceof Error ? error.message : String(error)}. Edit session preserved.`);
+    }
+  }
+
+  function handleDiscardRouteEditRevision() {
+    const revisionReference = commercialRevisionReferenceForPatch();
+    const nextHistory = discardUnappliedCommercialPatches(commercialChangeSetHistory);
+    setRouteEditSession(null);
+    setRouteEditRevisionPreview(null);
+    setCommercialChangeSetPatches([]);
+    setCommercialChangeSetHistory(nextHistory);
+    setCommercialRevisionProjection(buildCommercialRevisionProjection(revisionReference, revisionReference, nextHistory));
+    setCommercialChangeSetNotice("Discard Revision removed unapplied Commercial Change Set patches. Repository Truth is unchanged.");
+    void CommercialChangeSetRepository.discardRevision(revisionReference.revisionId, session).catch((error) => {
+      runtimeDiagnosticsWarn("CommercialChangeSetDiscard", {
+        revisionId: revisionReference.revisionId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    });
+    setRouteEditNotice("Route Edit Session discarded. Original assembled route remains active.");
+  }
+
+  function handleRollbackRouteEditSession() {
+    if (!routeEditSession) return;
+    const next = rollbackRouteEditSession(routeEditSession);
+    const revisionReference = commercialRevisionReferenceForPatch();
+    const restoredHistory = restoreOriginalCommercialRevision(commercialChangeSetHistory);
+    setRouteEditSession(next);
+    setRouteEditRevisionPreview(null);
+    setCommercialChangeSetPatches([]);
+    setCommercialChangeSetHistory(restoredHistory);
+    setCommercialRevisionProjection(buildCommercialRevisionProjection(revisionReference, revisionReference, restoredHistory));
+    setCommercialChangeSetNotice("Restore Original cleared Commercial Change Set patches. Commercial Revision returns to Repository Truth.");
+    void CommercialChangeSetRepository.restoreOriginal(revisionReference.revisionId, session).catch((error) => {
+      runtimeDiagnosticsWarn("CommercialChangeSetRestoreOriginal", {
+        revisionId: revisionReference.revisionId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    });
+    setRouteEditNotice("Route Edit Session rolled back to original projection. Repository truth unchanged.");
+  }
+
+  function handleCompareRouteEditRevision() {
+    if (!routeEditSession) {
+      setRouteEditNotice("No active Route Edit Session is available to compare.");
+      return;
+    }
+    const revisionReference = commercialRevisionReferenceForPatch();
+    const originalProjection = buildCommercialRevisionProjection(revisionReference, revisionReference, []);
+    const currentProjection = buildLocalCommercialRevisionProjection(commercialChangeSetPatches);
+    const comparison = compareCommercialRevisionProjections(originalProjection, currentProjection);
+    setCommercialChangeSetNotice(`Compare Revision: ${comparison.differences.length.toLocaleString()} projected difference(s). Raw JSON was not compared.`);
+    void CommercialChangeSetRepository.compareRevision(revisionReference.revisionId, session).catch((error) => {
+      runtimeDiagnosticsWarn("CommercialChangeSetCompare", {
+        revisionId: revisionReference.revisionId,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    });
+    setRouteEditNotice(`Compare Revision: ${routeEditSession.patches.length.toLocaleString()} patch(es), ${routeEditSession.projection.impact.affectedSections.join(", ") || "no affected sections"}.`);
+  }
+
+  function handleStartRouteEditSession() {
+    const sessionToEdit = routeEditSessionOrCreate();
+    if (!sessionToEdit) {
+      setRouteEditNotice("An assembled commercial route is required before starting a Route Edit Session.");
+      return;
+    }
+    setRouteEditSession(sessionToEdit);
+    setRouteEditRevisionPreview(null);
+    setCommercialRevisionProjection(buildLocalCommercialRevisionProjection(commercialChangeSetPatches));
+    setCommercialChangeSetNotice("Commercial Change Set capture is active. Edits create deterministic patches against Commercial Revision.");
+    setRouteEditNotice(`${sessionToEdit.sessionId} active. Edits are patches until Save Revision.`);
+  }
+
   function commitAssumptionState(label: string, patch: Partial<Pick<BudgetAssumptionState, "civilMix" | "borePricing" | "slack" | "waste" | "splicing">>) {
+    runtimeDiagnosticsLog("WorkbookRecalculationBoundary", {
+      changedKey: label,
+      affectedDomains: affectedWorkbookExecutionDomains({ changedKey: label }),
+    });
     const next = cloneBudgetAssumptionState({
       state: selectedAssumptionState,
       label,
@@ -4920,13 +5627,138 @@ export default function GoogleRfpWorkspace() {
 
   function updateConstructionStrategy(changed: "hddPercent" | "plowPercent" | "openCutPercent", value: number) {
     const label = changed === "hddPercent" ? "Dirt Bore" : changed === "plowPercent" ? "Plow" : "Open Cut";
+    const patchType: RouteEditPatchType = changed === "plowPercent" ? "CHANGE_PLOW_RATE" : changed === "hddPercent" ? "CHANGE_BORE_RATE" : "CHANGE_TRENCH_RATE";
+    const stagedPatch = routeEditPatch(patchType, `Construction Strategy ${label} ${Math.round(value)}%`, Math.round(value));
+    if (stagedPatch && applyRouteEditPatch(stagedPatch)) return;
     commitAssumptionState(`Construction Strategy ${label} ${Math.round(value)}%`, {
       civilMix: rebalanceConstructionStrategy(selectedAssumptionState.civilMix, changed, value),
     });
   }
 
+  function updateCivilMixCalibration(changed: CivilMixCalibrationKey, value: number) {
+    const traceId = beginCommercialMutation({
+      event: "CIVIL_MIX_CHANGE",
+      component: "GoogleRfpWorkspace",
+      action: `updateCivilMixCalibration:${changed}`,
+      input: { changed, value, routeFeet: activeFinancialDraft?.routeFeet ?? selectedPricingSummary.reconciliation.routeMiles * 5280 },
+      artifactType: "CommercialFinancialProjection",
+      artifactId: activeFinancialDraft?.transparentEstimate.estimateId,
+    });
+    recordCommercialMutationMilestone("civil-mix-event-handler-start", { changed, value });
+    const next: CivilMixCalibration = { ...selectedCivilMixCalibration };
+    const roundedValue = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+    if (changed === "plowPercent") {
+      next.plowPercent = Math.min(roundedValue, Math.max(0, 100 - next.rockPercent - next.trenchPercent));
+      next.dirtPercent = Math.max(0, 100 - next.plowPercent - next.rockPercent - next.trenchPercent);
+    } else {
+      const otherNonPlowTotal = (["dirtPercent", "rockPercent", "trenchPercent"] as const)
+        .filter((key) => key !== changed)
+        .reduce((total, key) => total + next[key], 0);
+      next[changed] = Math.min(roundedValue, Math.max(0, 100 - otherNonPlowTotal));
+      next.plowPercent = Math.max(0, 100 - next.dirtPercent - next.rockPercent - next.trenchPercent);
+    }
+
+    const combinedBorePercent = next.dirtPercent + next.rockPercent;
+    const fastQuantities = calculateCivilMixFastPath(
+      activeFinancialDraft?.routeFeet ?? selectedPricingSummary.reconciliation.routeMiles * 5280,
+      next,
+    );
+    recordCommercialMutationMilestone("civil-mix-quantity-complete");
+    annotateCommercialMutation({ objectsProcessed: 4, geometryPointsProcessed: 0, cacheStatus: "HIT" });
+    recordCommercialMutationOperation("estimateRecalculations");
+    recordCommercialMutationOperation("financialProjections");
+    recordCommercialMutationOperation("proposalProjections");
+    const rockShareOfBore = combinedBorePercent > 0 ? Math.round((next.rockPercent / combinedBorePercent) * 100) : 0;
+    commitAssumptionState(
+      `Civil Mix ${next.plowPercent}% plow / ${next.dirtPercent}% dirt / ${next.rockPercent}% rock / ${next.trenchPercent}% trench`,
+      {
+        civilMix: {
+          hddPercent: combinedBorePercent,
+          plowPercent: next.plowPercent,
+          openCutPercent: next.trenchPercent,
+          totalPercent: 100,
+        },
+        borePricing: {
+          ...selectedAssumptionState.borePricing,
+          rockBorePercent: rockShareOfBore,
+          dirtBorePercent: 100 - rockShareOfBore,
+        },
+      },
+    );
+    recordCommercialMutationMilestone("commercial-assumption-state-enqueued");
+
+    const calibratedValues: Record<(typeof CIVIL_MIX_CONSTRAINT_KEYS)[number], number> = {
+      "civil.plowPercent": next.plowPercent,
+      "civil.directionalBoreDirtPercent": next.dirtPercent,
+      "civil.directionalBoreRockPercent": next.rockPercent,
+      "civil.openTrenchPercent": next.trenchPercent,
+    };
+    const calibratedAt = new Date().toISOString();
+    setTransparentEstimateControls((prev) => {
+      const constraints = { ...(prev.constraints ?? {}) };
+      CIVIL_MIX_CONSTRAINT_KEYS.forEach((key) => {
+        constraints[key] = {
+          ...transparentConstraintTemplate(key, prev),
+          value: calibratedValues[key],
+          authorityMode: "HUMAN_APPROVED",
+          confidence: 100,
+          source: "Account Manager civil mix calibration",
+          sourceDetail: "Whole-number commercial calibration maintained at a 100% total.",
+          approvedBy: currentUserName,
+          approvedAt: calibratedAt,
+          lastUpdated: calibratedAt,
+        };
+      });
+      return { ...prev, civilMixMode: "MANUAL", constraints };
+    });
+    recordCommercialMutationMilestone("estimate-control-state-enqueued");
+    setTransparentEstimateRecalculatedAt(calibratedAt);
+    recordCommercialMutationOperation("reactStateCommits", 3);
+    runtimeDiagnosticsLog("CivilMixFastPath", { traceId, ...fastQuantities, noGeometryRebuild: true, noStationRebuild: true, noMapRebuild: true, noEngineeringProjection: true });
+    window.requestAnimationFrame(() => {
+      recordCommercialMutationMilestone("react-commit-and-paint-complete");
+      completeCommercialMutation(traceId);
+      setMutationTraceRevision((revision) => revision + 1);
+    });
+  }
+
+  function resetCivilMixCalibration() {
+    const calibratedAt = new Date().toISOString();
+    const next = STANDARD_CIVIL_MIX;
+    commitAssumptionState("Standard Civil Mix 82% plow / 12% dirt / 0% rock / 6% trench", {
+      civilMix: { hddPercent: 12, plowPercent: 82, openCutPercent: 6, totalPercent: 100 },
+      borePricing: { ...selectedAssumptionState.borePricing, rockBorePercent: 0, dirtBorePercent: 100 },
+    });
+    setTransparentEstimateControls((prev) => {
+      const calibratedValues: Record<(typeof CIVIL_MIX_CONSTRAINT_KEYS)[number], number> = {
+        "civil.plowPercent": next.plowPercent,
+        "civil.directionalBoreDirtPercent": next.dirtPercent,
+        "civil.directionalBoreRockPercent": next.rockPercent,
+        "civil.openTrenchPercent": next.trenchPercent,
+      };
+      const constraints = { ...(prev.constraints ?? {}) };
+      CIVIL_MIX_CONSTRAINT_KEYS.forEach((key) => {
+        constraints[key] = {
+          ...transparentConstraintTemplate(key, prev),
+          value: calibratedValues[key],
+          authorityMode: "HUMAN_APPROVED",
+          confidence: 100,
+          source: "Standard civil mix",
+          sourceDetail: "82% plow / 12% dirt / 0% rock / 6% trench.",
+          approvedBy: currentUserName,
+          approvedAt: calibratedAt,
+          lastUpdated: calibratedAt,
+        };
+      });
+      return { ...prev, civilMixMode: "MANUAL", constraints };
+    });
+    setTransparentEstimateRecalculatedAt(calibratedAt);
+  }
+
   function updateRockPercent(value: number) {
     const rockBorePercent = Math.max(0, Math.min(100, Math.round(value)));
+    const stagedPatch = routeEditPatch("CHANGE_ROCK_RATE", `Geology rock ${rockBorePercent}%`, rockBorePercent);
+    if (stagedPatch && applyRouteEditPatch(stagedPatch)) return;
     commitAssumptionState(`Geology rock ${rockBorePercent}%`, {
       borePricing: {
         ...selectedAssumptionState.borePricing,
@@ -4937,6 +5769,8 @@ export default function GoogleRfpWorkspace() {
   }
 
   function updateTransparentEstimateDuration(days: number) {
+    const stagedPatch = routeEditPatch("CHANGE_TERM_MONTHS", `Customer Duration ${Math.max(1, Math.round(days))} days`, Math.max(1, Math.round(days)));
+    if (stagedPatch && applyRouteEditPatch(stagedPatch)) return;
     setTransparentEstimateControls((prev) => ({
       ...prev,
       targetDurationDays: Math.max(1, Math.round(days)),
@@ -4944,6 +5778,14 @@ export default function GoogleRfpWorkspace() {
   }
 
   function updateTransparentProduction(key: keyof TransparentEstimateProductionControls, value: number | null) {
+    const patchType: RouteEditPatchType =
+      key === "plowFeetPerDay" ? "CHANGE_PLOW_RATE" :
+      key === "directionalBoreDirtFeetPerDay" ? "CHANGE_BORE_RATE" :
+      key === "directionalBoreRockFeetPerDay" ? "CHANGE_ROCK_RATE" :
+      key === "openTrenchDirtFeetPerDay" || key === "openTrenchRockFeetPerDay" ? "CHANGE_TRENCH_RATE" :
+      "CHANGE_SEGMENT_UNIT_COST";
+    const stagedPatch = routeEditPatch(patchType, `Production ${key}`, value);
+    if (stagedPatch && applyRouteEditPatch(stagedPatch)) return;
     setTransparentEstimateControls((prev) => ({
       ...prev,
       production: {
@@ -4954,6 +5796,11 @@ export default function GoogleRfpWorkspace() {
   }
 
   function updateTransparentFinancial(key: keyof TransparentEstimateFinancialControls, value: number) {
+    const mutation: CommercialMutationType = key === "markupPercent" ? "COMMERCIAL_MARKUP_CHANGE" : "COMMERCIAL_MARKUP_CHANGE";
+    const traceId = beginCommercialMutation({ event: mutation, component: "GoogleRfpWorkspace", action: `updateTransparentFinancial:${key}`, input: { key, value }, artifactType: "CommercialFinancialProjection" });
+    const patchType: RouteEditPatchType = key === "monthlyOmPerRouteMile" ? "CHANGE_MONTHLY_REVENUE" : "CHANGE_MARGIN_ASSUMPTION";
+    const stagedPatch = routeEditPatch(patchType, `Financial ${key}`, Number(value.toFixed(2)));
+    if (stagedPatch && applyRouteEditPatch(stagedPatch)) return;
     setTransparentEstimateControls((prev) => ({
       ...prev,
       financial: {
@@ -4961,9 +5808,18 @@ export default function GoogleRfpWorkspace() {
         [key]: Math.max(0, Number(value.toFixed(2))),
       },
     }));
+    recordCommercialMutationOperation("financialProjections");
+    recordCommercialMutationOperation("proposalProjections");
+    recordCommercialMutationOperation("reactStateCommits");
+    window.requestAnimationFrame(() => { completeCommercialMutation(traceId); setMutationTraceRevision((revision) => revision + 1); });
   }
 
   function updateTransparentIlaPlanning(next: IlaPlanningControls) {
+    const traceId = beginCommercialMutation({ event: "ILA_MODE_CHANGE", component: "GoogleRfpWorkspace", action: "updateTransparentIlaPlanning", input: next, artifactType: "CommercialFinancialProjection" });
+    const estimateId = activeFinancialDraft?.transparentEstimate.estimateId;
+    if (estimateId) invalidateIlaPlanningCache(estimateId);
+    const stagedPatch = inferIlaRouteEditPatch(next);
+    if (stagedPatch && applyRouteEditPatch(stagedPatch)) return;
     setTransparentEstimateControls((prev) => ({
       ...prev,
       ilaPlanning: {
@@ -4971,9 +5827,62 @@ export default function GoogleRfpWorkspace() {
         stationOverrides: { ...(next.stationOverrides ?? {}) },
       },
     }));
+    recordCommercialMutationOperation("quantityRecalculations");
+    recordCommercialMutationOperation("estimateRecalculations");
+    recordCommercialMutationOperation("financialProjections");
+    recordCommercialMutationOperation("reactStateCommits");
+    window.requestAnimationFrame(() => { completeCommercialMutation(traceId); setMutationTraceRevision((revision) => revision + 1); });
+  }
+
+  function updateTransparentProjectConfiguration(next: TransparentProjectConfigurationControls) {
+    const previous = transparentEstimateControls.projectConfiguration;
+    const event: CommercialMutationType = previous.fiberCount !== next.fiberCount ? "FIBER_CONFIGURATION_CHANGE" : "DUCT_CONFIGURATION_CHANGE";
+    const traceId = beginCommercialMutation({ event, component: "GoogleRfpWorkspace", action: "updateTransparentProjectConfiguration", input: next, artifactType: "DraftIofStructuralProjection" });
+    const estimateId = activeFinancialDraft?.transparentEstimate.estimateId;
+    if (estimateId) invalidateIlaPlanningCache(estimateId);
+    setTransparentEstimateControls((prev) => ({
+      ...prev,
+      projectConfiguration: {
+        ...next,
+        configurationRevision: prev.projectConfiguration.configurationRevision + 1,
+        slackRevision: `PROJECT-CONFIG-R${prev.projectConfiguration.configurationRevision + 1}`,
+      },
+    }));
+    recordCommercialMutationOperation("quantityRecalculations");
+    recordCommercialMutationOperation("estimateRecalculations");
+    recordCommercialMutationOperation("financialProjections");
+    recordCommercialMutationOperation("reactStateCommits");
+    window.requestAnimationFrame(() => { completeCommercialMutation(traceId); setMutationTraceRevision((revision) => revision + 1); });
   }
 
   function selectTransparentIlaStation(stationId: string) {
+    const stagedPatch = routeEditPatch("MOVE_ILA", `Select ILA station ${stationId}`, undefined, { targetId: stationId });
+    if (stagedPatch && routeEditSession) {
+      setRouteEditSession((prev) => prev ? {
+        ...prev,
+        projection: {
+          ...prev.projection,
+          projectedControls: {
+            ...prev.projection.projectedControls,
+            ilaPlanning: {
+              ...prev.projection.projectedControls.ilaPlanning,
+              selectedStationId: stationId,
+            },
+          },
+          projectedEstimate: {
+            ...prev.projection.projectedEstimate,
+            ilaPlan: {
+              ...prev.projection.projectedEstimate.ilaPlan,
+              controls: {
+                ...prev.projection.projectedEstimate.ilaPlan.controls,
+                selectedStationId: stationId,
+              },
+            },
+          },
+        },
+      } : prev);
+      return;
+    }
     setTransparentEstimateControls((prev) => ({
       ...prev,
       ilaPlanning: {
@@ -5109,6 +6018,30 @@ export default function GoogleRfpWorkspace() {
   }
 
   function updateTransparentConstraint(next: ConstraintValue) {
+    const routeEditConstraintPatchType: RouteEditPatchType | null =
+      next.key === "civil.plowPercent" ? "CHANGE_PLOW_RATE" :
+      next.key === "civil.directionalBoreDirtPercent" ? "CHANGE_BORE_RATE" :
+      next.key === "civil.directionalBoreRockPercent" || next.key === "civil.rockAdderPerFoot" ? "CHANGE_ROCK_RATE" :
+      next.key === "civil.openTrenchPercent" ? "CHANGE_TRENCH_RATE" :
+      next.key.startsWith("labor.") || next.key.startsWith("material.") ? "CHANGE_SEGMENT_UNIT_COST" :
+      next.key.startsWith("financial.") || next.key.startsWith("om.") ? "CHANGE_MONTHLY_REVENUE" :
+      null;
+    if (routeEditConstraintPatchType && routeEditSession) {
+      const stagedPatch = routeEditPatch(routeEditConstraintPatchType, `Constraint ${next.label || next.key}`, typeof next.value === "number" ? next.value : String(next.value ?? ""));
+      if (stagedPatch && applyRouteEditPatch(stagedPatch)) return;
+    }
+    const mutationEvent: CommercialMutationType | null = next.key.startsWith("material.")
+      ? "MATERIAL_RATE_CHANGE"
+      : next.key.startsWith("labor.") || next.key === "civil.rockAdderPerFoot"
+        ? "LABOR_RATE_CHANGE"
+        : null;
+    const traceId = mutationEvent ? beginCommercialMutation({
+      event: mutationEvent,
+      component: "GoogleRfpWorkspace",
+      action: `updateTransparentConstraint:${next.key}`,
+      input: { key: next.key, value: next.value, authorityMode: next.authorityMode },
+      artifactType: "CommercialFinancialProjection",
+    }) : null;
     setTransparentEstimateControls((prev) => {
       const previous = transparentConstraintTemplate(next.key, prev);
       const algorithmBaseline = algorithmConstraintTemplate(next.key, prev, previous);
@@ -5176,6 +6109,14 @@ export default function GoogleRfpWorkspace() {
           : prev.humanAuditTrail,
       };
     });
+    if (traceId) {
+      recordCommercialMutationOperation("estimateRecalculations");
+      recordCommercialMutationOperation("financialProjections");
+      recordCommercialMutationOperation("proposalProjections");
+      recordCommercialMutationOperation("reactStateCommits");
+      annotateCommercialMutation({ geometryPointsProcessed: 0, cacheStatus: "HIT" });
+      window.requestAnimationFrame(() => { completeCommercialMutation(traceId); setMutationTraceRevision((revision) => revision + 1); });
+    }
   }
 
   function handleRoutePlanRevised(nextRoutePlan: GoogleRfpRouteBidPlan) {
@@ -5238,6 +6179,8 @@ export default function GoogleRfpWorkspace() {
     setCommercialRouteResult(null);
     setCommercialRoutingStatus("IDLE");
     setTemporaryImportedRoute(null);
+    setPendingRouteImport(null);
+    setImportedEndpointReplacementConfirmed(false);
     setRouteImportStatus("IDLE");
     setGeneratedRouteRepositorySnapshot(null);
     setRoutePersistenceInspector(null);
@@ -5284,6 +6227,9 @@ export default function GoogleRfpWorkspace() {
     setTransparentEstimateControls(defaultTransparentEstimateControls());
     setTransparentEstimateRecalculatedAt(null);
     setGeneratedRouteRepositorySnapshot(null);
+    setRouteEditSession(null);
+    setRouteEditRevisionPreview(null);
+    setRouteEditNotice("Route edits are inactive. Original assembled route truth is unchanged.");
     setRoutePersistenceInspector(null);
     clearCommercialDraftMapLayers();
     if (!options.preserveActiveOpportunity) setActiveCommercialOpportunityId("");
@@ -5298,7 +6244,7 @@ export default function GoogleRfpWorkspace() {
       details,
     };
     setRoutePersistenceAuditLog((prev) => [entry, ...prev].slice(0, 80));
-    console.info("[CIP-014D Route Persistence]", entry);
+    runtimeDiagnosticsLog("RoutePersistenceAudit", { ...entry });
     return entry;
   }
 
@@ -5494,12 +6440,26 @@ export default function GoogleRfpWorkspace() {
     const routeRepositoryId = routeRepositoryIdForOpportunity(args.opportunityId, routeId);
     const geometryHash = commercialRouteGeometryHash(commercialGeometry);
     const routeName = args.sourceRoute?.name ?? args.commercialDraft?.routeId ?? `${args.opportunityName} Route`;
+    const routeRevision = Math.max(1, Number(activeCommercialOpportunity?.routeRepositorySnapshot?.routeRevision ?? generatedRouteRepositorySnapshot?.routeRevision ?? 0) + (activeCommercialOpportunity?.routeRepositoryId ? 1 : 0));
+    const sourceGeometry = args.sourceImport?.routes.find((route) => route.routeId === args.sourceRoute?.routeId)?.dalGeometry ?? args.sourceRoute?.dalGeometry ?? commercialGeometry;
+    const stagedImport = temporaryImportedRoute;
+    const endpointAuthority = stagedImport && stagedImport.route.routeId === args.sourceRoute?.routeId
+      ? stagedImport.endpointAuthority
+      : args.sourceImport && args.sourceRoute
+        ? deriveImportedRouteEndpointAuthority({
+            sourceGeometry,
+            sourceFileHash: args.sourceImport.sourceFileHash ?? "missing-source-file-hash",
+            sourceGeometryId: `${args.sourceImport.importId}:${args.sourceRoute.routeId}`,
+            routeRevision,
+            geometryHash,
+          })
+        : undefined;
     const importedEvidence = args.sourceFiles.length
       ? args.sourceFiles.map((file, index) => evidenceFromSourceFile(file, args.opportunityId, index))
       : [generatedRouteEvidence(routeRepositoryId, routeId, geometryHash, args.timestamp)];
     return {
       routeRepositoryId,
-      routeSnapshotId: `${routeRepositoryId}-v${activeCommercialOpportunity?.version ?? 1}`,
+      routeSnapshotId: `${routeRepositoryId}-v${routeRevision}`,
       routeGeometryId: routeGeometryId(routeRepositoryId, geometryHash),
       geometryHash,
       opportunityId: args.opportunityId,
@@ -5512,6 +6472,13 @@ export default function GoogleRfpWorkspace() {
       sourceImportId: args.sourceImport?.importId,
       sourceRouteId: args.sourceRoute?.routeId,
       sourceFileName: args.sourceImport?.sourceFileName ?? String(args.sourceFiles.at(-1)?.fileName ?? ""),
+      sourceFileType: args.sourceImport?.sourceType,
+      sourceFileHash: args.sourceImport?.sourceFileHash,
+      sourceGeometryId: endpointAuthority?.aSite.sourceGeometryId,
+      sourceGeometryHash: commercialRouteGeometryHash(sourceGeometry),
+      routeRevision,
+      parentRouteRepositoryId: activeCommercialOpportunity?.routeRepositoryId,
+      endpointAuthority,
       importedEvidence,
       immutableImportedEvidence: true,
       commercialGeometry,
@@ -5526,12 +6493,12 @@ export default function GoogleRfpWorkspace() {
         miles: args.routeMiles,
       },
       aLocation: {
-        label: args.commercialDraft?.aLabel ?? `${routeName} A`,
-        coordinate: first,
+        label: endpointAuthority?.aSite.siteName || args.commercialDraft?.aLabel || `${routeName} A`,
+        coordinate: endpointAuthority?.aSite.coordinate ?? first,
       },
       zLocation: {
-        label: args.commercialDraft?.zLabel ?? `${routeName} Z`,
-        coordinate: last,
+        label: endpointAuthority?.zSite.siteName || args.commercialDraft?.zLabel || `${routeName} Z`,
+        coordinate: endpointAuthority?.zSite.coordinate ?? last,
       },
       commercialDraftSnapshot: args.commercialDraft,
       selectedRouteSnapshot: args.sourceRoute,
@@ -5558,7 +6525,9 @@ export default function GoogleRfpWorkspace() {
     } = {},
   ): CommercialOpportunityRecord {
     const timestamp = new Date().toISOString();
-    const existing = options.duplicate ? null : activeCommercialOpportunity;
+    const existing = options.duplicate
+      ? null
+      : activeCommercialOpportunity ?? commercialOpportunities.find((record) => record.opportunityId === activeCommercialOpportunityId) ?? null;
     const hasExplicitImportedRouteSource = Boolean(options.overrideImport || options.overrideRoute || selectedImportedCustomerDesignImport || selectedImportedCustomerRoute);
     const pendingGeneratedRouteSnapshot = !options.blank && !options.duplicate && !hasExplicitImportedRouteSource ? generatedRouteRepositorySnapshot : null;
     const sourceImport = options.blank ? null : options.overrideImport ?? selectedImportedCustomerDesignImport ?? null;
@@ -5764,6 +6733,11 @@ export default function GoogleRfpWorkspace() {
       routeGeometry: routeRepositorySnapshot?.commercialGeometry ?? routeGeometry,
       routeFeet,
       routeMiles,
+      routeRevision: routeRepositorySnapshot?.routeRevision,
+      routeGeometryId: routeRepositorySnapshot?.routeGeometryId,
+      geometryHash: routeRepositorySnapshot?.geometryHash,
+      aSite: routeRepositorySnapshot?.endpointAuthority?.aSite ?? routeRepositorySnapshot?.aLocation,
+      zSite: routeRepositorySnapshot?.endpointAuthority?.zSite ?? routeRepositorySnapshot?.zLocation,
       sourceRouteFileReference,
       sourceFiles,
       attachments,
@@ -5865,6 +6839,7 @@ export default function GoogleRfpWorkspace() {
   }
 
   async function upsertCommercialOpportunity(record: CommercialOpportunityRecord) {
+    const transactionId = `ROUTE-OPPORTUNITY-SAVE-${record.opportunityId}-${Date.now()}`;
     const previousRecord = activeCommercialOpportunity?.opportunityId === record.opportunityId ? activeCommercialOpportunity : null;
     let opportunityPersisted = false;
     setRoutePersistencePending(true);
@@ -5875,6 +6850,7 @@ export default function GoogleRfpWorkspace() {
       workspaceId: record.workspaceId ?? currentWorkspaceId,
       savedBy: currentUserName,
       savedById: currentUserId,
+      transactionId,
     };
     try {
       appendRoutePersistenceAudit("Save Opportunity", "START", {
@@ -5883,7 +6859,7 @@ export default function GoogleRfpWorkspace() {
         routeRepositoryId: sharedRecord.routeRepositoryId ?? sharedRecord.routeRepositoryRef?.routeRepositoryId ?? sharedRecord.routeRepositorySnapshot?.routeRepositoryId ?? "",
       });
       let routeSnapshot = sharedRecord.routeRepositorySnapshot ?? generatedRouteRepositorySnapshot ?? null;
-      if (routeSnapshot) routeSnapshot = routeSnapshotWithIntegrity(routeSnapshot);
+      if (routeSnapshot) routeSnapshot = { ...routeSnapshotWithIntegrity(routeSnapshot), transactionId };
       if (opportunityRequiresRouteTransaction(sharedRecord)) {
         if (!routeSnapshot) throw new Error("Save Opportunity preflight: missing Route Repository snapshot.");
         requireRouteSnapshotIntegrity(routeSnapshot, "Save Opportunity preflight");
@@ -6092,6 +7068,10 @@ export default function GoogleRfpWorkspace() {
       opportunityName: initialName,
     });
     setOpportunityNotice(`Opening ${initialName} from Opportunity Repository...`);
+    const restoreMetric = startRuntimePerformanceOperation("workspace-restore", "RESTORE", {
+      opportunityId,
+      opportunityName: initialName,
+    });
 
     const updateRestore = (updater: (state: OpportunityRestoreState) => OpportunityRestoreState) => {
       if (opportunityRestoreRunRef.current !== restoreRunId) return;
@@ -6135,6 +7115,17 @@ export default function GoogleRfpWorkspace() {
         fatalError: `Unable to restore Opportunity from Repository. Reason: ${reason}`,
         completedAt: new Date().toISOString(),
       }));
+      const failedRestore = restoreMetric.end({ workerStatus: "RESTORE_FAILED" });
+      setRuntimePerformance((prev) => runtimePerformanceSnapshot({
+        ...prev,
+        workspaceRestoreMs: failedRestore.durationMs,
+        workerStatus: "RESTORE_FAILED",
+      }));
+      runtimeDiagnosticsWarn("RuntimePerformance", {
+        operation: "workspace-restore",
+        opportunityId,
+        reason,
+      });
       setOpportunityNotice(`Unable to restore Opportunity from Repository: ${reason}`);
       return;
     }
@@ -6374,6 +7365,16 @@ export default function GoogleRfpWorkspace() {
       proposalRestored: record.proposalId ? "YES" : "NO",
       warnings: validation.warnings.length,
     });
+    const completedRestore = restoreMetric.end({
+      workerStatus: validation.warnings.length ? "RESTORED_WITH_WARNINGS" : "RESTORED",
+      recordsProcessed: validation.warnings.length,
+      recordsRendered: routeSnapshot?.commercialGeometry.length ?? 0,
+    });
+    setRuntimePerformance((prev) => runtimePerformanceSnapshot({
+      ...prev,
+      workspaceRestoreMs: completedRestore.durationMs,
+      workerStatus: completedRestore.workerStatus ?? "RESTORED",
+    }));
     setOpportunityNotice(validation.warnings.length
       ? `${record.name} restored from Opportunity Repository with warnings.`
       : `${record.name} restored from Opportunity Repository.`);
@@ -6491,6 +7492,8 @@ export default function GoogleRfpWorkspace() {
     setCommercialRoutingStatus("IDLE");
     if (!options.preserveDraftType) setCommercialDraftType(null);
     setTemporaryImportedRoute(null);
+    setPendingRouteImport(null);
+    setImportedEndpointReplacementConfirmed(false);
     setRouteImportStatus("IDLE");
   }
 
@@ -6859,8 +7862,10 @@ export default function GoogleRfpWorkspace() {
     setNewOpportunityDialogOpen(false);
   }
 
-  function buildPricedImport(record: CustomerDesignImport) {
-    const baseRoute = record.routes.find((route) => route.pricingEligible) ?? record.routes[0] ?? null;
+  function buildPricedImport(record: CustomerDesignImport, selectedRouteId?: string) {
+    const baseRoute = selectedRouteId
+      ? record.routes.find((route) => route.routeId === selectedRouteId) ?? null
+      : record.routes.find((route) => route.pricingEligible) ?? record.routes[0] ?? null;
     if (!baseRoute) return { record, route: null, draft: null };
     const pricedRoute = baseRoute.pricingEligible
       ? baseRoute
@@ -6884,9 +7889,69 @@ export default function GoogleRfpWorkspace() {
     return { record: pricedRecord, route: savedRoute, draft };
   }
 
+  function stageSelectedImportedRoute(record: CustomerDesignImport, routeId: string) {
+    const priced = buildPricedImport(record, routeId);
+    if (!priced.route) {
+      setRouteImportStatus("ERROR");
+      setOpportunityNotice(`${record.sourceFileName} did not contain the selected route geometry.`);
+      return;
+    }
+    const sourceGeometry = geometryForImportedRoute(priced.route);
+    if (sourceGeometry.length < 2) {
+      setRouteImportStatus("ERROR");
+      setOpportunityNotice(`${record.sourceFileName} parsed, but the selected route has no continuous line geometry.`);
+      return;
+    }
+    const routeRevision = Math.max(1, Number(activeCommercialOpportunity?.routeRepositorySnapshot?.routeRevision ?? generatedRouteRepositorySnapshot?.routeRevision ?? 0) + 1);
+    const geometryHash = commercialRouteGeometryHash(sourceGeometry);
+    const endpointAuthority = deriveImportedRouteEndpointAuthority({
+      sourceGeometry,
+      sourceFileHash: record.sourceFileHash ?? "missing-source-file-hash",
+      sourceGeometryId: `${record.importId}:${priced.route.routeId}`,
+      routeRevision,
+      geometryHash,
+    });
+    const evidence = {
+      ...sourceFileEvidence(
+        record.sourceFileName,
+        "TEMPORARY_IMPORTED_ROUTE",
+        `server/data/opportunities/${selectedAccount.accountId}/temporary-imports/${record.sourceFileName}`,
+      ),
+      sourceFileType: record.sourceType,
+      sourceFileHash: record.sourceFileHash,
+      checksum: record.sourceFileHash,
+      parserVersion: record.parserVersion,
+      sourceGeometryId: endpointAuthority.aSite.sourceGeometryId,
+      originalGeometryHash: geometryHash,
+    };
+    setTemporaryImportedRoute({
+      importRecord: priced.record,
+      route: priced.route,
+      draft: priced.draft,
+      geometry: sourceGeometry,
+      sourceFileName: record.sourceFileName,
+      evidence,
+      importedAt: new Date().toISOString(),
+      endpointAuthority,
+    });
+    setPendingRouteImport(null);
+    setImportedEndpointReplacementConfirmed(false);
+    if (!azOriginLocation && !azDestinationLocation) {
+      setAzOriginLocation(importedEndpointResolvedLocation(selectedAccount.accountId, endpointAuthority.aSite));
+      setAzDestinationLocation(importedEndpointResolvedLocation(selectedAccount.accountId, endpointAuthority.zSite));
+      setOpportunityScoutAzOrigin(`${endpointAuthority.aSite.coordinate[1]}, ${endpointAuthority.aSite.coordinate[0]}`);
+      setOpportunityScoutAzDestination(`${endpointAuthority.zSite.coordinate[1]}, ${endpointAuthority.zSite.coordinate[0]}`);
+    }
+    setRouteImportStatus("READY");
+    setOpportunityWorkflowState("AWAITING_IMPORT");
+    setOpportunityNotice(`${record.sourceFileName} route selected. Start/end endpoint candidates are ready for A/Z orientation confirmation.`);
+  }
+
   async function handleRouteImportFile(file: File | null) {
     if (!file) return;
-    resetOpportunityInputState();
+    setTemporaryImportedRoute(null);
+    setPendingRouteImport(null);
+    setImportedEndpointReplacementConfirmed(false);
     setRouteImportStatus("PARSING");
     setCommercialDraftType("NEW_GRAPH_CORRIDOR");
     setActiveDesignMode("CUSTOMER_PROPOSAL_REVIEW");
@@ -6901,34 +7966,19 @@ export default function GoogleRfpWorkspace() {
         customerName: selectedAccount.name,
         uploadedBy: currentUserName,
       });
-      const priced = buildPricedImport(imported);
-      if (!priced.route) {
+      const routeCandidates = imported.routes.filter((route) => route.dalGeometry.length > 1);
+      if (!routeCandidates.length) {
         setRouteImportStatus("ERROR");
         setOpportunityNotice(`${file.name} did not contain route geometry that can be priced.`);
         return;
       }
-      const geometry = priced.draft?.geometry?.length ? priced.draft.geometry : geometryForImportedRoute(priced.route);
-      if (geometry.length < 2) {
-        setRouteImportStatus("ERROR");
-        setOpportunityNotice(`${file.name} parsed, but no line geometry was available for the map.`);
+      if (routeCandidates.length > 1) {
+        setPendingRouteImport({ ...imported, activeRouteId: undefined, previewGeometry: [] });
+        setRouteImportStatus("READY");
+        setOpportunityNotice(`${file.name} contains ${routeCandidates.length} candidate route centerlines. Select the intended route before A/Z derivation.`);
         return;
       }
-      const evidence = sourceFileEvidence(
-        file.name,
-        "TEMPORARY_IMPORTED_ROUTE",
-        `server/data/opportunities/${selectedAccount.accountId}/temporary-imports/${file.name}`,
-      );
-      setTemporaryImportedRoute({
-        importRecord: priced.record,
-        route: priced.route,
-        draft: priced.draft,
-        geometry,
-        sourceFileName: file.name,
-        evidence,
-        importedAt: new Date().toISOString(),
-      });
-      setRouteImportStatus("READY");
-      setOpportunityNotice(`${file.name} loaded as a Temporary Imported Route. Save Imported Route to persist it.`);
+      stageSelectedImportedRoute(imported, routeCandidates[0].routeId);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setRouteImportStatus("ERROR");
@@ -6938,6 +7988,10 @@ export default function GoogleRfpWorkspace() {
 
   async function handleSaveTemporaryImportedRoute(options: { duplicate?: boolean } = {}) {
     if (!temporaryImportedRoute) return;
+    if (importedEndpointsNeedConfirmation) {
+      setOpportunityNotice("Confirm whether imported endpoint candidates replace the existing A/Z coordinates before saving the governed route.");
+      return;
+    }
     if (activeCommercialOpportunity && !options.duplicate && !canModifyActiveOpportunity) {
       setOpportunityNotice("You cannot replace this Opportunity route unless you own it or have contributor/approver authority.");
       return;
@@ -6973,9 +8027,112 @@ export default function GoogleRfpWorkspace() {
     setOpportunityNotice(`${opportunityName} saved from ${temporaryImportedRoute.sourceFileName}.`);
   }
 
+  function handleReverseImportedRouteOrientation() {
+    if (!temporaryImportedRoute) return;
+    const reversedAuthority = reverseImportedRouteEndpointAuthority(temporaryImportedRoute.endpointAuthority);
+    const originalSourceGeometry = temporaryImportedRoute.importRecord.routes.find((route) => route.routeId === temporaryImportedRoute.route.routeId)?.dalGeometry ?? temporaryImportedRoute.route.dalGeometry;
+    const geometry = orientedImportedRouteGeometry(
+      originalSourceGeometry,
+      reversedAuthority.orientation,
+    );
+    const geometryHash = commercialRouteGeometryHash(geometry);
+    const endpointAuthority = {
+      ...reversedAuthority,
+      aSite: { ...reversedAuthority.aSite, geometryHash },
+      zSite: { ...reversedAuthority.zSite, geometryHash },
+    };
+    const orientedRoute: ImportedCustomerRoute = {
+      ...temporaryImportedRoute.route,
+      dalGeometry: geometry,
+      geometry: geometry.map(([longitude, latitude]) => ({ longitude, latitude })),
+      pricedDraft: undefined,
+    };
+    const draft = buildCommercialCorridorDraftFromImportedRoute({
+      importRecord: temporaryImportedRoute.importRecord,
+      importedRoute: orientedRoute,
+      assumptionState: selectedAssumptionState,
+      estimateControls: transparentEstimateControls,
+    });
+    setTemporaryImportedRoute({ ...temporaryImportedRoute, route: orientedRoute, geometry, draft, endpointAuthority });
+    if (azOriginLocation?.source === "IMPORTED_ROUTE" && azDestinationLocation?.source === "IMPORTED_ROUTE") {
+      setAzOriginLocation(importedEndpointResolvedLocation(selectedAccount.accountId, endpointAuthority.aSite));
+      setAzDestinationLocation(importedEndpointResolvedLocation(selectedAccount.accountId, endpointAuthority.zSite));
+    }
+    setOpportunityNotice("Commercial A/Z orientation reversed. Original imported source geometry remains unchanged in evidence.");
+  }
+
+  function handleAcceptImportedStartAsA() {
+    if (!temporaryImportedRoute) return;
+    if (temporaryImportedRoute.endpointAuthority.orientation === "SOURCE_END_TO_START") handleReverseImportedRouteOrientation();
+    else setOpportunityNotice("Imported source start is confirmed as commercial A. Source evidence remains unchanged.");
+  }
+
+  function handleConfirmImportedEndpointReplacement() {
+    if (!temporaryImportedRoute) return;
+    setAzOriginLocation(importedEndpointResolvedLocation(selectedAccount.accountId, temporaryImportedRoute.endpointAuthority.aSite));
+    setAzDestinationLocation(importedEndpointResolvedLocation(selectedAccount.accountId, temporaryImportedRoute.endpointAuthority.zSite));
+    setOpportunityScoutAzOrigin(`${temporaryImportedRoute.endpointAuthority.aSite.coordinate[1]}, ${temporaryImportedRoute.endpointAuthority.aSite.coordinate[0]}`);
+    setOpportunityScoutAzDestination(`${temporaryImportedRoute.endpointAuthority.zSite.coordinate[1]}, ${temporaryImportedRoute.endpointAuthority.zSite.coordinate[0]}`);
+    setImportedEndpointReplacementConfirmed(true);
+    setOpportunityNotice("Imported endpoint coordinates confirmed as the Opportunity A/Z sites.");
+  }
+
+  function handleEnrichImportedEndpoint(endpoint: "A" | "Z", field: "siteName" | "customerSiteId" | "address" | "city" | "state" | "facilityType" | "notes", value: string) {
+    setTemporaryImportedRoute((current) => {
+      if (!current) return current;
+      const endpointAuthority = {
+        ...current.endpointAuthority,
+        aSite: endpoint === "A" ? enrichImportedEndpointSite(current.endpointAuthority.aSite, { [field]: value }) : current.endpointAuthority.aSite,
+        zSite: endpoint === "Z" ? enrichImportedEndpointSite(current.endpointAuthority.zSite, { [field]: value }) : current.endpointAuthority.zSite,
+      };
+      if (endpoint === "A" && azOriginLocation?.source === "IMPORTED_ROUTE") setAzOriginLocation(importedEndpointResolvedLocation(selectedAccount.accountId, endpointAuthority.aSite));
+      if (endpoint === "Z" && azDestinationLocation?.source === "IMPORTED_ROUTE") setAzDestinationLocation(importedEndpointResolvedLocation(selectedAccount.accountId, endpointAuthority.zSite));
+      return { ...current, endpointAuthority };
+    });
+  }
+
+  function handleSelectExistingGovernedRoute(routeRepositoryIdValue: string) {
+    const source = commercialRouteRepositoryRecords.find((route) => route.routeRepositoryId === routeRepositoryIdValue);
+    const opportunityId = activeCommercialOpportunity?.opportunityId;
+    if (!source || !opportunityId || source.commercialGeometry.length < 2) return;
+    const routeRevision = Math.max(1, Number(source.routeRevision ?? 1) + 1);
+    const routeRepositoryId = routeRepositoryIdForOpportunity(opportunityId, `${source.routeId}-revision-${routeRevision}`);
+    const geometryHash = commercialRouteGeometryHash(source.commercialGeometry);
+    const endpointAuthority = deriveImportedRouteEndpointAuthority({
+      sourceGeometry: source.commercialGeometry,
+      sourceFileHash: source.sourceFileHash ?? source.geometryHash ?? "repository-route",
+      sourceGeometryId: source.sourceGeometryId ?? source.routeGeometryId ?? source.routeRepositoryId,
+      routeRevision,
+      geometryHash,
+    });
+    const cloned: CommercialRouteRepositoryRecord = routeSnapshotWithIntegrity({
+      ...source,
+      routeRepositoryId,
+      routeSnapshotId: `${routeRepositoryId}-v${routeRevision}`,
+      opportunityId,
+      routeRevision,
+      parentRouteRepositoryId: source.routeRepositoryId,
+      routeSource: "EXISTING_ROUTE",
+      endpointAuthority,
+      aLocation: { label: source.aLocation?.label ?? `${source.routeName} A`, coordinate: endpointAuthority.aSite.coordinate },
+      zLocation: { label: source.zLocation?.label ?? `${source.routeName} Z`, coordinate: endpointAuthority.zSite.coordinate },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    setGeneratedRouteRepositorySnapshot(cloned);
+    setAzOriginLocation({ ...importedEndpointResolvedLocation(selectedAccount.accountId, endpointAuthority.aSite), source: "COMMERCIAL_DRAFT_POINT" });
+    setAzDestinationLocation({ ...importedEndpointResolvedLocation(selectedAccount.accountId, endpointAuthority.zSite), source: "COMMERCIAL_DRAFT_POINT" });
+    setCommercialDraftType("NEW_GRAPH_CORRIDOR");
+    setOpportunityWorkflowState("CORRIDOR_READY");
+    setNewOpportunityDialogOpen(false);
+    setOpportunityNotice(`${source.routeName} selected as an immutable source for new Route Revision ${routeRevision}.`);
+  }
+
   function handleDiscardTemporaryImportedRoute() {
     const discardedName = temporaryImportedRoute?.sourceFileName ?? "Temporary Imported Route";
     setTemporaryImportedRoute(null);
+    setPendingRouteImport(null);
+    setImportedEndpointReplacementConfirmed(false);
     setRouteImportStatus("IDLE");
     if (opportunityWorkflowState === "AWAITING_IMPORT") setOpportunityWorkflowState("IDLE");
     setOpportunityNotice(`${discardedName} discarded. The Opportunity Repository was not changed.`);
@@ -7142,7 +8299,9 @@ export default function GoogleRfpWorkspace() {
       customerId: snapshot.accountId,
       details: "Proposal snapshot persisted to the shared Teralinx Proposal Library.",
     })).catch((error) => {
-      console.warn("Proposal Library save failed", error instanceof Error ? error.message : String(error));
+      runtimeDiagnosticsWarn("Proposal Library save failed", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
     });
     setLiveCommercialSession((prev) => (
       prev && prev.routeRequirementId === activeLiveSession.routeRequirementId
@@ -7206,7 +8365,9 @@ export default function GoogleRfpWorkspace() {
       customerId: snapshot.accountId,
       details: "Commercial Draft snapshot persisted to the shared Teralinx Proposal Library.",
     })).catch((error) => {
-      console.warn("Proposal Library save failed", error instanceof Error ? error.message : String(error));
+      runtimeDiagnosticsWarn("Proposal Library save failed", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
     });
   }
 
@@ -7409,7 +8570,35 @@ export default function GoogleRfpWorkspace() {
   const unsavedChanges = Boolean(temporaryImportedRoute || activeLiveSession?.dirty || (commercialCorridorDraft && !opportunityScoutCandidate?.lockedIntoCommercialDraft));
   const activeFinancialDraft = temporaryImportedCommercialDraft ?? selectedImportedCommercialDraft ?? commercialCorridorDraft ?? loadedCommercialDraftSnapshot;
   const activeFinancialAuthority = activeFinancialDraft?.financialAuthority ?? null;
-  const selectedProductDoctrine = selectedProductOption.productId === POINT_TO_POINT_LONG_HAUL_PRODUCT_ID ? POINT_TO_POINT_LONG_HAUL_DOCTRINE : null;
+  const activeRouteEditProjection = routeEditSession?.status === "DISCARDED" ? null : routeEditSession?.projection ?? null;
+  const displayedTransparentEstimate = activeRouteEditProjection?.projectedEstimate ?? activeFinancialDraft?.transparentEstimate ?? null;
+  const displayedTransparentEstimateControls = activeRouteEditProjection?.projectedControls ?? transparentEstimateControls;
+  useEffect(() => {
+    const metric = startRuntimePerformanceOperation("workbook-recalculation", "WORKBOOK", {
+      estimateId: displayedTransparentEstimate?.estimateId ?? "NO_ACTIVE_ESTIMATE",
+      openSections: commercialWorkbookOpenSections.size,
+      affectedDomains: affectedWorkbookExecutionDomains({ changedKey: "workbook.display" }),
+    });
+    const completed = metric.end({
+      recordsProcessed: displayedTransparentEstimate
+        ? displayedTransparentEstimate.laborLineItems.length + displayedTransparentEstimate.materialLineItems.length
+        : 0,
+      recordsRendered: commercialWorkbookOpenSections.size,
+    });
+    setRuntimePerformance((prev) => runtimePerformanceSnapshot({
+      ...prev,
+      workbookRecalculationMs: completed.durationMs,
+      ilaRecalculationMs: latestRuntimePerformanceMetrics().reverse().find((item) => item.operation === "ila-recalculation")?.durationMs ?? prev.ilaRecalculationMs,
+    }));
+  }, [
+    displayedTransparentEstimate?.estimateId,
+    displayedTransparentEstimate?.laborLineItems.length,
+    displayedTransparentEstimate?.materialLineItems.length,
+    commercialWorkbookOpenSections.size,
+  ]);
+  const selectedProductResolution = PRODUCT_REGISTRY.resolve(selectedProductOption.productId);
+  const selectedProductDefinition = selectedProductResolution?.definition ?? null;
+  const selectedProductDoctrine = selectedProductResolution?.doctrine ?? null;
   const activeOpportunityDisplayName = customerAwareOpportunityName(
     opportunityNameDraft || activeCommercialOpportunity?.name || selectedImportedCustomerRoute?.name || "Opportunity",
     selectedAccount.name,
@@ -7424,8 +8613,178 @@ export default function GoogleRfpWorkspace() {
   const activeSourceFileReference = temporaryImportedRoute?.sourceFileName ?? activeCommercialOpportunity?.sourceRouteFileReference ?? selectedImportedCustomerDesignImport?.sourceFileName ?? "None";
   const activeLocationA = activeFinancialDraft?.aLabel ?? (temporaryImportedRoute ? `${temporaryImportedRoute.route.name} A` : undefined) ?? azOriginLocation?.label ?? selectedRoutePlans[0]?.routeRequirement.bidSegmentName ?? "A location pending";
   const activeLocationZ = activeFinancialDraft?.zLabel ?? (temporaryImportedRoute ? `${temporaryImportedRoute.route.name} Z` : undefined) ?? azDestinationLocation?.label ?? selectedRoutePlans[0]?.routeRequirement.bidSegmentName ?? "Z location pending";
+  const importedAEndpointComparison = temporaryImportedRoute
+    ? compareEndpointCoordinate(azOriginLocation ? [azOriginLocation.longitude, azOriginLocation.latitude] : null, temporaryImportedRoute.endpointAuthority.aSite.coordinate)
+    : null;
+  const importedZEndpointComparison = temporaryImportedRoute
+    ? compareEndpointCoordinate(azDestinationLocation ? [azDestinationLocation.longitude, azDestinationLocation.latitude] : null, temporaryImportedRoute.endpointAuthority.zSite.coordinate)
+    : null;
+  const importedEndpointsNeedConfirmation = Boolean(temporaryImportedRoute && (
+    (azOriginLocation && azOriginLocation.source !== "IMPORTED_ROUTE") ||
+    (azDestinationLocation && azDestinationLocation.source !== "IMPORTED_ROUTE")
+  ) && !importedEndpointReplacementConfirmed);
+  const activeFinancialGeometryAuthorityKey = generatedRouteRepositorySnapshot?.geometryHash
+    ?? commercialRouteGeometryHash(activeFinancialDraft?.geometry ?? temporaryImportedRoute?.geometry ?? opportunityScoutQuickQuote?.geometry ?? []);
+  const corridorExecutionGeometry = useMemo(() => {
+    if (activeFinancialDraft?.geometry?.length) return activeFinancialDraft.geometry;
+    if (generatedRouteRepositorySnapshot?.commercialGeometry?.length) return generatedRouteRepositorySnapshot.commercialGeometry;
+    if (temporaryImportedRoute?.geometry?.length) return temporaryImportedRoute.geometry;
+    if (opportunityScoutQuickQuote?.geometry?.length) return opportunityScoutQuickQuote.geometry;
+    return [] as DALCoordinate[];
+  }, [
+    activeFinancialDraft?.routeId,
+    activeFinancialGeometryAuthorityKey,
+    generatedRouteRepositorySnapshot?.routeRepositoryId,
+    generatedRouteRepositorySnapshot?.geometryHash,
+    temporaryImportedRoute?.route.routeId,
+    opportunityScoutQuickQuote?.candidateId,
+  ]);
+  const corridorExecutionGeometryKey = useMemo(() => {
+    const first = corridorExecutionGeometry[0];
+    const last = corridorExecutionGeometry.at(-1);
+    return [
+      corridorExecutionGeometry.length,
+      first ? `${first[0]},${first[1]}` : "none",
+      last ? `${last[0]},${last[1]}` : "none",
+      generatedRouteRepositorySnapshot?.geometryHash ?? "no-route-repository-hash",
+      displayedTransparentEstimate?.estimateId ?? "no-estimate",
+    ].join("|");
+  }, [
+    corridorExecutionGeometry,
+    generatedRouteRepositorySnapshot?.geometryHash,
+    displayedTransparentEstimate?.estimateId,
+  ]);
+  useEffect(() => {
+    let cancelled = false;
+    if (corridorExecutionGeometry.length < 2 || !displayedTransparentEstimate) {
+      setCorridorExecutionSession(null);
+      setCorridorExecutionProgress(null);
+      setCorridorAggregateProjection(null);
+      setCorridorViewportProjection(null);
+      setCorridorPerformanceMetrics(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const corridorId = activeFinancialDraft?.routeId
+      ?? generatedRouteRepositorySnapshot?.routeId
+      ?? activeCommercialOpportunity?.routeRepositoryId
+      ?? activeCommercialOpportunity?.opportunityId
+      ?? `${selectedAccount.accountId}-COMMERCIAL-CORRIDOR`;
+    const customerTwinId = accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`;
+    const importHash = generatedRouteRepositorySnapshot?.geometryHash ?? commercialRouteGeometryHash(corridorExecutionGeometry);
+    setCorridorExecutionProgress({
+      status: "INITIALIZING_CORRIDOR",
+      label: "Initializing Corridor",
+      currentSegment: 0,
+      totalSegments: 0,
+      completedSegments: 0,
+      failedSegmentId: null,
+    });
+    runtimeDiagnosticsLog("CorridorExecutionEngine", {
+      authority: "CORRIDOR_EXECUTION_ENGINE",
+      action: "START_BACKGROUND_EXECUTION",
+      corridorId,
+      customerTwinId,
+      vertexCount: corridorExecutionGeometry.length,
+      estimateId: displayedTransparentEstimate.estimateId,
+    });
+
+    void executeCorridorInBackground({
+      corridorId,
+      customerId: selectedAccount.accountId,
+      customerTwinId,
+      importHash,
+      workbookHash: displayedTransparentEstimate.estimateId,
+      geometry: corridorExecutionGeometry,
+      routeMiles: activeRouteMiles,
+      estimate: displayedTransparentEstimate,
+      viewportBounds: null,
+      viewportZoom: 9,
+      selectedSegmentId: null,
+      onProgress(progress) {
+        if (!cancelled) setCorridorExecutionProgress(progress);
+      },
+    }).then((result) => {
+      if (cancelled) return;
+      setCorridorExecutionSession(result.session);
+      setCorridorAggregateProjection(result.aggregateProjection);
+      setCorridorViewportProjection(result.viewportProjection);
+      setCorridorPerformanceMetrics(result.metrics);
+      setRuntimePerformance((prev) => runtimePerformanceSnapshot({
+        ...prev,
+        cacheStatus: result.cacheStatus,
+        workerStatus: result.session.status,
+        visibleRoutes: result.viewportProjection.visibleSegmentCount,
+        visibleStations: result.viewportProjection.renderedStationCount,
+        renderedObjects: result.viewportProjection.renderedObjectCount,
+        viewportObjectCount: result.viewportProjection.visibleSegmentCount,
+        geometryBuildMs: result.metrics.corridorPartitionTimeMs,
+        workbookRecalculationMs: result.metrics.workbookCalculationTimeMs,
+      }));
+    }).catch((error) => {
+      if (cancelled) return;
+      const message = error instanceof Error ? error.message : String(error);
+      setCorridorExecutionProgress((prev) => ({
+        status: "FAILED",
+        label: "Corridor execution failed",
+        currentSegment: prev?.currentSegment ?? 0,
+        totalSegments: prev?.totalSegments ?? 0,
+        completedSegments: prev?.completedSegments ?? 0,
+        failedSegmentId: prev?.failedSegmentId ?? null,
+      }));
+      runtimeDiagnosticsWarn("CorridorExecutionEngine", {
+        authority: "CORRIDOR_EXECUTION_ENGINE",
+        corridorId,
+        message,
+        repositoryTruthUnchanged: true,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeCommercialOpportunity?.opportunityId,
+    activeCommercialOpportunity?.routeRepositoryId,
+    activeFinancialDraft?.routeId,
+    activeRouteMiles,
+    accountCustomerTwin?.customerTwinId,
+    corridorExecutionGeometry,
+    corridorExecutionGeometryKey,
+    displayedTransparentEstimate?.estimateId,
+    generatedRouteRepositorySnapshot?.geometryHash,
+    generatedRouteRepositorySnapshot?.routeId,
+    selectedAccount.accountId,
+  ]);
+  const productDoctrineRouteSegmentsKey = (activeFinancialDraft?.routeSegments ?? [])
+    .map((segment) => `${segment.segmentId}:${segment.fromMile}:${segment.toMile}:${segment.routeMiles}`)
+    .join("|");
+  const productDoctrineRouteSegments = useMemo(
+    () => (activeFinancialDraft?.routeSegments ?? []).map((segment) => ({
+      segmentId: segment.segmentId,
+      label: segment.label,
+      fromMile: segment.fromMile,
+      toMile: segment.toMile,
+      routeMiles: segment.routeMiles,
+      fiberFeet: segment.fiberFeet,
+      ductFeet: segment.ductFeet,
+      constructionCost: 0,
+    })),
+    [productDoctrineRouteSegmentsKey],
+  );
   const productDoctrineAssembly = useMemo(() => {
     if (!selectedProductDoctrine) return null;
+    const releasedSnapshot = objectRecord(selectedReleaseProposalRevision?.snapshot);
+    const releasedEstimateControls = objectRecord(releasedSnapshot?.estimateControls);
+    const releasedTransparentEstimate = objectRecord(releasedSnapshot?.transparentEstimate);
+    const releasedConfiguration = objectRecord(releasedSnapshot?.productConfiguration)
+      ?? objectRecord(releasedEstimateControls?.projectConfiguration)
+      ?? displayedTransparentEstimateControls.projectConfiguration;
+    const releasedQuantities = objectRecord(releasedSnapshot?.constructionQuantities)
+      ?? objectRecord(releasedTransparentEstimate?.physicalQuantities)
+      ?? displayedTransparentEstimate?.physicalQuantities;
     const routePlan = activeLiveSession?.routePlan ?? selectedRoutePlans[0];
     const routedGeometry = commercialRouteResult?.status === "ROUTED"
       ? commercialRouteResult.geometry?.map((point) => [point.longitude, point.latitude] as DALCoordinate) ?? []
@@ -7447,29 +8806,84 @@ export default function GoogleRfpWorkspace() {
     };
     const aSite = siteFromLocation("A", azOriginLocation ?? opportunityScoutCandidate?.originLocation, centerline[0], activeFinancialDraft?.aLabel ?? "A location");
     const zSite = siteFromLocation("Z", azDestinationLocation ?? opportunityScoutCandidate?.destinationLocation, centerline[centerline.length - 1], activeFinancialDraft?.zLabel ?? "Z location");
-    const assemblyInput = {
+    const authoritativeRoute = centerline.length > 1 && routeFeet > 0 ? {
+      routeId,
+      source: activeCommercialOpportunity?.routeRepositoryId || generatedRouteRepositorySnapshot?.routeRepositoryId
+        ? "COMMERCIAL_ROUTE_REPOSITORY" as const
+        : commercialRouteResult?.status === "ROUTED" ? "OSRM_ASSISTED_ROUTE" as const : "OTHER_GOVERNED_SOURCE" as const,
+      routeMiles,
+      routeFeet,
+      distanceMeters: Math.round(routeFeet / 3.28084),
+      geometry: centerline,
+      routeAuthority: activeCommercialOpportunity?.routeRepositoryId ?? generatedRouteRepositorySnapshot?.routeRepositoryId ?? "COMMERCIAL_WORKING_ROUTE",
+      routeRevision: String(activeCommercialOpportunity?.routeRevision ?? generatedRouteRepositorySnapshot?.routeRevision ?? 1),
+      routeHash: activeCommercialOpportunity?.geometryHash ?? generatedRouteRepositorySnapshot?.geometryHash ?? activeFinancialGeometryAuthorityKey,
+      measurementAuthority: "COMMERCIAL_ROUTE_REPOSITORY",
+    } : null;
+    const assemblyInput: PointToPointLongHaulDoctrineInput = {
       accountId: selectedAccount.accountId,
       customerId: customerIdForAccount(selectedAccount.accountId),
       aSite,
       zSite,
-      osrmRoute: centerline.length > 1 && routeFeet > 0 ? {
-        routeId,
-        source: "OSRM" as const,
-        routeMiles,
-        routeFeet,
-        distanceMeters: Math.round(routeFeet / 3.28084),
-        geometry: centerline,
-      } : null,
-      routeSegments: activeFinancialDraft?.routeSegments,
-      pricingSummary: selectedPricingSummary.reconciliation as unknown as Record<string, unknown>,
+      authoritativeRoute,
+      osrmRoute: authoritativeRoute,
+      routeSegments: productDoctrineRouteSegments,
       stationIntervalFeet: activeFinancialDraft?.stationIntervalFeet ?? 5280,
+      projectConfiguration: {
+        configurationId: `${activeCommercialOpportunity?.opportunityId ?? routeId}:DUCT-DARK-FIBER-CONFIG:R${releasedConfiguration.configurationRevision ?? 1}`,
+        configurationRevision: releasedConfiguration.configurationRevision ?? 1,
+        organizationId: currentOrganizationId,
+        tenantId: currentOrganizationId,
+        customerId: customerIdForAccount(selectedAccount.accountId),
+        opportunityId: activeCommercialOpportunity?.opportunityId ?? routeId,
+        productId: POINT_TO_POINT_LONG_HAUL_PRODUCT_ID,
+        productVersion: "1",
+        doctrineId: selectedProductDoctrine.doctrineId,
+        doctrineVersion: selectedProductDoctrine.doctrineVersion,
+        ductCount: releasedConfiguration.ductCount,
+        ductDiameter: releasedConfiguration.ductDiameter,
+        ductMaterialSpec: releasedConfiguration.ductMaterialSpec,
+        fiberCount: releasedConfiguration.fiberCount,
+        fiberCableType: releasedConfiguration.fiberCableType,
+        fiberPlacementPolicy: releasedConfiguration.fiberPlacementPolicy,
+        slackPolicy: {
+          mode: releasedConfiguration.slackPolicyMode,
+          slackPercent: releasedConfiguration.slackPercent,
+          authority: releasedConfiguration.slackAuthority,
+          source: releasedConfiguration.slackSource,
+          revision: releasedConfiguration.slackRevision,
+        },
+        structurePlanAuthority: releasedConfiguration.structurePlanAuthority,
+        handholeCount: releasedQuantities?.handholeCount,
+        vaultCount: releasedQuantities?.vaultCount,
+        spliceArchitectureAuthority: releasedConfiguration.spliceArchitectureAuthority,
+        spliceCaseCount: releasedQuantities?.spliceCaseCount,
+        terminationConfiguration: releasedConfiguration.terminationConfiguration,
+        routeSource: authoritativeRoute?.source ?? "UNKNOWN",
+        routeAuthority: authoritativeRoute?.routeAuthority ?? "COMMERCIAL_ROUTE_REPOSITORY",
+        routeRevision: authoritativeRoute?.routeRevision ?? "1",
+        routeHash: authoritativeRoute?.routeHash ?? "UNRESOLVED",
+        measurementAuthority: authoritativeRoute?.measurementAuthority ?? "COMMERCIAL_ROUTE_REPOSITORY",
+        changeReason: "Bound to the exact saved Proposal Revision construction quantities.",
+        createdAt: selectedReleaseProposalRevision?.createdAt ?? activeProposalRuntime?.createdAt ?? "2026-07-01T00:00:00.000Z",
+        createdBy: selectedReleaseProposalRevision?.createdByName ?? currentUserName,
+        noScopeVersionCreation: true as const,
+      } as PointToPointLongHaulDoctrineInput["projectConfiguration"],
     };
     return schedulePointToPointLongHaulDoctrineAssembly(
       `PRODUCT-DOCTRINE-${selectedAccount.accountId}-${routeId}`,
       assemblyInput,
     );
   }, [
-    activeFinancialDraft,
+    activeFinancialDraft?.aLabel,
+    activeFinancialGeometryAuthorityKey,
+    activeFinancialDraft?.routeFeet,
+    activeFinancialDraft?.routeId,
+    activeFinancialDraft?.routeMiles,
+    activeFinancialDraft?.stationIntervalFeet,
+    activeCommercialOpportunity?.geometryHash,
+    activeCommercialOpportunity?.routeRepositoryId,
+    activeCommercialOpportunity?.routeRevision,
     activeLiveSession,
     azDestinationLocation,
     azOriginLocation,
@@ -7477,11 +8891,19 @@ export default function GoogleRfpWorkspace() {
     opportunityScoutCandidate,
     opportunityScoutQuickQuote,
     selectedAccount.accountId,
-    selectedPricingSummary.reconciliation,
+    generatedRouteRepositorySnapshot?.geometryHash,
+    generatedRouteRepositorySnapshot?.routeRepositoryId,
+    generatedRouteRepositorySnapshot?.routeRevision,
+    productDoctrineRouteSegments,
     selectedProductDoctrine,
+    selectedReleaseProposalRevision,
+    displayedTransparentEstimate?.physicalQuantities,
+    displayedTransparentEstimateControls.projectConfiguration,
+    currentOrganizationId,
+    currentUserName,
     selectedRoutePlans,
   ]);
-  const commercialDraftIofPackagePreview = useMemo(() => {
+  const commercialDraftIofPackagePreview = useMemo<DraftIofPackageRuntime | null>(() => {
     const routePlan = activeLiveSession?.routePlan ?? selectedRoutePlans[0];
     if (!routePlan && !activeProposalRuntime && !activeFinancialDraft && !opportunityScoutQuickQuote) return null;
     const proposalId = activeProposalRuntime?.proposalId ?? currentCommercialRecordIds.proposalId;
@@ -7542,10 +8964,24 @@ export default function GoogleRfpWorkspace() {
       customerContactEmails,
       createdAt: activeProposalRuntime?.createdAt ?? "2026-07-01T00:00:00.000Z",
       updatedAt: activeProposalRuntime?.updatedAt ?? "2026-07-01T00:00:00.000Z",
+      currentAuthority: activeProposalRuntime?.currentAuthority ?? "COMMERCIAL_REVISION",
+      commercialRevisionId: activeProposalRuntime?.commercialRevisionId,
+      revisionId: activeProposalRuntime?.revisionId,
+      commercialRevisionHash: activeProposalRuntime?.commercialRevisionHash,
+      commercialRepositoryId: activeProposalRuntime?.commercialRepositoryId,
+      proposalAuthorityFlow: activeProposalRuntime?.proposalAuthorityFlow ?? {
+        inputAuthority: "COMMERCIAL_REVISION",
+        projection: "PROPOSAL_PROJECTION",
+        repository: "PROPOSAL_REPOSITORY",
+        proposalOutputUnchanged: true,
+        pricingOutputUnchanged: true,
+        workbookOutputUnchanged: true,
+        noScopeVersionCreation: true,
+      },
       noScopeVersionCreation: true,
       noInventoryMutation: true,
     } as Partial<ProposalRuntimeObject> & { proposalId: string; customerId: string; opportunityId?: string };
-    return scheduleDraftIofPackageAssembly({
+    const assembledDraft = scheduleDraftIofPackageAssembly({
       proposal: proposalSource,
       customerName: selectedAccount.name,
       accountId: selectedAccount.accountId,
@@ -7585,7 +9021,102 @@ export default function GoogleRfpWorkspace() {
       customerDesignReferences: activeProposalRuntime?.customerDesignReferences,
       customerTwinReference: activeProposalRuntime?.customerTwinReference ?? accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
       geometryReferences: activeProposalRuntime?.geometryReferences,
+      routeGeometryHash: activeFinancialGeometryAuthorityKey,
+      stationAuthorityRevision: `${activeFinancialDraft?.routeId ?? "NO-ROUTE"}:${activeFinancialDraft?.stationIntervalFeet ?? "NO-INTERVAL"}:${productDoctrineRouteSegmentsKey}`,
+      objectInventoryAuthorityRevision: accountNetworkInventory
+        .map((network) => `${network.networkId}:${network.inventorySessionVersion ?? network.revisionCount}:${network.lastUpdated}`)
+        .sort()
+        .join("|"),
+      commercialRevisionId: String(activeProposalRuntime?.commercialRevisionId ?? "") || undefined,
+      revisionId: String(activeProposalRuntime?.revisionId ?? "") || undefined,
+      commercialRevisionHash: String(activeProposalRuntime?.commercialRevisionHash ?? "") || undefined,
+      commercialRepositoryId: String(activeProposalRuntime?.commercialRepositoryId ?? "") || undefined,
+      currentAuthority: String(activeProposalRuntime?.currentAuthority ?? "COMMERCIAL_REVISION"),
     }).value;
+    const routeRepositoryId = String(
+      generatedRouteRepositorySnapshot?.routeRepositoryId ??
+        activeCommercialOpportunity?.routeRepositoryId ??
+        activeCommercialOpportunity?.routeRepositoryRef?.routeRepositoryId ??
+        activeProposalRuntime?.routeRepositoryId ??
+        "",
+    );
+    const routeGeometryIdValue = String(
+      generatedRouteRepositorySnapshot?.routeGeometryId ??
+        activeCommercialOpportunity?.routeRepositorySnapshot?.routeGeometryId ??
+        (activeCommercialOpportunity?.routeRepositoryRef as any)?.routeGeometryId ??
+        "",
+    );
+    const geometryHash = String(
+      generatedRouteRepositorySnapshot?.geometryHash ??
+        activeCommercialOpportunity?.routeRepositorySnapshot?.geometryHash ??
+        (activeCommercialOpportunity?.routeRepositoryRef as any)?.geometryHash ??
+        "",
+    );
+    const routeRevision = Number(
+      generatedRouteRepositorySnapshot?.routeRevision ??
+        activeCommercialOpportunity?.routeRepositorySnapshot?.routeRevision ??
+        activeCommercialOpportunity?.routeRevision ??
+        1,
+    );
+    const estimateId = String(
+      activeFinancialDraft?.transparentEstimate.estimateId ??
+        activeProposalRuntime?.estimateId ??
+        activeCommercialOpportunity?.estimateId ??
+        activeCommercialOpportunity?.estimate?.estimateId ??
+        "",
+    );
+    const workbookId = String(
+      activeCommercialOpportunity?.workbookId ??
+        activeCommercialOpportunity?.commercialWorkbookId ??
+        activeProposalRuntime?.commercialWorkbookId ??
+        activeProposalRuntime?.workbookId ??
+        currentCommercialRecordIds.workbookId ??
+        "",
+    );
+    const commercialRevisionId = String(
+      activeProposalRuntime?.commercialRevisionId ??
+        activeProposalRuntime?.revisionId ??
+        activeCommercialOpportunity?.commercialRevisionId ??
+        "",
+    );
+    return {
+      ...assembledDraft,
+      projectConfiguration: productDoctrineAssembly?.projectConfiguration,
+      routeRepositoryId,
+      routeRevision,
+      routeRepositoryRef: {
+        routeRepositoryId,
+        routeGeometryId: routeGeometryIdValue,
+        geometryHash,
+        routeRevision,
+        repositoryType: "COMMERCIAL_ROUTE_REPOSITORY",
+      },
+      routeGeometryId: routeGeometryIdValue,
+      geometryHash,
+      estimateId,
+      commercialEstimateId: estimateId,
+      workbookId,
+      commercialWorkbookId: workbookId,
+      commercialRevisionId,
+      revisionId: String(activeProposalRuntime?.revisionId ?? commercialRevisionId),
+      commercialRevisionHash: String(activeProposalRuntime?.commercialRevisionHash ?? activeCommercialOpportunity?.commercialRevisionHash ?? "") || undefined,
+      commercialRepositoryId: String(activeProposalRuntime?.commercialRepositoryId ?? activeCommercialOpportunity?.commercialRepositoryId ?? "") || undefined,
+      commercialReleasePackageId: String(activeProposalRuntime?.commercialReleasePackageId ?? activeCommercialOpportunity?.commercialReleasePackageId ?? "") || undefined,
+      commercialReleaseHash: String(activeProposalRuntime?.commercialReleaseHash ?? activeCommercialOpportunity?.commercialReleaseHash ?? "") || undefined,
+      commercialSummary: {
+        ...assembledDraft.commercialSummary,
+        routeRepositoryId,
+        routeGeometryId: routeGeometryIdValue,
+        geometryHash,
+        routeRevision,
+        estimateId,
+        workbookId,
+        commercialWorkbookId: workbookId,
+        proposalId,
+        commercialRevisionId,
+        commercialReleasePackageId: String(activeProposalRuntime?.commercialReleasePackageId ?? activeCommercialOpportunity?.commercialReleasePackageId ?? "") || undefined,
+      },
+    } as DraftIofPackageRuntime;
   }, [
     accountCustomerNetworkGraph,
     accountCustomerTwin,
@@ -7615,6 +9146,7 @@ export default function GoogleRfpWorkspace() {
     selectedAccount.name,
     selectedAssumptionState.stateId,
     activeExistingReferenceNetworkIds,
+    generatedRouteRepositorySnapshot,
     selectedImportedCustomerDesignImport,
     selectedImportedCustomerRoute,
     selectedPricingSummary,
@@ -7626,6 +9158,327 @@ export default function GoogleRfpWorkspace() {
     selectedScope.routeRequirementIds,
     selectedScope.scopeId,
     sofRecipientContactIds,
+  ]);
+
+  async function ensureCommercialLifecycleAuthorityForDraft(
+    draftSource: DraftIofPackageRuntime,
+    routeRepositoryId: string,
+    lifecycleStage: "AUTOMATIC_IOF_PACKAGE_ASSEMBLY" | "MANUAL_DRAFT_IOF_SAVE" | "COMMERCIAL_TO_ENGINEERING_HANDOFF",
+    proposalRevision = selectedReleaseProposalRevision,
+  ): Promise<{
+    draftPackage: DraftIofPackageRuntime;
+    revision: CommercialRevisionRuntime;
+    releasePackage: CommercialReleasePackageRuntime;
+    restoredDraftPackage: boolean;
+  }> {
+    const routeRepositoryRef = objectRecord((draftSource as any).routeRepositoryRef);
+    const routeRepositoryIdValue = String(routeRepositoryId || draftSource.routeRepositoryId || routeRepositoryRef?.routeRepositoryId || "").trim();
+    const proposalId = String(draftSource.proposalId ?? activeProposalRuntime?.proposalId ?? currentCommercialRecordIds.proposalId ?? "").trim();
+    const proposalRevisionId = String(proposalRevision?.proposalRevisionId ?? draftSource.proposalRevisionId ?? "").trim();
+    const proposalHash = String(proposalRevision?.proposalHash ?? draftSource.proposalHash ?? "").trim();
+    const proposalRevisionNumber = Number(proposalRevision?.revisionNumber ?? draftSource.proposalRevisionNumber ?? 0);
+    const opportunityId = String(draftSource.opportunityId ?? activeCommercialOpportunity?.opportunityId ?? activeCommercialOpportunityId ?? "").trim();
+    const estimateId = String(
+      draftSource.estimateId ??
+        draftSource.commercialEstimateId ??
+        activeFinancialDraft?.transparentEstimate.estimateId ??
+        activeProposalRuntime?.estimateId ??
+        activeCommercialOpportunity?.estimateId ??
+        `ESTIMATE-${cleanCommercialSlug(proposalId || opportunityId)}`,
+    ).trim();
+    const workbookId = String(
+      draftSource.workbookId ??
+        draftSource.commercialWorkbookId ??
+        activeCommercialOpportunity?.workbookId ??
+        activeCommercialOpportunity?.commercialWorkbookId ??
+        activeProposalRuntime?.commercialWorkbookId ??
+        activeProposalRuntime?.workbookId ??
+        currentCommercialRecordIds.workbookId ??
+        `WORKBOOK-${cleanCommercialSlug(proposalId || opportunityId)}`,
+    ).trim();
+    const missing = [
+      ["Route Repository", routeRepositoryIdValue, "Generate Route and wait for Route Repository commit."],
+      ["Proposal", proposalId, "Save Proposal or allow the governed proposal ID to resolve."],
+      ["Saved Proposal Revision", proposalRevisionId, "Select an immutable saved Proposal Revision."],
+      ["Proposal Hash", proposalHash, "Save the exact Proposal Revision before release."],
+      ["Opportunity", opportunityId, "Create or restore the Commercial Opportunity."],
+      ["Estimate", estimateId, "Let the Commercial estimate projection resolve before IOF assembly."],
+      ["Workbook", workbookId, "Let the Commercial workbook projection resolve before IOF assembly."],
+    ].filter(([, value]) => !String(value ?? "").trim());
+    if (missing.length) {
+      const [authority, , recommendation] = missing[0];
+      throw new Error(`${authority} missing. ${lifecycleStage} blocked. ${recommendation}`);
+    }
+
+    const localDraftPackageCandidate = commercialDraftIofPackage ?? activeDraftIofPackage;
+    const inMemoryDraftPackage = localDraftPackageCandidate && String(localDraftPackageCandidate.packageId ?? "") === String(draftSource.packageId ?? "")
+      ? localDraftPackageCandidate
+      : null;
+    const existingDraftPackages = inMemoryDraftPackage
+      ? [inMemoryDraftPackage]
+      : lifecycleStage === "AUTOMATIC_IOF_PACKAGE_ASSEMBLY"
+        ? await listCommercialDraftIofPackages(session).catch(() => [] as DraftIofPackageRuntime[])
+        : [];
+    const existingDraftPackage = existingDraftPackages.find((draft) => (
+      String(draft.routeRepositoryId ?? (draft.routeRepositoryRef as any)?.routeRepositoryId ?? "") === routeRepositoryIdValue &&
+      String(draft.proposalRevisionId ?? "") === proposalRevisionId &&
+      String(draft.proposalHash ?? "") === proposalHash &&
+      Boolean(draft.commercialRevisionId) &&
+      Boolean(draft.commercialReleasePackageId)
+    ));
+    const existingRevisions = await CommercialRevisionRepository.listRevisions(session).catch(() => [] as CommercialRevisionRuntime[]);
+    const existingReleasePackages = await CommercialReleasePackageRepository.listReleasePackages(session).catch(() => [] as CommercialReleasePackageRuntime[]);
+
+    let revision = existingRevisions.find((item) => (
+      String(item.commercialRevisionId) === String(draftSource.commercialRevisionId ?? draftSource.revisionId ?? existingDraftPackage?.commercialRevisionId ?? "") &&
+      String(item.proposalRevisionId ?? "") === proposalRevisionId &&
+      String(item.proposalHash ?? "") === proposalHash
+    )) ?? existingRevisions.find((item) => (
+      String(item.routeRepositoryId) === routeRepositoryIdValue &&
+      String(item.opportunityId) === opportunityId &&
+      String(item.proposalId) === proposalId &&
+      String(item.proposalRevisionId ?? "") === proposalRevisionId &&
+      String(item.proposalHash ?? "") === proposalHash
+    ));
+
+    if (!revision) {
+      revision = await CommercialRevisionRepository.saveRevision({
+        opportunityId,
+        routeRepositoryId: routeRepositoryIdValue,
+        proposalId,
+        proposalRevisionId,
+        proposalHash,
+        proposalRevisionNumber,
+        estimateId,
+        workbookId,
+        commercialWorkbookId: workbookId,
+        productDoctrineId: String(draftSource.productDoctrineId ?? draftSource.doctrineId ?? selectedProductDoctrine?.doctrineId ?? "PD-001"),
+        commercialDoctrineId: String((draftSource as any).commercialDoctrineId ?? selectedAssumptionState.stateId ?? "COMMERCIAL-DOCTRINE-POINT-TO-POINT"),
+        revisionStatus: "DRAFT",
+        commercialReleaseState: "OPEN",
+        createdBy: currentUserName,
+        createdById: currentUserId,
+        createdOn: new Date().toISOString(),
+      }, session);
+    }
+
+    let releasePackage = existingReleasePackages.find((item) => (
+      String(item.commercialReleasePackageId) === String(draftSource.commercialReleasePackageId ?? existingDraftPackage?.commercialReleasePackageId ?? "") &&
+      String(item.proposalRevisionId ?? "") === proposalRevisionId &&
+      String(item.proposalHash ?? "") === proposalHash
+    )) ?? existingReleasePackages.find((item) => (
+      String(item.commercialRevisionId) === String(revision.commercialRevisionId) &&
+      String(item.routeRepositoryId) === routeRepositoryIdValue &&
+      String(item.proposalRevisionId ?? "") === proposalRevisionId &&
+      String(item.proposalHash ?? "") === proposalHash
+    ));
+
+    if (!releasePackage) {
+      releasePackage = await CommercialReleasePackageRepository.saveReleasePackage({
+        commercialRevisionId: revision.commercialRevisionId,
+        revisionId: revision.revisionId,
+        opportunityId,
+        repositoryId: revision.repositoryId,
+        routeRepositoryId: routeRepositoryIdValue,
+        estimateId,
+        workbookId,
+        commercialWorkbookId: workbookId,
+        proposalId,
+        proposalRevisionId,
+        proposalHash,
+        proposalRevisionNumber,
+        productDoctrineId: revision.productDoctrineId,
+        commercialDoctrineId: revision.commercialDoctrineId,
+        revisionHash: revision.revisionHash,
+        evidenceReferences: revision.evidenceReferences,
+        changeSetIds: revision.changeSetIds as string[] | undefined,
+        patchCount: Number(revision.patchCount ?? 0),
+        activePatchCount: Number(revision.activePatchCount ?? 0),
+        appliedPatchCount: Number(revision.appliedPatchCount ?? 0),
+        status: "FROZEN",
+        commercialReleaseState: "RELEASED",
+        createdBy: currentUserName,
+        createdById: currentUserId,
+      }, session);
+    }
+
+    const existingManifestValidationStatus = String(
+      objectRecord(objectRecord(existingDraftPackage?.engineeringObjectManifest)?.validation)?.status ??
+        objectRecord(existingDraftPackage?.validationSummary)?.status ??
+        "",
+    ).toUpperCase();
+    const reusableExistingDraftPackage = existingDraftPackage && existingManifestValidationStatus === "PASS"
+      ? existingDraftPackage
+      : null;
+
+    if (reusableExistingDraftPackage) {
+      return {
+        draftPackage: reusableExistingDraftPackage,
+        revision,
+        releasePackage,
+        restoredDraftPackage: true,
+      };
+    }
+
+    const authorityDraft = {
+      ...draftSource,
+      routeRepositoryId: routeRepositoryIdValue,
+      routeRepositoryRef: {
+        ...(routeRepositoryRef ?? {}),
+        routeRepositoryId: routeRepositoryIdValue,
+        routeGeometryId: String(draftSource.routeGeometryId ?? routeRepositoryRef?.routeGeometryId ?? generatedRouteRepositorySnapshot?.routeGeometryId ?? ""),
+        geometryHash: String(draftSource.geometryHash ?? routeRepositoryRef?.geometryHash ?? generatedRouteRepositorySnapshot?.geometryHash ?? ""),
+        routeRevision: Number(draftSource.routeRevision ?? routeRepositoryRef?.routeRevision ?? generatedRouteRepositorySnapshot?.routeRevision ?? 1),
+        repositoryType: "COMMERCIAL_ROUTE_REPOSITORY",
+      },
+      proposalId,
+      proposalRevisionId,
+      proposalHash,
+      proposalRevisionNumber,
+      lifecycleSequence: 4,
+      opportunityId,
+      estimateId,
+      commercialEstimateId: estimateId,
+      workbookId,
+      commercialWorkbookId: workbookId,
+      commercialRevisionId: revision.commercialRevisionId,
+      revisionId: revision.revisionId,
+      commercialRevisionHash: revision.revisionHash,
+      commercialRepositoryId: revision.repositoryId,
+      commercialReleasePackageId: releasePackage.commercialReleasePackageId,
+      commercialReleaseHash: releasePackage.releaseHash,
+      commercialReleaseState: releasePackage.commercialReleaseState,
+      repositoryHash: revision.repositoryHash,
+      projectionHash: revision.projectionHash,
+      currentAuthority: "COMMERCIAL_RELEASE_PACKAGE",
+      automaticIofPackageAssembly: lifecycleStage === "AUTOMATIC_IOF_PACKAGE_ASSEMBLY" ? true : draftSource.automaticIofPackageAssembly,
+      commercialSummary: {
+        ...(objectRecord(draftSource.commercialSummary) ?? {}),
+        routeRepositoryId: routeRepositoryIdValue,
+        proposalId,
+        proposalRevisionId,
+        proposalHash,
+        proposalRevisionNumber,
+        estimateId,
+        workbookId,
+        commercialWorkbookId: workbookId,
+        commercialRevisionId: revision.commercialRevisionId,
+        commercialReleasePackageId: releasePackage.commercialReleasePackageId,
+      },
+    } as DraftIofPackageRuntime;
+
+    return {
+      draftPackage: authorityDraft,
+      revision,
+      releasePackage,
+      restoredDraftPackage: false,
+    };
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    const routeRepositoryId = generatedRouteRepositorySnapshot?.routeRepositoryId ?? "";
+    if (!routeRepositoryId) return;
+    if (!commercialDraftIofPackagePreview) return;
+    if (!selectedReleaseProposalEligible || !selectedReleaseProposalRevision) return;
+    if (automaticIofAssemblyRouteRepositoryId === routeRepositoryId) return;
+    if (
+      commercialDraftIofPackage?.routeRepositoryId === routeRepositoryId &&
+      commercialDraftIofPackage.commercialRevisionId &&
+      commercialDraftIofPackage.commercialReleasePackageId
+    ) {
+      setAutomaticIofAssemblyRouteRepositoryId(routeRepositoryId);
+      setCommercialLifecycleSequencingNotice(`Draft IOF Package ${commercialDraftIofPackage.packageId} already assembled for Route Repository ${routeRepositoryId}.`);
+      return;
+    }
+    setAutomaticIofAssemblyRouteRepositoryId(routeRepositoryId);
+    console.log("[CIP-035A] Commercial lifecycle sequencing started", {
+      routeRepositoryId,
+      draftIofPackageId: commercialDraftIofPackagePreview.packageId,
+    });
+    setCommercialLifecycleSequencingNotice(`Route Repository ${routeRepositoryId} committed. Creating Commercial Revision before IOF assembly.`);
+    ensureCommercialLifecycleAuthorityForDraft(
+      {
+        ...commercialDraftIofPackagePreview,
+        automaticIofPackageAssembly: true,
+        repositoryAssemblyStatus: "PENDING_COMMERCIAL_AUTHORITY",
+      },
+      routeRepositoryId,
+      "AUTOMATIC_IOF_PACKAGE_ASSEMBLY",
+    )
+      .then((authority) => {
+        if (cancelled) return null;
+        if (authority.restoredDraftPackage) {
+          setCommercialDraftIofPackage(authority.draftPackage);
+          setActiveDraftIofPackage(authority.draftPackage);
+          setProposalRuntimeNotice(`${authority.draftPackage.packageId} restored from Route Repository ${routeRepositoryId}.`);
+          setCommercialLifecycleSequencingNotice(`Route Repository ${routeRepositoryId} already had Draft IOF Package ${authority.draftPackage.packageId}. Automatic assembly skipped.`);
+          console.log("[CIP-035A] Automatic IOF Package Assembly restored existing package", {
+            routeRepositoryId,
+            draftIofPackageId: authority.draftPackage.packageId,
+            commercialRevisionId: authority.revision.commercialRevisionId,
+            commercialReleasePackageId: authority.releasePackage.commercialReleasePackageId,
+          });
+          return null;
+        }
+        setCommercialLifecycleSequencingNotice(`Commercial Revision ${authority.revision.commercialRevisionId} and Release Package ${authority.releasePackage.commercialReleasePackageId} ready. Saving Draft IOF Package.`);
+        return saveCommercialDraftIofPackage({
+          ...authority.draftPackage,
+          automaticIofPackageAssembly: true,
+          repositoryAssemblyStatus: "PENDING_REFERENCE_ARTIFACT_PERSISTENCE",
+        }, session);
+      })
+      .then((draft) => {
+        if (!draft) return;
+        if (cancelled) return;
+        setCommercialDraftIofPackage(draft);
+        setActiveDraftIofPackage(draft);
+        setProposalRuntimeNotice(`${draft.packageId} assembled automatically from Route Repository ${routeRepositoryId}.`);
+        setCommercialLifecycleSequencingNotice(`Commercial Ready. Draft IOF Package ${draft.packageId} saved after Commercial Revision and Release Package.`);
+        console.log("[CIP-035A] Automatic IOF Package Assembly completed", {
+          routeRepositoryId,
+          draftIofPackageId: draft.packageId,
+          commercialRevisionId: draft.commercialRevisionId,
+          commercialReleasePackageId: draft.commercialReleasePackageId,
+          repositoryAssemblyStatus: draft.repositoryAssemblyStatus,
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setAutomaticIofAssemblyRouteRepositoryId("");
+        setProposalRuntimeNotice(`Automatic IOF Package Assembly failed: ${error instanceof Error ? error.message : String(error)}`);
+        setCommercialLifecycleSequencingNotice(`Automatic IOF Assembly blocked. ${error instanceof Error ? error.message : String(error)}`);
+        console.warn("[CIP-035A] Automatic IOF Package Assembly failed", {
+          routeRepositoryId,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    automaticIofAssemblyRouteRepositoryId,
+    activeCommercialOpportunity?.opportunityId,
+    activeCommercialOpportunity?.routeRepositoryId,
+    activeCommercialOpportunityId,
+    activeFinancialDraft?.transparentEstimate.estimateId,
+    activeProposalRuntime?.commercialReleasePackageId,
+    activeProposalRuntime?.commercialRevisionId,
+    activeProposalRuntime?.proposalId,
+    selectedReleaseProposalEligible,
+    selectedReleaseProposalRevision?.proposalRevisionId,
+    selectedReleaseProposalRevision?.proposalHash,
+    commercialDraftIofPackage?.routeRepositoryId,
+    commercialDraftIofPackage?.commercialRevisionId,
+    commercialDraftIofPackage?.commercialReleasePackageId,
+    commercialDraftIofPackagePreview,
+    currentCommercialRecordIds.workbookId,
+    selectedAssumptionState.stateId,
+    selectedProductDoctrine?.doctrineId,
+    generatedRouteRepositorySnapshot?.routeRepositoryId,
+    generatedRouteRepositorySnapshot?.routeGeometryId,
+    generatedRouteRepositorySnapshot?.geometryHash,
+    session,
   ]);
 
   function handleBuildProductCommercialDesign() {
@@ -7739,6 +9592,100 @@ export default function GoogleRfpWorkspace() {
   }
 
   const displayedDraftIofPackage = commercialDraftIofPackage ?? commercialDraftIofPackagePreview ?? activeDraftIofPackage;
+  const displayedProjectedObjectManifest = objectRecord(displayedDraftIofPackage?.projectedObjectManifest);
+  const displayedStationProjection = objectRecord((displayedDraftIofPackage as any)?.stationProjection);
+  const displayedStationGraph = objectRecord(
+    (displayedDraftIofPackage as any)?.stationGraph ??
+      (displayedDraftIofPackage as any)?.stationIndexedGraph ??
+      (displayedDraftIofPackage as any)?.doctrineProjection?.stationGraph,
+  );
+  const displayedObjectStationAttachments = recordArray((displayedDraftIofPackage as any)?.objectStationAttachments).length
+    ? recordArray((displayedDraftIofPackage as any)?.objectStationAttachments)
+    : recordArray((displayedDraftIofPackage as any)?.doctrineProjection?.objectStationAttachments);
+  const displayedDoctrineProjectionDiagnostics = objectRecord(displayedDraftIofPackage?.doctrineProjectionDiagnostics);
+  const displayedGeometryAuthorityDiagnostics = objectRecord(
+    (displayedDraftIofPackage as any)?.geometryAuthorityDiagnostics ??
+      displayedProjectedObjectManifest?.geometryAuthorityDiagnostics ??
+      displayedDoctrineProjectionDiagnostics?.geometryAuthorityDiagnostics,
+  );
+  const displayedProjectedObjects = recordArray(displayedDraftIofPackage?.projectedObjects).length
+    ? recordArray(displayedDraftIofPackage?.projectedObjects)
+    : recordArray(displayedProjectedObjectManifest?.projectedObjects);
+  const displayedProjectedSpans = recordArray(displayedDraftIofPackage?.projectedSpans).length
+    ? recordArray(displayedDraftIofPackage?.projectedSpans)
+    : recordArray(displayedProjectedObjectManifest?.projectedSpans);
+  const displayedLinearAssetSpanAttachments = recordArray((displayedDraftIofPackage as any)?.linearAssetSpanAttachments).length
+    ? recordArray((displayedDraftIofPackage as any)?.linearAssetSpanAttachments)
+    : recordArray((displayedDraftIofPackage as any)?.doctrineLinearAssetSpanAttachments).length
+      ? recordArray((displayedDraftIofPackage as any)?.doctrineLinearAssetSpanAttachments)
+      : recordArray(displayedProjectedObjectManifest?.linearAssetSpanAttachments);
+  const displayedObjectAddresses = recordArray(displayedDraftIofPackage?.objectAddresses).length
+    ? recordArray(displayedDraftIofPackage?.objectAddresses)
+    : recordArray(displayedProjectedObjectManifest?.objectAddresses);
+  const commercialIofProjectionOverlay = useMemo<CommercialIofProjectionOverlay | null>(() => {
+    if (!displayedProjectedObjects.length && !displayedProjectedSpans.length) return null;
+    return {
+      measuredCenterline: objectRecord((displayedDraftIofPackage as any)?.measuredCenterline ?? (displayedDraftIofPackage as any)?.measuredSpine),
+      measuredCenterlineId: String((displayedDraftIofPackage as any)?.measuredCenterlineId ?? objectRecord((displayedDraftIofPackage as any)?.measuredCenterline)?.measuredCenterlineId ?? ""),
+      stationProjection: displayedStationProjection,
+      stationGraph: displayedStationGraph,
+      projectedObjects: displayedProjectedObjects as CommercialIofProjectionOverlay["projectedObjects"],
+      projectedSpans: displayedProjectedSpans as CommercialIofProjectionOverlay["projectedSpans"],
+      objectStationAttachments: displayedObjectStationAttachments,
+      linearAssetSpanAttachments: displayedLinearAssetSpanAttachments,
+      objectAddresses: displayedObjectAddresses,
+      routeRepositoryId: String(displayedDraftIofPackage?.routeRepositoryId ?? (displayedDraftIofPackage?.routeRepositoryRef as any)?.routeRepositoryId ?? ""),
+      geometryHash: String(displayedDraftIofPackage?.geometryHash ?? (displayedDraftIofPackage?.routeRepositoryRef as any)?.geometryHash ?? ""),
+      projectionAuthority: String(displayedDoctrineProjectionDiagnostics?.authority ?? "DOCTRINE_PROJECTION_ENGINE"),
+    };
+  }, [
+    displayedDraftIofPackage?.geometryHash,
+    displayedDraftIofPackage?.routeRepositoryId,
+    displayedDraftIofPackage?.routeRepositoryRef,
+    (displayedDraftIofPackage as any)?.measuredCenterline,
+    (displayedDraftIofPackage as any)?.measuredCenterlineId,
+    (displayedDraftIofPackage as any)?.measuredSpine,
+    displayedDoctrineProjectionDiagnostics?.authority,
+    displayedLinearAssetSpanAttachments,
+    displayedObjectAddresses,
+    displayedObjectStationAttachments,
+    displayedProjectedObjects,
+    displayedProjectedSpans,
+    displayedStationGraph,
+    displayedStationProjection,
+  ]);
+  const commercialDoctrineDiagnosticObjectTypes = recordArray(displayedDoctrineProjectionDiagnostics?.objectTypes);
+  const commercialDoctrineLinearAssetRows = ["CONDUIT", "FIBER", "TRACE_WIRE", "WARNING_TAPE", "MULE_TAPE_PULL_TAPE"].map((assetType) => {
+    const attachments = displayedLinearAssetSpanAttachments.filter((attachment) => String(attachment.assetType ?? "").toUpperCase() === assetType);
+    const ranges = recordArray(displayedProjectedObjectManifest?.linearAssetStationRanges).filter((range) => String(range.assetType ?? "").toUpperCase() === assetType);
+    return {
+      objectType: assetType,
+      doctrineQuantitySource: assetType === "CONDUIT"
+        ? "productDoctrineAssembly.quantitySummary.conduitFeet"
+        : assetType === "FIBER"
+          ? "productDoctrineAssembly.quantitySummary.fiberFeet"
+          : "Product Doctrine linear asset span attachment",
+      routeFeet: Number(displayedDoctrineProjectionDiagnostics?.routeFeet ?? (displayedDraftIofPackage?.commercialSummary as any)?.routeFeet ?? activeRouteFeet),
+      stationCount: Number(displayedDoctrineProjectionDiagnostics?.stationCount ?? 0),
+      objectCount: attachments.length,
+      nominalIntervalFeet: 0,
+      calculatedStations: ranges.map((range) => `${String(range.stationStart ?? "0+00")} - ${String(range.stationEnd ?? "Pending")}`),
+      resolvedCoordinates: [],
+      placementAuthority: "DOCTRINE_PROJECTION_ENGINE",
+      projectionResult: attachments.length || !displayedProjectedSpans.length ? "PASS" : "FAIL",
+      gates: [
+        { gate: "Math Present", status: displayedDoctrineProjectionDiagnostics ? "PASS" : "FAIL", reason: displayedDoctrineProjectionDiagnostics ? "linear asset quantity source present" : "missing doctrine projection diagnostics" },
+        { gate: "Objects Calculated", status: attachments.length || !displayedProjectedSpans.length ? "PASS" : "FAIL", reason: attachments.length ? `${attachments.length} span attachment(s)` : "linear asset span attachment missing" },
+        { gate: "Addresses Assigned", status: ranges.length || attachments.length ? "PASS" : "FAIL", reason: ranges.length ? `${ranges.length} station range(s)` : "station range derived from span attachment" },
+        { gate: "Objects Projected", status: attachments.length || !displayedProjectedSpans.length ? "PASS" : "FAIL", reason: attachments.length ? "linear asset attached to projected spans" : "no projected spans available" },
+      ],
+      failureReasons: attachments.length || !displayedProjectedSpans.length ? [] : ["linear asset is not attached to projected spans"],
+    };
+  });
+  const commercialDoctrineDiagnosticsRows = [
+    ...commercialDoctrineDiagnosticObjectTypes,
+    ...commercialDoctrineLinearAssetRows,
+  ];
   const constitutionalAssemblyReview = useMemo(
     () => evaluateConstitutionalAssemblyReview(displayedDraftIofPackage),
     [displayedDraftIofPackage],
@@ -7778,6 +9725,83 @@ export default function GoogleRfpWorkspace() {
       activeCommercialOpportunity?.status === "SUBMITTED_TO_ENGINEERING" ||
       ["SUBMITTED_TO_ENGINEERING", "UNDER_ENGINEERING_REVIEW", "CERTIFIED"].includes(String(displayedDraftIofPackage?.status ?? "")),
   );
+  const commercialAuthorityDiagnostics = {
+    repository: String(activeProposalRuntime?.commercialRepositoryId ?? activeCommercialOpportunity?.opportunityId ?? "COMMERCIAL_REPOSITORY"),
+    commercialRevisionId: String(
+      activeProposalRuntime?.commercialRevisionId ??
+        displayedDraftIofPackage?.commercialRevisionId ??
+        activeCommercialOpportunity?.commercialRevisionId ??
+        "",
+    ),
+    commercialReleasePackageId: String(
+      activeProposalRuntime?.commercialReleasePackageId ??
+        displayedDraftIofPackage?.commercialReleasePackageId ??
+        activeCommercialOpportunity?.commercialReleasePackageId ??
+        "",
+    ),
+    proposalId: String(activeProposalRuntime?.proposalId ?? displayedDraftIofPackage?.proposalId ?? activeCommercialOpportunity?.proposalId ?? ""),
+    draftIofPackageId: String(displayedDraftIofPackage?.packageId ?? activeCommercialOpportunity?.draftIofPackageId ?? ""),
+    revisionHash: String(
+      activeProposalRuntime?.commercialRevisionHash ??
+        displayedDraftIofPackage?.commercialRevisionHash ??
+        activeCommercialOpportunity?.commercialRevisionHash ??
+        "",
+    ),
+    releaseHash: String(
+      activeProposalRuntime?.commercialReleaseHash ??
+        displayedDraftIofPackage?.commercialReleaseHash ??
+        activeCommercialOpportunity?.commercialReleaseHash ??
+        "",
+    ),
+    proposalHash: String((activeProposalRuntime?.commercialAuthorityDiagnostics as any)?.proposalHash ?? ""),
+    repositoryHash: String(
+      commercialRevisionProjection?.diagnostics.repositoryHash ??
+        (activeProposalRuntime?.commercialAuthorityDiagnostics as any)?.repositoryHash ??
+        activeProposalRuntime?.repositoryHash ??
+        displayedDraftIofPackage?.repositoryHash ??
+        "",
+    ),
+    activePatchCount: Number(
+      commercialRevisionProjection?.diagnostics.activePatchCount ??
+        (activeProposalRuntime?.commercialAuthorityDiagnostics as any)?.activePatchCount ??
+        activeProposalRuntime?.activePatchCount ??
+        displayedDraftIofPackage?.activePatchCount ??
+        commercialChangeSetPatches.length,
+    ),
+    appliedPatchCount: Number(
+      commercialRevisionProjection?.diagnostics.appliedPatchCount ??
+        (activeProposalRuntime?.commercialAuthorityDiagnostics as any)?.appliedPatchCount ??
+        activeProposalRuntime?.appliedPatchCount ??
+        displayedDraftIofPackage?.appliedPatchCount ??
+        0,
+    ),
+    patchReplayTimeMs: Number(
+      commercialRevisionProjection?.diagnostics.patchReplayTimeMs ??
+        (activeProposalRuntime?.commercialAuthorityDiagnostics as any)?.patchReplayTimeMs ??
+        activeProposalRuntime?.patchReplayTimeMs ??
+        displayedDraftIofPackage?.patchReplayTimeMs ??
+        0,
+    ),
+    projectionTimeMs: Number(
+      commercialRevisionProjection?.diagnostics.projectionTimeMs ??
+        (activeProposalRuntime?.commercialAuthorityDiagnostics as any)?.projectionTimeMs ??
+        activeProposalRuntime?.projectionTimeMs ??
+        displayedDraftIofPackage?.projectionTimeMs ??
+        0,
+    ),
+    changeSetIds: Array.isArray(commercialRevisionProjection?.changeSetIds)
+      ? commercialRevisionProjection.changeSetIds
+      : Array.isArray(activeProposalRuntime?.changeSetIds)
+        ? activeProposalRuntime.changeSetIds
+        : Array.isArray(displayedDraftIofPackage?.changeSetIds)
+          ? displayedDraftIofPackage.changeSetIds
+          : [],
+    currentAuthority: String(
+      displayedDraftIofPackage?.currentAuthority ??
+        activeProposalRuntime?.currentAuthority ??
+        (displayedDraftIofPackage?.commercialReleasePackageId ? "COMMERCIAL_RELEASE_PACKAGE" : activeProposalRuntime?.commercialRevisionId ? "COMMERCIAL_REVISION" : "COMMERCIAL_REPOSITORY"),
+    ),
+  };
   const activeDashboardRouteRepositoryId = String(
     activeCommercialOpportunity?.routeRepositoryId ??
       activeCommercialOpportunity?.routeRepositoryRef?.routeRepositoryId ??
@@ -7791,6 +9815,18 @@ export default function GoogleRfpWorkspace() {
   const dashboardCommercialSummary = objectRecord(displayedDraftIofPackage?.commercialSummary);
   const dashboardPricingSummary = objectRecord((displayedDraftIofPackage as any)?.pricingSummary ?? dashboardCommercialSummary?.pricingSummary);
   const commercialDashboardHandoffChecks = [
+    {
+      key: "commercial-revision",
+      label: "Commercial Revision",
+      ok: Boolean(commercialAuthorityDiagnostics.commercialRevisionId),
+      detail: commercialAuthorityDiagnostics.commercialRevisionId || "Created after Route Repository commit",
+    },
+    {
+      key: "commercial-release",
+      label: "Commercial Release Package",
+      ok: Boolean(commercialAuthorityDiagnostics.commercialReleasePackageId),
+      detail: commercialAuthorityDiagnostics.commercialReleasePackageId || "Created after Commercial Revision and before Draft IOF save",
+    },
     {
       key: "proposal",
       label: "Proposal",
@@ -7832,11 +9868,56 @@ export default function GoogleRfpWorkspace() {
     .filter((check) => !check.ok)
     .map((check) => `${check.label}: ${check.detail}`);
   const commercialDashboardHandoffReady = commercialDashboardHandoffChecks.every((check) => check.ok);
-  const showCommercialDashboardSubmitToEngineering = Boolean(
-    canManageProposalRuntime &&
-      commercialDashboardHandoffReady &&
-      !submittedToEngineering,
+  const commercialReleasePrerequisiteChecks = [
+    {
+      key: "proposal-revision",
+      label: "Proposal Revision",
+      ok: Boolean(selectedReleaseProposalRevision?.proposalRevisionId && selectedReleaseProposalRevision?.proposalHash && selectedReleaseProposalRevision?.revisionStatus === "SAVED"),
+      detail: selectedReleaseProposalRevision
+        ? `${selectedReleaseProposalRevision.proposalRevisionId} · ${selectedReleaseProposalRevision.revisionStatus}`
+        : "Save and select an immutable Proposal Revision",
+    },
+    {
+      key: "customer-approval",
+      label: "Customer Approval",
+      ok: Boolean(selectedReleaseApproval),
+      detail: selectedReleaseApproval ? `Exact revision/hash approval ${String(selectedReleaseApproval.approvalId ?? "recorded")}` : "Exact selected revision and hash must be customer approved",
+    },
+    ...commercialDashboardHandoffChecks.filter((check) => ["estimate", "workbook", "route-repository"].includes(check.key)),
+  ];
+  const commercialReleasePrerequisitesReady = commercialReleasePrerequisiteChecks.every((check) => check.ok);
+  const displayedDraftMatchesSelectedRevision = Boolean(
+    selectedReleaseProposalRevision &&
+    displayedDraftIofPackage?.proposalRevisionId === selectedReleaseProposalRevision.proposalRevisionId &&
+    displayedDraftIofPackage?.proposalHash === selectedReleaseProposalRevision.proposalHash,
   );
+  const commercialReleaseReadinessRows = [
+    ...commercialReleasePrerequisiteChecks.slice(0, 2),
+    {
+      key: "commercial-revision",
+      label: "Commercial Revision",
+      ok: displayedDraftMatchesSelectedRevision && Boolean(displayedDraftIofPackage?.commercialRevisionId),
+      detail: displayedDraftMatchesSelectedRevision ? displayedDraftIofPackage?.commercialRevisionId ?? "Not created" : "Not created for selected Proposal Revision",
+    },
+    {
+      key: "release-package",
+      label: "Release Package",
+      ok: displayedDraftMatchesSelectedRevision && Boolean(displayedDraftIofPackage?.commercialReleasePackageId),
+      detail: displayedDraftMatchesSelectedRevision ? displayedDraftIofPackage?.commercialReleasePackageId ?? "Not created" : "Not created for selected Proposal Revision",
+    },
+    {
+      key: "draft-iof",
+      label: "Draft IOF Package",
+      ok: displayedDraftMatchesSelectedRevision && Boolean(displayedDraftIofPackage?.packageId),
+      detail: displayedDraftMatchesSelectedRevision ? displayedDraftIofPackage?.packageId ?? "Blocked" : "Blocked until Release Package",
+    },
+    {
+      key: "engineering-handoff",
+      label: "Engineering Handoff",
+      ok: displayedDraftMatchesSelectedRevision && submittedToEngineering,
+      detail: displayedDraftMatchesSelectedRevision && submittedToEngineering ? submittedEngineeringPackageId || "Submitted" : "Blocked until Draft IOF save",
+    },
+  ];
   useEffect(() => {
     logProposalAuthorityStateHydration("Commercial Dashboard hydration", activeProposalRuntime, activeProposalAuthoritySnapshot.dashboardStatus);
   }, [
@@ -7890,6 +9971,133 @@ export default function GoogleRfpWorkspace() {
       view: "handoff" as CommercialWorkspaceView,
     },
   ];
+  const commercialLifecycleRibbonBaseSteps = [
+    {
+      key: "opportunity",
+      label: "Opportunity",
+      complete: Boolean(activeCommercialOpportunity?.opportunityId),
+      detail: activeCommercialOpportunity?.opportunityId ?? "Unsaved",
+    },
+    {
+      key: "commercial-revision",
+      label: "Commercial Revision",
+      complete: Boolean(commercialAuthorityDiagnostics.commercialRevisionId),
+      detail: commercialAuthorityDiagnostics.commercialRevisionId || "Pending",
+    },
+    {
+      key: "commercial-release",
+      label: "Commercial Release Package",
+      complete: Boolean(commercialAuthorityDiagnostics.commercialReleasePackageId || displayedDraftIofPackage?.commercialReleasePackageId),
+      detail: commercialAuthorityDiagnostics.commercialReleasePackageId || displayedDraftIofPackage?.commercialReleasePackageId || "Pending",
+    },
+    {
+      key: "proposal",
+      label: "Proposal",
+      complete: Boolean(activeProposalRuntime?.proposalId),
+      detail: activeProposalRuntime?.proposalNumber ?? activeProposalRuntime?.proposalId ?? "Pending",
+    },
+    {
+      key: "customer-accepted",
+      label: "Customer Accepted",
+      complete: customerApproved,
+      detail: customerApproved ? "Accepted" : activeProposalStatus || "Pending",
+    },
+    {
+      key: "engineering",
+      label: "Engineering",
+      complete: submittedToEngineering,
+      detail: submittedEngineeringPackageId || "Ready after customer acceptance",
+    },
+    {
+      key: "certified-iof",
+      label: "Certified IOF",
+      complete: displayedDraftIofPackage?.status === "CERTIFIED" || activeDraftIofPackage?.status === "CERTIFIED",
+      detail: displayedDraftIofPackage?.status === "CERTIFIED" || activeDraftIofPackage?.status === "CERTIFIED" ? "Certified" : "Future",
+    },
+    {
+      key: "service-order",
+      label: "Service Order",
+      complete: String((activeCommercialOpportunity as any)?.serviceOrderStatus ?? "").toUpperCase() === "READY",
+      detail: activeCommercialOpportunity?.serviceOrderPreviewId ?? "Future",
+    },
+    {
+      key: "scopeversion",
+      label: "ScopeVersion",
+      complete: false,
+      detail: "Blocked until signed Service Order",
+    },
+  ];
+  const commercialLifecycleCurrentIndex = commercialLifecycleRibbonBaseSteps.findIndex((step) => !step.complete);
+  const commercialLifecycleRibbonSteps = commercialLifecycleRibbonBaseSteps.map((step, index) => ({
+    ...step,
+    state: step.complete
+      ? "completed"
+      : index === commercialLifecycleCurrentIndex
+        ? "current"
+        : index === commercialLifecycleCurrentIndex + 1
+          ? "next"
+          : "locked",
+  }));
+  const commercialSequencingDraftRouteId = String(displayedDraftIofPackage?.routeRepositoryId ?? (displayedDraftIofPackage?.routeRepositoryRef as any)?.routeRepositoryId ?? "");
+  const commercialLifecycleSequencingRows = [
+    {
+      key: "route-repository",
+      label: "Route Repository",
+      ok: Boolean(activeDashboardRouteRepositoryId),
+      detail: activeDashboardRouteRepositoryId || "Missing routeRepositoryId",
+      recommendation: "Generate Route and wait for Route Repository commit.",
+    },
+    {
+      key: "commercial-revision",
+      label: "Commercial Revision",
+      ok: Boolean(commercialAuthorityDiagnostics.commercialRevisionId),
+      detail: commercialAuthorityDiagnostics.commercialRevisionId || "commercialRevisionId missing",
+      recommendation: "Create or restore Commercial Revision immediately after Route Repository commit.",
+    },
+    {
+      key: "commercial-release-package",
+      label: "Commercial Release Package",
+      ok: Boolean(commercialAuthorityDiagnostics.commercialReleasePackageId),
+      detail: commercialAuthorityDiagnostics.commercialReleasePackageId || "commercialReleasePackageId missing",
+      recommendation: "Freeze Commercial Revision into a Commercial Release Package before IOF assembly.",
+    },
+    {
+      key: "automatic-iof-assembly",
+      label: "Automatic IOF Assembly",
+      ok: Boolean(
+        displayedDraftIofPackage?.packageId &&
+          displayedDraftIofPackage?.commercialRevisionId &&
+          displayedDraftIofPackage?.commercialReleasePackageId &&
+          commercialAuthorityDiagnostics.commercialReleasePackageId &&
+          commercialSequencingDraftRouteId === activeDashboardRouteRepositoryId
+      ),
+      detail: displayedDraftIofPackage?.packageId || "Automatic IOF Assembly blocked",
+      recommendation: "Run assembly only after Commercial Revision and Commercial Release Package pass.",
+    },
+    {
+      key: "draft-iof-save",
+      label: "Draft IOF Save",
+      ok: Boolean(
+        displayedDraftIofPackage?.packageId &&
+          displayedDraftIofPackage?.commercialRevisionId &&
+          displayedDraftIofPackage?.commercialReleasePackageId &&
+          displayedDraftIofPackage?.stationProjectionId &&
+          displayedDraftIofPackage?.stationGraphId &&
+          displayedDraftIofPackage?.projectedObjectManifestId
+      ),
+      detail: displayedDraftIofPackage?.packageId
+        ? displayedDraftIofPackage.repositoryAssemblyStatus ?? "Reference package saved"
+        : "Draft IOF Package not saved",
+      recommendation: "Save reference-only Draft IOF Package with repository artifact IDs.",
+    },
+  ];
+  const commercialLifecycleSequencingBlocker = commercialLifecycleSequencingRows.find((row) => !row.ok);
+  const commercialConstitutionalHandoffVisible = Boolean((customerApproved || selectedReleaseProposalEligible || submittedToEngineering) && canManageProposalRuntime);
+  const commercialConstitutionalHandoffReady = Boolean(
+    canManageProposalRuntime &&
+      commercialReleasePrerequisitesReady &&
+      !submittedToEngineering,
+  );
   const commercialEstimateRisks = activeFinancialAuthority?.validationWarnings.length
     ? activeFinancialAuthority.validationWarnings
     : selectedPricingSummary.reconciliation.financialValidationWarnings.length
@@ -7905,8 +10113,7 @@ export default function GoogleRfpWorkspace() {
   const activeRouteLengthLabel = activeFinancialDraft
     ? formatRouteMiles(activeFinancialDraft.routeMiles)
     : formatRouteMiles(selectedPricingSummary.reconciliation.routeMiles);
-  const activeConstructionMixLabel = activeFinancialDraft?.constructionMix?.label
-    ?? `${selectedAssumptionState.civilMix.plowPercent}% plow / ${selectedAssumptionState.civilMix.hddPercent}% bore / ${selectedAssumptionState.civilMix.openCutPercent}% trench`;
+  const activeConstructionMixLabel = `${selectedCivilMixCalibration.plowPercent}% plow / ${selectedCivilMixCalibration.dirtPercent}% dirt / ${selectedCivilMixCalibration.rockPercent}% rock / ${selectedCivilMixCalibration.trenchPercent}% trench`;
   const defaultProductionControls = DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.production;
   const defaultFinancialControls = DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.financial;
   const overrideTimestamp = transparentEstimateControls.humanAuditTrail?.at(-1)?.timestamp
@@ -7916,11 +10123,11 @@ export default function GoogleRfpWorkspace() {
     ?? "Not recorded";
   const commercialDoctrineOverrideRows = [
     ["product.undergroundOnly", "Underground Only", "Enabled", "Enabled", "Doctrine product default"],
-    ["civil.dirtPercent", "Dirt Percentage", `${defaultAssumptionState.borePricing.dirtBorePercent}%`, `${selectedAssumptionState.borePricing.dirtBorePercent}%`, selectedAssumptionState.label],
-    ["civil.rockPercent", "Rock Percentage", `${defaultAssumptionState.borePricing.rockBorePercent}%`, `${selectedAssumptionState.borePricing.rockBorePercent}%`, selectedAssumptionState.label],
-    ["civil.plowPercent", "Plow Mix", `${defaultAssumptionState.civilMix.plowPercent}%`, `${selectedAssumptionState.civilMix.plowPercent}%`, selectedAssumptionState.label],
-    ["civil.directionalBorePercent", "Directional Bore Mix", `${defaultAssumptionState.civilMix.hddPercent}%`, `${selectedAssumptionState.civilMix.hddPercent}%`, selectedAssumptionState.label],
-    ["civil.openTrenchPercent", "Open Trench Mix", `${defaultAssumptionState.civilMix.openCutPercent}%`, `${selectedAssumptionState.civilMix.openCutPercent}%`, selectedAssumptionState.label],
+    ["civil.dirtPercent", "Dirt Percentage", `${STANDARD_CIVIL_MIX.dirtPercent}%`, `${selectedCivilMixCalibration.dirtPercent}%`, selectedAssumptionState.label],
+    ["civil.rockPercent", "Rock Percentage", `${STANDARD_CIVIL_MIX.rockPercent}%`, `${selectedCivilMixCalibration.rockPercent}%`, selectedAssumptionState.label],
+    ["civil.plowPercent", "Plow Mix", `${STANDARD_CIVIL_MIX.plowPercent}%`, `${selectedCivilMixCalibration.plowPercent}%`, selectedAssumptionState.label],
+    ["civil.directionalBorePercent", "Directional Bore Mix", `${STANDARD_CIVIL_MIX.dirtPercent + STANDARD_CIVIL_MIX.rockPercent}%`, `${selectedCivilMixCalibration.dirtPercent + selectedCivilMixCalibration.rockPercent}%`, selectedAssumptionState.label],
+    ["civil.openTrenchPercent", "Open Trench Mix", `${STANDARD_CIVIL_MIX.trenchPercent}%`, `${selectedCivilMixCalibration.trenchPercent}%`, selectedAssumptionState.label],
     ["slack.handholeSlackFeet", "Handhole Slack", `${defaultAssumptionState.slack.handholeSlackFeet} ft`, `${selectedAssumptionState.slack.handholeSlackFeet} ft`, selectedAssumptionState.label],
     ["ila.placementMethod", "ILA Assumption", DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.ilaPlanning.placementMethod, transparentEstimateControls.ilaPlanning.placementMethod, "Commercial ILA planning controls"],
     ["production.plowFeetPerDay", "Plow Production", `${defaultProductionControls.plowFeetPerDay?.toLocaleString()} ft/day`, `${transparentEstimateControls.production.plowFeetPerDay?.toLocaleString()} ft/day`, "Commercial production calibration"],
@@ -7947,6 +10154,12 @@ export default function GoogleRfpWorkspace() {
   const restoredServiceOrderPreview = activeCommercialOpportunity?.serviceOrderPreview ?? null;
   const proposalPreviewRows = snapshotRows(restoredProposalPreview);
   const serviceOrderReadinessRows = snapshotRows(restoredServiceOrderPreview);
+  const proposalRevisionComparison = useMemo(() => {
+    const revisions = activeProposalRuntime?.proposalRevisions ?? [];
+    return revisions.length > 1
+      ? compareProposalRevisions(revisions[revisions.length - 2], revisions[revisions.length - 1])
+      : [];
+  }, [activeProposalRuntime?.proposalRevisions]);
   const commercialRepositoryBrowserSections = useMemo(() => {
     const selectedTwinRecord = customerNetworkGraph ? {
       customerTwinId: accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
@@ -8023,8 +10236,86 @@ export default function GoogleRfpWorkspace() {
       storagePath: repositoryRecordPath("proposal-drafts", String(proposal.proposalRecordId ?? proposal.proposalId ?? proposal.acceptedProposalId ?? proposal.snapshotId ?? "proposal")),
       json: proposal,
     }));
+    const commercialRevisionRecords = commercialAuthorityDiagnostics.commercialRevisionId ? [{
+      id: commercialAuthorityDiagnostics.commercialRevisionId,
+      relationships: [
+        `repository:${commercialAuthorityDiagnostics.repository}`,
+        `proposal:${commercialAuthorityDiagnostics.proposalId || "missing"}`,
+        `draftIof:${commercialAuthorityDiagnostics.draftIofPackageId || "pending"}`,
+      ],
+      storagePath: repositoryRecordPath("commercial-revisions", commercialAuthorityDiagnostics.commercialRevisionId),
+      json: {
+        commercialRevisionId: commercialAuthorityDiagnostics.commercialRevisionId,
+        proposalId: commercialAuthorityDiagnostics.proposalId,
+        revisionHash: commercialAuthorityDiagnostics.revisionHash,
+        repositoryHash: commercialAuthorityDiagnostics.repositoryHash,
+        changeSetIds: commercialAuthorityDiagnostics.changeSetIds,
+        activePatchCount: commercialAuthorityDiagnostics.activePatchCount,
+        appliedPatchCount: commercialAuthorityDiagnostics.appliedPatchCount,
+        currentAuthority: "COMMERCIAL_REVISION",
+        repositoryTruthImmutable: true,
+        proposalConsumesCommercialRevision: true,
+      },
+    }] : [];
+    const commercialChangeSetRecords = [
+      ...commercialChangeSetHistory,
+      ...(commercialChangeSetPatches.length ? [commercialChangeSetFromPatches({
+        revisionId: commercialRevisionReferenceForPatch().revisionId,
+        opportunityId: commercialRevisionReferenceForPatch().opportunityId,
+        repositoryId: commercialRevisionReferenceForPatch().repositoryId,
+        proposalId: commercialRevisionReferenceForPatch().proposalId,
+        routeRepositoryId: commercialRevisionReferenceForPatch().routeRepositoryId,
+        estimateId: commercialRevisionReferenceForPatch().estimateId,
+        workbookId: commercialRevisionReferenceForPatch().workbookId,
+        patches: commercialChangeSetPatches,
+        createdBy: currentUserName,
+        createdById: currentUserId,
+        revisionNumber: commercialChangeSetHistory.length + 1,
+      })] : []),
+    ].map((changeSet) => ({
+      id: changeSet.changeSetId,
+      relationships: [
+        `commercialRevision:${changeSet.revisionId}`,
+        `opportunity:${changeSet.opportunityId || "missing"}`,
+        `proposal:${changeSet.proposalId || "missing"}`,
+      ],
+      storagePath: repositoryRecordPath("commercial-change-sets", changeSet.changeSetId),
+      json: {
+        changeSetId: changeSet.changeSetId,
+        revisionId: changeSet.revisionId,
+        status: changeSet.status,
+        patchCount: changeSet.patchCount,
+        revisionHash: changeSet.revisionHash,
+        patchSetOnly: true,
+        repositoryTruthImmutable: true,
+        patches: changeSet.patches.map((patch) => ({
+          patchId: patch.patchId,
+          patchType: patch.patchType,
+          targetObjectId: patch.targetObjectId,
+          targetProperty: patch.targetProperty,
+          validationState: patch.validationState,
+        })),
+      },
+    }));
+    const commercialReleaseRecords = commercialAuthorityDiagnostics.commercialReleasePackageId ? [{
+      id: commercialAuthorityDiagnostics.commercialReleasePackageId,
+      relationships: [
+        `commercialRevision:${commercialAuthorityDiagnostics.commercialRevisionId || "missing"}`,
+        `proposal:${commercialAuthorityDiagnostics.proposalId || "missing"}`,
+        `draftIof:${commercialAuthorityDiagnostics.draftIofPackageId || "pending"}`,
+      ],
+      storagePath: repositoryRecordPath("commercial-release-packages", commercialAuthorityDiagnostics.commercialReleasePackageId),
+      json: {
+        commercialReleasePackageId: commercialAuthorityDiagnostics.commercialReleasePackageId,
+        commercialRevisionId: commercialAuthorityDiagnostics.commercialRevisionId,
+        releaseHash: commercialAuthorityDiagnostics.releaseHash,
+        currentAuthority: "COMMERCIAL_RELEASE_PACKAGE",
+        referenceOnly: true,
+        noCommercialTruthDuplication: true,
+      },
+    }] : [];
     const revisionRecords = commercialOpportunities.flatMap((opportunity) => (opportunity.revisionHistory ?? []).map((revision, index) => ({
-      id: String(revision.revision ?? revision.revisionId ?? `${opportunity.opportunityId}-revision-${index + 1}`),
+      id: `${opportunity.opportunityId}:${String(revision.revisionId ?? revision.revision ?? `revision-${index + 1}`)}`,
       relationships: [`opportunity:${opportunity.opportunityId}`],
       storagePath: `${repositoryRecordPath("commercial-opportunities", opportunity.opportunityId)}#/revisionHistory/${index}`,
       json: revision,
@@ -8034,10 +10325,17 @@ export default function GoogleRfpWorkspace() {
       { id: "customer-twin", label: "Customer Twin Repository", endpoint: "GET /api/runtime/inventories + GET /api/runtime/objects", storage: "server/data/runtime-inventories/*.json + server/data/runtime-objects/*.json", records: twinRecords },
       { id: "opportunities", label: "Opportunity Repository", endpoint: "GET /api/commercial/opportunities / POST /api/commercial/opportunities / POST /api/commercial/opportunities/:id/open", storage: "server/data/commercial-opportunities/*.json", records: opportunityRecords },
       { id: "routes", label: "Route Repository", endpoint: `GET ${COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT} / POST ${COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT} / GET ${COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT}/:id / PUT ${COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT}/:id`, storage: "server/data/commercial-routes/*.json", records: routeRecords },
+      { id: "commercial-revisions", label: "Commercial Revision Repository", endpoint: "GET /api/commercial/revisions / POST /api/commercial/revisions / GET /api/commercial/revisions/:id", storage: "server/data/commercial-revisions/*.json", records: commercialRevisionRecords },
+      { id: "commercial-change-sets", label: "Commercial Change Set Repository", endpoint: "GET /api/commercial/change-sets / POST /api/commercial/change-sets / POST /api/commercial/change-sets/:id/replay", storage: "server/data/commercial-change-sets/*.json", records: commercialChangeSetRecords },
       { id: "proposals", label: "Proposal Repository", endpoint: "GET /api/proposals / POST /api/proposals / POST /api/proposals/:id/open", storage: "server/data/proposal-drafts/*.json", records: proposalRecords },
-      { id: "revisions", label: "Revision Repository", endpoint: "Embedded append-only revisionHistory on Opportunity Repository records", storage: "server/data/commercial-opportunities/*.json#/revisionHistory", records: revisionRecords },
+      { id: "commercial-release-packages", label: "Commercial Release Package Repository", endpoint: "GET /api/commercial/release-packages / POST /api/commercial/release-packages / GET /api/commercial/release-packages/:id", storage: "server/data/commercial-release-packages/*.json", records: commercialReleaseRecords },
+      { id: "revisions", label: "Legacy Embedded Revision History", endpoint: "Embedded append-only revisionHistory on Opportunity Repository records", storage: "server/data/commercial-opportunities/*.json#/revisionHistory", records: revisionRecords },
     ];
-  }, [accountCustomerTwin?.customerTwinId, accountOptions, activeCommercialOpportunityId, commercialOpportunities, commercialRouteRepositoryRecords, customerNetworkGraph, proposalRuntimeRecords, selectedAccount.accountId]);
+  }, [accountCustomerTwin?.customerTwinId, accountOptions, activeCommercialOpportunityId, commercialAuthorityDiagnostics, commercialChangeSetHistory, commercialChangeSetPatches, commercialOpportunities, commercialRouteRepositoryRecords, currentUserId, currentUserName, customerNetworkGraph, proposalRuntimeRecords, selectedAccount.accountId]);
+  const inventoryPerformanceStats = inventoryCacheStats();
+  const projectionCacheStats = constitutionalProjectionCacheTelemetry();
+  const lastMutationTrace = useMemo(() => latestCommercialMutationTrace(), [mutationTraceRevision]);
+  const recentRuntimePerformanceMetrics = latestRuntimePerformanceMetrics().slice(-20).reverse();
 
   function isCommercialWorkbookSectionOpen(sectionId: string) {
     return commercialWorkbookOpenSections.has(sectionId);
@@ -8050,6 +10348,98 @@ export default function GoogleRfpWorkspace() {
       else next.delete(sectionId);
       return next;
     });
+  }
+
+  function focusCivilMixCalibration() {
+    handleCommercialWorkbookSectionToggle("construction-mix", true);
+    window.requestAnimationFrame(() => {
+      document.getElementById("civil-mix-calibration")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  if (!selectedAccountId) {
+    const nextAccountNumber = Math.max(0, ...accountOptions.map((account) => account.accountNumber)) + 1;
+    return (
+      <section className="dal-workspace wide commercial-account-gate" aria-label="Account Manager">
+        <div className="commercial-compact-header commercial-account-gate-header">
+          <div className="commercial-compact-brand">
+            <img className="commercial-compact-logo" src={teralinxLogo} alt="TeralinX" />
+            <div className="commercial-compact-brand-copy">
+              <b>Account Manager</b>
+              <span>Select an account or create a new governed account to begin Commercial Planning.</span>
+            </div>
+          </div>
+        </div>
+        <section className="dal-panel commercial-account-gate-panel">
+          <div className="dal-panel-title-row">
+            <div>
+              <h2>Choose an account</h2>
+              <span>No customer information is loaded until an account is selected.</span>
+            </div>
+            <span className="dal-badge warning">No account selected</span>
+          </div>
+          <div className="commercial-account-gate-actions">
+            <label>
+              <span>Account</span>
+              <select value="" onChange={(event) => selectAccount(event.currentTarget.value)} aria-label="Select account">
+                <option value="">Select an account...</option>
+                {accountOptions.map((account) => (
+                  <option key={`gate-${account.accountId}`} value={account.accountId}>Account {account.accountNumber} · {account.name}</option>
+                ))}
+              </select>
+            </label>
+            <span>or</span>
+            <button className="dal-button primary" type="button" onClick={handleCreateAccountDraft}>Create New Account</button>
+          </div>
+          {accountEditorOpen ? (
+            <div className="commercial-account-create-panel">
+              <div className="dal-panel-title-row">
+                <div>
+                  <h3>Create Account {nextAccountNumber}</h3>
+                  <span>The formal account number and internal account key are assigned automatically when saved.</span>
+                </div>
+              </div>
+              <div className="account-workspace-editor">
+                <label>
+                  <span>Account Name</span>
+                  <input autoFocus value={accountDraft.name} onChange={(event) => updateAccountDraftField("name", event.currentTarget.value)} placeholder="Customer or organization name" />
+                </label>
+                <label>
+                  <span>Type</span>
+                  <input value={accountDraft.accountType} onChange={(event) => updateAccountDraftField("accountType", event.currentTarget.value)} placeholder="Customer type" />
+                </label>
+                <label>
+                  <span>Status</span>
+                  <input value={accountDraft.status} onChange={(event) => updateAccountDraftField("status", event.currentTarget.value)} placeholder="Prospect" />
+                </label>
+                <label>
+                  <span>Sales Owner</span>
+                  <input value={accountDraft.salesOwner} onChange={(event) => updateAccountDraftField("salesOwner", event.currentTarget.value)} />
+                </label>
+                <label>
+                  <span>Engineering Contact</span>
+                  <input value={accountDraft.primaryEngineeringContact} onChange={(event) => updateAccountDraftField("primaryEngineeringContact", event.currentTarget.value)} />
+                </label>
+                <label>
+                  <span>Procurement Contact</span>
+                  <input value={accountDraft.procurementContact} onChange={(event) => updateAccountDraftField("procurementContact", event.currentTarget.value)} />
+                </label>
+                <label className="wide">
+                  <span>Notes</span>
+                  <input value={accountDraft.notes} onChange={(event) => updateAccountDraftField("notes", event.currentTarget.value)} />
+                </label>
+                <button type="button" className="primary" onClick={() => void handleSaveAccountDraft()} disabled={accountPersistencePending || !accountDraft.name.trim()}>
+                  Save Account {nextAccountNumber}
+                </button>
+                <button type="button" className="secondary" onClick={() => setAccountEditorOpen(false)} disabled={accountPersistencePending}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </section>
+      </section>
+    );
   }
 
   if (opportunityRestoreState.status === "RESTORING") {
@@ -8096,18 +10486,18 @@ export default function GoogleRfpWorkspace() {
       <div className="commercial-compact-header">
         <div className="commercial-compact-brand">
           <img className="commercial-compact-logo" src={teralinxLogo} alt="TeralinX" />
-          <div>
-            <b>Opportunity Manager</b>
-            <span>Commercial Planning for Point-to-Point Duct & Dark Fiber</span>
+          <div className="commercial-compact-brand-copy">
+            <b>Account Manager</b>
+            <span>Commercial Planning for {selectedProductOption.productName}</span>
           </div>
         </div>
         <div className="commercial-compact-header-grid" aria-label="Commercial workspace status">
-          <div><span>Customer</span><b>{selectedAccount.name}</b></div>
+          <div><span>Account</span><b title={`Account ${selectedAccount.accountNumber} · ${selectedAccount.name}`}>Account {selectedAccount.accountNumber} · {selectedAccount.name}</b></div>
           <label>
             <span>Opportunity Name</span>
             <input value={opportunityNameDraft} onChange={(event) => setOpportunityNameDraft(event.currentTarget.value)} aria-label="Opportunity Name" />
           </label>
-          <div><span>Opportunity ID</span><b>{activeCommercialOpportunity?.opportunityId ?? "Unsaved"}</b></div>
+          <div><span>Opportunity ID</span><b title={activeCommercialOpportunity?.opportunityId ?? "Unsaved"}>{activeCommercialOpportunity?.opportunityId ?? "Unsaved"}</b></div>
           <label>
             <span>Product</span>
             <select value={selectedProductId} onChange={(event) => setSelectedProductId(event.currentTarget.value)} aria-label="Product selector">
@@ -8116,19 +10506,21 @@ export default function GoogleRfpWorkspace() {
               ))}
             </select>
           </label>
-          <div><span>Commercial Status</span><b>{activeCommercialOpportunity?.status?.replaceAll("_", " ") ?? "Unsaved"}</b></div>
-          <div><span>Owner</span><b>{compactOwner}</b></div>
+          <div><span>Commercial Status</span><b title={activeCommercialOpportunity?.status?.replaceAll("_", " ") ?? "Unsaved"}>{activeCommercialOpportunity?.status?.replaceAll("_", " ") ?? "Unsaved"}</b></div>
+          <div><span>Owner</span><b title={compactOwner}>{compactOwner}</b></div>
           <div><span>Created</span><b>{activeCommercialOpportunity?.createdAt ? new Date(activeCommercialOpportunity.createdAt).toLocaleDateString() : "Not saved"}</b></div>
           <div><span>Modified</span><b>{activeCommercialOpportunity?.updatedAt ? new Date(activeCommercialOpportunity.updatedAt).toLocaleDateString() : "Not saved"}</b></div>
           <div><span>Estimate Status</span><b>{estimateStatusLabel}</b></div>
           <div><span>Proposal Status</span><b>{proposalStatusLabel}</b></div>
         </div>
         <div className="commercial-compact-actions">
-          <button className="dal-button primary" type="button" onClick={handleNewCommercialOpportunity}>
-            New Opportunity
-          </button>
-          <select value="" onChange={(event) => handleOpportunityLibrarySelect(event.currentTarget.value)} aria-label="Open opportunity or library item">
-            <option value="">Open Opportunity</option>
+          <div className="commercial-action-group commercial-action-group-primary" aria-label="Opportunity actions">
+            <span className="commercial-action-group-label">Opportunity</span>
+            <button className="dal-button primary" type="button" onClick={handleNewCommercialOpportunity}>
+              New Opportunity
+            </button>
+            <select value="" onChange={(event) => handleOpportunityLibrarySelect(event.currentTarget.value)} aria-label="Open opportunity or library item">
+              <option value="">Open Opportunity</option>
             {recentCommercialOpportunities.length ? (
               <optgroup label="Recent">
                 {recentCommercialOpportunities.map((record) => (
@@ -8177,48 +10569,59 @@ export default function GoogleRfpWorkspace() {
                 ))}
               </optgroup>
             ) : null}
-          </select>
-          <button className="dal-button secondary" type="button" onClick={handleSaveCommercialOpportunity} disabled={routePersistencePending || Boolean(activeCommercialOpportunity && !canModifyActiveOpportunity)}>
-            Save
-          </button>
-          <button className="dal-button secondary" type="button" onClick={handleSaveAsCommercialOpportunity} disabled={routePersistencePending}>
-            Save As
-          </button>
-          <select value={selectedAccount.accountId} onChange={(event) => selectAccount(event.currentTarget.value)} aria-label="Active account selector">
-            {accountOptions.map((account) => (
-              <option key={account.accountId} value={account.accountId}>{account.name}</option>
-            ))}
-          </select>
-          <label className="dal-button secondary commercial-file-action">
-            Import Existing Network
-            <input
-              type="file"
-              accept=".kmz,.kml,.geojson,.json"
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0] ?? null;
-                event.currentTarget.value = "";
-                void handleExistingInventoryFile(file);
-              }}
-            />
-          </label>
-          <label className="dal-button secondary commercial-file-action">
-            Import Route
-            <input
-              type="file"
-              accept=".kmz,.kml,.geojson,.json,.csv"
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0] ?? null;
-                event.currentTarget.value = "";
-                void handleRouteImportFile(file);
-              }}
-            />
-          </label>
-          <button className="dal-button secondary" type="button" onClick={() => setProposalPreviewOpen(true)}>
-            Preview Proposal
-          </button>
-          <button className="dal-button secondary" type="button" onClick={() => handleCommercialWorkbookSectionToggle("service-order-preview", true)}>
-            Service Order Preview
-          </button>
+            </select>
+            <button className="dal-button secondary" type="button" onClick={handleSaveCommercialOpportunity} disabled={routePersistencePending || Boolean(activeCommercialOpportunity && !canModifyActiveOpportunity)}>
+              Save
+            </button>
+            <button className="dal-button secondary" type="button" onClick={handleSaveAsCommercialOpportunity} disabled={routePersistencePending}>
+              Save As
+            </button>
+          </div>
+          <div className="commercial-action-group" aria-label="Customer and route actions">
+            <span className="commercial-action-group-label">Customer &amp; Route</span>
+            <select value={selectedAccount.accountId} onChange={(event) => selectAccount(event.currentTarget.value)} aria-label="Active account selector">
+              <option value="">Select account...</option>
+              {accountOptions.map((account) => (
+                <option key={account.accountId} value={account.accountId}>Account {account.accountNumber} · {account.name}</option>
+              ))}
+            </select>
+            <label className="dal-button secondary commercial-file-action">
+              Import Network
+              <input
+                type="file"
+                accept=".kmz,.kml,.geojson,.json"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0] ?? null;
+                  event.currentTarget.value = "";
+                  void handleExistingInventoryFile(file);
+                }}
+              />
+            </label>
+            <label className="dal-button secondary commercial-file-action">
+              Import Route
+              <input
+                type="file"
+                accept=".kmz,.kml,.geojson,.json,.csv"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0] ?? null;
+                  event.currentTarget.value = "";
+                  void handleRouteImportFile(file);
+                }}
+              />
+            </label>
+          </div>
+          <div className="commercial-action-group" aria-label="Preview actions">
+            <span className="commercial-action-group-label">Tools &amp; Preview</span>
+            <button className="dal-button secondary" type="button" onClick={focusCivilMixCalibration}>
+              Civil Mix
+            </button>
+            <button className="dal-button secondary" type="button" onClick={() => setProposalPreviewOpen(true)}>
+              Proposal
+            </button>
+            <button className="dal-button secondary" type="button" onClick={() => handleCommercialWorkbookSectionToggle("service-order-preview", true)}>
+              Service Order
+            </button>
+          </div>
         </div>
       </div>
 
@@ -8254,10 +10657,113 @@ export default function GoogleRfpWorkspace() {
         </details>
       ) : null}
 
+      <section className="commercial-lifecycle-ribbon" aria-label="Commercial to Engineering lifecycle ribbon">
+        {commercialLifecycleRibbonSteps.map((step) => (
+          <div className={`commercial-lifecycle-step ${step.state}`} key={`commercial-lifecycle-${step.key}`}>
+            <span>{step.state === "completed" ? "OK" : step.state === "current" ? ">" : "o"}</span>
+            <b>{step.label}</b>
+            <small>{step.detail}</small>
+          </div>
+        ))}
+      </section>
+
+      <section className="dal-panel commercial-lifecycle-sequencing-panel" aria-label="Commercial Lifecycle Sequencing">
+        <div className="dal-panel-title-row">
+          <div>
+            <h3>Commercial Lifecycle</h3>
+            <span>{commercialLifecycleSequencingNotice}</span>
+          </div>
+          <span className={`dal-badge ${commercialLifecycleSequencingBlocker ? "warning" : "pass"}`}>
+            {commercialLifecycleSequencingBlocker ? "Blocked" : "Commercial Ready"}
+          </span>
+        </div>
+        <div className="dal-list compact">
+          {commercialLifecycleSequencingRows.map((row) => (
+            <div className="dal-list-row teralinx-list-row" key={`commercial-lifecycle-sequencing-${row.key}`}>
+              <b>{row.label}</b>
+              <span className={`dal-badge ${row.ok ? "pass" : "fail"}`}>{row.ok ? "PASS" : "FAIL"}</span>
+              <small>
+                {String(row.detail)}
+                {!row.ok ? ` Reason: ${String(row.detail)}. Automatic IOF Assembly blocked. Repair: ${row.recommendation}` : ""}
+              </small>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {commercialConstitutionalHandoffVisible ? (
+        <section className="dal-panel commercial-constitutional-handoff-card" aria-label="Commercial Engineering Handoff">
+          <div className="dal-panel-title-row">
+            <div>
+              <h3>Commercial Release Readiness</h3>
+              <span>{submittedToEngineering ? "Commercial is locked and Engineering owns the review queue." : "Release the exact saved and approved Proposal Revision through each governed artifact."}</span>
+            </div>
+            <span className={`dal-badge ${submittedToEngineering ? "pass" : commercialConstitutionalHandoffReady ? "warning" : "fail"}`}>
+              {submittedToEngineering ? "Submitted" : commercialConstitutionalHandoffReady ? "Ready" : "Blocked"}
+            </span>
+          </div>
+          <label className="commercial-release-revision-selector">
+            <span>Eligible Proposal Revision</span>
+            <select value={selectedReleaseProposalRevision?.proposalRevisionId ?? ""} onChange={(event) => setReleaseProposalRevisionId(event.currentTarget.value)}>
+              <option value="">Select a saved revision</option>
+              {savedProposalRevisions.map((revision) => {
+                const approval = activeProposalRuntime ? proposalRevisionApproval(revision, activeProposalRuntime.approvals ?? []) : null;
+                return <option key={revision.proposalRevisionId} value={revision.proposalRevisionId}>Revision {revision.revisionNumber} · {revision.revisionStatus} · {approval ? "APPROVED" : "NOT APPROVED"}</option>;
+              })}
+            </select>
+          </label>
+          <div className="teralinx-summary-grid">
+            <div><span>Proposal</span><b>{activeProposalRuntime?.proposalNumber ?? activeProposalRuntime?.proposalId ?? "Missing"}</b></div>
+            <div><span>Customer Acceptance</span><b>{customerApproved ? "Accepted" : "Pending"}</b></div>
+            <div><span>Commercial Revision</span><b>{commercialAuthorityDiagnostics.commercialRevisionId || "Missing"}</b></div>
+            <div><span>Release Package</span><b>{commercialAuthorityDiagnostics.commercialReleasePackageId || displayedDraftIofPackage?.commercialReleasePackageId || "Pending"}</b></div>
+            <div><span>Draft IOF Package</span><b>{displayedDraftIofPackage?.packageId ?? "Missing"}</b></div>
+            <div><span>Route Repository</span><b>{activeDashboardRouteRepositoryId || "Missing"}</b></div>
+            <div><span>Engineering Package</span><b>{submittedEngineeringPackageId || "Not submitted"}</b></div>
+            <div><span>Engineering Status</span><b>{submittedEngineeringStatus.replaceAll("_", " ")}</b></div>
+          </div>
+          {!submittedToEngineering ? (
+            <div className="dal-list compact">
+              {commercialReleaseReadinessRows.map((check) => (
+                <div className="dal-list-row teralinx-list-row" key={`handoff-blocker-${check.key}`}>
+                  <b>{check.label}</b>
+                  <span className={`dal-badge ${check.ok ? "pass" : "warning"}`}>{check.ok ? "READY" : check.key === "release-package" ? "NOT CREATED" : "BLOCKED"}</span>
+                  <small>{check.detail}</small>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="dal-actions">
+            {!submittedToEngineering ? (
+              <button
+                type="button"
+                className="primary"
+                data-action-authority="submit-to-engineering"
+                onClick={() => void handleSubmitCommercialDraftIofToEngineering()}
+                disabled={proposalRuntimeActionPending || engineeringCertificationPending}
+              >
+                Release to Engineering
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="primary"
+                data-action-authority="open-engineering-certification"
+                onClick={handleOpenSubmittedEngineeringCertification}
+                disabled={!submittedEngineeringPackageId || engineeringCertificationPending}
+              >
+                Open Engineering Certification
+              </button>
+            )}
+            <span className="dal-status">ScopeVersion remains blocked until customer signature and executed Service Order.</span>
+          </div>
+        </section>
+      ) : null}
+
       <details className="account-workspace-dashboard commercial-intake-drawer" aria-label="Customer Twin account drawer">
         <summary className="commercial-intake-summary">
           <span>Customer Twin</span>
-          <b>{selectedAccount.name}</b>
+          <b>Account {selectedAccount.accountNumber} · {selectedAccount.name}</b>
           <small>{accountNotice}</small>
           <span className={`dal-badge ${selectedGovernedAccount ? "pass" : accountLibraryLoaded ? "warning" : "fail"}`}>
             {selectedGovernedAccount ? "Governed Account" : accountLibraryLoaded ? "Fixture fallback" : "Loading"}
@@ -8282,8 +10788,8 @@ export default function GoogleRfpWorkspace() {
           </button>
         </div>
         <div className="account-workspace-summary">
-          <div><span>Account</span><b>{selectedAccount.name}</b></div>
-          <div><span>Account ID</span><b>{selectedAccount.accountId}</b></div>
+          <div><span>Formal Account</span><b>Account {selectedAccount.accountNumber}</b></div>
+          <div><span>Account Name</span><b>{selectedAccount.name}</b></div>
           <div><span>Customer ID</span><b>{customerIdForAccount(selectedAccount.accountId)}</b></div>
           <div><span>Contacts</span><b>{governedContactsForSelectedAccount.length || selectedAccount.contacts.length}</b></div>
           <div><span>Product</span><b>{selectedProductOption.productName}</b></div>
@@ -8314,6 +10820,26 @@ export default function GoogleRfpWorkspace() {
               <div><span>Engineering Gate</span><b>{selectedProductDoctrine.rules.engineeringCertificationRequired ? "Required" : "Open"}</b></div>
             </div>
           ) : null}
+          {selectedProductDefinition ? (
+            <div className="account-fulfillment-mix" data-product-registry-resolution="resolved">
+              <div><span>Product Registry</span><b>{selectedProductDefinition.status}</b></div>
+              <div><span>Doctrine Version</span><b>{selectedProductDefinition.doctrineVersion}</b></div>
+              <div><span>Required Services</span><b>{selectedProductDefinition.requiredServices.join(", ").replaceAll("_", " ")}</b></div>
+              <div><span>Required Asset Classes</span><b>{selectedProductDefinition.assetClasses.filter((item) => item.mode === "REQUIRED").map((item) => item.objectClass).join(", ")}</b></div>
+              <div><span>Commercial Profile</span><b>{selectedProductDefinition.commercialProfile.profileId}</b></div>
+              <div><span>Acceptance Profile</span><b>{selectedProductDefinition.acceptanceProfile.profileId}</b></div>
+              <div><span>Maintenance Profile</span><b>{selectedProductDefinition.maintenanceProfile.profileId}</b></div>
+              <div><span>Contract Profile</span><b>{selectedProductDefinition.contractProfile.contractProfileId}</b></div>
+              <div><span>Commercial ScopeVersion</span><b>{selectedProductDefinition.commercialScopeVersionCreationAllowed ? "Allowed" : "Prohibited"}</b></div>
+            </div>
+          ) : null}
+          <div className="account-fulfillment-mix" data-product-assembly-status="visible">
+            <div><span>Doctrine Applied</span><b>{productDoctrineAssembly?.validationSummary.status ?? "Not assembled"}</b></div>
+            <div><span>Source Evidence Loaded</span><b>{activeSourceFileReference !== "None" ? "YES" : "NO"}</b></div>
+            <div><span>Quantity Reconciliation</span><b>{asDisplayArray((displayedDraftIofPackage as Record<string, unknown> | null)?.quantityReconciliation).length ? "AVAILABLE" : "PENDING"}</b></div>
+            <div><span>Object Manifest Status</span><b>{manifestCount(displayedDraftIofPackage, "objectIds") || asDisplayArray(displayedDraftIofPackage?.instantiatedSpineObjects).length ? "ASSEMBLED" : "PENDING"}</b></div>
+            <div><span>Draft IOF Readiness</span><b>{constitutionalAssemblyReview.draftIofReadiness}</b></div>
+          </div>
           <div className="account-fulfillment-mix">
             {CARRIER_NEUTRAL_FULFILLMENT_MIX.map((item) => (
               <div key={item.ownershipClass}>
@@ -8423,8 +10949,8 @@ export default function GoogleRfpWorkspace() {
         {accountEditorOpen ? (
           <div className="account-workspace-editor">
             <label>
-              <span>Account ID</span>
-              <input value={accountDraft.accountId} onChange={(event) => updateAccountDraftField("accountId", cleanAccountId(event.currentTarget.value))} placeholder="google" />
+              <span>Internal Account Key</span>
+              <input value={accountDraft.accountId} onChange={(event) => updateAccountDraftField("accountId", cleanAccountId(event.currentTarget.value))} placeholder="Assigned automatically" disabled={accountEditorMode === "edit"} />
             </label>
             <label>
               <span>Name</span>
@@ -8734,8 +11260,8 @@ export default function GoogleRfpWorkspace() {
             <b>Commercial Planning</b>
           </div>
           <div>
-            <span>Customer</span>
-            <b>{selectedAccount.name}</b>
+            <span>Account</span>
+            <b>Account {selectedAccount.accountNumber} · {selectedAccount.name}</b>
           </div>
           <div>
             <span>Current User</span>
@@ -8756,10 +11282,10 @@ export default function GoogleRfpWorkspace() {
         </div>
         <div className="teralinx-landing-controls">
           <label>
-            Customer
+            Account
             <select value={selectedAccountId} onChange={(event) => selectAccount(event.currentTarget.value)} aria-label="Customer selector">
-              {COMMERCIAL_ACCOUNTS.map((account) => (
-                <option key={account.accountId} value={account.accountId}>{account.name}</option>
+              {accountOptions.map((account) => (
+                <option key={account.accountId} value={account.accountId}>Account {account.accountNumber} · {account.name}</option>
               ))}
             </select>
           </label>
@@ -8838,18 +11364,38 @@ export default function GoogleRfpWorkspace() {
         <section className="commercial-command-dialog" aria-label="New opportunity command">
           <div className="dal-panel-title-row">
             <h3>New Opportunity</h3>
-            <span className="dal-badge warning">Choose build type</span>
+            <span className="dal-badge warning">Choose route source</span>
           </div>
-          <div className="dal-status">What are we building?</div>
+          <div className="teralinx-summary-grid">
+            <div><span>Customer</span><b>{selectedAccount.name}</b></div>
+            <div><span>Product</span><b>{selectedProductOption.productName}</b></div>
+          </div>
+          <div className="dal-status">Route Source</div>
           <div className="commercial-command-grid">
-            <button type="button" onClick={handleBeginAzOpportunity}>Point-to-Point Product Configurator</button>
-            <button type="button" onClick={handleBeginExtendExistingOpportunity} disabled={!accountRenderableCustomerTwin.routes.length && !accountRenderableCustomerTwin.objects.length}>Extend Existing Graph / Lateral</button>
-            <button type="button" onClick={handleLoadSavedProposal}>Load Saved Proposal</button>
-            <button type="button" onClick={handleLoadCustomerDraft}>Load Customer Draft</button>
+            <button type="button" onClick={handleBeginAzOpportunity}>Create / Draw Route</button>
+            <label className="dal-button secondary commercial-file-action">
+              Import Route File
+              <input
+                type="file"
+                accept=".kmz,.kml,.geojson,.json,.csv"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0] ?? null;
+                  event.currentTarget.value = "";
+                  void handleRouteImportFile(file);
+                }}
+              />
+            </label>
+            <label>
+              <span>Existing Route</span>
+              <select defaultValue="" onChange={(event) => handleSelectExistingGovernedRoute(event.currentTarget.value)}>
+                <option value="">Select governed route...</option>
+                {commercialRouteRepositoryRecords.map((route) => <option key={route.routeRepositoryId} value={route.routeRepositoryId}>{route.routeName} · {formatRouteMiles(route.routeMiles)} mi</option>)}
+              </select>
+            </label>
           </div>
           <div className="dal-actions">
             <button type="button" className="secondary" onClick={closeNewOpportunityDialog}>Close</button>
-            <span className="dal-status">The selected build type determines whether Commercial Planning creates a new corridor graph or a Customer Twin extension.</span>
+            <span className="dal-status">A/Z may be entered before Create Route or derived after selecting one imported centerline. Every source converges on the Commercial Route Repository.</span>
           </div>
         </section>
       ) : null}
@@ -8873,6 +11419,17 @@ export default function GoogleRfpWorkspace() {
           <div className="commercial-proposal-preview-map">
             <span>Map Snapshot Placeholder</span>
             <b>{activeRouteLengthLabel} mi route</b>
+          </div>
+          <div className="teralinx-summary-grid" aria-label="Customer proposal commercial summary">
+            <div><span>Product</span><b>{selectedProductOption.productName}</b></div>
+            <div><span>Route</span><b>{activeRouteLengthLabel} mi</b></div>
+            <div><span>Duct Package</span><b>{displayedTransparentEstimateControls.projectConfiguration.ductCount} x {displayedTransparentEstimateControls.projectConfiguration.ductDiameter}&quot;</b></div>
+            <div><span>Fiber</span><b>{displayedTransparentEstimateControls.projectConfiguration.fiberCount.toLocaleString()} count</b></div>
+            <div><span>Construction Mix</span><b>{activeConstructionMixLabel}</b></div>
+            <div><span>NRC</span><b>{money(displayedTransparentEstimate?.nrc ?? selectedPricingSummary.reconciliation.sellPriceIru)}</b></div>
+            <div><span>O&amp;M / Month</span><b>{money(displayedTransparentEstimate?.mrc ?? selectedPricingSummary.reconciliation.mrcRevenue)}</b></div>
+            <div><span>Term</span><b>{selectedProductOption.defaultTermYears * 12} months</b></div>
+            <div><span>Total Contract Value</span><b>{money(displayedTransparentEstimate ? displayedTransparentEstimate.nrc + displayedTransparentEstimate.mrc * selectedProductOption.defaultTermYears * 12 : selectedPricingSummary.reconciliation.lifecycleRevenue)}</b></div>
           </div>
           {proposalPreviewRows.length ? (
             <div className="teralinx-summary-grid">
@@ -8904,6 +11461,7 @@ export default function GoogleRfpWorkspace() {
         </div>
 
         <details
+          id="civil-mix-calibration"
           className="commercial-workbook-section"
           open={isCommercialWorkbookSectionOpen("proposal-summary")}
           onToggle={(event) => handleCommercialWorkbookSectionToggle("proposal-summary", event.currentTarget.open)}
@@ -8923,7 +11481,8 @@ export default function GoogleRfpWorkspace() {
               <div className="teralinx-summary-grid">
                 <div><span>Workspace</span><b>{session?.user.workspaceId ?? "Unauthenticated"}</b></div>
                 <div><span>Owner</span><b>{activeProposalRuntime?.commercialOwner ?? activeProposalRuntime?.owner ?? currentUserName}</b></div>
-                <div><span>Version</span><b>{activeProposalRuntime ? `v${activeProposalRuntime.version}` : "Not created"}</b></div>
+                <div><span>Proposal Revision</span><b>{activeProposalRuntime ? `R${activeProposalRuntime.revisionNumber ?? activeProposalRuntime.version} ${activeProposalRuntime.revisionStatus ?? "LEGACY"}` : "Not created"}</b></div>
+                <div><span>Revision Hash</span><b>{activeProposalRuntime?.proposalHash ? activeProposalRuntime.proposalHash.slice(0, 12) : "Save required"}</b></div>
                 <div><span>Visibility</span><b>{activeProposalRuntime?.visibility ?? "Private default"}</b></div>
                 <div><span>Approval</span><b>{activeProposalRuntime?.approvalState?.replaceAll("_", " ") ?? "Not submitted"}</b></div>
                 <div><span>Readiness</span><b>{activeProposalRuntime?.readiness?.status ?? "Blocked"}</b></div>
@@ -8931,9 +11490,15 @@ export default function GoogleRfpWorkspace() {
                 <div><span>Evidence</span><b>{activeProposalRuntime?.runtimeEvidenceIds?.length.toLocaleString() ?? "0"}</b></div>
                 <div><span>Comments</span><b>{activeProposalRuntime?.comments?.length.toLocaleString() ?? "0"}</b></div>
                 <div><span>Next Action</span><b>{activeProposalRuntime?.nextLifecycleAction?.replaceAll("_", " ") ?? "Save proposal"}</b></div>
+                <div><span>Repository</span><b>{commercialAuthorityDiagnostics.repository}</b></div>
+                <div><span>Commercial Revision</span><b>{commercialAuthorityDiagnostics.commercialRevisionId || "Not created"}</b></div>
+                <div><span>Release Package</span><b>{commercialAuthorityDiagnostics.commercialReleasePackageId || "Not released"}</b></div>
+                <div><span>Release Hash</span><b>{commercialAuthorityDiagnostics.releaseHash ? commercialAuthorityDiagnostics.releaseHash.slice(0, 12) : "Not released"}</b></div>
+                <div><span>Current Authority</span><b>{commercialAuthorityDiagnostics.currentAuthority.replaceAll("_", " ")}</b></div>
                 <div><span>Engineering Package</span><b>{submittedEngineeringPackageId || "Not submitted"}</b></div>
                 <div><span>Engineering Status</span><b>{submittedEngineeringStatus.replaceAll("_", " ")}</b></div>
               </div>
+              {commercialDeveloperMode ? <div className="dal-status">Commercial Revision Repository · Commercial Release Package Repository</div> : null}
               <div className="dal-list compact">
                 {commercialDashboardHandoffChecks.map((check) => (
                   <div className="dal-list-row teralinx-list-row" key={`dashboard-handoff-${check.key}`}>
@@ -8946,21 +11511,13 @@ export default function GoogleRfpWorkspace() {
               <div className="dal-actions">
                 {canManageProposalRuntime ? (
                   <>
-                    <button type="button" onClick={handleSaveRuntimeProposal} disabled={proposalRuntimeActionPending}>Save Proposal</button>
+                    <button type="button" onClick={handleSaveRuntimeProposal} disabled={proposalRuntimeActionPending}>Save Proposal Revision</button>
                     <button type="button" onClick={handleSubmitRuntimeProposalToCustomer} disabled={proposalRuntimeActionPending}>Submit to Customer</button>
-                    <button type="button" onClick={handleCreateRuntimeProposalRevision} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Create Revision</button>
+                    <button type="button" onClick={handleCreateRuntimeProposalRevision} disabled={!activeProposalRuntime?.proposalRevisionId || proposalRuntimeActionPending}>Create New Revision</button>
                     <button type="button" onClick={handleDuplicateRuntimeProposal} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Duplicate</button>
                     <button type="button" onClick={handleArchiveRuntimeProposal} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Archive</button>
                     <button type="button" onClick={handleExposeDraftIofSource} disabled={!activeProposalRuntime?.readiness?.canCreateDraftIofPackage || proposalRuntimeActionPending}>Create Draft IOF Source</button>
-                    {showCommercialDashboardSubmitToEngineering ? (
-                      <button type="button" onClick={handleSubmitCommercialDraftIofToEngineering} disabled={proposalRuntimeActionPending || engineeringCertificationPending}>Submit to Engineering</button>
-                    ) : null}
                   </>
-                ) : null}
-                {submittedEngineeringPackageId ? (
-                  <button type="button" onClick={handleOpenSubmittedEngineeringCertification} disabled={engineeringCertificationPending}>
-                    Open Engineering Certification
-                  </button>
                 ) : null}
                 {canReviewProposalRuntime ? (
                   <>
@@ -8970,7 +11527,9 @@ export default function GoogleRfpWorkspace() {
                     <button type="button" onClick={handleCustomerRuntimeProposalApproval} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Approve</button>
                   </>
                 ) : null}
-                <button type="button" className="secondary" onClick={() => void refreshProposalRuntimeLibrary("Proposal Library refreshed.")} disabled={proposalRuntimeActionPending}>Refresh Proposals</button>
+                {commercialDeveloperMode ? (
+                  <button type="button" className="secondary" onClick={() => void refreshProposalRuntimeLibrary("Proposal Library refreshed.")} disabled={proposalRuntimeActionPending}>Refresh Proposals</button>
+                ) : null}
               </div>
               {activeProposalRuntime?.readiness?.blockingIssues?.length ? (
                 <div className="dal-status">{activeProposalRuntime.readiness.blockingIssues.join(" ")}</div>
@@ -8991,6 +11550,40 @@ export default function GoogleRfpWorkspace() {
                   )) : <div className="dal-status">No Commercial Proposals are visible for this account workspace.</div>}
                 </div>
               </details>
+              <details>
+                <summary>Saved Proposal Revisions - {activeProposalRuntime?.proposalRevisions?.length.toLocaleString() ?? "0"}</summary>
+                <div className="dal-list">
+                  {activeProposalRuntime?.proposalRevisions?.length ? [...activeProposalRuntime.proposalRevisions].reverse().map((revision) => {
+                    const revisionApproval = activeProposalRuntime.approvals?.find((approval) =>
+                      approval.proposalRevisionId === revision.proposalRevisionId && approval.proposalHash === revision.proposalHash && approval.decision === "APPROVED"
+                    );
+                    const pricing = revision.snapshot.pricingSummary as Record<string, unknown> | undefined;
+                    return (
+                      <div className="dal-list-row teralinx-list-row" key={revision.proposalRevisionId}>
+                        <b>Revision {revision.revisionNumber} · {revisionApproval ? "CUSTOMER APPROVED" : revision.revisionStatus}</b>
+                        <span>{revision.revisionReason}</span>
+                        <small>
+                          Hash {revision.proposalHash.slice(0, 12)} · NRC {typeof pricing?.sellPriceIru === "number" ? money(pricing.sellPriceIru) : "captured"} · Saved {new Date(revision.createdAt).toLocaleString()} · Parent {revision.parentProposalRevisionId || "Original"}
+                        </small>
+                      </div>
+                    );
+                  }) : <div className="dal-status">No immutable Proposal Revision has been saved yet.</div>}
+                </div>
+                {proposalRevisionComparison.length ? (
+                  <div className="commercial-workbook-table-wrap">
+                    <table className="dal-table">
+                      <thead><tr><th>Latest Revision Change</th><th>Class</th><th>Before</th><th>After</th></tr></thead>
+                      <tbody>{proposalRevisionComparison.slice(0, 50).map((difference) => (
+                        <tr key={`proposal-difference-${difference.path}`}>
+                          <td>{difference.path}</td><td>{difference.changeClass.replaceAll("_", " ")}</td>
+                          <td>{typeof difference.before === "object" ? JSON.stringify(difference.before) : String(difference.before ?? "UNSET")}</td>
+                          <td>{typeof difference.after === "object" ? JSON.stringify(difference.after) : String(difference.after ?? "UNSET")}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </details>
             </section>
           ) : null}
         </details>
@@ -9001,7 +11594,7 @@ export default function GoogleRfpWorkspace() {
           onToggle={(event) => handleCommercialWorkbookSectionToggle("estimate-detail", event.currentTarget.open)}
         >
           <summary><b>2. Estimate Detail</b><span>{estimateStatusLabel}</span></summary>
-          {isCommercialWorkbookSectionOpen("estimate-detail") && activeFinancialDraft ? (
+          {isCommercialWorkbookSectionOpen("estimate-detail") && activeFinancialDraft && displayedTransparentEstimate ? (
             <section className="commercial-estimate-authoring-section" aria-label="Commercial estimate authoring">
               <div className="dal-panel-title-row">
                 <div>
@@ -9011,8 +11604,8 @@ export default function GoogleRfpWorkspace() {
                 <span className="dal-badge warning">{estimateStatusLabel}</span>
               </div>
               <TransparentEstimateExplorer
-                estimate={activeFinancialDraft.transparentEstimate}
-                controls={transparentEstimateControls}
+                estimate={displayedTransparentEstimate}
+                controls={displayedTransparentEstimateControls}
                 lastRecalculatedAt={lastRecalculatedAt}
                 vendorPreview={activeFinancialDraft.vendorResponsePreview}
                 onTargetDurationChange={updateTransparentEstimateDuration}
@@ -9021,6 +11614,7 @@ export default function GoogleRfpWorkspace() {
                 onConstraintChange={updateTransparentConstraint}
                 onCivilMixModeChange={updateTransparentCivilMixMode}
                 onIlaPlanningChange={updateTransparentIlaPlanning}
+                onProjectConfigurationChange={updateTransparentProjectConfiguration}
               />
             </section>
           ) : <div className="dal-status">Open this section to mount the full commercial estimate explorer.</div>}
@@ -9059,18 +11653,58 @@ export default function GoogleRfpWorkspace() {
           ) : null}
         </details>
 
-        <details className="commercial-workbook-section" onToggle={(event) => handleCommercialWorkbookSectionToggle("construction-mix", event.currentTarget.open)}>
-          <summary><b>4. Construction Mix</b><span>{activeConstructionMixLabel}</span></summary>
+        <details
+          className="commercial-workbook-section"
+          open={isCommercialWorkbookSectionOpen("construction-mix")}
+          onToggle={(event) => handleCommercialWorkbookSectionToggle("construction-mix", event.currentTarget.open)}
+        >
+          <summary><b>4. Civil Mix Calibration</b><span>{activeConstructionMixLabel}</span></summary>
           {isCommercialWorkbookSectionOpen("construction-mix") ? (
-            <div className="teralinx-summary-grid">
-              <div><span>Underground Product</span><b>Point-to-Point Duct and Dark Fiber</b></div>
-              <div><span>Plow</span><b>{selectedAssumptionState.civilMix.plowPercent}%</b></div>
-              <div><span>Directional Bore</span><b>{selectedAssumptionState.civilMix.hddPercent}%</b></div>
-              <div><span>Open Trench</span><b>{selectedAssumptionState.civilMix.openCutPercent}%</b></div>
-              <div><span>Dirt Bore</span><b>{selectedAssumptionState.borePricing.dirtBorePercent}%</b></div>
-              <div><span>Rock Bore</span><b>{selectedAssumptionState.borePricing.rockBorePercent}%</b></div>
-              <div><span>ILA Method</span><b>{transparentEstimateControls.ilaPlanning.placementMethod.replaceAll("_", " ")}</b></div>
-              <div><span>Commercial Source</span><b>{selectedAssumptionState.source.replaceAll("_", " ")}</b></div>
+            <div className="civil-mix-calibration-panel">
+              <div className="civil-mix-calibration-heading">
+                <div>
+                  <b>Calibrate Civil Mix</b>
+                  <span>Enter whole percentages. Plow automatically absorbs the balance so the mix always totals 100%.</span>
+                </div>
+                <div className="civil-mix-calibration-total">
+                  <span>Total</span>
+                  <b>100%</b>
+                </div>
+              </div>
+              <div className="civil-mix-calibration-grid">
+                {([
+                  ["plowPercent", "Plow", selectedCivilMixCalibration.plowPercent],
+                  ["dirtPercent", "Dirt", selectedCivilMixCalibration.dirtPercent],
+                  ["rockPercent", "Rock", selectedCivilMixCalibration.rockPercent],
+                  ["trenchPercent", "Trench", selectedCivilMixCalibration.trenchPercent],
+                ] as const).map(([key, label, value]) => (
+                  <label key={key}>
+                    <span>{label}</span>
+                    <div>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="1"
+                        inputMode="numeric"
+                        aria-label={`${label} civil mix percent`}
+                        value={value}
+                        onChange={(event) => updateCivilMixCalibration(key, Number(event.currentTarget.value))}
+                      />
+                      <b>%</b>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <div className="civil-mix-calibration-footer">
+                <span>Standard: 82% plow · 12% dirt · 0% rock · 6% trench</span>
+                <button type="button" onClick={resetCivilMixCalibration}>Reset to Standard</button>
+              </div>
+              <div className="teralinx-summary-grid">
+                <div><span>Underground Product</span><b>Point-to-Point Duct and Dark Fiber</b></div>
+                <div><span>ILA Method</span><b>{displayedTransparentEstimateControls.ilaPlanning.placementMethod.replaceAll("_", " ")}</b></div>
+                <div><span>Commercial Source</span><b>{selectedAssumptionState.source.replaceAll("_", " ")}</b></div>
+              </div>
             </div>
           ) : null}
         </details>
@@ -9212,6 +11846,14 @@ export default function GoogleRfpWorkspace() {
           ) : null}
         </details>
 
+        <section className="dal-panel" aria-label="Customer deliverables">
+          <div className="dal-panel-title-row"><div><h3>Customer Deliverables</h3><span>Generated from the exact saved Proposal Revision and governed route.</span></div><span className="dal-badge pass">GOVERNED EXPORT</span></div>
+          <div className="dal-actions">
+            <button type="button" disabled={!activeProposalRuntime?.proposalId} onClick={() => void downloadRuntimeArtifact(`/api/exports/proposals/${encodeURIComponent(String(activeProposalRuntime?.proposalId))}/pdf`, session).then((artifact) => setProposalRuntimeNotice(`Downloaded ${artifact.filename}.`)).catch((error) => setProposalRuntimeNotice(`Proposal PDF failed: ${error.message}`))}>Download Proposal PDF</button>
+            <button type="button" disabled={!activeProposalRuntime?.proposalId} onClick={() => void downloadRuntimeArtifact(`/api/exports/proposals/${encodeURIComponent(String(activeProposalRuntime?.proposalId))}/route.kmz`, session).then((artifact) => setProposalRuntimeNotice(`Downloaded ${artifact.filename}.`)).catch((error) => setProposalRuntimeNotice(`Route KMZ failed: ${error.message}`))}>Download Route KMZ</button>
+          </div>
+        </section>
+
         <details className="commercial-workbook-section" onToggle={(event) => handleCommercialWorkbookSectionToggle("commercial-validation", event.currentTarget.open)}>
           <summary><b>10. Commercial Validation</b><span>{constitutionalAssemblyReview.draftIofGateBlocked ? "Blocked" : "Ready"}</span></summary>
           {isCommercialWorkbookSectionOpen("commercial-validation") ? (
@@ -9230,8 +11872,6 @@ export default function GoogleRfpWorkspace() {
               engineeringStatus={submittedEngineeringStatus}
               onSaveDraft={handleSaveCommercialDraftIofPackage}
               onValidate={handleValidateCommercialReviewPackage}
-              onSubmitToEngineering={handleSubmitCommercialDraftIofToEngineering}
-              onOpenEngineeringCertification={handleOpenSubmittedEngineeringCertification}
             />
           ) : null}
         </details>
@@ -9258,20 +11898,22 @@ export default function GoogleRfpWorkspace() {
           ) : null}
         </details>
 
-        <details className="commercial-workbook-section" onToggle={(event) => handleCommercialWorkbookSectionToggle("draft-iof-preview", event.currentTarget.open)}>
-          <summary><b>12. Draft IOF Package Preview</b><span>{displayedDraftIofPackage?.packageId ?? "Pending"}</span></summary>
-          {isCommercialWorkbookSectionOpen("draft-iof-preview") ? (
-            <div className="commercial-workbook-json-preview">
-              <div className="teralinx-summary-grid">
-                <div><span>Package</span><b>{displayedDraftIofPackage?.packageId ?? "Not assembled"}</b></div>
-                <div><span>Status</span><b>{displayedDraftIofPackage?.status ?? "Pending"}</b></div>
-                <div><span>Certified</span><b>{displayedDraftIofPackage?.status === "CERTIFIED" ? "Yes" : "No"}</b></div>
-                <div><span>ScopeVersion</span><b>Not created in Commercial Planning</b></div>
+        {commercialDeveloperMode ? (
+          <details className="commercial-workbook-section" onToggle={(event) => handleCommercialWorkbookSectionToggle("draft-iof-preview", event.currentTarget.open)}>
+            <summary><b>12. Draft IOF Package Preview</b><span>{displayedDraftIofPackage?.packageId ?? "Pending"}</span></summary>
+            {isCommercialWorkbookSectionOpen("draft-iof-preview") ? (
+              <div className="commercial-workbook-json-preview">
+                <div className="teralinx-summary-grid">
+                  <div><span>Package</span><b>{displayedDraftIofPackage?.packageId ?? "Not assembled"}</b></div>
+                  <div><span>Status</span><b>{displayedDraftIofPackage?.status ?? "Pending"}</b></div>
+                  <div><span>Certified</span><b>{displayedDraftIofPackage?.status === "CERTIFIED" ? "Yes" : "No"}</b></div>
+                  <div><span>ScopeVersion</span><b>Not created in Commercial Planning</b></div>
+                </div>
+                <pre>{displayedDraftIofPackage ? JSON.stringify(displayedDraftIofPackage, null, 2) : "No Draft IOF Package preview is available yet."}</pre>
               </div>
-              <pre>{displayedDraftIofPackage ? JSON.stringify(displayedDraftIofPackage, null, 2) : "No Draft IOF Package preview is available yet."}</pre>
-            </div>
-          ) : null}
-        </details>
+            ) : null}
+          </details>
+        ) : null}
 
         <details className="commercial-workbook-section" onToggle={(event) => handleCommercialWorkbookSectionToggle("service-order-preview", event.currentTarget.open)}>
           <summary><b>13. Service Order Preview</b><span>{activeCommercialOpportunity?.serviceOrderPreviewId ?? "Service Order Preview not generated"}</span></summary>
@@ -9304,8 +11946,9 @@ export default function GoogleRfpWorkspace() {
           ) : null}
         </details>
 
-        <details className="commercial-workbook-section commercial-runtime-diagnostics" onToggle={(event) => handleCommercialWorkbookSectionToggle("runtime-diagnostics", event.currentTarget.open)}>
-          <summary><b>14. Runtime / Diagnostics</b><span>Collapsed by default</span></summary>
+        {commercialDeveloperMode ? (
+          <details className="commercial-workbook-section commercial-runtime-diagnostics" onToggle={(event) => handleCommercialWorkbookSectionToggle("runtime-diagnostics", event.currentTarget.open)}>
+          <summary><b>Advanced / Diagnostics</b><span>Collapsed by default · Developer Mode</span></summary>
           {isCommercialWorkbookSectionOpen("runtime-diagnostics") ? (
             <div className="dal-list">
               <div className="dal-list-row teralinx-list-row">
@@ -9318,6 +11961,90 @@ export default function GoogleRfpWorkspace() {
                 <span>{accountCustomerTwin?.customerTwinId ?? customerInventoryLoadStatus}</span>
                 <small>{customerInventoryDiagnostics.join(" ") || "No parser diagnostics."}</small>
               </div>
+              <div className="dal-list-row teralinx-list-row">
+                <b>Runtime Performance</b>
+                <span>{runtimePerformance.cacheStatus} cache / {importWorkerStatus === "IDLE" ? runtimePerformance.workerStatus : importWorkerStatus}</span>
+                <small>
+                  Initial {runtimePerformance.initialRenderMs} ms / restore {runtimePerformance.workspaceRestoreMs} ms / import {runtimePerformance.inventoryImportMs} ms / routes {runtimePerformance.visibleRoutes.toLocaleString()} / objects {runtimePerformance.renderedObjects.toLocaleString()}
+                </small>
+              </div>
+              <div className="dal-list-row teralinx-list-row">
+                <b>Last Mutation</b>
+                <span>{lastMutationTrace?.event ?? "No traced mutation"}</span>
+                <small>
+                  {lastMutationTrace
+                    ? `${lastMutationTrace.durationMs} ms · invalidated ${lastMutationTrace.invalidated.length} · preserved ${lastMutationTrace.preserved.length} · structural IOF ${lastMutationTrace.operations.structuralIofAssemblies ? "MISS" : "CACHE HIT"} · geometry ${lastMutationTrace.operations.routeRebuilds ? "REBUILT" : "CACHE HIT"} · map ${lastMutationTrace.operations.mapRebuilds ? "INVOKED" : "NOT INVOKED"} · Engineering ${lastMutationTrace.operations.engineeringProjections ? "INVOKED" : "NOT INVOKED"}`
+                    : "Civil mix, configuration, ILA, rate, and markup changes are traced without retaining payloads."}
+                </small>
+              </div>
+              <div className="dal-list-row teralinx-list-row">
+                <b>Corridor Execution Engine</b>
+                <span>{corridorExecutionProgress?.label ?? "Waiting for route"}</span>
+                <small>
+                  {corridorExecutionSession
+                    ? `${corridorExecutionSession.completedSegments.toLocaleString()} of ${corridorExecutionSession.totalSegments.toLocaleString()} segment(s) checkpointed / ${corridorExecutionSession.hotSegmentIds.length.toLocaleString()} hot / ${corridorExecutionSession.warmSegmentIds.length.toLocaleString()} warm / ${corridorExecutionSession.coldSegmentIds.length.toLocaleString()} cold`
+                    : "Large corridors execute through segment checkpoints, aggregate projections, and viewport materialization."}
+                </small>
+              </div>
+              <div className="dal-actions">
+                <button type="button" className="secondary" onClick={() => setRuntimePerformancePanelOpen((open) => !open)}>
+                  {runtimePerformancePanelOpen ? "Hide Runtime Performance" : "Show Runtime Performance"}
+                </button>
+              </div>
+              {runtimePerformancePanelOpen ? (
+                <div className="commercial-workbook-json-preview">
+                  <div className="teralinx-summary-grid">
+                    <div><span>Initial Render</span><b>{runtimePerformance.initialRenderMs} ms</b></div>
+                    <div><span>Restore</span><b>{runtimePerformance.workspaceRestoreMs} ms</b></div>
+                    <div><span>Inventory Import</span><b>{runtimePerformance.inventoryImportMs} ms</b></div>
+                    <div><span>KMZ Parse</span><b>{runtimePerformance.kmzParseMs} ms</b></div>
+                    <div><span>Normalization</span><b>{runtimePerformance.normalizationMs} ms</b></div>
+                    <div><span>Geometry Build</span><b>{runtimePerformance.geometryBuildMs} ms</b></div>
+                    <div><span>Workbook Recalc</span><b>{runtimePerformance.workbookRecalculationMs} ms</b></div>
+                    <div><span>ILA Recalc</span><b>{runtimePerformance.ilaRecalculationMs} ms</b></div>
+                    <div><span>Frame Timing</span><b>{runtimePerformance.frameTimingMs} ms</b></div>
+                    <div><span>React Renders</span><b>{runtimePerformance.reactRenderCount.toLocaleString()}</b></div>
+                    <div><span>Visible Routes</span><b>{runtimePerformance.visibleRoutes.toLocaleString()}</b></div>
+                    <div><span>Visible Stations</span><b>{runtimePerformance.visibleStations.toLocaleString()}</b></div>
+                    <div><span>Rendered Objects</span><b>{runtimePerformance.renderedObjects.toLocaleString()}</b></div>
+                    <div><span>Viewport Objects</span><b>{runtimePerformance.viewportObjectCount.toLocaleString()}</b></div>
+                    <div><span>Cache Entries</span><b>{inventoryPerformanceStats.projectionRecords.toLocaleString()}</b></div>
+                    <div><span>Projection Cache</span><b>{projectionCacheStats.entries}/{projectionCacheStats.maximumEntries}</b></div>
+                    <div><span>Projection Hits</span><b>{projectionCacheStats.hits.toLocaleString()}</b></div>
+                    <div><span>Cache Evictions</span><b>{projectionCacheStats.evictions.toLocaleString()}</b></div>
+                    <div><span>Cache Invalidations</span><b>{projectionCacheStats.invalidations.toLocaleString()}</b></div>
+                    <div><span>Import Hashes</span><b>{inventoryPerformanceStats.dedupeRecords.toLocaleString()}</b></div>
+                    <div><span>Corridor Partition</span><b>{corridorPerformanceMetrics?.corridorPartitionTimeMs ?? 0} ms</b></div>
+                    <div><span>Worker Queue</span><b>{corridorPerformanceMetrics?.workerQueueDepth ?? 0}</b></div>
+                    <div><span>Checkpoints</span><b>{corridorPerformanceMetrics?.checkpointCount.toLocaleString() ?? "0"}</b></div>
+                    <div><span>Corridor Cache Hits</span><b>{corridorPerformanceMetrics?.cacheHits.toLocaleString() ?? "0"}</b></div>
+                    <div><span>Corridor Cache Misses</span><b>{corridorPerformanceMetrics?.cacheMisses.toLocaleString() ?? "0"}</b></div>
+                    <div><span>Visible Segments</span><b>{corridorPerformanceMetrics?.visibleSegmentCount.toLocaleString() ?? corridorViewportProjection?.visibleSegmentCount.toLocaleString() ?? "0"}</b></div>
+                    <div><span>Rendered Stations</span><b>{corridorPerformanceMetrics?.renderedStationCount.toLocaleString() ?? "0"}</b></div>
+                    <div><span>Rendered Objects</span><b>{corridorPerformanceMetrics?.renderedObjectCount.toLocaleString() ?? "0"}</b></div>
+                    <div><span>Workbook Segment Calc</span><b>{corridorPerformanceMetrics?.workbookCalculationTimeMs ?? 0} ms</b></div>
+                    <div><span>Proposal Aggregate Calc</span><b>{corridorPerformanceMetrics?.proposalGenerationTimeMs ?? 0} ms</b></div>
+                    <div><span>Worker Utilization</span><b>{percentage(corridorPerformanceMetrics?.workerUtilization ?? 0)}</b></div>
+                  </div>
+                  {corridorAggregateProjection ? (
+                    <div className="commercial-workbook-json-preview">
+                      <div className="teralinx-summary-grid">
+                        <div><span>Total Length</span><b>{formatRouteMiles(corridorAggregateProjection.totalLengthMiles)} mi</b></div>
+                        <div><span>Estimated Cost</span><b>{money(corridorAggregateProjection.estimatedCost)}</b></div>
+                        <div><span>Revenue</span><b>{money(corridorAggregateProjection.revenue)}</b></div>
+                        <div><span>Margin</span><b>{percentage(corridorAggregateProjection.margin)}</b></div>
+                        <div><span>Unknowns</span><b>{corridorAggregateProjection.unknownCount.toLocaleString()}</b></div>
+                        <div><span>Confidence</span><b>{percentage(corridorAggregateProjection.confidence)}</b></div>
+                        <div><span>ILA Count</span><b>{corridorAggregateProjection.ilaCount.toLocaleString()}</b></div>
+                        <div><span>Bookends</span><b>{corridorAggregateProjection.bookendCount.toLocaleString()}</b></div>
+                        <div><span>LOD</span><b>{corridorViewportProjection?.lod ?? "LOW"}</b></div>
+                        <div><span>Materialized Tier</span><b>{corridorViewportProjection?.materializedTier ?? "COLD"}</b></div>
+                      </div>
+                    </div>
+                  ) : null}
+                  <pre>{JSON.stringify(recentRuntimePerformanceMetrics, null, 2)}</pre>
+                </div>
+              ) : null}
               <div className="dal-list-row teralinx-list-row">
                 <b>Proposal Library</b>
                 <span>{accountProposalRuntimeRecords.length.toLocaleString()} visible proposal(s)</span>
@@ -9358,7 +12085,7 @@ export default function GoogleRfpWorkspace() {
               <div className="dal-list-row teralinx-list-row">
                 <b>Repository Browser</b>
                 <span>{commercialRepositoryBrowserSections.reduce((total, section) => total + section.records.length, 0).toLocaleString()} stored record(s)</span>
-                <small>Customer &gt; Customer Twin &gt; Opportunity &gt; Route Repository &gt; Proposal &gt; Revision.</small>
+                <small>Customer &gt; Customer Twin &gt; Opportunity &gt; Route Repository &gt; Commercial Revision &gt; Commercial Change Set &gt; Proposal &gt; Commercial Release Package.</small>
               </div>
               <div className="commercial-workbook-json-preview">
                 {commercialRepositoryBrowserSections.map((section) => (
@@ -9389,6 +12116,7 @@ export default function GoogleRfpWorkspace() {
             </div>
           ) : null}
         </details>
+        ) : null}
       </section>
 
       {/*
@@ -9723,7 +12451,9 @@ export default function GoogleRfpWorkspace() {
             <div className="commercial-customer-twin-warning">
               <b>Customer Twin Warning</b>
               <span>{customerTwinLoadWarning}</span>
-              <button type="button" onClick={() => setInventoryRefreshNonce((nonce) => nonce + 1)}>Reload Twin</button>
+              {commercialDeveloperMode ? (
+                <button type="button" onClick={() => setInventoryRefreshNonce((nonce) => nonce + 1)}>Reload Twin</button>
+              ) : null}
             </div>
           ) : null}
           <button type="button" className="primary" onClick={handleNewCommercialOpportunity}>New Opportunity</button>
@@ -9767,13 +12497,19 @@ export default function GoogleRfpWorkspace() {
           <div className="commercial-working-set-compact">
             <b>Imports</b>
             <span>Use header actions for Import Existing Network and Import Route.</span>
-            <button type="button" onClick={() => setInventoryRefreshNonce((nonce) => nonce + 1)}>Reload Twin</button>
+            {commercialDeveloperMode ? (
+              <button type="button" onClick={() => setInventoryRefreshNonce((nonce) => nonce + 1)}>Reload Twin</button>
+            ) : null}
             <span>Existing inventory: {accountNetworkCounts.CUSTOMER_INVENTORY.toLocaleString()} network(s)</span>
             <span>Customer designs: {accountCustomerDesignImports.length.toLocaleString()} request(s)</span>
           </div>
           <div className="dal-actions vertical">
-            <button type="button" onClick={() => setInventoryRefreshNonce((nonce) => nonce + 1)}>Refresh Twin</button>
-            <button type="button" onClick={() => setInventoryRefreshNonce((nonce) => nonce + 1)}>Reload Customer Inventory</button>
+            {commercialDeveloperMode ? (
+              <>
+                <button type="button" onClick={() => setInventoryRefreshNonce((nonce) => nonce + 1)}>Refresh Twin</button>
+                <button type="button" onClick={() => setInventoryRefreshNonce((nonce) => nonce + 1)}>Reload Customer Inventory</button>
+              </>
+            ) : null}
             <button type="button" onClick={() => setActiveView("review")} disabled={!activeCommercialDraftNetworks.length && !accountCustomerDrafts.length}>Customer Review</button>
           </div>
         </aside>
@@ -9789,7 +12525,9 @@ export default function GoogleRfpWorkspace() {
             customerTwinState={accountRenderableCustomerTwin}
             commercialMapLayers={commercialMapLayers}
             commercialOpportunityOverlay={commercialOpportunityOverlay}
-            commercialIlaStations={(activeFinancialDraft?.transparentEstimate.ilaPlan.stationObjects ?? []).map((station): CommercialIlaMapStation => ({
+            corridorViewportProjection={corridorViewportProjection}
+            commercialIofProjection={commercialIofProjectionOverlay}
+            commercialIlaStations={(displayedTransparentEstimate?.ilaPlan.stationObjects ?? activeFinancialDraft?.transparentEstimate.ilaPlan.stationObjects ?? []).map((station): CommercialIlaMapStation => ({
               stationId: station.stationId,
               label: station.label,
               station: station.station,
@@ -9799,7 +12537,7 @@ export default function GoogleRfpWorkspace() {
               facilityType: station.facilityType,
               totalCost: station.totalCost,
             }))}
-            selectedCommercialIlaStationId={transparentEstimateControls.ilaPlanning.selectedStationId}
+            selectedCommercialIlaStationId={displayedTransparentEstimateControls.ilaPlanning.selectedStationId}
             onCommercialIlaStationSelect={selectTransparentIlaStation}
             mapMinHeight={800}
             mapTitle="Unified Commercial Map"
@@ -9824,6 +12562,8 @@ export default function GoogleRfpWorkspace() {
           <div className="commercial-estimate-sidebar-grid">
             <div><span>Route Length Miles</span><b>{activeRouteLengthLabel}</b></div>
             <div><span>Route Length Feet</span><b>{Math.round(activeRouteFeet).toLocaleString()}</b></div>
+            <div><span>Corridor Segments</span><b>{corridorAggregateProjection?.segmentCount.toLocaleString() ?? "Pending"}</b></div>
+            <div><span>Visible Segments</span><b>{corridorViewportProjection?.visibleSegmentCount.toLocaleString() ?? "Pending"}</b></div>
             <div><span>Construction Cost</span><b>{money(activeConstructionCost)}</b></div>
             <div><span>Cost / Foot</span><b>{money(activeCostPerFoot)}</b></div>
             <div><span>Cost / Mile</span><b>{activeFinancialAuthority ? money(activeFinancialAuthority.costPerMile) : money(selectedPricingSummary.reconciliation.costPerMile)}</b></div>
@@ -9846,6 +12586,154 @@ export default function GoogleRfpWorkspace() {
               <span key={`estimate-risk-${index}`}>{risk}</span>
             ))}
           </div>
+          <div className="commercial-inspector-card route-edit-session-card">
+            <b>Route Edit Session</b>
+            <span>{routeEditSession ? `${routeEditSession.patches.length.toLocaleString()} patch(es) staged` : "Inactive"}</span>
+            <small>{routeEditNotice}</small>
+            <div className="dal-actions">
+              <button type="button" onClick={handleStartRouteEditSession} disabled={!activeFinancialDraft}>
+                {routeEditSession ? "Edit Session Active" : "Start Edit"}
+              </button>
+              <button type="button" onClick={() => void handleSaveRouteEditRevision()} disabled={!routeEditSession || !routeEditSession.patches.length}>Save Revision</button>
+              <button type="button" onClick={handleCompareRouteEditRevision} disabled={!routeEditSession}>Compare Revision</button>
+              <button type="button" onClick={handleRollbackRouteEditSession} disabled={!routeEditSession || !routeEditSession.patches.length}>Restore Original</button>
+              <button type="button" onClick={handleDiscardRouteEditRevision} disabled={!routeEditSession}>Discard Revision</button>
+            </div>
+            {routeEditSession ? (
+              <div className="teralinx-summary-grid">
+                <div><span>Boundary</span><b>{routeEditSession.projection.impact.recalculationBoundary.replaceAll("_", " ")}</b></div>
+                <div><span>Route Rebuild</span><b>{routeEditSession.projection.impact.fullRouteRebuild ? "YES" : "NO"}</b></div>
+                <div><span>Workbook Full Recalc</span><b>{routeEditSession.projection.impact.fullWorkbookRecalculation ? "YES" : "NO"}</b></div>
+                <div><span>Inventory Reimport</span><b>{routeEditSession.projection.impact.inventoryReimport ? "YES" : "NO"}</b></div>
+                <div><span>Map Rerender</span><b>{routeEditSession.projection.impact.mapFullRerender ? "FULL" : "PATCH"}</b></div>
+                <div><span>Cost Delta</span><b>{money(routeEditSession.projection.estimateDelta.constructionCostDelta)}</b></div>
+                <div><span>Monthly Revenue Delta</span><b>{money(routeEditSession.projection.estimateDelta.monthlyRevenueDelta)}</b></div>
+                <div><span>Lifecycle Delta</span><b>{money(routeEditSession.projection.estimateDelta.lifecycleValueDelta)}</b></div>
+              </div>
+            ) : null}
+            {routeEditSession?.failedPatches.length ? (
+              <div className="dal-status">
+                {routeEditSession.failedPatches[0].operatorSafeMessage}
+              </div>
+            ) : null}
+            {routeEditRevisionPreview ? (
+              <small>Last saved patch set: {routeEditRevisionPreview.routeEditRevisionId}</small>
+            ) : null}
+          </div>
+          <div className="commercial-inspector-card">
+            <b>Commercial Change Set</b>
+            <span>{commercialChangeSetPatches.length ? `${commercialChangeSetPatches.length.toLocaleString()} active patch(es)` : "Repository Truth projection"}</span>
+            <small>{commercialChangeSetNotice}</small>
+          </div>
+          <div className="commercial-inspector-card commercial-geometry-authority-panel" data-geometry-authority-diagnostics="visible">
+            <b>Geometry Authority</b>
+            <span>{String(displayedGeometryAuthorityDiagnostics?.geometryAuthority ?? displayedGeometryAuthorityDiagnostics?.status ?? "PENDING")}</span>
+            <small>Measured Centerline: {String(displayedGeometryAuthorityDiagnostics?.measuredCenterlineId ?? (displayedDraftIofPackage as any)?.measuredCenterlineId ?? "missing")}</small>
+            <div className="teralinx-summary-grid compact">
+              <div><span>Measured Centerline</span><b>{displayedGeometryAuthorityDiagnostics?.measuredCenterlineId ? "PASS" : "FAIL"}</b></div>
+              <div><span>Independent Geometry</span><b>{Number(displayedGeometryAuthorityDiagnostics?.independentGeometryCount ?? 0).toLocaleString()}</b></div>
+              <div><span>Projected Objects</span><b>{Number(displayedGeometryAuthorityDiagnostics?.projectedObjectCount ?? displayedProjectedObjects.length).toLocaleString()}</b></div>
+              <div><span>Projected Spans</span><b>{Number(displayedGeometryAuthorityDiagnostics?.projectedSpanCount ?? displayedProjectedSpans.length).toLocaleString()}</b></div>
+              <div><span>Objects On Spine</span><b>{Number(displayedGeometryAuthorityDiagnostics?.objectsOnSpine ?? displayedProjectedObjects.length).toLocaleString()} / {Number(displayedGeometryAuthorityDiagnostics?.objectsOnSpineTotal ?? displayedProjectedObjects.length).toLocaleString()}</b></div>
+              <div><span>Maximum Drift</span><b>{Number(displayedGeometryAuthorityDiagnostics?.maximumDriftFeet ?? 0).toFixed(2)} ft</b></div>
+              <div><span>Independent Span Geometry</span><b>{Number(displayedGeometryAuthorityDiagnostics?.independentSpanGeometryCount ?? 0).toLocaleString()}</b></div>
+              <div><span>Commercial</span><b>{String(displayedGeometryAuthorityDiagnostics?.commercialRenderValidation ?? "PENDING")}</b></div>
+              <div><span>Engineering</span><b>{String(displayedGeometryAuthorityDiagnostics?.engineeringRenderValidation ?? "PENDING")}</b></div>
+              <div><span>Field</span><b>{String(displayedGeometryAuthorityDiagnostics?.fieldRenderValidation ?? "PENDING")}</b></div>
+              <div><span>Twin</span><b>{String(displayedGeometryAuthorityDiagnostics?.twinRenderValidation ?? "PENDING")}</b></div>
+            </div>
+            {asDisplayArray(displayedGeometryAuthorityDiagnostics?.failures).length ? (
+              <small>{asDisplayArray(displayedGeometryAuthorityDiagnostics?.failures).join("; ")}</small>
+            ) : null}
+          </div>
+          <div className="commercial-inspector-card commercial-projection-diagnostics-panel" data-commercial-projection-diagnostics="visible">
+            <b>Commercial Projection Diagnostics</b>
+            <span>{String(displayedDoctrineProjectionDiagnostics?.status ?? "PENDING")}</span>
+            <small>
+              Authority {String(displayedDoctrineProjectionDiagnostics?.authority ?? "DOCTRINE_PROJECTION_ENGINE")} /
+              Projection {String((displayedDraftIofPackage as any)?.doctrineProjectionId ?? displayedStationProjection?.stationProjectionId ?? "missing")}
+            </small>
+            <div className="teralinx-summary-grid compact">
+              <div><span>Measured Centerline</span><b>{String((displayedDraftIofPackage as any)?.measuredCenterlineId ?? objectRecord((displayedDraftIofPackage as any)?.measuredCenterline)?.measuredCenterlineId ?? "Missing")}</b></div>
+              <div><span>Station Projection</span><b>{String((displayedDraftIofPackage as any)?.stationProjectionId ?? displayedStationProjection?.stationProjectionId ?? "Missing")}</b></div>
+              <div><span>Station Graph</span><b>{String((displayedDraftIofPackage as any)?.stationGraphId ?? displayedStationGraph?.stationGraphId ?? displayedStationGraph?.graphId ?? "Missing")}</b></div>
+              <div><span>Projected Object Manifest</span><b>{String((displayedDraftIofPackage as any)?.projectedObjectManifestId ?? displayedProjectedObjectManifest?.projectedObjectManifestId ?? displayedProjectedObjectManifest?.manifestId ?? "Missing")}</b></div>
+              <div><span>Projected Objects Layer</span><b>{displayedProjectedObjects.length.toLocaleString()}</b></div>
+              <div><span>Projected Spans Layer</span><b>{displayedProjectedSpans.length.toLocaleString()}</b></div>
+              <div><span>Station Graph Layer</span><b>{recordArray(displayedStationGraph?.edges).length.toLocaleString()} edges</b></div>
+              <div><span>Object Address Layer</span><b>{displayedObjectAddresses.length.toLocaleString()}</b></div>
+              <div><span>Object Attachments</span><b>{displayedObjectStationAttachments.length.toLocaleString()}</b></div>
+              <div><span>Linear Attachments</span><b>{displayedLinearAssetSpanAttachments.length.toLocaleString()}</b></div>
+            </div>
+            {recordArray(displayedDoctrineProjectionDiagnostics?.failedGates).length ? (
+              <small>{recordArray(displayedDoctrineProjectionDiagnostics?.failedGates).map((gate) => `${String(gate.objectType ?? "Projection")} ${String(gate.gate ?? "Gate")}: ${String(gate.reason ?? "failed")}`).join("; ")}</small>
+            ) : null}
+          </div>
+          <div className="commercial-inspector-card commercial-doctrine-diagnostics-panel" data-commercial-doctrine-diagnostics="visible">
+            <b>Commercial Doctrine Diagnostics</b>
+            <span>{String(displayedDoctrineProjectionDiagnostics?.status ?? "PENDING")}</span>
+            <small>
+              Route {Math.round(Number(displayedDoctrineProjectionDiagnostics?.routeFeet ?? activeRouteFeet)).toLocaleString()} ft /
+              Stations {Number(displayedDoctrineProjectionDiagnostics?.stationCount ?? 0).toLocaleString()} /
+              Objects {displayedProjectedObjects.length.toLocaleString()} /
+              Spans {displayedProjectedSpans.length.toLocaleString()}
+            </small>
+            <div className="teralinx-summary-grid commercial-doctrine-gates">
+              {["Math Present", "Objects Calculated", "Addresses Assigned", "Objects Projected"].map((gateLabel) => {
+                const failedGate = recordArray(displayedDoctrineProjectionDiagnostics?.failedGates).find((gate) => String(gate.gate ?? "").replaceAll("_", " ") === gateLabel);
+                const pass = !failedGate && Boolean(displayedDoctrineProjectionDiagnostics);
+                return (
+                  <div key={`commercial-doctrine-gate-${gateLabel}`}>
+                    <span>{gateLabel}</span>
+                    <b>{pass ? "PASS" : "FAIL"}</b>
+                    {!pass ? <small>{String(failedGate?.reason ?? "projection ID missing")}</small> : null}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="commercial-workbook-table-wrap">
+              <table className="dal-table commercial-doctrine-diagnostics-table">
+                <thead>
+                  <tr>
+                    <th>Object Class</th>
+                    <th>Quantity Source</th>
+                    <th>Route Feet</th>
+                    <th>Station Count</th>
+                    <th>Object Count</th>
+                    <th>Nominal Interval</th>
+                    <th>Calculated Stations</th>
+                    <th>Resolved Coordinates</th>
+                    <th>Placement Authority</th>
+                    <th>Projection Result</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {commercialDoctrineDiagnosticsRows.map((row) => {
+                    const gates = recordArray(row.gates);
+                    const failed = gates.find((gate) => String(gate.status ?? "").toUpperCase() !== "PASS");
+                    const resolvedCoordinates = recordArray(row.resolvedCoordinates);
+                    return (
+                      <tr key={`commercial-doctrine-diagnostic-${String(row.objectType)}`}>
+                        <td>{String(row.objectType ?? "UNKNOWN").replaceAll("_", " ")}</td>
+                        <td>{String(row.doctrineQuantitySource ?? "Product Doctrine")}</td>
+                        <td>{Math.round(Number(row.routeFeet ?? 0)).toLocaleString()}</td>
+                        <td>{Number(row.stationCount ?? 0).toLocaleString()}</td>
+                        <td>{Number(row.objectCount ?? 0).toLocaleString()}</td>
+                        <td>{Math.round(Number(row.nominalIntervalFeet ?? 0)).toLocaleString()} ft</td>
+                        <td>{asDisplayArray(row.calculatedStations).slice(0, 6).join(", ") || "Span range"}</td>
+                        <td>{resolvedCoordinates.slice(0, 3).map((coordinate) => `${coordinate.objectId ?? ""} ${coordinate.stationAddress ?? ""} ${coordinate.latitude ?? ""}/${coordinate.longitude ?? ""}`.trim()).join("; ") || "Linear span"}</td>
+                        <td>{String(row.placementAuthority ?? "DOCTRINE_PROJECTION_ENGINE")}</td>
+                        <td>{String(row.projectionResult ?? (failed ? "FAIL" : "PASS"))}{failed ? `: ${String(failed.reason ?? "failed gate")}` : ""}</td>
+                      </tr>
+                    );
+                  })}
+                  {!commercialDoctrineDiagnosticsRows.length ? (
+                    <tr><td colSpan={10}>Commercial Doctrine Diagnostics will appear after OSRM route commit and Initial IOF Package assembly.</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </div>
           <div className="dal-panel-title-row commercial-route-inspector-title">
             <h3>Route</h3>
             <span className="dal-badge warning">{opportunityWorkflowLabel(opportunityWorkflowState)}</span>
@@ -9853,15 +12741,77 @@ export default function GoogleRfpWorkspace() {
           {inventoryMapSelection ? (
             <div className="commercial-inspector-card">
               <b>{inventoryMapSelection.type.replaceAll("_", " ").toUpperCase()}</b>
-              <span>
-                {inventoryMapSelection.type === "node"
-                  ? inventoryMapSelection.value.name
-                  : inventoryMapSelection.type === "edge"
-                    ? (inventoryMapSelection.value.segmentId ?? inventoryMapSelection.value.id)
-                    : inventoryMapSelection.type === "station"
-                      ? inventoryMapSelection.value.stationLabel
-                      : inventoryMapSelection.value.objectType.replaceAll("_", " ")}
-              </span>
+              {inventoryMapSelection.type === "commercialIofObject" ? (
+                <>
+                  <span>{inventoryMapSelection.value.objectId} / {inventoryMapSelection.value.objectType.replaceAll("_", " ")}</span>
+                  <small>{inventoryMapSelection.value.stationAddress} / {inventoryMapSelection.value.coordinate?.[1]?.toFixed?.(6) ?? inventoryMapSelection.value.latitude ?? "lat pending"}, {inventoryMapSelection.value.coordinate?.[0]?.toFixed?.(6) ?? inventoryMapSelection.value.longitude ?? "lng pending"}</small>
+                  <div className="teralinx-summary-grid">
+                    <div><span>Doctrine</span><b>{inventoryMapSelection.value.doctrineObjectType ?? inventoryMapSelection.value.objectType}</b></div>
+                    <div><span>Quantity Source</span><b>{inventoryMapSelection.value.doctrineQuantitySource ?? "Product Doctrine"}</b></div>
+                    <div><span>Measure</span><b>{feet(inventoryMapSelection.value.measure)}</b></div>
+                    <div><span>Billable Material</span><b>{inventoryMapSelection.value.billableMaterial ?? inventoryMapSelection.value.objectType.replaceAll("_", " ")}</b></div>
+                    <div><span>Billable Labor</span><b>{inventoryMapSelection.value.billableLabor ?? "Doctrine placement labor"}</b></div>
+                    <div><span>Material Template</span><b>{(inventoryMapSelection.value as any).materialTemplateId ?? (inventoryMapSelection.value as any).materialTemplate ?? inventoryMapSelection.value.billableMaterial ?? inventoryMapSelection.value.objectType.replaceAll("_", " ")}</b></div>
+                    <div><span>Labor Template</span><b>{(inventoryMapSelection.value as any).laborTemplateId ?? (inventoryMapSelection.value as any).laborTemplate ?? inventoryMapSelection.value.billableLabor ?? "Doctrine placement labor"}</b></div>
+                    <div><span>Evidence Template</span><b>{(inventoryMapSelection.value as any).evidenceTemplateId ?? (inventoryMapSelection.value as any).evidenceTemplate ?? displayReferenceList(inventoryMapSelection.value.evidenceRequirements)}</b></div>
+                    <div><span>Dependencies</span><b>{displayReferenceList(inventoryMapSelection.value.dependencyList ?? inventoryMapSelection.value.dependencies)}</b></div>
+                    <div><span>Execution</span><b>{inventoryMapSelection.value.executionSequenceId ?? "Missing"}</b></div>
+                    <div><span>Payment</span><b>{inventoryMapSelection.value.paymentSequenceId ?? "Missing"}</b></div>
+                    <div><span>Close</span><b>{inventoryMapSelection.value.closeSequenceId ?? "Missing"}</b></div>
+                    <div><span>Evidence</span><b>{displayReferenceList(inventoryMapSelection.value.evidenceRequirements)}</b></div>
+                    <div><span>Lifecycle</span><b>{inventoryMapSelection.value.currentLifecycleState ?? inventoryMapSelection.value.lifecycleState ?? "PLANNED"}</b></div>
+                    <div><span>Authority</span><b>{(inventoryMapSelection.value as any).currentAuthority ?? "Commercial"}</b></div>
+                    <div><span>Next Authority</span><b>{(inventoryMapSelection.value as any).nextAuthority ?? "Commercial"}</b></div>
+                    <div><span>Domain Owner</span><b>{(inventoryMapSelection.value as any).domainResponsibilityMatrix?.[(inventoryMapSelection.value as any).currentState ?? inventoryMapSelection.value.currentLifecycleState ?? inventoryMapSelection.value.lifecycleState ?? ""] ?? "Commercial"}</b></div>
+                    <div><span>Audit</span><b>{(inventoryMapSelection.value as any).auditStatus ?? "OPEN"}</b></div>
+                    <div><span>Closure Ledger</span><b>{(inventoryMapSelection.value as any).auditLedgerHooks?.closureLedgerId ?? "Pending"}</b></div>
+                    <div><span>Twin Projection</span><b>{(inventoryMapSelection.value as any).twinProjectionMetadata?.twinProjectionId ?? "Pending"}</b></div>
+                  </div>
+                </>
+              ) : inventoryMapSelection.type === "commercialIofSpan" ? (
+                <>
+                  <span>{inventoryMapSelection.value.spanId}</span>
+                  <small>{inventoryMapSelection.value.startObjectId ?? "Start"} to {inventoryMapSelection.value.endObjectId ?? "End"} / {feet(inventoryMapSelection.value.lengthFeet)}</small>
+                  <div className="teralinx-summary-grid">
+                    <div><span>Doctrine</span><b>{inventoryMapSelection.value.spanType ?? "Projected Span"}</b></div>
+                    <div><span>Quantity Source</span><b>{(inventoryMapSelection.value as any).doctrineQuantitySource ?? displayReferenceList(inventoryMapSelection.value.containedAssets)}</b></div>
+                    <div><span>Start Station</span><b>{inventoryMapSelection.value.startStation ?? inventoryMapSelection.value.stationStart ?? "Missing"}</b></div>
+                    <div><span>End Station</span><b>{inventoryMapSelection.value.endStation ?? inventoryMapSelection.value.stationEnd ?? "Missing"}</b></div>
+                    <div><span>Start Measure</span><b>{feet(inventoryMapSelection.value.startMeasure ?? inventoryMapSelection.value.startStationFeet)}</b></div>
+                    <div><span>End Measure</span><b>{feet(inventoryMapSelection.value.endMeasure ?? inventoryMapSelection.value.endStationFeet)}</b></div>
+                    <div><span>Render Authority</span><b>{inventoryMapSelection.value.renderAuthority ?? "MEASURED_CENTERLINE_CLIP"}</b></div>
+                    <div><span>Contained Assets</span><b>{displayReferenceList(inventoryMapSelection.value.containedAssets)}</b></div>
+                    <div><span>Construction</span><b>{inventoryMapSelection.value.constructionMethod ?? "Doctrine span view"}</b></div>
+                    <div><span>Billable Material</span><b>{inventoryMapSelection.value.billableMaterial ?? displayReferenceList(inventoryMapSelection.value.containedAssets)}</b></div>
+                    <div><span>Billable Labor</span><b>{inventoryMapSelection.value.billableLabor ?? "Span placement labor"}</b></div>
+                    <div><span>Material Template</span><b>{(inventoryMapSelection.value as any).materialTemplateId ?? (inventoryMapSelection.value as any).materialTemplate ?? inventoryMapSelection.value.billableMaterial ?? displayReferenceList(inventoryMapSelection.value.containedAssets)}</b></div>
+                    <div><span>Labor Template</span><b>{(inventoryMapSelection.value as any).laborTemplateId ?? (inventoryMapSelection.value as any).laborTemplate ?? inventoryMapSelection.value.billableLabor ?? "Span placement labor"}</b></div>
+                    <div><span>Evidence Template</span><b>{(inventoryMapSelection.value as any).evidenceTemplateId ?? (inventoryMapSelection.value as any).evidenceTemplate ?? displayReferenceList((inventoryMapSelection.value as any).evidenceRequirements)}</b></div>
+                    <div><span>Dependencies</span><b>{displayReferenceList(inventoryMapSelection.value.dependencies)}</b></div>
+                    <div><span>Execution</span><b>{(inventoryMapSelection.value as any).executionSequenceId ?? "Derived from endpoint objects"}</b></div>
+                    <div><span>Payment</span><b>{(inventoryMapSelection.value as any).paymentSequenceId ?? "Derived from endpoint objects"}</b></div>
+                    <div><span>Close</span><b>{(inventoryMapSelection.value as any).closeSequenceId ?? "Derived from endpoint objects"}</b></div>
+                    <div><span>Lifecycle</span><b>{inventoryMapSelection.value.lifecycleState ?? "PLANNED"}</b></div>
+                    <div><span>Authority</span><b>{(inventoryMapSelection.value as any).currentAuthority ?? "Commercial"}</b></div>
+                    <div><span>Next Authority</span><b>{(inventoryMapSelection.value as any).nextAuthority ?? "Commercial"}</b></div>
+                    <div><span>Domain Owner</span><b>{(inventoryMapSelection.value as any).domainResponsibilityMatrix?.[(inventoryMapSelection.value as any).currentState ?? inventoryMapSelection.value.lifecycleState ?? ""] ?? "Commercial"}</b></div>
+                    <div><span>Audit</span><b>{(inventoryMapSelection.value as any).auditStatus ?? "OPEN"}</b></div>
+                    <div><span>Closure Ledger</span><b>{(inventoryMapSelection.value as any).auditLedgerHooks?.closureLedgerId ?? "Pending"}</b></div>
+                    <div><span>Twin Projection</span><b>{(inventoryMapSelection.value as any).twinProjectionMetadata?.twinProjectionId ?? "Pending"}</b></div>
+                    <div><span>Next Closable</span><b>{(inventoryMapSelection.value as any).nextClosableSegment ?? displayReferenceList((inventoryMapSelection.value as any).openClosureSegments)}</b></div>
+                  </div>
+                </>
+              ) : (
+                <span>
+                  {inventoryMapSelection.type === "node"
+                    ? inventoryMapSelection.value.name
+                    : inventoryMapSelection.type === "edge"
+                      ? (inventoryMapSelection.value.segmentId ?? inventoryMapSelection.value.id)
+                      : inventoryMapSelection.type === "station"
+                        ? inventoryMapSelection.value.stationLabel
+                        : inventoryMapSelection.value.objectType.replaceAll("_", " ")}
+                </span>
+              )}
             </div>
           ) : null}
           <div className="commercial-inspector-card">
@@ -9964,6 +12914,19 @@ export default function GoogleRfpWorkspace() {
               <button type="button" onClick={handleRunAzBuilderScout} disabled={!azOriginLocation || !azDestinationLocation}>Resolve Product A/Z</button>
             </div>
           ) : null}
+          {pendingRouteImport ? (
+            <div className="commercial-inspector-card route-candidate-selection-card">
+              <b>Select Imported Route Centerline</b>
+              <span>{pendingRouteImport.sourceFileName} contains {pendingRouteImport.routes.length.toLocaleString()} candidate lines.</span>
+              <small>A/Z derivation is blocked until one intended centerline is selected. Points, polygons, laterals, and unselected lines remain source evidence.</small>
+              <select defaultValue="" aria-label="Imported route candidate" onChange={(event) => event.currentTarget.value && stageSelectedImportedRoute(pendingRouteImport, event.currentTarget.value)}>
+                <option value="">Select route...</option>
+                {pendingRouteImport.routes.filter((route) => route.dalGeometry.length > 1).map((route) => (
+                  <option key={route.routeId} value={route.routeId}>{route.name} · {formatRouteMiles(route.routeMiles)} mi · {route.folderPath.join(" / ") || "Root"}</option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           {routeImportStatus !== "IDLE" || temporaryImportedRoute ? (
             <div className="commercial-inspector-card temporary-imported-route-card">
               <b>Temporary Imported Route</b>
@@ -9981,10 +12944,42 @@ export default function GoogleRfpWorkspace() {
                 <>
                   <span>State: Temporary Imported Route</span>
                   <span>Estimate: {temporaryImportedCommercialDraft ? money(temporaryImportedCommercialDraft.financialAuthority.constructionCost) : "Pending"}</span>
+                  <div className="teralinx-summary-grid">
+                    <div><span>Source Type</span><b>{temporaryImportedRoute.importRecord.sourceType}</b></div>
+                    <div><span>Source Hash</span><b>{temporaryImportedRoute.importRecord.sourceFileHash?.slice(0, 16) ?? "Missing"}</b></div>
+                    <div><span>Route Revision</span><b>{temporaryImportedRoute.endpointAuthority.aSite.routeRevision}</b></div>
+                    <div><span>Geometry Hash</span><b>{temporaryImportedRoute.endpointAuthority.aSite.geometryHash.slice(0, 16)}</b></div>
+                    <div><span>Start Endpoint</span><b>{temporaryImportedRoute.endpointAuthority.sourceStartCoordinate[1].toFixed(6)}, {temporaryImportedRoute.endpointAuthority.sourceStartCoordinate[0].toFixed(6)}</b></div>
+                    <div><span>End Endpoint</span><b>{temporaryImportedRoute.endpointAuthority.sourceEndCoordinate[1].toFixed(6)}, {temporaryImportedRoute.endpointAuthority.sourceEndCoordinate[0].toFixed(6)}</b></div>
+                    <div><span>A Relationship</span><b>{importedAEndpointComparison?.relationship ?? "UNRESOLVED"}</b></div>
+                    <div><span>Z Relationship</span><b>{importedZEndpointComparison?.relationship ?? "UNRESOLVED"}</b></div>
+                  </div>
+                  <div className="dal-actions">
+                    <button type="button" onClick={handleAcceptImportedStartAsA}>Accept Start as A</button>
+                    <button type="button" onClick={handleReverseImportedRouteOrientation}>Reverse A / Z</button>
+                    {importedEndpointsNeedConfirmation ? <button type="button" className="primary" onClick={handleConfirmImportedEndpointReplacement}>Confirm Imported A/Z Coordinates</button> : <span className="dal-status">Imported route endpoint orientation accepted.</span>}
+                  </div>
+                  {(["A", "Z"] as const).map((endpoint) => {
+                    const site = endpoint === "A" ? temporaryImportedRoute.endpointAuthority.aSite : temporaryImportedRoute.endpointAuthority.zSite;
+                    return (
+                      <details key={`imported-endpoint-${endpoint}`}>
+                        <summary>{endpoint} Site Enrichment · {site.siteName}</summary>
+                        <div className="commercial-command-grid">
+                          {(["siteName", "customerSiteId", "address", "city", "state", "facilityType", "notes"] as const).map((field) => (
+                            <label key={`${endpoint}-${field}`}>
+                              <span>{field.replace(/([A-Z])/g, " $1").replace(/^./, (value) => value.toUpperCase())}</span>
+                              <input value={site[field]} onChange={(event) => handleEnrichImportedEndpoint(endpoint, field, event.currentTarget.value)} />
+                            </label>
+                          ))}
+                        </div>
+                        <small>Coordinate authority: IMPORTED_ROUTE · {site.coordinate[1].toFixed(6)}, {site.coordinate[0].toFixed(6)}. Enrichment cannot modify coordinates.</small>
+                      </details>
+                    );
+                  })}
                 </>
               ) : null}
               <div className="dal-actions">
-                <button type="button" className="primary" onClick={() => handleSaveTemporaryImportedRoute()} disabled={!temporaryImportedRoute}>
+                <button type="button" className="primary" onClick={() => handleSaveTemporaryImportedRoute()} disabled={!temporaryImportedRoute || importedEndpointsNeedConfirmation}>
                   Save Imported Route
                 </button>
                 <label className="dal-button secondary commercial-file-action">
@@ -10142,8 +13137,7 @@ export default function GoogleRfpWorkspace() {
                 {(commercialCorridorDraft.financialValidationWarnings ?? []).map((warning, index) => (
                   <small key={`${commercialCorridorDraft.routeId}-warning-${index}`}>Warning: {warning}</small>
                 ))}
-                <button type="button" onClick={handleLockScoutCandidate} disabled={opportunityScoutCandidate?.lockedIntoCommercialDraft}>Activate Corridor Draft</button>
-                <button type="button" onClick={handleSaveCommercialDraftSnapshot}>Save Snapshot</button>
+                <small>Use Generate Route and Save Revision for governed Commercial Revision changes.</small>
               </div>
             </>
           ) : null}
@@ -10157,7 +13151,7 @@ export default function GoogleRfpWorkspace() {
               <span>{money(opportunityScoutQuickQuote.budgetCost)} budget</span>
               <span>{money(opportunityScoutQuickQuote.nrc)} NRC / {money(opportunityScoutQuickQuote.mrc)} MRC</span>
               <span>{opportunityScoutQuickQuote.civilMix.label}</span>
-              <button type="button" onClick={handleLockScoutCandidate} disabled={opportunityScoutCandidate?.lockedIntoCommercialDraft}>Lock Site</button>
+              <small>Commercial Change Sets replace legacy site locks.</small>
             </div>
           ) : null}
           {commercialDraftValidation.length ? (
@@ -10187,7 +13181,6 @@ export default function GoogleRfpWorkspace() {
                 <span>{money(selectedPricingSummary.reconciliation.budgetCost)} budget / {money(selectedPricingSummary.reconciliation.sellPriceIru)} sell</span>
               )}
               <button type="button" onClick={() => setActiveView("proposal")}>Open Proposal Builder</button>
-              <button type="button" onClick={handleSaveCommercialDraftSnapshot} disabled={!commercialCorridorDraft && !opportunityScoutQuickQuote && !activeLiveSession?.dirty}>Save Snapshot</button>
             </div>
           ) : null}
           {activeCommercialDraftNetworks.length || accountCustomerDrafts.length || accountCustomerReviewStatus !== "NOT_STARTED" ? (
@@ -10202,27 +13195,11 @@ export default function GoogleRfpWorkspace() {
             <div className="commercial-inspector-card">
               <b>Engineering Handoff</b>
               <span>{accountAcceptedProposal.acceptedProposalId}</span>
-              <small>Submit to Engineering creates the Engineering Repository package. Sales still creates no ScopeVersion.</small>
-              {!submittedToEngineering ? (
-                <button type="button" onClick={handleSubmitCommercialDraftIofToEngineering} disabled={!canManageProposalRuntime || !activeProposalRuntime || !commercialDraftIofPackagePreview || engineeringCertificationPending}>
-                  Submit to Engineering
-                </button>
-              ) : (
-                <button type="button" onClick={handleOpenSubmittedEngineeringCertification} disabled={!submittedEngineeringPackageId || engineeringCertificationPending}>
-                  Open Engineering Certification
-                </button>
-              )}
+              <small>Use the Commercial Engineering Handoff card above the map for the single governed handoff action.</small>
             </div>
           ) : null}
         </aside>
         <div className="commercial-map-action-bar" aria-label="Commercial map actions">
-          <button type="button" className="primary" onClick={handleNewCommercialOpportunity}>New Opportunity</button>
-          <button type="button" onClick={handleGenerateCommercialRoute} disabled={commercialRoutingStatus === "ROUTING" || commercialRouteResult?.status === "ROUTED"}>
-            {commercialRoutingStatus === "ROUTING" ? "Routing..." : "Generate Route"}
-          </button>
-          <button type="button" onClick={handleSaveCommercialDraftSnapshot} disabled={!commercialCorridorDraft && !opportunityScoutQuickQuote && !activeLiveSession?.dirty}>Save Snapshot</button>
-          <button type="button" onClick={() => setActiveView("review")} disabled={!activeCommercialDraftNetworks.length && !accountCustomerDrafts.length}>Customer Review</button>
-          <button type="button" onClick={handleSaveRuntimeProposal} disabled={proposalRuntimeActionPending}>Save Proposal</button>
           <span>{activeRouteLengthLabel} / {estimateStatusLabel} / {proposalStatusLabel}</span>
         </div>
       </section>
@@ -10607,7 +13584,7 @@ export default function GoogleRfpWorkspace() {
             selectedScopeLabel={selectedScope.label}
             pricingSummary={selectedPricingSummary}
             recalculating={commercialRecalculationPending}
-            onSaveSnapshot={handleSaveLiveProposalSnapshot}
+            onSaveRevision={handleSaveLiveProposalSnapshot}
           />
 
           <EnrichmentPalettePanel

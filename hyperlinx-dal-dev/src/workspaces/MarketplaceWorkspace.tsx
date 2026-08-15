@@ -1,186 +1,94 @@
 import { useEffect, useMemo, useState } from "react";
-import { listMarketplaceQuotes, listScopeVersions, saveMarketplaceQuote, saveScopeVersion } from "../api/dalClient";
-import { applyQuoteToScopeVersion, generatePreliminaryQuote } from "../commercial/quoteEngine";
-import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
+import { listScopeVersions } from "../api/dalClient";
+import { bootstrapMarketplaceFulfillment, createMarketplaceAllocation, createMarketplaceAward, createMarketplaceResponse, downloadRuntimeArtifact, loadMarketplaceFulfillment } from "../api/teralinxRuntime";
 import { useDALState } from "../dal/DALState";
-import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
-import type { MarketplaceQuote, ScopeVersion } from "../types/dal";
+import { useTeralinxAuth } from "../identity/TeralinxAuth";
+import { MapKernel, renderSharedOpportunityMapProjection } from "../mapkernel";
+import type { MarketplaceFulfillmentState } from "../marketplace/MarketplaceFulfillment";
+import type { ScopeVersion } from "../types/dal";
 
-function fmtMoney(n: number) {
-  return n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-}
-
-function fmtPercent(n: number | undefined) {
-  return `${Math.round(Number(n || 0) * 100)}%`;
-}
+const money = (value: unknown) => Number(value || 0).toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const number = (value: unknown) => Number(value || 0).toLocaleString();
+const pct = (value: unknown) => `${Math.round(Number(value || 0))}%`;
+const short = (value: unknown) => String(value ?? "").replaceAll("_", " ");
 
 export default function MarketplaceWorkspace() {
-  const {
-    selectedScopeVersion,
-    setSelectedScopeVersion,
-    setSelectedScopeVersionId,
-    setWorkspace,
-  } = useDALState();
-  const [scopeVersions, setScopeVersions] = useState<ScopeVersion[]>([]);
-  const [quotes, setQuotes] = useState<MarketplaceQuote[]>([]);
-  const [termMonths, setTermMonths] = useState(36);
-  const [notes, setNotes] = useState("");
-  const [status, setStatus] = useState("Marketplace ready.");
+  const { selectedScopeVersion, setSelectedScopeVersion, setSelectedScopeVersionId, setWorkspace } = useDALState();
+  const { session } = useTeralinxAuth();
+  const [scopes, setScopes] = useState<ScopeVersion[]>([]);
+  const [state, setState] = useState<MarketplaceFulfillmentState | null>(null);
+  const [selectedPackageId, setSelectedPackageId] = useState("");
+  const [selectedResponseId, setSelectedResponseId] = useState("");
+  const [status, setStatus] = useState("Loading authorized ScopeVersion demand...");
+  const [pending, setPending] = useState(false);
+  const [vendorView, setVendorView] = useState(false);
+  const [responseType, setResponseType] = useState("CAPACITY_OFFER");
+  const [vendorName, setVendorName] = useState("DEMO-VENDOR-PORTAL");
+  const [rigs, setRigs] = useState(2);
+  const [plows, setPlows] = useState(1);
+  const [productionRate, setProductionRate] = useState(2400);
+  const [materialQuantity, setMaterialQuantity] = useState(0);
+  const [leadTimeDays, setLeadTimeDays] = useState(21);
+  const [unitRate, setUnitRate] = useState(0);
+  const [vendorLine, setVendorLine] = useState("Mobilization");
+  const [vendorException, setVendorException] = useState("");
+  const scope = selectedScopeVersion ?? scopes.find((item) => item.scopeVersionId.includes("3SWR")) ?? scopes[0];
 
-  useEffect(() => {
-    void refresh();
-  }, []);
+  async function refresh(target = scope) {
+    if (!target) return;
+    try { const next = await loadMarketplaceFulfillment<MarketplaceFulfillmentState>(target.scopeVersionId, session); setState(next); setStatus(next.packages.length ? "Marketplace fulfillment evidence loaded." : "Authorized demand is ready. Prepare the bounded 3SWR demo market to begin."); }
+    catch (error: any) { setStatus(`Marketplace load failed: ${error?.message ?? String(error)}`); }
+  }
 
-  const quoteDraft = useMemo(() => {
-    const canonicalScopes = scopeVersions.filter((item) => (item.canonicalTruth as any)?.networkBasis && (item.canonicalTruth as any)?.financialBasis);
-    const selectedCanonical =
-      selectedScopeVersion && (selectedScopeVersion.canonicalTruth as any)?.networkBasis && (selectedScopeVersion.canonicalTruth as any)?.financialBasis
-        ? selectedScopeVersion
-        : null;
-    const scope = selectedCanonical ?? canonicalScopes.find((item) => (item.canonicalTruth as any)?.decisionType === "PrismSiteDecision") ?? canonicalScopes[0];
-    if (!scope) return null;
-    const draft = generatePreliminaryQuote(scope, termMonths);
-    return notes ? { ...draft, notes } : draft;
-  }, [notes, scopeVersions, selectedScopeVersion, termMonths]);
-  const quoteScope = quoteDraft
-    ? selectedScopeVersion?.scopeVersionId === quoteDraft.scopeVersionId
-      ? selectedScopeVersion
-      : scopeVersions.find((scope) => scope.scopeVersionId === quoteDraft.scopeVersionId)
-    : null;
-  const routeAuthorityReference = quoteScope?.certifiedRouteReference;
-  const authoritativeQuoteAllowed = routeAuthorityReference?.routeAuthorityState === "CERTIFIED_ROUTE";
+  useEffect(() => { void (async () => { const selectedAuthorized = selectedScopeVersion?.isImmutable && selectedScopeVersion.serviceOrderId && selectedScopeVersion.certifiedIofPackageId ? selectedScopeVersion : null; if (selectedAuthorized) void refresh(selectedAuthorized); const next = await listScopeVersions(); const authorized = next.filter((item) => item.isImmutable && item.serviceOrderId && item.certifiedIofPackageId); setScopes(authorized); const target = selectedAuthorized ?? authorized.find((item) => item.scopeVersionId.includes("3SWR")) ?? authorized[0]; if (target) { setSelectedScopeVersion(target); setSelectedScopeVersionId(target.scopeVersionId); if (!selectedAuthorized) await refresh(target); } })(); }, []);
 
-  async function refresh() {
+  const selectedPackage = state?.packages.find((item) => item.marketplacePackageId === selectedPackageId) ?? state?.packages[0];
+  const selectedResponse = state?.latestResponses.find((item) => item.vendorResponseId === selectedResponseId) ?? state?.latestResponses[0];
+  const mapSpecs = useMemo(() => state?.sharedOpportunityMapProjection ? [renderSharedOpportunityMapProjection(state.sharedOpportunityMapProjection)] : [], [state?.sharedOpportunityMapProjection]);
+
+  async function bootstrap() { if (!scope) return; setPending(true); try { setState(await bootstrapMarketplaceFulfillment(scope.scopeVersionId, session)); setStatus("3SWR market prepared from the exact authorized ScopeVersion."); } catch (error: any) { setStatus(`Prepare failed: ${error?.message ?? String(error)}`); } finally { setPending(false); } }
+  async function allocate() {
+    if (!scope || !state || !selectedResponse) return; setPending(true);
     try {
-      const [nextQuotes, nextScopes] = await Promise.all([listMarketplaceQuotes(), listScopeVersions()]);
-      setQuotes(nextQuotes);
-      setScopeVersions(nextScopes);
-      setStatus("Marketplace data loaded.");
-    } catch (err: any) {
-      setStatus(`Marketplace load failed: ${err?.message ?? String(err)}`);
-    }
+      const isMaterial = selectedResponse.responseType === "MATERIAL_OFFER"; const station = state.demand.stationSummary;
+      await createMarketplaceAllocation(scope.scopeVersionId, { allocationSeriesId: `ALLOC-${selectedResponse.vendorId}`, vendorId: selectedResponse.vendorId, vendorResponseId: selectedResponse.vendorResponseId, vendorResponseVersion: selectedResponse.vendorResponseVersion, marketplacePackageId: selectedResponse.marketplacePackageId, stationRanges: [{ startStationId: station.firstStationId, endStationId: station.lastStationId }], segmentIds: [], objectIds: [], quantityAllocations: [], capacityAllocations: isMaterial ? [] : selectedResponse.capacityCommitments.map((item: any) => ({ commitmentId: item.commitmentId, resourceCount: item.equipmentCount || item.crewCount })), materialAllocations: isMaterial ? selectedResponse.materialResponses.map((item: any) => ({ materialResponseId: item.materialResponseId, demandLineId: item.demandLineId, quantity: item.offeredQuantity, unit: item.unit })) : [], plannedStart: "2026-09-15", requiredComplete: "2026-11-30", allocatedValue: [...selectedResponse.pricingLines, ...selectedResponse.vendorAddedLines].reduce((sum: number, line: any) => sum + Number(line.extendedAmount || 0), 0), decisionNotes: "Human allocation against exact submitted response version." }, session);
+      await refresh(scope); setStatus(`Allocated a governed portion to ${selectedResponse.vendorId}.`);
+    } catch (error: any) { setStatus(`Allocation blocked: ${error?.message ?? String(error)}`); } finally { setPending(false); }
+  }
+  async function award() { if (!scope || !state?.allocations[0]) return; setPending(true); try { const allocation = state.allocations[0]; await createMarketplaceAward(scope.scopeVersionId, { allocationId: allocation.allocationId, awardedAmount: allocation.allocatedValue }, session); await refresh(scope); setStatus(`Award recorded against ${allocation.allocationId}. Control and Field were not created.`); } catch (error: any) { setStatus(`Award blocked: ${error?.message ?? String(error)}`); } finally { setPending(false); } }
+  async function submitVendorResponse() {
+    if (!scope || !selectedPackage || !state) return; setPending(true);
+    try {
+      const isMaterial = responseType === "MATERIAL_OFFER"; const demandLine = state.demand.materialLines[0]; const series = `VR-${vendorName.replace(/[^A-Za-z0-9-]/g, "-").toUpperCase()}-${selectedPackage.marketplacePackageId}`;
+      await createMarketplaceResponse(scope.scopeVersionId, { responseSeriesId: series, vendorId: vendorName, providerType: isMaterial ? "MATERIAL_SUPPLIER" : "CONSTRUCTION_VENDOR", marketplacePackageId: selectedPackage.marketplacePackageId, responseType, pricingLines: unitRate > 0 && !isMaterial ? [{ lineId: "VENDOR-HDD", quantity: productionRate * 60, unit: "FT", unitRate, extendedAmount: productionRate * 60 * unitRate }] : [], vendorAddedLines: vendorLine.trim() ? [{ vendorLineId: "V-001", originalDescription: vendorLine, quantity: 1, unit: "LS", unitRate: 18000, extendedAmount: 18000, vendorExplanation: "Vendor-provided additional line.", teralinxClassification: "VENDOR_ADDITION" }] : [], capacityCommitments: isMaterial || responseType === "NO_BID" ? [] : [{ commitmentId: `${series}-HDD`, workType: "HDD", crewCount: rigs, equipmentCount: rigs, productionRate, productionUnit: "FT_DAY", earliestMobilizationDate: "2026-09-15", mobilizationLeadTimeDays: leadTimeDays, availableFrom: "2026-09-15", availableThrough: "2026-11-30", estimatedDurationDays: 60, workingDaysPerWeek: 6, workingHoursPerDay: 10, geographicPreferences: ["ANY_3SWR_SEGMENT"], constraintCapabilities: [] }, { commitmentId: `${series}-PLOW`, workType: "PLOW", crewCount: plows, equipmentCount: plows, productionRate: 4500, productionUnit: "FT_DAY", earliestMobilizationDate: "2026-09-15", mobilizationLeadTimeDays: leadTimeDays, availableFrom: "2026-09-15", availableThrough: "2026-11-30", estimatedDurationDays: 60, workingDaysPerWeek: 6, workingHoursPerDay: 10, geographicPreferences: ["ANY_3SWR_SEGMENT"], constraintCapabilities: [] }], materialResponses: isMaterial ? [{ materialResponseId: `${series}-MAT`, demandLineId: demandLine.demandLineId, responseStatus: materialQuantity >= demandLine.quantity ? "FULL" : "PARTIAL", requestedQuantity: demandLine.quantity, offeredQuantity: materialQuantity, unit: demandLine.unit, unitPrice: unitRate, extendedPrice: materialQuantity * unitRate, productionCapacity: materialQuantity, productionCapacityUnit: "FT_MONTH", leadTimeDays, deliveryCapacity: materialQuantity, deliveryCapacityUnit: "FT_MONTH", deliveryLocation: "3SWR staging", freightIncluded: false, specificationCompliance: "COMPLIANT", qualifications: [], exclusions: [] }] : [], exceptions: vendorException.trim() ? [{ vendorExceptionId: `${series}-EX-1`, vendorStatement: vendorException, classification: "SCOPE_EXCEPTION", status: "NOTED" }] : [], qualifications: [], exclusions: [], attachments: [] }, session);
+      await refresh(scope); setStatus(`${responseType.replaceAll("_", " ")} submitted as a new immutable response version.`);
+    } catch (error: any) { setStatus(`Response submission failed: ${error?.message ?? String(error)}`); } finally { setPending(false); }
   }
 
-  async function saveQuote() {
-    if (!quoteDraft) return;
-    const saved = await saveMarketplaceQuote(quoteDraft);
-    setQuotes((prev) => [saved, ...prev.filter((item) => item.quoteId !== saved.quoteId)]);
-    const scope = selectedScopeVersion ?? scopeVersions.find((item) => item.scopeVersionId === saved.scopeVersionId);
-    if (scope) {
-      const quotedScope = await saveScopeVersion(applyQuoteToScopeVersion(scope, saved));
-      setSelectedScopeVersion(quotedScope);
-      setSelectedScopeVersionId(quotedScope.scopeVersionId);
-      setScopeVersions((prev) => [quotedScope, ...prev.filter((item) => item.scopeVersionId !== quotedScope.scopeVersionId)]);
-    }
-    setStatus(`Saved quote ${saved.quoteId}.`);
-  }
+  if (!scope) return <section className="dal-workspace"><div className="dal-status warning">No immutable authorized ScopeVersion is available for Marketplace.</div></section>;
+  return <section className="dal-workspace engineering-certification-shell marketplace-fulfillment-shell">
+    <div className="dal-workspace-header"><div><span className="engineering-review-eyebrow">Authorized fulfillment</span><h2>Marketplace · 3SWR Delivery Readiness</h2><p>ScopeVersion defines what must be delivered. Marketplace determines how the market can fulfill it. Humans allocate responsibility.</p></div><div className="dal-actions"><button type="button" onClick={() => void refresh()}>Refresh</button>{!state?.packages.length ? <button type="button" onClick={() => void bootstrap()} disabled={pending}>Prepare 3SWR Marketplace</button> : null}</div></div>
 
-  return (
-    <section className="dal-workspace">
-      <div className="dal-workspace-header">
-        <div>
-          <h2>DAL Marketplace</h2>
-          <p>Opportunity quote staging with deterministic DAL v1 NRC/MRC formulas.</p>
-        </div>
-        <button type="button" onClick={() => void refresh()}>
-          Refresh
-        </button>
-      </div>
+    <div className="engineering-final-review-grid" aria-label="Authorized Scope"><span>Customer<b>{short(scope.customerId)}</b></span><span>Product<b>{short(scope.productName ?? scope.productId)}</b></span><span>ScopeVersion<b>{short(scope.scopeVersionId)}</b></span><span>Route Miles<b>{state?.demand.route.routeMiles.toFixed(2) ?? number(scope.routeMiles)}</b></span><span>Certified IOF<b>{short(scope.certifiedIofPackageId)}</b></span><span>Service Order<b>{short(scope.serviceOrderId)}</b></span></div>
+    <div className="dal-status">Scope Authorized → Market Response → Coverage → Allocation → Award → Control</div>
 
-      <ScopeVersionLifecycleRibbon scopeVersion={quoteScope ?? selectedScopeVersion ?? scopeVersions[0]} />
+    {state ? <>
+      <div className="dal-panel"><h3>Delivery Readiness</h3><div className="dal-grid">
+        {state.coverage.capacity.map((row) => <div className="dal-list-row" key={row.requirementId}><b>{short(row.workType)}</b><span>Required {row.requiredEquipment || row.requiredCrews}</span><span>Offered {row.offered}</span><span>Allocated {row.allocated}</span><strong>{pct(row.offeredCoveragePercent)}</strong>{row.remaining > 0 ? <em className="dal-badge fail">GAP {row.remaining}</em> : <em className="dal-badge pass">COVERED</em>}</div>)}
+        {state.coverage.material.map((row) => <div className="dal-list-row" key={row.demandLineId}><b>{row.description}</b><span>Required {number(row.quantity)} {row.unit}</span><span>Offered {number(row.offered)}</span><span>Allocated {number(row.allocated)}</span><strong>{pct(row.offeredCoveragePercent)}</strong>{row.remaining > 0 ? <em className="dal-badge fail">GAP {number(row.remaining)}</em> : <em className="dal-badge pass">COVERED</em>}</div>)}
+      </div><div className={`dal-status ${state.coverage.scheduleState === "PASS" ? "pass" : "warning"}`}>Schedule Coverage: {state.coverage.scheduleState}{state.coverage.scheduleConflicts.length ? ` · ${state.coverage.scheduleConflicts.join(", ")} requires review` : ""}</div></div>
 
-      <div className="dal-grid">
-        <div className="dal-panel">
-          <h3>Quote Draft</h3>
-          {quoteDraft ? (
-            <>
-              <div className="dal-metrics">
-                <span>ScopeVersion: {quoteDraft.scopeVersionId ?? "none"}</span>
-                <span>Attachment: {quoteDraft.attachmentType?.replaceAll("_", " ") ?? "n/a"}</span>
-                <span>Route: {quoteDraft.routeId ?? "n/a"}</span>
-                <span>Station: {quoteDraft.stationId ?? "n/a"}</span>
-                <span>Build Length: {Math.round(Number(quoteDraft.buildFeet ?? 0)).toLocaleString()} ft</span>
-                <span>Construction: {quoteDraft.constructionType ?? "n/a"}</span>
-                <span>Risk: {Math.round(Number(quoteDraft.riskScore ?? 0))}</span>
-                <span>Cost: {fmtMoney(Number(quoteDraft.estimatedCost ?? 0))}</span>
-                <span>Permit Cost: {fmtMoney(Number(quoteDraft.estimatedPermitCost ?? 0))}</span>
-                <span>Crossing Cost: {fmtMoney(Number(quoteDraft.estimatedCrossingCost ?? 0))}</span>
-                <span>Environmental Cost: {fmtMoney(Number(quoteDraft.estimatedEnvironmentalCost ?? 0))}</span>
-                <span>Engineering Cost: {fmtMoney(Number(quoteDraft.estimatedEngineeringCost ?? 0))}</span>
-                <span>Constructability: {Math.round(Number((quoteDraft.constructabilityAssessment as any)?.constructabilityScore ?? 0))}</span>
-                <span>Quote Source: ScopeVersion geometry / build path / costs</span>
-                <span>Route Authority State: {routeAuthorityReference?.routeAuthorityState ?? "NO_CERTIFIED_ROUTE"}</span>
-                <span>Route Mode: {routeAuthorityReference?.routeMode ?? "UNKNOWN"}</span>
-                <span>Route Feet: {Math.round(Number(routeAuthorityReference?.routeFeet ?? quoteDraft.buildFeet ?? 0)).toLocaleString()} ft</span>
-                <span>Crow-Fly Feet: {routeAuthorityReference ? "see CertifiedRoute" : "n/a"}</span>
-                <span>Route/Crow-Fly Ratio: {routeAuthorityReference ? "see CertifiedRoute" : "n/a"}</span>
-                <span>Constraint Evidence: {routeAuthorityReference?.constraintEvidenceId ?? "MISSING"}</span>
-                <span>Quote Authority: {authoritativeQuoteAllowed ? "AUTHORITATIVE" : "PRELIMINARY_ROUTE_NOT_CERTIFIED"}</span>
-                <span>NRC: {fmtMoney(quoteDraft.nrc)}</span>
-                <span>MRC: {fmtMoney(quoteDraft.mrc)}</span>
-                <span>Construction NRC: {fmtMoney(Number(quoteDraft.constructionNrc ?? 0))}</span>
-                <span>Engineering NRC: {fmtMoney(Number(quoteDraft.engineeringNrc ?? 0))}</span>
-                <span>Permit NRC: {fmtMoney(Number(quoteDraft.permitNrc ?? 0))}</span>
-                <span>Crossing NRC: {fmtMoney(Number(quoteDraft.crossingNrc ?? 0))}</span>
-                <span>TCV: {fmtMoney(quoteDraft.totalContractValue)}</span>
-                <span>Margin: {fmtPercent(quoteDraft.margin)}</span>
-                <span>Payback: {Math.round(Number(quoteDraft.paybackMonths ?? 0))} mo</span>
-                <span>ROI: {Number(quoteDraft.roi ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}x</span>
-              </div>
-              <input type="number" min={1} value={termMonths} onChange={(event) => setTermMonths(Number(event.target.value))} />
-              <textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Quote notes" />
-              <div className="dal-actions">
-                <button type="button" onClick={() => void saveQuote()}>
-                  {authoritativeQuoteAllowed ? "Save Authoritative Quote" : "Save Preliminary Quote"}
-                </button>
-                <button type="button" onClick={() => setWorkspace("control")}>
-                  Control
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="dal-status">Create ranked Opportunity Seeds in Prism.</div>
-          )}
-          <div className="dal-status">{status}</div>
-        </div>
+      <div className="dal-grid"><div className="dal-panel"><h3>Marketplace Packages</h3><div className="dal-list">{state.packages.map((pkg) => <button key={pkg.marketplacePackageId} type="button" onClick={() => setSelectedPackageId(pkg.marketplacePackageId)}><b>{pkg.title}</b><small>{short(pkg.packageType)} · {pkg.requiredCompletionDate} · {pkg.status}</small></button>)}</div>{selectedPackage ? <><div className="dal-actions"><button type="button" onClick={() => setSelectedPackageId(selectedPackage.marketplacePackageId)}>Open Package</button><button type="button" onClick={() => setVendorView((value) => !value)}>Vendor View</button><button type="button" onClick={() => setStatus("Responses are compared across price, capacity, availability, schedule, geography and constraints.")}>Compare Responses</button></div><div className="dal-actions"><button type="button" onClick={() => void downloadRuntimeArtifact(`/api/marketplace/fulfillment/${encodeURIComponent(scope.scopeVersionId)}/packages/${encodeURIComponent(selectedPackage.marketplacePackageId)}/pdf`, session)}>Download Bid Package PDF</button><button type="button" onClick={() => void downloadRuntimeArtifact(`/api/marketplace/fulfillment/${encodeURIComponent(scope.scopeVersionId)}/packages/${encodeURIComponent(selectedPackage.marketplacePackageId)}/kmz`, session)}>Download Bid Package KMZ</button></div></> : null}</div>
+      <div className="dal-panel"><h3>Vendor / Supplier Responses</h3><div className="dal-list">{state.latestResponses.map((response) => <button key={response.vendorResponseId} type="button" onClick={() => setSelectedResponseId(response.vendorResponseId)}><b>{response.vendorId} · {short(response.responseType)}</b><small>V{response.vendorResponseVersion} · {response.capacityCommitments.length} capacity · {response.materialResponses.length} materials</small></button>)}</div>{selectedResponse ? <><div className="dal-status">Exact response: {selectedResponse.vendorResponseId}</div><button type="button" onClick={() => void allocate()} disabled={pending}>Allocate Selected Response</button></> : null}</div></div>
 
-        <div className="dal-panel">
-          <h3>ScopeVersion Context</h3>
-          <div className="dal-list">
-            {scopeVersions.slice(0, 5).map((scope) => (
-              <button
-                key={scope.scopeVersionId}
-                type="button"
-                onClick={() => {
-                  setSelectedScopeVersion(scope);
-                  setSelectedScopeVersionId(scope.scopeVersionId);
-                }}
-              >
-                {scope.scopeVersionId} | {getAuthoritativeLifecycleState(scope)} | {(scope.canonicalTruth as any)?.site?.companyName ?? (scope.canonicalTruth as any)?.candidateSite?.companyName ?? scope.source}
-              </button>
-            ))}
-          </div>
-          <pre className="dal-pre">{JSON.stringify(selectedScopeVersion ?? scopeVersions[0] ?? {}, null, 2)}</pre>
-        </div>
-      </div>
+      <div className="dal-panel"><h3>Governed Opportunity Map</h3>{mapSpecs.length ? <MapKernel specs={mapSpecs} initialMode="geographic" initialBaseLayer="hybrid" stationDensityFeet={5280} height={520} presentationContext="MARKETPLACE" /> : <div className="dal-status warning">Governed map unavailable.</div>}</div>
 
-      <div className="dal-panel">
-        <h3>Saved Quotes</h3>
-        {quotes.length ? (
-          <div className="dal-list">
-            {quotes.map((quote) => (
-              <div key={quote.quoteId} className="dal-list-row">
-                <span>{quote.quoteId}</span>
-                <b>{fmtMoney(quote.totalContractValue)}</b>
-                <small>{quote.scopeVersionId ?? quote.opportunitySeedId ?? quote.opportunityId}</small>
-                <small>{quote.attachmentType?.replaceAll("_", " ") ?? "no attachment"} | {quote.buildFeet ? `${Math.round(quote.buildFeet).toLocaleString()} ft` : "n/a"}</small>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="dal-status">No quotes yet.</div>
-        )}
-      </div>
-    </section>
-  );
+      {vendorView && selectedPackage ? <div className="dal-panel marketplace-vendor-portal"><span className="engineering-review-eyebrow">Bounded Vendor Portal</span><h3>{selectedPackage.title}</h3><p>Respond only for the capacity or material you can commit. Governed quantities, route, stations, objects and Engineering conditions are read-only.</p><div className="engineering-final-review-grid"><span>Route<b>{state.demand.route.routeMiles.toFixed(2)} miles</b></span><span>Required Completion<b>{selectedPackage.requiredCompletionDate}</b></span><span>Stations<b>{number(state.demand.stationSummary.count)}</b></span><span>Objects<b>{number(state.demand.objectCount)}</b></span></div><div className="dal-form-grid"><label>Vendor / Supplier<input value={vendorName} onChange={(event) => setVendorName(event.target.value)} /></label><label>Response Type<select value={responseType} onChange={(event) => setResponseType(event.target.value)}><option value="FULL_SCOPE">Full Scope</option><option value="PARTIAL_SCOPE">Partial Scope</option><option value="CAPACITY_OFFER">Capacity Offer</option><option value="MATERIAL_OFFER">Material Offer</option><option value="NO_BID">No Bid</option></select></label><label>HDD rigs<input type="number" min={0} value={rigs} onChange={(event) => setRigs(Number(event.target.value))} /></label><label>Plows<input type="number" min={0} value={plows} onChange={(event) => setPlows(Number(event.target.value))} /></label><label>HDD production FT/day<input type="number" min={0} value={productionRate} onChange={(event) => setProductionRate(Number(event.target.value))} /></label><label>Lead / mobilization days<input type="number" min={0} value={leadTimeDays} onChange={(event) => setLeadTimeDays(Number(event.target.value))} /></label><label>Material quantity offered<input type="number" min={0} value={materialQuantity} onChange={(event) => setMaterialQuantity(Number(event.target.value))} /></label><label>Unit rate<input type="number" min={0} step="0.01" value={unitRate} onChange={(event) => setUnitRate(Number(event.target.value))} /></label><label>Vendor-added line<input value={vendorLine} onChange={(event) => setVendorLine(event.target.value)} /></label><label>Exception / qualification<input value={vendorException} onChange={(event) => setVendorException(event.target.value)} /></label></div><div className="dal-status">Governed requirements: {selectedPackage.materialReferences?.length ? selectedPackage.materialReferences.map((item: any) => `${item.description}: ${number(item.quantity)} ${item.unit}`).join(" · ") : selectedPackage.quantityReferences.map((item: any) => `${item.demandLineId}: ${number(item.quantity)} ${item.unit}`).join(" · ")}</div><button type="button" onClick={() => void submitVendorResponse()} disabled={pending}>Submit Immutable Vendor Response</button></div> : null}
+
+      <div className="dal-grid"><div className="dal-panel"><h3>Human Allocations</h3>{state.allocations.length ? state.allocations.map((allocation) => <div className="dal-list-row" key={allocation.allocationId}><b>{allocation.vendorId}</b><span>{allocation.allocationId}</span><span>Response V{allocation.vendorResponseVersion}</span><strong>{money(allocation.allocatedValue)}</strong></div>) : <div className="dal-status">No work or materials allocated yet.</div>}</div><div className="dal-panel"><h3>Awards / Commitments</h3>{state.awards.map((award) => <div className="dal-list-row" key={award.awardId}><b>{award.vendorId}</b><span>{award.awardId}</span><strong>{money(award.awardedAmount)}</strong></div>)}<button type="button" onClick={() => void award()} disabled={pending || !state.allocations.length || state.awards.some((item) => item.allocationId === state.allocations[0]?.allocationId)}>Award First Approved Allocation</button><button type="button" onClick={() => setWorkspace("control")}>Open Control</button><div className="dal-status">Awards do not automatically create Control or Field execution.</div></div></div>
+      <div className="dal-panel"><h3>Market Intelligence</h3><div className="engineering-final-review-grid"><span>Market Observations<b>{state.observations.length}</b></span><span>Quoted<b>{state.observations.filter((item) => item.evidenceStrength === "QUOTED").length}</b></span><span>Awarded<b>{state.awards.length}</b></span><span>Verified<b>0</b></span></div></div>
+      <details className="dal-panel"><summary>Diagnostics / Package Integrity</summary><pre className="dal-pre">{JSON.stringify({ scopeVersionHash: state.sourceAuthorityHash, route: state.demand.route, responseVersions: state.responses.map((item) => ({ id: item.vendorResponseId, version: item.vendorResponseVersion, hash: item.contentHash })), calculation: state.coverage.calculatedBy }, null, 2)}</pre></details>
+    </> : null}
+    <div className="dal-status">{status}</div>
+  </section>;
 }

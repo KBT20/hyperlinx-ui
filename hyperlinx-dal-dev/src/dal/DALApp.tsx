@@ -1,9 +1,15 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { DAL_API, DAL_APP_NAME, DAL_BASELINE_GRAPH_API, DAL_INVENTORY_GRAPH_API } from "../config/dalApi";
 import ReasoningPanel from "../components/ReasoningPanel";
 import RuntimeDiagnosticsPanel from "../components/RuntimeDiagnosticsPanel";
 import type { ReasoningWorkspace } from "../api/reasoningClient";
-import { endpointBaseUrl, getReasoningEndpointCandidates } from "../api/reasoningRegistry";
+import {
+  endpointBaseUrl,
+  getReasoningServiceSnapshot,
+  startReasoningService,
+  subscribeReasoningService,
+  type ReasoningFabricHealth,
+} from "../api/reasoningRegistry";
 import DALNavigation from "./DALNavigation";
 import { DALStateProvider, useDALState } from "./DALState";
 import { TeralinxAuthProvider, useTeralinxAuth } from "../identity/TeralinxAuth";
@@ -190,6 +196,7 @@ function DALReasoningOutlet() {
     selectedScopeVersionId,
     selectedOpportunityId,
   } = useDALState();
+  if (workspace === "routeEngineering") return null;
   const scopeTruth = selectedScopeVersion?.canonicalTruth as any;
   const scopeNetworkBasis = scopeTruth?.networkBasis;
   const scopeGeographicBasis = scopeTruth?.geographicBasis;
@@ -260,27 +267,43 @@ function DALReasoningOutlet() {
 
 function RuntimeDiagnosticsDisclosure() {
   const [open, setOpen] = useState(false);
+  const { workspace } = useDALState();
   return (
     <details
       className="dal-runtime-diagnostics-disclosure"
       open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
-      <summary>Runtime Diagnostics</summary>
+      <summary>{workspace === "routeEngineering" ? "Technical Diagnostics" : "Runtime Diagnostics"}</summary>
       {open ? <RuntimeDiagnosticsPanel /> : null}
     </details>
   );
 }
 
 function DALShell() {
-  const reasoningCandidates = getReasoningEndpointCandidates();
+  const [reasoningHealth, setReasoningHealth] = useState<ReasoningFabricHealth>(() => getReasoningServiceSnapshot());
+  const [navigationOpen, setNavigationOpen] = useState(false);
   const { session, runtimeInfo, logout } = useTeralinxAuth();
+  const { workspace } = useDALState();
+  useEffect(() => {
+    const unsubscribe = subscribeReasoningService(setReasoningHealth);
+    startReasoningService();
+    return unsubscribe;
+  }, []);
+  useEffect(() => {
+    if (!navigationOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setNavigationOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [navigationOpen]);
+  const reasoningEndpoint = reasoningHealth.activeEndpoint ?? reasoningHealth.endpoints[0];
   return (
     <div className="dal-shell">
       <header className="dal-header">
         <div>
           <div className="dal-kicker">TERALINX</div>
           <h1>{DAL_APP_NAME}</h1>
+          <button className="dal-navigation-trigger" type="button" aria-expanded={navigationOpen} aria-controls="dal-workspace-navigation" onClick={() => setNavigationOpen((open) => !open)}>☰ Workspaces</button>
         </div>
         <div className="dal-targets">
           <span>User: {session?.user.name} / {session?.user.title}</span>
@@ -291,12 +314,13 @@ function DALShell() {
           <span>DAL API: {DAL_API}</span>
           <span>Baseline Graph API: {DAL_BASELINE_GRAPH_API}</span>
           <span>Inventory API: {DAL_INVENTORY_GRAPH_API}</span>
-          <span>Reasoning Fabric: {reasoningCandidates.length ? reasoningCandidates.map(endpointBaseUrl).join(", ") : "not configured"}</span>
+          {workspace !== "routeEngineering" ? <span>Reasoning: {reasoningHealth.reasoningEnabled ? reasoningHealth.serviceStatus : "DISABLED"} / {reasoningEndpoint ? endpointBaseUrl(reasoningEndpoint) : "not configured"} / Circuit: {reasoningHealth.circuitBreakerState}</span> : null}
           <button className="dal-header-signout" type="button" onClick={logout}>Sign Out</button>
         </div>
       </header>
       <div className="dal-layout">
-        <DALNavigation />
+        {navigationOpen ? <button type="button" className="dal-nav-backdrop" aria-label="Close workspace navigation" onClick={() => setNavigationOpen(false)} /> : null}
+        <div id="dal-workspace-navigation"><DALNavigation open={navigationOpen} onClose={() => setNavigationOpen(false)} /></div>
         <main className="dal-main">
           <DALWorkspaceOutlet />
           <RuntimeDiagnosticsDisclosure />

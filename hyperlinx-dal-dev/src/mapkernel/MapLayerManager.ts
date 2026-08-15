@@ -108,7 +108,7 @@ export type MapKernelGeoJsonFeature = {
 
 export type MapKernelRenderSpec = {
   specId: string;
-  sourceType: "ScopeVersion" | "IOFPackage" | "InventoryGraph" | "GraphExtension" | "Manual";
+  sourceType: "ScopeVersion" | "IOFPackage" | "InventoryGraph" | "GraphExtension" | "CommercialRouteRepository" | "Manual";
   sourceId: string;
   name?: string;
   primitives: MapKernelPrimitive[];
@@ -221,16 +221,21 @@ function specMetadataString(spec: MapKernelRenderSpec | undefined, key: string) 
 }
 
 function objectIdForPrimitive(primitive: MapKernelPrimitive) {
-  return token(
-    primitive.ref.stationId ??
-      primitive.ref.nodeId ??
-      primitive.ref.edgeId ??
-      primitive.ref.objectId ??
-      primitive.ref.routeId ??
-      primitive.ref.id ??
-      primitive.id,
-    "unknown-object"
-  );
+  // Resolve identity from the governed feature's own identifier. Parent
+  // attachment keys (for example an Object's stationId or a Site's routeId)
+  // are lineage, not render identity; using them first falsely collapses
+  // distinct features that legitimately share a station or route.
+  const ownId = (() => {
+    switch (primitive.ref.kind) {
+      case "Station": return primitive.ref.stationId;
+      case "Node": return primitive.ref.nodeId;
+      case "Edge": return primitive.ref.edgeId;
+      case "Object": return primitive.ref.objectId;
+      case "Route": return primitive.ref.routeId;
+      default: return undefined;
+    }
+  })();
+  return token(ownId ?? primitive.ref.id ?? primitive.id, "unknown-object");
 }
 
 export function normalizePrimitiveRenderIdentity(

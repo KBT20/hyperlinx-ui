@@ -3,6 +3,7 @@ import { withStoredAuthHeaders } from "./authHeaders";
 
 export type GovernedAccount = {
   accountId: string;
+  accountNumber?: number;
   objectId?: string;
   runtimeObjectId?: string;
   objectType?: "ACCOUNT" | string;

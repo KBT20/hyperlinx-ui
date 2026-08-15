@@ -4,6 +4,7 @@ import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibb
 import { useDALState } from "../dal/DALState";
 import { buildFieldExecutionViewModel } from "../field/FieldExecutionViewModel";
 import { LeafletMap, type GISBuildPath, type GISPoint, type GISRoute } from "../gis";
+import { MapKernel, renderScopeVersion } from "../mapkernel";
 import {
   applyClosureToScopeVersion,
   calculateScopeVersionProgress,
@@ -157,6 +158,7 @@ export default function FieldWorkspace() {
     );
   }, [scopeVersions, selectedScopeVersion, selectedScopeVersionId, selectedWorkId, workItems]);
   const selectedScopeWorkItems = useMemo(() => workItems.filter((item) => item.scopeVersionId === activeScope?.scopeVersionId), [activeScope?.scopeVersionId, workItems]);
+  const fieldMapSpec = useMemo(() => activeScope ? renderScopeVersion(activeScope) : null, [activeScope]);
   const activeItems = useMemo(() => selectedScopeWorkItems.filter(activeWork), [selectedScopeWorkItems]);
   const selectedWorkItem = useMemo(() => {
     const selected = activeItems.find((item) => item.workItemId === selectedWorkId);
@@ -573,22 +575,21 @@ export default function FieldWorkspace() {
           <h3>Field Execution Map</h3>
           <span className="dal-status">Low zoom: route summary. Medium: station markers. High: station labels and object badges.</span>
         </div>
-        <LeafletMap
-          autoFocusKey={`${activeScope?.scopeVersionId ?? "none"}:${selectedStationContext?.stationId ?? "none"}:${selectedObjectContext?.objectId ?? "none"}`}
-          candidates={fieldMapCandidates}
-          attachments={fieldMapAttachments}
-          stations={fieldMapStations}
-          routes={fieldMapRoutes}
-          buildPaths={fieldMapBuildPaths}
-          focusCoordinates={fieldFocus}
+        {fieldMapSpec ? <MapKernel
+          specs={[fieldMapSpec]}
+          initialMode="geographic"
+          initialBaseLayer="hybrid"
           height={620}
-          enableLevelOfDetail
-          onPointSelect={(point) => {
-            const payload = point.payload as { stationId?: string; objectId?: string } | undefined;
-            const station = stationContexts.find((item) => item.stationId === payload?.stationId);
-            if (station) selectStation(station, payload?.objectId);
+          presentationContext="FIELD"
+          selectedFeatureId={selectedObjectContext?.objectId ?? selectedStationContext?.stationId ?? ""}
+          focusFeatureId={selectedObjectContext?.objectId ?? selectedStationContext?.stationId ?? ""}
+          onSelectionChange={(selection) => {
+            const stationId = selection?.featureRef.stationId;
+            const objectId = selection?.featureRef.objectId;
+            const station = stationContexts.find((item) => item.stationId === stationId || item.objectsAtStation.some((object) => object.objectId === objectId));
+            if (station) selectStation(station, objectId);
           }}
-        />
+        /> : <div className="dal-status">Select assigned work on an authorized ScopeVersion to open the governed spine.</div>}
         <div className="dal-field-legend">
           <span><b className="legend-dot state-planned" /> Planned</span>
           <span><b className="legend-dot state-released" /> Released</span>

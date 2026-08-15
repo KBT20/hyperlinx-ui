@@ -20,7 +20,7 @@ import {
   type InventoryRecoveryRecord,
   type InventoryValidationCheck,
 } from "../api/inventoryRecovery";
-import { endpointBaseUrl, getReasoningEndpointCandidates } from "../api/reasoningRegistry";
+import { endpointBaseUrl, getReasoningServiceSnapshot } from "../kernel/ReasoningServiceManager";
 import ConstraintGeometryRegistryPanel from "../components/ConstraintGeometryRegistryPanel";
 import { DAL_API, DAL_BASELINE_GRAPH_API } from "../config/dalApi";
 import { useDALState } from "../dal/DALState";
@@ -61,7 +61,7 @@ export default function InventoryRecoveryWorkspace() {
   const selectedRecord = records.find((record) => record.inventoryId === selectedInventoryId) ?? records[0] ?? null;
   const kernelSpec = useMemo(() => (kernelScopeVersion ? renderScopeVersion(kernelScopeVersion) : null), [kernelScopeVersion]);
   const kernelDiagnostics = useMemo(() => buildMapKernelDiagnostics(kernelScopeVersion, kernelSpec), [kernelScopeVersion, kernelSpec]);
-  const reasoningCandidates = useMemo(() => getReasoningEndpointCandidates(), []);
+  const reasoningSnapshot = useMemo(() => getReasoningServiceSnapshot(), []);
   const inventoryScopeVersions = useMemo(() => scopeVersions.filter((scopeVersion) => scopeVersion.type === "INVENTORY" || scopeVersion.source === "InventoryGraph"), [scopeVersions]);
   const summary = useMemo(() => summarizeInventoryRecovery(records), [records]);
   const legacyGroups = useMemo(() => {
@@ -416,7 +416,7 @@ export default function InventoryRecoveryWorkspace() {
         <div className="dal-metrics">
           <span>DAL API Endpoint: {DAL_API || "not configured"}</span>
           <span>Baseline Graph Endpoint: {DAL_BASELINE_GRAPH_API || "not configured"}</span>
-          <span>Reasoning Fabric Endpoints: {reasoningCandidates.length ? reasoningCandidates.map(endpointBaseUrl).join(", ") : "not configured"}</span>
+          <span>Reasoning Fabric Endpoints: {reasoningSnapshot.endpoints.length ? reasoningSnapshot.endpoints.map(endpointBaseUrl).join(", ") : "not configured"}</span>
         </div>
         <div className="dal-table-wrap">
           <table className="dal-table">
@@ -570,6 +570,7 @@ export default function InventoryRecoveryWorkspace() {
               showStationLabels={false}
               stationDensityFeet={300}
               height={520}
+              presentationContext="TWIN"
               onSelectionChange={setKernelSelection}
               onMetricsChange={setKernelMetrics}
             />

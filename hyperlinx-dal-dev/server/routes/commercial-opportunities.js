@@ -12,6 +12,7 @@ import {
   routeMatch,
   sortedByUpdated,
   unwrapBody,
+  updateTransactionManifest,
 } from "./_shared.js";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
 
@@ -265,16 +266,27 @@ function runtimeHistoryEvent(record, user, eventType, details = "") {
 }
 
 export async function saveOpportunity(record, user, eventType = "runtime.opportunity.saved", details = "Opportunity saved to the governed Runtime Object Library.") {
+  const transactionId = String(record.transactionId ?? createId("opportunity-save"));
+  await updateTransactionManifest({ transactionId, operationType: "ROUTE_OPPORTUNITY_SAVE", state: "STARTED", tenantId: record.organizationId, customerId: record.customerId ?? record.accountId, opportunityId: record.opportunityId, plannedWrites: [`runtime-history/${record.opportunityId}.json`, `commercial-opportunities/${record.opportunityId}.json`, `runtime-objects/${record.runtimeObjectId}.json`], artifactIds: [record.opportunityId, record.runtimeObjectId].filter(Boolean) });
   const history = runtimeHistoryEvent(record, user, eventType, details);
-  await persistRecord(DIRS.runtimeHistory, history.historyId, history);
+  try {
+    await persistRecord(DIRS.runtimeHistory, history.historyId, history);
+    await updateTransactionManifest({ transactionId, completedWrites: [`runtime-history/${history.historyId}.json`], artifactIds: [history.historyId] });
   const recordWithHistory = {
     ...record,
+    transactionId,
     activityHistory: unique([...asArray(record.activityHistory), history.historyId]),
     historyIds: unique([...asArray(record.historyIds), history.historyId]),
   };
   const saved = await persistRecord(DIRS.commercialOpportunities, recordWithHistory.opportunityId, recordWithHistory);
+  await updateTransactionManifest({ transactionId, completedWrites: [`commercial-opportunities/${recordWithHistory.opportunityId}.json`], artifactIds: [recordWithHistory.opportunityId] });
   await persistRuntimeMirror(saved);
+  await updateTransactionManifest({ transactionId, state: "COMMITTED", completedWrites: [`runtime-objects/${recordWithHistory.runtimeObjectId}.json`], artifactIds: [recordWithHistory.runtimeObjectId].filter(Boolean) });
   return saved;
+  } catch (error) {
+    await updateTransactionManifest({ transactionId, state: "RECOVERY_REQUIRED", failureReason: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
 }
 
 function requireUser(req, res) {

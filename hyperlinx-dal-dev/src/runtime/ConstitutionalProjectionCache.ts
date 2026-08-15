@@ -16,6 +16,8 @@ export type ConstitutionalArtifactType =
   | "AuditObjectManifest"
   | "ConstitutionalAssembly"
   | "DraftIofPackage"
+  | "DraftIofStructuralProjection"
+  | "CommercialFinancialProjection"
   | "PD002AAddressProjection"
   | "SpineObjectCatalogProjection"
   | "PD003ProductionProjection"
@@ -45,6 +47,11 @@ export type ConstitutionalArtifactRecord<T> = {
   validationStatus: RuntimeValidationStatus;
   producer: string;
   value: T;
+  createdAt: string;
+  lastAccessedAt: string;
+  hitCount: number;
+  dependencyClass: string;
+  ttlMs: number | null;
 };
 
 export type ConstitutionalCacheRequest<T> = {
@@ -57,10 +64,16 @@ export type ConstitutionalCacheRequest<T> = {
   producedFrom?: RuntimeArtifactReference[];
   validationStatus?: RuntimeValidationStatus;
   producer: string;
+  dependencyClass?: string;
+  ttlMs?: number | null;
   create: () => T;
 };
 
 const records = new Map<string, ConstitutionalArtifactRecord<unknown>>();
+const invalidations: Array<{ key: string; reason: string; invalidatedAt: string }> = [];
+const MAX_CACHE_ENTRIES = 128;
+const DEFAULT_DERIVED_TTL_MS = 30 * 60 * 1000;
+let evictionCount = 0;
 
 function stableJson(value: unknown, seen = new WeakSet<object>()): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -96,6 +109,21 @@ export function readConstitutionalArtifact<T>(artifactType: ConstitutionalArtifa
   return records.get(cacheKey(artifactType, artifactId)) as ConstitutionalArtifactRecord<T> | undefined;
 }
 
+function evictExpiredAndOverflow(now = Date.now()) {
+  for (const [key, record] of records) {
+    if (record.ttlMs !== null && now - Date.parse(record.lastAccessedAt) > record.ttlMs) {
+      records.delete(key);
+      evictionCount += 1;
+    }
+  }
+  while (records.size > MAX_CACHE_ENTRIES) {
+    const oldest = [...records.entries()].sort((a, b) => a[1].lastAccessedAt.localeCompare(b[1].lastAccessedAt))[0];
+    if (!oldest) break;
+    records.delete(oldest[0]);
+    evictionCount += 1;
+  }
+}
+
 export function getOrCreateConstitutionalArtifact<T>(request: ConstitutionalCacheRequest<T>): ConstitutionalArtifactRecord<T> {
   const key = cacheKey(request.artifactType, request.artifactId);
   const doctrineVersions = request.doctrineVersions ?? request.sourceDoctrineVersions ?? [];
@@ -108,12 +136,18 @@ export function getOrCreateConstitutionalArtifact<T>(request: ConstitutionalCach
     producedFrom,
   });
   const existing = records.get(key) as ConstitutionalArtifactRecord<T> | undefined;
-  if (existing?.inputHash === inputHash) {
+  const now = new Date().toISOString();
+  const existingExpired = Boolean(existing?.ttlMs !== null && existing?.ttlMs !== undefined && Date.now() - Date.parse(existing.lastAccessedAt) > existing.ttlMs);
+  if (existing?.inputHash === inputHash && !existingExpired) {
     markRuntimeDiagnostic("cacheHits");
-    return {
+    const hit = {
       ...existing,
-      cacheStatus: "HIT",
+      cacheStatus: "HIT" as const,
+      lastAccessedAt: now,
+      hitCount: existing.hitCount + 1,
     };
+    records.set(key, hit as ConstitutionalArtifactRecord<unknown>);
+    return hit;
   }
 
   markRuntimeDiagnostic("cacheMisses");
@@ -136,8 +170,14 @@ export function getOrCreateConstitutionalArtifact<T>(request: ConstitutionalCach
     validationStatus: request.validationStatus ?? "PASS",
     producer: request.producer,
     value,
+    createdAt: existing?.createdAt ?? now,
+    lastAccessedAt: now,
+    hitCount: 0,
+    dependencyClass: request.dependencyClass ?? request.artifactType,
+    ttlMs: request.ttlMs === undefined ? DEFAULT_DERIVED_TTL_MS : request.ttlMs,
   };
   records.set(key, record as ConstitutionalArtifactRecord<unknown>);
+  evictExpiredAndOverflow();
   recordRuntimeDuration(`${request.artifactType}:${request.producer}`, generationDurationMs);
   recordRuntimeArtifactRevision(request.artifactId, revision);
   recordArtifactRevision(record);
@@ -148,19 +188,45 @@ export function getOrCreateConstitutionalArtifact<T>(request: ConstitutionalCach
   return record;
 }
 
-export function invalidateConstitutionalArtifact(artifactType: ConstitutionalArtifactType, artifactId: string) {
-  const deleted = records.delete(cacheKey(artifactType, artifactId));
+export function invalidateConstitutionalArtifact(artifactType: ConstitutionalArtifactType, artifactId: string, reason = "Explicit artifact invalidation") {
+  const key = cacheKey(artifactType, artifactId);
+  const deleted = records.delete(key);
+  if (deleted) invalidations.push({ key, reason, invalidatedAt: new Date().toISOString() });
   recordRuntimeCacheEntries(records.size);
   return deleted;
 }
 
-export function invalidateConstitutionalArtifactGraph(artifactType: ConstitutionalArtifactType, artifactId: string) {
+export function invalidateConstitutionalArtifactGraph(artifactType: ConstitutionalArtifactType, artifactId: string, reason = "Dependency graph invalidation") {
   const order = resolveDependencyInvalidationOrder(artifactType, artifactId);
   order.forEach((key) => {
-    records.delete(key);
+    if (records.delete(key)) invalidations.push({ key, reason, invalidatedAt: new Date().toISOString() });
   });
   recordRuntimeCacheEntries(records.size);
   return order;
+}
+
+export function invalidateConstitutionalArtifactsByDependencyClass(dependencyClass: string, reason: string) {
+  const keys = [...records.entries()].filter(([, record]) => record.dependencyClass === dependencyClass).map(([key]) => key);
+  keys.forEach((key) => {
+    records.delete(key);
+    invalidations.push({ key, reason, invalidatedAt: new Date().toISOString() });
+  });
+  recordRuntimeCacheEntries(records.size);
+  return keys;
+}
+
+export function constitutionalProjectionCacheTelemetry() {
+  const hits = [...records.values()].reduce((total, record) => total + record.hitCount, 0);
+  return {
+    maximumEntries: MAX_CACHE_ENTRIES,
+    entries: records.size,
+    hits,
+    misses: [...records.values()].filter((record) => record.hitCount === 0).length,
+    evictions: evictionCount,
+    invalidations: invalidations.length,
+    lastInvalidation: invalidations.at(-1) ?? null,
+    bounded: records.size <= MAX_CACHE_ENTRIES,
+  };
 }
 
 export function listConstitutionalArtifacts() {
@@ -169,6 +235,8 @@ export function listConstitutionalArtifacts() {
 
 export function resetConstitutionalProjectionCache() {
   records.clear();
+  invalidations.splice(0, invalidations.length);
+  evictionCount = 0;
   resetArtifactRegistry();
   resetArtifactDependencyGraph();
   resetArtifactLineage();

@@ -4,6 +4,14 @@ import type { MapFeatureKind, MapFeatureRef } from "./MapLayerManager";
 export type MapSelection = {
   selectionId: string;
   kind: MapFeatureKind;
+  selectionType?: "ROUTE" | "STATION_RANGE" | "SEGMENT" | "STATION" | "OBJECT" | "FACILITY" | "CONDITION" | "CROSSING" | "WORK" | "CLOSURE";
+  canonicalId?: string;
+  routeId?: string;
+  station?: number;
+  stationRange?: { startFeet: number; endFeet: number };
+  coordinate?: [number, number];
+  sourceAuthority?: string;
+  lens?: string;
   featureRef: MapFeatureRef;
   payload?: unknown;
   selectedAt: string;
@@ -19,13 +27,14 @@ export const MapSelectionContext = createContext<MapSelectionContextValue>({
   setSelection: () => undefined,
 });
 
-export function createMapSelection(featureRef: MapFeatureRef, payload?: unknown): MapSelection {
+export function createMapSelection(featureRef: MapFeatureRef, payload?: unknown, context: Partial<MapSelection> = {}): MapSelection {
   return {
     selectionId: `${featureRef.kind}:${featureRef.id}`,
     kind: featureRef.kind,
     featureRef,
     payload,
     selectedAt: new Date().toISOString(),
+    ...context,
   };
 }
 

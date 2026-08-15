@@ -91,6 +91,7 @@ export default function ScopeVersionWorkspace() {
   const [engineeringReason, setEngineeringReason] = useState("Runtime promoted executed Service Order and Certified Draft IOF Package into the Order for Execution.");
   const [status, setStatus] = useState("ScopeVersion authority workspace ready.");
   const [pending, setPending] = useState(false);
+  const [routeTab, setRouteTab] = useState<"ROUTE" | "INFRASTRUCTURE" | "CONDITIONS" | "HISTORY">("ROUTE");
 
   async function refresh() {
     setPending(true);
@@ -285,14 +286,19 @@ export default function ScopeVersionWorkspace() {
                 showStationLabels
                 stationDensityFeet={5280}
                 height={520}
+                presentationContext="TWIN"
               />
             ) : (
               <div className="dal-status">Select a ScopeVersion to render certified geometry.</div>
             )}
           </section>
 
+          <nav className="scopeversion-route-tabs" aria-label="Certified route sections">
+            {(["ROUTE", "INFRASTRUCTURE", "CONDITIONS", "HISTORY"] as const).map((tab) => <button type="button" key={tab} className={routeTab === tab ? "active-toggle" : undefined} onClick={() => setRouteTab(tab)}>{tab[0] + tab.slice(1).toLowerCase()}</button>)}
+          </nav>
+
           <div className="dal-grid">
-            <section className="dal-panel">
+            <section className="dal-panel" hidden={routeTab !== "ROUTE"}>
               <h3>Engineering Summary</h3>
               <div className="dal-grid compact">
                 <div><span>Route Length</span><b>{feet(routeLengthFeet(activeScope))}</b></div>
@@ -306,17 +312,19 @@ export default function ScopeVersionWorkspace() {
               </div>
             </section>
 
-            <section className="dal-panel">
+            <section className="dal-panel" hidden={routeTab !== "INFRASTRUCTURE"}>
               <h3>Certified Quantities</h3>
-              <pre className="dal-json">{JSON.stringify(quantities, null, 2)}</pre>
+              <div className="dal-status">{Array.isArray(quantities) ? quantities.length : Object.keys(asRecord(quantities)).length} governed quantity records</div>
+              <details><summary>Technical Details</summary><pre className="dal-json">{JSON.stringify(quantities, null, 2)}</pre></details>
             </section>
 
-            <section className="dal-panel">
+            <section className="dal-panel" hidden={routeTab !== "INFRASTRUCTURE"}>
               <h3>Doctrine Compliance Snapshot</h3>
-              <pre className="dal-json">{JSON.stringify(truth.doctrineComplianceSnapshot ?? truth.engineeringDoctrine, null, 2)}</pre>
+              <div className="dal-status">Governed doctrine evidence retained with the certified revision.</div>
+              <details><summary>Technical Details</summary><pre className="dal-json">{JSON.stringify(truth.doctrineComplianceSnapshot ?? truth.engineeringDoctrine, null, 2)}</pre></details>
             </section>
 
-            <section className="dal-panel">
+            <section className="dal-panel" hidden={routeTab !== "CONDITIONS"}>
               <h3>Constraint Snapshot</h3>
               <div className="dal-list">
                 {constraints.slice(0, 12).map((constraint, index) => (
@@ -329,24 +337,25 @@ export default function ScopeVersionWorkspace() {
               </div>
             </section>
 
-            <section className="dal-panel">
+            <section className="dal-panel" hidden={routeTab !== "HISTORY"}>
               <h3>Redline History</h3>
-              <pre className="dal-json">{JSON.stringify(redlines, null, 2)}</pre>
+              <div className="dal-status">{redlines.length.toLocaleString()} governed redline records</div>
+              <details><summary>Technical Details</summary><pre className="dal-json">{JSON.stringify(redlines, null, 2)}</pre></details>
             </section>
 
-            <section className="dal-panel">
+            <section className="dal-panel" hidden={routeTab !== "HISTORY"}>
               <h3>Revision History</h3>
-              <pre className="dal-json">{JSON.stringify({
+              <details><summary>Technical Details</summary><pre className="dal-json">{JSON.stringify({
                 parentScopeVersionId: activeScope.parentScopeVersionId,
                 previousRevision: activeScope.previousRevision ?? truth.previousRevision,
                 changeSummary: activeScope.changeSummary ?? truth.changeSummary,
                 engineeringReason: activeScope.engineeringReason ?? truth.engineeringReason,
                 approvedBy: activeScope.approvedBy ?? truth.approvedBy,
                 approvedTimestamp: activeScope.approvedTimestamp ?? truth.approvedTimestamp,
-              }, null, 2)}</pre>
+              }, null, 2)}</pre></details>
             </section>
 
-            <section className="dal-panel">
+            <section className="dal-panel" hidden={routeTab !== "CONDITIONS"}>
               <h3>Engineering Notes</h3>
               <div className="dal-list">
                 {notes.map((note, index) => (
@@ -358,9 +367,9 @@ export default function ScopeVersionWorkspace() {
               </div>
             </section>
 
-            <section className="dal-panel">
+            <section className="dal-panel" hidden={routeTab !== "INFRASTRUCTURE"}>
               <h3>Graph Summary</h3>
-              <pre className="dal-json">{JSON.stringify(truth.graphSummary ?? activeScope.graphSummary, null, 2)}</pre>
+              <details><summary>Technical Details</summary><pre className="dal-json">{JSON.stringify(truth.graphSummary ?? activeScope.graphSummary, null, 2)}</pre></details>
             </section>
           </div>
         </>

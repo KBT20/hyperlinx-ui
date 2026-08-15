@@ -262,31 +262,54 @@ export function evaluateConstitutionalAssemblyReview(draftPackage: DraftIofPacka
       spineObjectId: expectationSpineObjectId(expectation, index),
       paymentEligibilityRule: expectation.paymentEligibilityRule,
     }));
-  const draftReadinessRecord = asRecord(draft.draftIofReadiness);
   const closureExpectations = asArray(draft.closureExpectations).length
     ? asArray(draft.closureExpectations)
     : asArray(auditProjection.closureExpectations);
   const engineeringObjects = asArray(draft.engineeringObjects).length
     ? asArray(draft.engineeringObjects)
     : executionNodes.filter((node) => asString(node.sourceArtifact) === "engineeringObjects");
+  const quantityReconciliationRecord = asRecord(draft.quantityReconciliation);
+  const formalQuantityReconciliation = Array.isArray(quantityReconciliationRecord.items)
+    ? quantityReconciliationRecord
+    : null;
+  const quantityReconciliation = asArray<JsonObject>(draft.quantityReconciliation);
 
   const productDoctrineReady = Boolean(draft.productDoctrine || draft.doctrineId);
   const objectDoctrineReady = Boolean(draft.engineeringObjectDoctrine || engineeringObjects.length);
   const auditProjectionReady = Boolean(auditProjection.projectionId || draft.auditProjectionSummary);
-  const quantitiesReady = Boolean(draft.quantitySummary || asRecord(draft.commercialSummary).quantitySummary || asNumber(asRecord(draft.commercialSummary).routeFeet) > 0);
+  const legacyQuantitiesReady = Boolean(draft.quantitySummary || asRecord(draft.commercialSummary).quantitySummary || asNumber(asRecord(draft.commercialSummary).routeFeet) > 0);
+  const quantitiesReady = formalQuantityReconciliation
+    ? asString(formalQuantityReconciliation.status).toUpperCase() === "PASS"
+    : quantityReconciliation.length
+      ? quantityReconciliation.every((item) => ["MATCH", "RESOLVED", "SUPERSEDED"].includes(asString(item.status).toUpperCase()))
+      : legacyQuantitiesReady;
   const dependenciesReady = Boolean(spineObjectDependencies.length) && spineObjectDependencies.every((item) => asArray(item.dependencies).length > 0 || item.dependencyGraphNotSchedule === true);
   const closeSequencesReady = Boolean(spineObjectCloseSequences.length) && spineObjectCloseSequences.every((item) => asArray(item.legalCloseSequence).length > 0);
   const evidenceReady = Boolean(spineObjectEvidenceRequirements.length) && spineObjectEvidenceRequirements.every((item) => asArray(item.requiredEvidence).length > 0);
   const segmentValidationReady = Boolean(segmentValidationRules.length);
   const paymentRulesReady = Boolean(paymentEligibilityRules.length) && paymentEligibilityRules.every((item) => asString(item.paymentEligibilityRule) === "NO_CLOSE_NO_VALIDATION_NO_PAYMENT");
   const kernelGraphReady = Boolean(kernelExecutionGraph.graphId) && asString(asRecord(draft.executionGraphValidation).status, asString(asRecord(kernelExecutionGraph.validation).status, "FAIL")) !== "FAIL";
-  const persistedDraftReady = asString(draftReadinessRecord.status).toUpperCase();
 
   const readinessChecks = [
     readiness("Product Doctrine", productDoctrineReady, productDoctrineReady ? "Product Doctrine is persisted." : "Product Doctrine is missing.", "product-doctrine"),
     readiness("Object Doctrine", objectDoctrineReady, objectDoctrineReady ? "Engineering Object Doctrine is persisted." : "Engineering Object Doctrine is missing.", "object-doctrine"),
     readiness("Audit Projection", auditProjectionReady, auditProjectionReady ? "Commercial Audit Projection is persisted." : "Commercial Audit Projection is missing.", "audit-projection"),
-    readiness("Quantities", quantitiesReady, quantitiesReady ? "Commercial quantities are persisted." : "Commercial quantities are missing.", "quantities"),
+    readiness(
+      "Quantity Reconciliation",
+      quantitiesReady,
+      formalQuantityReconciliation
+        ? quantitiesReady
+          ? `${asNumber(formalQuantityReconciliation.resolvedCount).toLocaleString()} of ${asNumber(formalQuantityReconciliation.requiredCount).toLocaleString()} required quantities are constitutionally resolved.`
+          : "Formal quantity reconciliation requires attributable Engineering disposition."
+        : quantityReconciliation.length
+        ? quantitiesReady
+          ? "Source quantities match doctrine-derived quantities."
+          : "Source and doctrine quantities require an authority disposition."
+        : quantitiesReady
+          ? "Commercial quantities are persisted; formal source reconciliation is not attached."
+          : "Commercial quantities are missing.",
+      "quantity-reconciliation",
+    ),
     readiness("Dependencies", dependenciesReady, dependenciesReady ? "Spine Object dependencies are persisted." : "Spine Object dependencies are missing.", "dependencies"),
     readiness("Close Sequences", closeSequencesReady, closeSequencesReady ? "Legal Close sequences are persisted." : "Legal Close sequences are missing.", "close-sequences"),
     readiness("Evidence Requirements", evidenceReady, evidenceReady ? "Evidence requirements are persisted." : "Evidence requirements are missing.", "evidence-requirements"),
@@ -296,18 +319,22 @@ export function evaluateConstitutionalAssemblyReview(draftPackage: DraftIofPacka
   ];
 
   const failedReadiness = readinessChecks.some((check) => check.status === "FAIL");
-  const calculatedDraftIofReadiness: DraftReadiness = !failedReadiness && constitutionalAssembly.status === "PASS" ? "READY" : "BLOCKED";
-  const draftIofReadiness = (persistedDraftReady === "READY" || persistedDraftReady === "BLOCKED" ? persistedDraftReady : calculatedDraftIofReadiness) as DraftReadiness;
+  const persistedAssemblyIssues = asArray<string>(constitutionalAssembly.blockingIssues);
+  const assemblyIssues = formalQuantityReconciliation
+    ? persistedAssemblyIssues.filter((issue) => !issue.toLowerCase().includes("quantity"))
+    : persistedAssemblyIssues;
+  const calculatedConstitutionalStatus = !failedReadiness && assemblyIssues.length === 0 ? "PASS" : "FAIL";
+  const calculatedDraftIofReadiness: DraftReadiness = calculatedConstitutionalStatus === "PASS" ? "READY" : "BLOCKED";
+  const draftIofReadiness = calculatedDraftIofReadiness;
   readinessChecks.push(readiness("Draft IOF Readiness", draftIofReadiness === "READY", `Draft IOF readiness is ${draftIofReadiness}.`, "draft-iof-readiness"));
 
-  const assemblyIssues = asArray<string>(constitutionalAssembly.blockingIssues);
   const blockers = normalizeAssemblyBlockers({
     issues: assemblyIssues,
     expectations: executionExpectations,
     nodes: executionNodes,
     checks: readinessChecks,
   });
-  const draftIofGateBlocked = constitutionalAssembly.status !== "PASS" || draftIofReadiness !== "READY" || blockers.length > 0;
+  const draftIofGateBlocked = calculatedConstitutionalStatus !== "PASS" || draftIofReadiness !== "READY" || blockers.length > 0;
   const status: ReviewStatus = draftIofGateBlocked ? "FAIL" : "PASS";
 
   const groupCounts = new Map<string, number>();

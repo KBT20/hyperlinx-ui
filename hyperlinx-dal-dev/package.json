@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite.config.ts",
+    "dev": "node scripts/local-dev.mjs",
+    "dev:ui": "vite --config vite.config.ts",
     "server": "node server/index.js",
     "start": "node server/index.js",
     "start:prod": "node server/index.js",
@@ -15,6 +16,7 @@
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",
     "jszip": "^3.10.1",
+    "pg": "^8.23.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.13.1",

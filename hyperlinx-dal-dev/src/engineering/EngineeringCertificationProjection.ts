@@ -8,6 +8,9 @@ import type {
   StationIndexedGraph,
 } from "../spine/SpineAuthorityContracts";
 import type { ObjectAddress, PD002AReviewObject } from "../doctrine/pd002/addressing/PD002AAddressingContracts";
+import { measuredSpineCoordinates } from "../rendering/MeasuredSpineRenderer";
+import { renderSpan } from "../rendering/ProjectedSpanRenderer";
+import { deriveObjectDomainProjection } from "../state/DomainProjectionEngine";
 
 export type EngineeringComplianceStatus = "PASS" | "WARNING" | "FAIL" | "PENDING";
 
@@ -43,6 +46,12 @@ export const PD001_COMPLIANCE_CATEGORIES = [
   "O&M",
   "constraints",
   "engineering readiness",
+  "doctrine object manifest",
+  "payment sequence",
+  "station lifecycle",
+  "doctrine station sequencing",
+  "doctrine span attachments",
+  "constitutional state authority",
 ] as const;
 
 export const ENGINEERING_CONSTRAINT_CATEGORIES = [
@@ -75,6 +84,12 @@ export interface EngineeringCertificationConstraint {
   engineeringDisposition: string;
   notesEvidence: string;
   source: string;
+  conditionTitle: string;
+  humanClassification: string;
+  humanSeverity: "INFO" | "LOW" | "MEDIUM" | "HIGH" | "BLOCKING";
+  conditionContext: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface EngineeringPackageStation {
@@ -105,6 +120,12 @@ export interface EngineeringPackageObject {
   engineeringNotes: string;
   constraintLinks: string[];
   currentReviewStatus: string;
+  currentAuthority?: string;
+  nextAuthority?: string;
+  auditStatus?: string;
+  closureLedgerId?: string;
+  twinProjectionId?: string;
+  domainOwner?: string;
   movable: boolean;
   attachmentMethod?: string;
   attachmentStatus?: string;
@@ -166,6 +187,21 @@ export interface EngineeringCertificationProjection {
   constructionSegments?: unknown[];
   paymentSegments?: unknown[];
   executionZones?: unknown[];
+  productDoctrineExecution?: Record<string, unknown>;
+  closeSequenceReferences?: unknown[];
+  scopeVersionReadinessRequirements?: unknown[];
+  doctrineObjectManifest?: Record<string, unknown>;
+  doctrineObjectInstantiationValidation?: Record<string, unknown>;
+  doctrineObjectDependencyGraph?: Record<string, unknown>;
+  doctrineObjectPaymentSequence?: unknown[];
+  doctrineStationLifecycleRules?: unknown[];
+  doctrineQuantityPlacement?: Record<string, unknown>;
+  doctrineStationObjectIndex?: unknown[];
+  doctrineSequencedActionObjects?: unknown[];
+  doctrineDerivedSpans?: unknown[];
+  doctrineLinearAssetSpanAttachments?: unknown[];
+  doctrineProjectionDiagnostics?: Record<string, unknown>;
+  geometryAuthorityDiagnostics?: Record<string, unknown>;
   instantiationSummary?: unknown;
   instantiationHealth?: unknown;
   hierarchySummary?: unknown;
@@ -438,7 +474,8 @@ function auditManifestReviewObjectsFromPackage(draft: DraftIofPackageRuntime): u
 }
 
 function instantiatedSpineObjectsFromPackage(draft: DraftIofPackageRuntime): unknown[] {
-  return asArray((draft as Record<string, unknown>).instantiatedSpineObjects);
+  const doctrineObjects = doctrineInstantiatedObjectsFromPackage(draft);
+  return doctrineObjects.length ? doctrineObjects : asArray((draft as Record<string, unknown>).instantiatedSpineObjects);
 }
 
 function constructionSegmentsFromPackage(draft: DraftIofPackageRuntime): unknown[] {
@@ -680,6 +717,42 @@ function objectIdFor(record: Record<string, unknown>, packageId: string, index: 
   );
 }
 
+function doctrineObjectManifestFromPackage(draft: DraftIofPackageRuntime) {
+  const loose = draft as Record<string, unknown>;
+  return asRecord(loose.doctrineObjectManifest ?? loose.engineeringObjectManifest);
+}
+
+function doctrineInstantiatedObjectsFromPackage(draft: DraftIofPackageRuntime): Record<string, unknown>[] {
+  const loose = draft as Record<string, unknown>;
+  const manifest = doctrineObjectManifestFromPackage(draft);
+  const projectedObjectManifest = asRecord(loose.projectedObjectManifest);
+  const projectedObjects = [
+    ...asArray<Record<string, unknown>>(loose.projectedObjects),
+    ...asArray<Record<string, unknown>>(projectedObjectManifest.projectedObjects),
+  ];
+  if (projectedObjects.length) {
+    const seenProjected = new Set<string>();
+    return projectedObjects.filter((record, index) => {
+      const key = asString(record.objectId ?? record.doctrineObjectId ?? record.unitId ?? record.structureId, `PROJECTED-${index}`);
+      if (seenProjected.has(key)) return false;
+      seenProjected.add(key);
+      return true;
+    });
+  }
+  const sources = [
+    ...asArray<Record<string, unknown>>(loose.doctrineInstantiatedObjects),
+    ...asArray<Record<string, unknown>>(manifest.instantiatedObjects),
+    ...asArray<Record<string, unknown>>(asRecord(loose.engineeringObjectManifest).instantiatedObjects),
+  ];
+  const seen = new Set<string>();
+  return sources.filter((record, index) => {
+    const key = asString(record.objectId ?? record.doctrineObjectId ?? record.unitId ?? record.structureId, `DOIE-${index}`);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function objectMovable(objectType: string) {
   return STATION_ATTACHED_OBJECT_TYPES.has(objectType);
 }
@@ -689,51 +762,65 @@ function normalizeObjects(
   stations: EngineeringPackageStation[],
   warnings: EngineeringProjectionValidationWarning[],
 ): EngineeringPackageObject[] {
-  const loose = draft as Record<string, unknown>;
   const attachments = new Map(
     objectStationAttachmentsFromPackage(draft).map((attachment) => [attachment.objectId, attachment as unknown as Record<string, unknown>]),
   );
-  const sourceObjects = [
-    ...asArray<Record<string, unknown>>(draft.objects),
-    ...asArray<Record<string, unknown>>(draft.structures),
-    ...asArray<Record<string, unknown>>(loose.engineeringObjects),
-  ];
-  const source = sourceObjects.length ? sourceObjects : asArray<Record<string, unknown>>(draft.proposedIofUnits);
+  const doctrineObjectManifest = doctrineObjectManifestFromPackage(draft);
+  const source = doctrineInstantiatedObjectsFromPackage(draft);
+  const projectedObjectManifest = asRecord((draft as Record<string, unknown>).projectedObjectManifest);
+  if ((!asString(doctrineObjectManifest.manifestId, "") && !asString(projectedObjectManifest.manifestId, "")) || !source.length) {
+    pushProjectionWarning(warnings, {
+      propertyPath: "engineeringPackage.doctrineObjectManifest.instantiatedObjects",
+      missingField: "doctrineObjectManifest.instantiatedObjects",
+      defaultApplied: "[]",
+      layer: "DOCTRINE_OBJECT_MANIFEST",
+    });
+    return [];
+  }
   return source.map((record, index) => {
     const objectId = objectIdFor(record, draft.packageId, index);
     const attachment = attachments.get(objectId) ?? asRecord(
       [...attachments.values()].find((candidate) => asString(candidate.objectId) === objectId),
     );
     const metadata = asRecord(record.metadata);
+    const address = asRecord(record.address);
     const attachmentStatus = asString(attachment.attachmentStatus, "");
     const attachmentMethod = asString(attachment.attachmentMethod, "");
     const stationReference = attachmentStatus === "UNRESOLVED"
       ? ""
-      : asString(attachment.stationId ?? attachment.stationLabel ?? record.stationId ?? record.station ?? metadata.stationId ?? metadata.station, "");
+      : asString(attachment.stationId ?? attachment.stationLabel ?? record.stationId ?? record.station ?? address.stationStart ?? record.stationStart ?? record.stationAddress ?? metadata.stationId ?? metadata.station, "");
     const fallbackStation = stationReference
       ? stations.find((station) => station.stationId === stationReference || station.label === stationReference)
       : attachments.has(objectId)
         ? undefined
         : nearestStation(stations, index, source.length);
     const renderFallbackStation = fallbackStation ?? nearestStation(stations, index, source.length);
-    const coordinate = coordinateFrom(attachment.coordinate ?? record.coordinate ?? record.geometry ?? metadata.coordinate) ?? renderFallbackStation?.coordinate;
+    const coordinate = coordinateFrom(record.geographicCoordinate ?? attachment.coordinate ?? record.coordinate ?? address ?? record.geometry ?? metadata.coordinate) ?? renderFallbackStation?.coordinate;
     const quantity = record.quantity ?? record.commercialQuantity ?? record.engineeringQuantity ?? metadata.quantity;
     const objectType = objectTypeFor(record, warnings, objectId, index);
+    const stateProjection = deriveObjectDomainProjection(record);
     return {
       objectId,
       objectType,
-      station: stationReference || fallbackStation?.label,
-      stationRange: asString(record.stationRange ?? metadata.stationRange, ""),
+      station: stationReference || asString(record.stationAddress, "") || fallbackStation?.label,
+      stationRange: asString(record.stationRange ?? address.stationRange ?? record.stationAddress ?? metadata.stationRange, ""),
       coordinate,
-      parentReference: asString(record.parentId ?? record.spineId ?? metadata.parentId ?? metadata.spineId, ""),
-      packageSource: "Draft IOF Package",
+      parentReference: asString(record.parentSpanId ?? record.parentRouteId ?? record.parentObjectId ?? record.parentId ?? record.spineId ?? metadata.parentId ?? metadata.spineId, ""),
+      packageSource: "Doctrine Object Manifest",
+      projectionPackageSource: asString(projectedObjectManifest.manifestId, "") ? "Doctrine Projection Manifest" : "Doctrine Object Manifest",
       constructionMethod: asString(record.constructionMethod ?? metadata.constructionMethod, "commercial assumption"),
-      dependencies: uniqueStrings([record.dependencyIds, metadata.dependencies]),
+      dependencies: uniqueStrings([record.dependencyList, record.dependencyIds, metadata.dependencies]),
       quantityImpact: quantity === undefined ? "n/a" : String(quantity),
       commercialAssumption: asString(record.commercialAssumption ?? record.engineeringNote ?? metadata.commercialAssumption, "Commercial package assumption"),
       engineeringNotes: asString(record.engineeringNotes ?? record.engineeringNote ?? metadata.engineeringNotes, ""),
       constraintLinks: uniqueStrings([record.constraintLinks, metadata.constraintLinks]),
-      currentReviewStatus: asString(record.status ?? record.engineeringDecision ?? metadata.status, "PENDING"),
+      currentReviewStatus: asString(record.currentLifecycleState ?? record.currentState ?? record.status ?? record.engineeringDecision ?? metadata.status, "PENDING"),
+      currentAuthority: asString(record.currentAuthority, stateProjection.currentAuthority),
+      nextAuthority: asString(record.nextAuthority, ""),
+      auditStatus: asString(record.auditStatus, ""),
+      closureLedgerId: asString(asRecord(record.auditLedgerHooks).closureLedgerId, ""),
+      twinProjectionId: asString(asRecord(record.twinProjectionMetadata).twinProjectionId, ""),
+      domainOwner: stateProjection.currentDomain,
       movable: objectMovable(objectType),
       attachmentMethod,
       attachmentStatus,
@@ -765,6 +852,14 @@ function normalizeConstraint(value: unknown, packageId: string, index: number): 
     engineeringDisposition: asString(record.engineeringDisposition ?? record.disposition, "PENDING_ENGINEERING_DISPOSITION"),
     notesEvidence: asString(record.notesEvidence ?? record.notes ?? record.evidence, ""),
     source: asString(record.source, "Engineering Certification"),
+    conditionTitle: asString(record.conditionTitle ?? record.title, asString(record.category, "Engineering condition")),
+    humanClassification: asString(record.humanClassification, asString(record.category, "Other")),
+    humanSeverity: (["INFO", "LOW", "MEDIUM", "HIGH", "BLOCKING"].includes(String(record.humanSeverity))
+      ? String(record.humanSeverity)
+      : severity === "CRITICAL" ? "BLOCKING" : severity) as EngineeringCertificationConstraint["humanSeverity"],
+    conditionContext: asRecord(record.conditionContext),
+    createdAt: asString(record.createdAt, ""),
+    updatedAt: asString(record.updatedAt, ""),
   };
 }
 
@@ -815,7 +910,7 @@ function stationGraphReferencesValid(graph: StationIndexedGraph | undefined, sta
   return graph.edges.every((edge) => stationIds.has(edge.fromStationId) && stationIds.has(edge.toStationId));
 }
 
-function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<EngineeringCertificationProjection, "routeCoordinates" | "routeLength" | "stations" | "objects" | "constraints" | "measuredSpine" | "stationAuthority" | "stationIndexedGraph" | "objectStationAttachments" | "objectAddresses" | "unassignedReviewObjects">): EngineeringComplianceRow[] {
+function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<EngineeringCertificationProjection, "routeCoordinates" | "routeLength" | "stations" | "objects" | "constraints" | "measuredSpine" | "stationAuthority" | "stationIndexedGraph" | "objectStationAttachments" | "objectAddresses" | "unassignedReviewObjects" | "doctrineObjectManifest" | "doctrineObjectInstantiationValidation" | "doctrineObjectPaymentSequence" | "doctrineStationLifecycleRules" | "doctrineQuantityPlacement" | "doctrineStationObjectIndex" | "doctrineSequencedActionObjects" | "doctrineDerivedSpans" | "doctrineLinearAssetSpanAttachments">): EngineeringComplianceRow[] {
   const loose = draft as Record<string, unknown>;
   const quantitySummary = asRecord(loose.quantitySummary);
   const pricingSummary = asRecord(loose.pricingSummary ?? draft.commercialSummary?.pricingSummary);
@@ -844,6 +939,39 @@ function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<Enginee
   const objectAddresses = projection.objectAddresses ?? [];
   const unassignedReviewObjects = projection.unassignedReviewObjects ?? [];
   const objectAddressingStatus = asString(addressValidation.status, objectAddresses.length ? "PASS" : "FAIL");
+  const doctrineObjectManifest = projection.doctrineObjectManifest ?? asRecord(loose.engineeringObjectManifest);
+  const doctrineObjectValidation = projection.doctrineObjectInstantiationValidation ?? asRecord(doctrineObjectManifest.validation);
+  const doctrinePaymentSequence = projection.doctrineObjectPaymentSequence ?? asArray(loose.doctrineObjectPaymentSequence);
+  const doctrineStationLifecycleRules = projection.doctrineStationLifecycleRules ?? asArray(loose.doctrineStationLifecycleRules);
+  const doctrineObjectCount = asNumber(doctrineObjectManifest.objectCount, asArray(doctrineObjectManifest.instantiatedObjects).length);
+  const doctrineAddressFailures = asNumber(doctrineObjectValidation.missingAddressCount, 0);
+  const doctrineQuantityPlacement = projection.doctrineQuantityPlacement ?? asRecord(doctrineObjectManifest.quantityPlacement);
+  const doctrineStationObjectIndex = projection.doctrineStationObjectIndex ?? asArray(doctrineObjectManifest.stationObjectIndex);
+  const doctrineSequencedActionObjects = projection.doctrineSequencedActionObjects ?? asArray(doctrineObjectManifest.sequencedActionObjects);
+  const doctrineDerivedSpans = projection.doctrineDerivedSpans ?? asArray(doctrineObjectManifest.derivedSpans);
+  const doctrineLinearAssetSpanAttachments = projection.doctrineLinearAssetSpanAttachments ?? asArray(doctrineObjectManifest.linearAssetSpanAttachments);
+  const projectedObjectManifest = asRecord(loose.projectedObjectManifest);
+  const closureLedger = asRecord(loose.closureLedger ?? projectedObjectManifest.closureLedger);
+  const iofPackageTwin = asRecord(loose.iofPackageTwin ?? projectedObjectManifest.iofPackageTwin);
+  const commercialAuditReconciliation = asRecord(loose.commercialAuditReconciliation ?? projectedObjectManifest.commercialAuditReconciliation);
+  const constitutionalStateValidation = asRecord(loose.constitutionalStateValidation ?? projectedObjectManifest.constitutionalStateValidation);
+  const quantityMismatchCount = asNumber(doctrineObjectValidation.quantityMismatchCount, 0);
+  const missingStationAddressCount = asNumber(doctrineObjectValidation.missingStationAddressCount, 0);
+  const sequenceGapCount = asNumber(doctrineObjectValidation.sequenceGapCount, 0);
+  const duplicateObjectIdCount = asNumber(doctrineObjectValidation.duplicateObjectIdCount, 0);
+  const spanDerivationFailureCount = asNumber(doctrineObjectValidation.spanDerivationFailureCount, 0);
+  const unattachedLinearAssetCount = asNumber(doctrineObjectValidation.unattachedLinearAssetCount, 0);
+  const doctrineValidationStatus = asString(doctrineObjectValidation.status, doctrineObjectCount > 0 ? "PASS" : "FAIL");
+  const stationSequencingPass = doctrineStationObjectIndex.length > 0 &&
+    doctrineSequencedActionObjects.length === doctrineStationObjectIndex.length &&
+    quantityMismatchCount === 0 &&
+    missingStationAddressCount === 0 &&
+    sequenceGapCount === 0 &&
+    duplicateObjectIdCount === 0;
+  const spanAttachmentPass = doctrineDerivedSpans.length > 0 &&
+    doctrineLinearAssetSpanAttachments.length >= doctrineDerivedSpans.length * 5 &&
+    spanDerivationFailureCount === 0 &&
+    unattachedLinearAssetCount === 0;
   const objectAttachmentPass = projection.objects.length === 0 ||
     (attachments.length >= projection.objects.length && attachments.every((attachment) => (
       attachment.attachmentStatus === "EXCEPTED" ||
@@ -867,10 +995,16 @@ function buildCompliance(draft: DraftIofPackageRuntime, projection: Pick<Enginee
     ["crossings", complianceStatus(asNumber(crossingAssembly.crossingCount) > 0 || projection.objects.some((object) => object.objectType.includes("CROSSING")), true), `${asNumber(crossingAssembly.crossingCount).toLocaleString()} crossings`],
     ["quantities", complianceStatus(Object.keys(quantitySummary).length > 0), `${Object.keys(quantitySummary).length.toLocaleString()} quantity keys`],
     ["pricing summary", complianceStatus(Object.keys(pricingSummary).length > 0), Object.keys(pricingSummary).length ? "pricing summary present" : "pricing summary pending"],
-    ["audit projection", auditProjectionSummary.complianceStatus === "FAIL" ? "FAIL" : auditProjectionSummary.complianceStatus === "WARNING" ? "WARNING" : asNumber(auditProjectionSummary.closureExpectationCount, 0) > 0 ? "PASS" : "FAIL", Object.keys(auditProjectionSummary).length ? `${asNumber(auditProjectionSummary.projectedAttachmentCount, 0).toLocaleString()} projected audit attachments / ${asNumber(auditProjectionSummary.closureExpectationCount, 0).toLocaleString()} closure expectations` : "audit projection missing"],
+    ["audit projection", auditProjectionSummary.complianceStatus === "FAIL" ? "FAIL" : auditProjectionSummary.complianceStatus === "WARNING" ? "WARNING" : auditProjectionSummary.complianceStatus === "PASS" ? "PASS" : "FAIL", Object.keys(auditProjectionSummary).length ? `${asString(auditProjectionSummary.complianceStatus, "UNKNOWN")} Commercial audit projection; Field closure evidence remains downstream` : "audit projection missing"],
     ["O&M", "PENDING", "O&M remains downstream of certification"],
     ["constraints", unresolvedConstraints.length ? "WARNING" : "PASS", unresolvedConstraints.length ? `${unresolvedConstraints.length.toLocaleString()} unresolved constraints` : "constraints resolved or accepted"],
-    ["engineering readiness", validation === "FAIL" ? "FAIL" : draft.engineeringReadiness?.includes("BLOCKED") ? "FAIL" : draft.engineeringReadiness?.includes("READY") ? "PASS" : "WARNING", draft.engineeringReadiness ?? "PENDING"],
+    ["engineering readiness", draft.engineeringReadiness?.includes("BLOCKED") ? "FAIL" : ["SUBMITTED_TO_ENGINEERING", "UNDER_ENGINEERING_REVIEW", "READY_FOR_CERTIFICATION"].includes(String(draft.engineeringReadiness ?? "")) || draft.engineeringReadiness?.includes("READY") ? "PASS" : validation === "FAIL" ? "WARNING" : "PENDING", draft.engineeringReadiness === "SUBMITTED_TO_ENGINEERING" ? "Expected lifecycle state while Engineering review is active" : draft.engineeringReadiness ?? "PENDING"],
+    ["doctrine object manifest", doctrineValidationStatus === "PASS" && doctrineObjectCount > 0 && doctrineAddressFailures === 0 ? "PASS" : "FAIL", doctrineObjectCount > 0 ? `${doctrineObjectCount.toLocaleString()} doctrine-instantiated objects / ${doctrineAddressFailures.toLocaleString()} address failures` : "Doctrine Object Instantiation Engine manifest missing"],
+    ["payment sequence", doctrinePaymentSequence.length > 0 ? "PASS" : "FAIL", doctrinePaymentSequence.length ? `${doctrinePaymentSequence.length.toLocaleString()} payment sequence rows` : "Doctrine payment sequence missing"],
+    ["station lifecycle", doctrineValidationStatus === "PASS" && doctrineStationLifecycleRules.length > 0 ? "PASS" : "FAIL", doctrineStationLifecycleRules.length ? `${doctrineStationLifecycleRules.length.toLocaleString()} doctrine lifecycle control-point rules; manifest validation ${doctrineValidationStatus}` : "Doctrine station lifecycle projection missing"],
+    ["doctrine station sequencing", stationSequencingPass ? "PASS" : "FAIL", stationSequencingPass ? `${doctrineStationObjectIndex.length.toLocaleString()} station objects sequenced from Product Doctrine quantities` : `Station sequencing failed: quantity mismatches ${quantityMismatchCount}, missing addresses ${missingStationAddressCount}, sequence gaps ${sequenceGapCount}, duplicate IDs ${duplicateObjectIdCount}. Quantity placement ${Object.keys(doctrineQuantityPlacement).length ? "present" : "missing"}.`],
+    ["doctrine span attachments", spanAttachmentPass ? "PASS" : "FAIL", spanAttachmentPass ? `${doctrineDerivedSpans.length.toLocaleString()} spans / ${doctrineLinearAssetSpanAttachments.length.toLocaleString()} linear asset attachments` : `Span attachment validation failed: span failures ${spanDerivationFailureCount}, missing linear attachments ${unattachedLinearAssetCount}.`],
+    ["constitutional state authority", commercialAuditReconciliation.status === "PASS" && constitutionalStateValidation.status === "PASS" && Boolean(closureLedger.closureLedgerId) && Boolean(iofPackageTwin.twinProjectionId) ? "PASS" : "FAIL", `Closure Ledger ${asString(closureLedger.closureLedgerId, "missing")} / IOF Twin ${asString(iofPackageTwin.twinProjectionId, "missing")} / Commercial Audit ${asString(commercialAuditReconciliation.status, "missing")} / State ${asString(constitutionalStateValidation.status, "missing")}`],
   ];
   return rows.map(([key, status, detail]) => ({ key, label: key, status, detail }));
 }
@@ -1124,6 +1258,55 @@ function objectAddressingPrimitives(projection: Omit<EngineeringCertificationPro
   return primitives;
 }
 
+function doctrineProjectedSpanStyle(assetTypes: string[]) {
+  if (assetTypes.includes("FIBER")) return { stroke: "#38bdf8", strokeWidth: 4, opacity: 0.72 };
+  if (assetTypes.includes("CONDUIT")) return { stroke: "#34d399", strokeWidth: 4, opacity: 0.72 };
+  if (assetTypes.includes("TRACE_WIRE")) return { stroke: "#facc15", strokeWidth: 3, opacity: 0.68, dasharray: "5 5" };
+  if (assetTypes.includes("WARNING_TAPE")) return { stroke: "#fb7185", strokeWidth: 3, opacity: 0.64, dasharray: "3 5" };
+  return { stroke: "#a855f7", strokeWidth: 3, opacity: 0.64, dasharray: "6 4" };
+}
+
+function doctrineProjectedSpanPrimitives(projection: Omit<EngineeringCertificationProjection, "mapSpec">, packageId: string): MapKernelPrimitive[] {
+  const loose = projection.sourceDraftPackage as Record<string, unknown>;
+  const projectedObjectManifest = asRecord(loose.projectedObjectManifest);
+  const spans = asArray<Record<string, unknown>>(loose.projectedSpans ?? projectedObjectManifest.projectedSpans);
+  const measuredCenterline = projection.measuredSpine ?? asRecord(loose.measuredCenterline) as unknown as MeasuredSpine;
+  return spans.flatMap((span, index) => {
+    const coordinates = renderSpan(measuredCenterline, span);
+    if (coordinates.length < 2) return [];
+    const spanId = normalizedProjectionString(span.spanId, `${packageId}:DOCTRINE-SPAN:${index + 1}`);
+    const assetTypes = asArray(span.containedAssets).map((asset) => normalizedProjectionUpper(asset, "ASSET"));
+    return [{
+      id: `${spanId}:doctrine-projected-span`,
+      layerId: "iofPackage",
+      kind: "line",
+      coordinates,
+      label: normalizedProjectionString(span.spanType, "Doctrine span"),
+      payload: span,
+      style: doctrineProjectedSpanStyle(assetTypes),
+      metadata: {
+        source: "Doctrine Projection Engine",
+        sourceLayer: "DOCTRINE_PROJECTED_SPANS",
+        renderAuthority: "MEASURED_CENTERLINE_CLIP",
+        packageId,
+        measuredCenterlineId: span.measuredCenterlineId,
+        startMeasure: span.startMeasure,
+        endMeasure: span.endMeasure,
+        startObjectId: span.startObjectId,
+        endObjectId: span.endObjectId,
+        startStation: span.startStation,
+        endStation: span.endStation,
+        lengthFeet: span.lengthFeet,
+        containedAssets: assetTypes,
+        lifecycleState: span.lifecycleState,
+        selectable: true,
+        independentGeometryProhibited: true,
+      },
+      ref: { kind: "ProductionUnit", id: spanId, objectId: spanId, scopeVersionId: "draft-iof-certification" },
+    } satisfies MapKernelPrimitive];
+  });
+}
+
 function spineObjectLayer(
   objectType: unknown,
   objectClass: unknown,
@@ -1343,8 +1526,11 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
     });
   }
   primitives.push(...packageGraphPrimitives(projection, packageId));
-  primitives.push(...objectAddressingPrimitives(projection, packageId));
-  primitives.push(...instantiatedSpineObjectPrimitives(projection, packageId));
+  const addressedObjectPrimitives = objectAddressingPrimitives(projection, packageId);
+  const addressedObjectIds = new Set(addressedObjectPrimitives.map((primitive) => primitive.ref.objectId ?? primitive.ref.id));
+  primitives.push(...addressedObjectPrimitives);
+  primitives.push(...doctrineProjectedSpanPrimitives(projection, packageId));
+  primitives.push(...instantiatedSpineObjectPrimitives(projection, packageId).filter((primitive) => !addressedObjectIds.has(primitive.ref.objectId ?? primitive.ref.id)));
   const lastStationIndex = projection.stations.length - 1;
   projection.stations.forEach((station, index) => {
     if (!station.coordinate) return;
@@ -1359,7 +1545,7 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
       coordinate: station.coordinate,
       label: station.label,
       style: { fill: isMajorStation ? "#fde68a" : "#bfdbfe", stroke: isMajorStation ? "#713f12" : "#1d4ed8", radius: isMajorStation ? 4 : 2.5, opacity: isMajorStation ? 0.95 : 0.68 },
-      metadata: { stationFeet: station.stationFeet, source: "Draft IOF Package", sourceLayer: "ENGINEERING_CERTIFICATION_STATIONS", renderAuthority: "STATION_AUTHORITY", packageId, geometryHash: station.geometryHash },
+      metadata: { stationFeet: station.stationFeet, isMajorStation, source: "Draft IOF Package", sourceLayer: "ENGINEERING_CERTIFICATION_STATIONS", renderAuthority: "STATION_AUTHORITY", packageId, geometryHash: station.geometryHash },
       ref: { kind: "Station", id: station.stationId, stationId: station.stationId, scopeVersionId: "draft-iof-certification" },
     });
     if (!isMajorStation) return;
@@ -1375,6 +1561,10 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
     });
   });
   projection.objects.forEach((object) => {
+    // PD-002A addressing is the canonical render representation when present.
+    // Rendering the generic projected object again made one governed object
+    // appear twice under different visual aliases.
+    if (addressedObjectIds.has(object.objectId)) return;
     if (!object.coordinate) return;
     primitives.push({
       id: `${object.objectId}:point`,
@@ -1397,16 +1587,21 @@ function renderCertificationSpec(projection: Omit<EngineeringCertificationProjec
   });
   projection.constraints.forEach((constraint) => {
     const station = projection.stations.find((item) => item.stationId === constraint.station || item.label === constraint.station);
-    if (!station?.coordinate) return;
+    const conditionCoordinate = station?.coordinate ?? coordinateFrom(constraint.conditionContext.coordinates ?? constraint.conditionContext.coordinate);
+    if (!conditionCoordinate) return;
     primitives.push({
       id: `${constraint.constraintId}:point`,
       layerId: "object",
       kind: "point",
-      coordinate: station.coordinate,
+      coordinate: conditionCoordinate,
       label: constraint.category,
-      style: { fill: "#ef4444", stroke: "#7f1d1d", radius: 9, opacity: 0.72 },
+      style: ["RESOLVED", "ACCEPTED"].includes(constraint.status)
+        ? { fill: "#64748b", stroke: "#334155", radius: 6, opacity: 0.72 }
+        : constraint.humanSeverity === "BLOCKING" || constraint.severity === "CRITICAL"
+          ? { fill: "#dc2626", stroke: "#fef2f2", strokeWidth: 3, radius: 11, opacity: 0.96 }
+          : { fill: "#f59e0b", stroke: "#78350f", radius: 8, opacity: 0.9 },
       payload: constraint,
-      metadata: { source: "Engineering Certification", sourceLayer: "ENGINEERING_CERTIFICATION_CONSTRAINTS", renderAuthority: "Engineering Constraint", packageId },
+      metadata: { source: "Engineering Certification", sourceLayer: "ENGINEERING_CERTIFICATION_CONSTRAINTS", renderAuthority: "Engineering Constraint", packageId, conditionStatus: constraint.status, conditionSeverity: constraint.humanSeverity, humanClassification: constraint.humanClassification },
       ref: { kind: "Constraint", id: constraint.constraintId, objectId: constraint.constraintId, scopeVersionId: "draft-iof-certification" },
     });
   });
@@ -1484,7 +1679,7 @@ export function buildEngineeringCertificationProjection(draft: DraftIofPackageRu
   const constructionSegments = constructionSegmentsFromPackage(draft);
   const paymentSegments = paymentSegmentsFromPackage(draft);
   const executionZones = executionZonesFromPackage(draft);
-  const routeCoordinates = routeCoordinatesFromPackage(draft);
+  const routeCoordinates = measuredSpine ? measuredSpineCoordinates(measuredSpine) : routeCoordinatesFromPackage(draft);
   const centerlineCoordinates = centerlineCoordinatesFromPackage(draft, routeCoordinates);
   const projectionValidationWarnings: EngineeringProjectionValidationWarning[] = [];
   const stations = normalizeStations(draft, routeCoordinates);
@@ -1527,6 +1722,21 @@ export function buildEngineeringCertificationProjection(draft: DraftIofPackageRu
     constructionSegments,
     paymentSegments,
     executionZones,
+    productDoctrineExecution: asRecord(loose.productDoctrineExecution),
+    closeSequenceReferences: asArray(loose.closeSequenceReferences),
+    scopeVersionReadinessRequirements: asArray(loose.scopeVersionReadinessRequirements),
+    doctrineObjectManifest: asRecord(loose.doctrineObjectManifest ?? loose.engineeringObjectManifest),
+    doctrineObjectInstantiationValidation: asRecord(loose.doctrineObjectInstantiationValidation ?? asRecord(loose.doctrineObjectManifest).validation ?? asRecord(loose.engineeringObjectManifest).validation),
+    doctrineObjectDependencyGraph: asRecord(loose.doctrineObjectDependencyGraph ?? asRecord(loose.doctrineObjectManifest).dependencyGraph ?? asRecord(loose.engineeringObjectManifest).dependencyGraph),
+    doctrineObjectPaymentSequence: asArray(loose.doctrineObjectPaymentSequence ?? asRecord(loose.doctrineObjectManifest).paymentSequence ?? asRecord(loose.engineeringObjectManifest).paymentSequence),
+    doctrineStationLifecycleRules: asArray(loose.doctrineStationLifecycleRules ?? asRecord(loose.doctrineObjectManifest).stationLifecycleRules ?? asRecord(loose.engineeringObjectManifest).stationLifecycleRules),
+    doctrineQuantityPlacement: asRecord(loose.doctrineQuantityPlacement ?? asRecord(loose.doctrineObjectManifest).quantityPlacement ?? asRecord(loose.engineeringObjectManifest).quantityPlacement),
+    doctrineStationObjectIndex: asArray(loose.doctrineStationObjectIndex ?? asRecord(loose.doctrineObjectManifest).stationObjectIndex ?? asRecord(loose.engineeringObjectManifest).stationObjectIndex),
+    doctrineSequencedActionObjects: asArray(loose.doctrineSequencedActionObjects ?? asRecord(loose.doctrineObjectManifest).sequencedActionObjects ?? asRecord(loose.engineeringObjectManifest).sequencedActionObjects),
+    doctrineDerivedSpans: asArray(loose.doctrineDerivedSpans ?? asRecord(loose.doctrineObjectManifest).derivedSpans ?? asRecord(loose.engineeringObjectManifest).derivedSpans),
+    doctrineLinearAssetSpanAttachments: asArray(loose.doctrineLinearAssetSpanAttachments ?? asRecord(loose.doctrineObjectManifest).linearAssetSpanAttachments ?? asRecord(loose.engineeringObjectManifest).linearAssetSpanAttachments),
+    doctrineProjectionDiagnostics: asRecord(loose.doctrineProjectionDiagnostics ?? asRecord(loose.projectedObjectManifest).doctrineProjectionDiagnostics),
+    geometryAuthorityDiagnostics: asRecord(loose.geometryAuthorityDiagnostics ?? asRecord(loose.projectedObjectManifest).geometryAuthorityDiagnostics ?? asRecord(asRecord(loose.projectedObjectManifest).doctrineProjectionDiagnostics).geometryAuthorityDiagnostics),
     instantiationSummary: loose.instantiationSummary,
     instantiationHealth: loose.instantiationHealth,
     hierarchySummary: loose.hierarchySummary,

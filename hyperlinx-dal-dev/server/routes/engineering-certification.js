@@ -4,13 +4,16 @@ import {
   createId,
   errorResponse,
   handleOptions,
+  hydrateIofProjectionArtifacts,
   jsonResponse,
   listRecords,
   loadRecord,
   nowIso,
+  persistIofProjectionArtifacts,
   persistRecord,
   readRequestJson,
   sortedByUpdated,
+  stripIofProjectionArtifacts,
   unwrapBody,
 } from "./_shared.js";
 import { requireAnyPermission } from "./authority.js";
@@ -21,6 +24,24 @@ import {
   resolveEngineeringPackageReferences,
   updateEngineeringPackageStatus,
 } from "./engineering-packages.js";
+import {
+  engineeringChangeSetsForRevision,
+  projectEngineeringRevisionFromChangeSets,
+} from "./engineering-change-sets.js";
+import {
+  CertifiedIofPackageProjection,
+  persistCertificationLedgerEntry,
+} from "./certification-ledger.js";
+import {
+  requireExactEngineeringApprovalForCertification,
+  resolveEngineeringApprovalContext,
+} from "./engineering-approvals.js";
+import { materializeCertifiedIofTwin } from "./twin-state.js";
+import {
+  commercialAuthorityDiagnosticsFrom,
+  ensureCommercialRevisionForProposal,
+  ensureCommercialReleasePackageForDraft,
+} from "./commercial-revisions.js";
 import { persistScopeVersion } from "./scopeversions.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 import {
@@ -75,6 +96,50 @@ function firstText(...values) {
     if (text) return text;
   }
   return "";
+}
+
+function sharedOpportunityMapProjection(routeRepository) {
+  const route = asRecord(routeRepository);
+  const coordinates = asArray(route.commercialGeometry)
+    .map((item) => asArray(item).slice(0, 2).map(Number))
+    .filter((item) => item.length === 2 && item.every(Number.isFinite));
+  const routeRepositoryId = firstText(route.routeRepositoryId, route.routeSnapshotId);
+  if (!routeRepositoryId || coordinates.length < 2) return null;
+  const endpointAuthority = asRecord(route.endpointAuthority);
+  const normalizeEndpoint = (value, fallback, role) => {
+    const source = asRecord(value);
+    const site = asRecord(source.site);
+    const candidate = asArray(source.coordinate).length >= 2
+      ? asArray(source.coordinate).slice(0, 2).map(Number)
+      : asArray(site.coordinate).length >= 2
+        ? asArray(site.coordinate).slice(0, 2).map(Number)
+        : fallback;
+    if (!candidate || candidate.length !== 2 || !candidate.every(Number.isFinite)) return null;
+    return {
+      role,
+      label: firstText(source.label, source.siteName, site.name, `${role} endpoint`),
+      coordinate: candidate,
+      coordinateSource: firstText(source.coordinateSource, site.coordinateSource, "COMMERCIAL_ROUTE_REPOSITORY"),
+    };
+  };
+  return {
+    authority: "COMMERCIAL_ROUTE_REPOSITORY",
+    projectionPurpose: "SHARED_OPPORTUNITY_MAP",
+    opportunityId: firstText(route.opportunityId),
+    routeRepositoryId,
+    routeRevision: Math.max(1, numeric(route.routeRevision, 1)),
+    routeGeometryId: firstText(route.routeGeometryId, `${routeRepositoryId}:geometry`),
+    geometryHash: firstText(route.geometryHash),
+    orientation: firstText(endpointAuthority.orientation, endpointAuthority.commercialOrientation, "A_TO_Z"),
+    coordinates,
+    endpoints: [
+      normalizeEndpoint(endpointAuthority.aSite ?? route.aLocation, coordinates[0], "A"),
+      normalizeEndpoint(endpointAuthority.zSite ?? route.zLocation, coordinates.at(-1), "Z"),
+    ].filter(Boolean),
+    responseProjectionOnly: true,
+    noPersistenceMutation: true,
+    noRouteRegeneration: true,
+  };
 }
 
 function routeParts(pathname) {
@@ -678,6 +743,8 @@ function normalizeStationPlan(input = {}, draft = {}, user = {}, timestamp = now
     status: "CERTIFIED",
     stations,
     objectAssignments,
+    stationCount: numeric(plan.stationCount, stations.length || asArray(draft.stationAuthorityIds).length),
+    objectAssignmentCount: numeric(plan.objectAssignmentCount, objectAssignments.length || asArray(asRecord(draft.projectedObjectManifest).projectedObjects).length),
     immutable: true,
     noScopeVersionCreation: true,
   };
@@ -811,7 +878,7 @@ async function persistRuntimeMirror(record, user, type, sourceId, metadata = {})
 }
 
 async function loadDraftPackage(packageId) {
-  return normalizeDraftPackage(await loadRecord(DIRS.iofPackages, packageId));
+  return normalizeDraftPackage(await hydrateIofProjectionArtifacts(await loadRecord(DIRS.iofPackages, packageId)));
 }
 
 async function resolveEngineeringPackageForCertification(packageReferenceId) {
@@ -854,6 +921,7 @@ function buildEngineeringRepositoryValidationReport(draftRecord, engineeringPack
   const refs = asRecord(referenceIntegrity.resolved);
   const checks = asRecord(referenceIntegrity.checks);
   const paths = asRecord(referenceIntegrity.repositoryPaths);
+  const engineeringBaseline = asRecord(refs.engineeringBaseline);
   const routeRepository = asRecord(refs.routeRepository);
   const proposedObjects = asArray(draft.proposedIofUnits);
   const stationAuthority = asRecord(draft.stationAuthority);
@@ -877,6 +945,15 @@ function buildEngineeringRepositoryValidationReport(draftRecord, engineeringPack
       true,
       "Engineering Repository package envelope restored.",
       paths.engineeringPackage,
+    ),
+    repositoryValidationCheck(
+      "engineeringBaseline",
+      "Engineering Baseline",
+      engineeringPackage?.engineeringBaselineId ?? engineeringBaseline.engineeringBaselineId,
+      Boolean(checks.engineeringBaseline),
+      true,
+      "Immutable Engineering Baseline restored before Engineering Package projection.",
+      paths.engineeringBaseline,
     ),
     repositoryValidationCheck(
       "draftIofPackage",
@@ -1025,6 +1102,10 @@ function buildEngineeringRepositoryValidationReport(draftRecord, engineeringPack
       readyForCertification,
     },
     repositoryAuthority: "ENGINEERING_REPOSITORY",
+    engineeringAuthority: "ENGINEERING_BASELINE",
+    engineeringBaselineId: engineeringPackage?.engineeringBaselineId,
+    engineeringBaselineHash: engineeringPackage?.engineeringBaselineHash,
+    engineeringRevisionId: engineeringPackage?.engineeringRevisionId,
     baselineGraphRequired: false,
     reasoningRequired: false,
     deterministicDoctrineFallback: true,
@@ -1034,7 +1115,7 @@ function buildEngineeringRepositoryValidationReport(draftRecord, engineeringPack
   };
 }
 
-function decorateDraftPackageWithEngineeringPackage(draftRecord, engineeringPackage, referenceIntegrity) {
+function decorateDraftPackageWithEngineeringPackage(draftRecord, engineeringPackage, referenceIntegrity, routeRepository = null) {
   const draft = normalizeDraftPackage(draftRecord);
   const repositoryValidation = buildEngineeringRepositoryValidationReport(draft, engineeringPackage, referenceIntegrity);
   const sanitizedIntegrity = {
@@ -1044,12 +1125,24 @@ function decorateDraftPackageWithEngineeringPackage(draftRecord, engineeringPack
   return normalizeDraftPackage({
     ...draft,
     engineeringPackageId: engineeringPackage.engineeringPackageId,
+    engineeringBaselineId: engineeringPackage.engineeringBaselineId,
+    engineeringBaselineHash: engineeringPackage.engineeringBaselineHash,
+    engineeringBaselineManifestId: engineeringPackage.engineeringBaselineManifestId,
+    engineeringBaselineProjectionId: engineeringPackage.engineeringBaselineProjectionId,
+    engineeringRevisionId: engineeringPackage.engineeringRevisionId,
+    engineeringRevisionSource: engineeringPackage.engineeringRevisionSource,
+    engineeringRevisionState: engineeringPackage.engineeringRevisionState,
+    engineeringAuthority: engineeringPackage.engineeringAuthority ?? "ENGINEERING_BASELINE",
     engineeringPackage,
     engineeringRepositoryRestore: {
       engineeringPackageId: engineeringPackage.engineeringPackageId,
+      engineeringBaselineId: engineeringPackage.engineeringBaselineId,
+      engineeringBaselineHash: engineeringPackage.engineeringBaselineHash,
+      engineeringRevisionId: engineeringPackage.engineeringRevisionId,
       status: engineeringPackage.engineeringStatus ?? engineeringPackage.status,
       referenceIntegrity: sanitizedIntegrity,
       repositoryAuthority: "ENGINEERING_REPOSITORY",
+      engineeringAuthority: "ENGINEERING_BASELINE",
       restoredFromEngineeringRepository: true,
       noCommercialRepositoryBrowsing: true,
       noRegeneration: true,
@@ -1057,6 +1150,7 @@ function decorateDraftPackageWithEngineeringPackage(draftRecord, engineeringPack
     },
     engineeringRepositoryValidation: repositoryValidation,
     engineeringReadinessReport: repositoryValidation,
+    sharedOpportunityMapProjection: sharedOpportunityMapProjection(routeRepository),
     routeRepositoryId: draft.routeRepositoryId ?? engineeringPackage.routeRepositoryId,
     commercialProposalId: engineeringPackage.proposalId ?? engineeringPackage.commercialProposalId,
     commercialWorkbookId: engineeringPackage.commercialWorkbookId,
@@ -1080,7 +1174,7 @@ async function decorateDraftPackageForResponse(record) {
   });
 }
 
-async function persistDraftPackage(record, user, eventType = "runtime.iof_package.saved", details = "Draft IOF Package saved.") {
+async function persistDraftPackage(record, user, eventType = "runtime.iof_package.saved", details = "Draft IOF Package saved.", options = {}) {
   const normalized = normalizeDraftPackage(record);
   const history = await appendHistory(normalized, user, eventType, details);
   const next = normalizeDraftPackage({
@@ -1088,9 +1182,39 @@ async function persistDraftPackage(record, user, eventType = "runtime.iof_packag
     historyIds: unique([...normalized.historyIds, history.historyId]),
     updatedAt: history.timestamp,
   });
-  await persistRecord(DIRS.iofPackages, next.packageId, next);
-  await persistRuntimeMirror(next, user, "DRAFT-IOF", next.packageId, { status: next.status, workflowStatus: next.workflowStatus });
+  const artifactReferences = options.reuseArtifactReferences
+    ? asRecord(next.iofArtifactRepositoryReferences)
+    : await persistIofProjectionArtifacts(next, {
+        timestamp: history.timestamp,
+        user,
+        lifecycleStage: eventType,
+      });
+  const repositoryRecord = normalizeDraftPackage(stripIofProjectionArtifacts({
+    ...next,
+    iofArtifactRepositoryReferences: {
+      ...(next.iofArtifactRepositoryReferences ?? {}),
+      ...artifactReferences,
+    },
+    repositoryAssemblyStatus: "PERSISTED_REFERENCE_ARTIFACTS",
+  }, {
+    ...(next.iofArtifactRepositoryReferences ?? {}),
+    ...artifactReferences,
+  }));
+  await persistRecord(DIRS.iofPackages, repositoryRecord.packageId, repositoryRecord);
+  await persistRuntimeMirror(repositoryRecord, user, "DRAFT-IOF", repositoryRecord.packageId, { status: repositoryRecord.status, workflowStatus: repositoryRecord.workflowStatus });
   return next;
+}
+
+async function persistDraftPackageMetadataPatch(record, user, eventType, details, metadata = {}) {
+  const timestamp = nowIso();
+  const history = await appendHistory(record, user, eventType, details, metadata);
+  const saved = await persistRecord(DIRS.iofPackages, record.packageId, {
+    ...record,
+    historyIds: unique([...asArray(record.historyIds), history.historyId]),
+    updatedAt: timestamp,
+  });
+  await persistRuntimeMirror(saved, user, "DRAFT-IOF", saved.packageId, { status: saved.status, workflowStatus: saved.workflowStatus, metadataPatchOnly: true });
+  return saved;
 }
 
 function engineeringIntakeIdForPackage(packageId) {
@@ -1158,6 +1282,7 @@ async function openDraftPackageForEngineering(packageReferenceId, user) {
     await decorateDraftPackageForResponse(draft),
     engineeringPackage,
     referenceIntegrity,
+    resolved.routeRepository,
   );
 }
 
@@ -1167,6 +1292,10 @@ function packageQueueItem(record, engineeringPackage = null) {
   return {
     engineeringPackageId: packageRecord.engineeringPackageId ?? draft.engineeringPackageId ?? draft.packageId,
     packageId: packageRecord.engineeringPackageId ?? draft.engineeringPackageId ?? draft.packageId,
+    engineeringBaselineId: packageRecord.engineeringBaselineId,
+    engineeringBaselineHash: packageRecord.engineeringBaselineHash,
+    engineeringRevisionId: packageRecord.engineeringRevisionId,
+    engineeringAuthority: packageRecord.engineeringAuthority ?? "ENGINEERING_BASELINE",
     draftIofPackageId: packageRecord.draftIOFPackageId ?? packageRecord.draftIofPackageId ?? draft.packageId,
     packageName: draft.packageName,
     packageReadiness: draft.packageReadiness,
@@ -1260,15 +1389,52 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
   if (!(proposal.approvalState === "APPROVED" || ["CUSTOMER_APPROVED", "READY_FOR_IOF_PACKAGE"].includes(proposal.status))) {
     throw runtimeError(409, "Draft IOF Package assembly requires a customer-approved Proposal.");
   }
+  const commercialRevision = await ensureCommercialRevisionForProposal(proposal, user, {
+    timestamp: nowIso(),
+  });
   const packageId = String(body.packageId ?? `DRAFT-IOF-${proposalId}`);
   const existing = await loadRecord(DIRS.iofPackages, packageId).catch(() => null)
     ?? (await listRecords(DIRS.iofPackages)).find((record) => record?.proposalId === proposalId && !["ARCHIVED", "CLOSED"].includes(String(record?.status ?? "")));
   if (existing && options.idempotent !== false) {
+    const { revision, releasePackage } = await ensureCommercialReleasePackageForDraft(existing, proposal, user, {
+      revision: commercialRevision,
+      timestamp: nowIso(),
+    });
+    const existingWithCommercialAuthority = normalizeDraftPackage({
+      ...existing,
+      commercialRevisionId: revision.commercialRevisionId,
+      revisionId: revision.revisionId,
+      commercialRevisionHash: revision.revisionHash,
+      commercialRepositoryId: revision.repositoryId,
+      commercialReleasePackageId: releasePackage.commercialReleasePackageId,
+      commercialReleaseHash: releasePackage.releaseHash,
+      commercialReleaseState: releasePackage.commercialReleaseState,
+      currentAuthority: "COMMERCIAL_RELEASE_PACKAGE",
+      draftIofAuthorityFlow: {
+        inputAuthority: "COMMERCIAL_RELEASE_PACKAGE",
+        commercialRevisionId: revision.commercialRevisionId,
+        commercialReleasePackageId: releasePackage.commercialReleasePackageId,
+        draftIofPackageId: existing.packageId,
+        draftIofOutputUnchanged: true,
+        pricingOutputUnchanged: true,
+        workbookOutputUnchanged: true,
+        noScopeVersionCreation: true,
+      },
+      commercialAuthorityDiagnostics: commercialAuthorityDiagnosticsFrom({
+        revision,
+        releasePackage,
+        proposal,
+        draftPackage: existing,
+      }),
+    });
+    await persistRecord(DIRS.iofPackages, existingWithCommercialAuthority.packageId, existingWithCommercialAuthority);
     return {
       created: false,
-      iofPackage: await decorateDraftPackageForResponse(existing),
-      draftPackage: await decorateDraftPackageForResponse(existing),
+      iofPackage: await decorateDraftPackageForResponse(existingWithCommercialAuthority),
+      draftPackage: await decorateDraftPackageForResponse(existingWithCommercialAuthority),
       proposal,
+      commercialRevision: revision,
+      commercialReleasePackage: releasePackage,
     };
   }
   const proposedIofUnits = unitsFromProposal(proposal, packageId);
@@ -1296,6 +1462,23 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
     visibility: "ORGANIZATION",
     authority: "ENGINEERING_REVIEW",
     lifecycleState: "IN_REVIEW",
+    commercialRevisionId: commercialRevision.commercialRevisionId,
+    revisionId: commercialRevision.revisionId,
+    commercialRevisionHash: commercialRevision.revisionHash,
+    commercialRepositoryId: commercialRevision.repositoryId,
+    commercialReleaseState: "PENDING_RELEASE",
+    currentAuthority: "COMMERCIAL_REVISION",
+    proposalAuthorityFlow: {
+      inputAuthority: "COMMERCIAL_REVISION",
+      projection: "PROPOSAL_PROJECTION",
+      repository: "PROPOSAL_REPOSITORY",
+      commercialRevisionId: commercialRevision.commercialRevisionId,
+      revisionHash: commercialRevision.revisionHash,
+      proposalOutputUnchanged: true,
+      pricingOutputUnchanged: true,
+      workbookOutputUnchanged: true,
+      noScopeVersionCreation: true,
+    },
     proposalId,
     customerId: proposal.customerId,
     accountId: proposal.accountId ?? (proposal.customerId === "customer-google" ? "google" : proposal.customerId),
@@ -1330,8 +1513,16 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
       customerContactEmails: proposal.customerContactEmails,
       executiveSummary: proposal.executiveSummary,
       readiness: proposal.readiness,
+      commercialRevisionId: commercialRevision.commercialRevisionId,
+      commercialRevisionHash: commercialRevision.revisionHash,
     },
     commercialSummary: {
+      commercialRevisionId: commercialRevision.commercialRevisionId,
+      commercialRevisionHash: commercialRevision.revisionHash,
+      commercialRepositoryId: commercialRevision.repositoryId,
+      routeRepositoryId: commercialRevision.routeRepositoryId,
+      estimateId: commercialRevision.estimateId,
+      workbookId: commercialRevision.workbookId,
       pricingSummary: proposal.pricingSummary,
       marginSummary: proposal.marginSummary,
       confidenceSummary: proposal.confidenceSummary,
@@ -1375,7 +1566,11 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
       proposal.fulfillmentPlanId,
     ]),
     assemblyReport: {
-      assembledFrom: "APPROVED_PROPOSAL_RUNTIME_OBJECT",
+      assembledFrom: "COMMERCIAL_REVISION",
+      previousSourceType: "APPROVED_PROPOSAL_RUNTIME_OBJECT",
+      commercialRevisionId: commercialRevision.commercialRevisionId,
+      commercialRevisionHash: commercialRevision.revisionHash,
+      proposalConsumesCommercialRevision: true,
       noScopeVersionCreated: true,
       noMarketplaceCreated: true,
       noDuplicateRuntimeObjects: true,
@@ -1429,13 +1624,53 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
     packageId: draft.packageId,
     assignedEngineerId: draft.assignedEngineerId,
   });
-  const finalDraft = normalizeDraftPackage({
+  const draftWithHistory = normalizeDraftPackage({
     ...draft,
     historyIds: unique([...draft.historyIds, createdEvent.historyId, queuedEvent.historyId]),
     updatedAt: queuedEvent.timestamp,
   });
+  const { revision, releasePackage } = await ensureCommercialReleasePackageForDraft(draftWithHistory, proposal, user, {
+    revision: commercialRevision,
+    timestamp: queuedEvent.timestamp,
+  });
+  const finalDraft = normalizeDraftPackage({
+    ...draftWithHistory,
+    commercialRevisionId: revision.commercialRevisionId,
+    revisionId: revision.revisionId,
+    commercialRevisionHash: revision.revisionHash,
+    commercialRepositoryId: revision.repositoryId,
+    commercialReleasePackageId: releasePackage.commercialReleasePackageId,
+    commercialReleaseHash: releasePackage.releaseHash,
+    commercialReleaseState: releasePackage.commercialReleaseState,
+    currentAuthority: "COMMERCIAL_RELEASE_PACKAGE",
+    draftIofAuthorityFlow: {
+      inputAuthority: "COMMERCIAL_RELEASE_PACKAGE",
+      commercialRevisionId: revision.commercialRevisionId,
+      commercialReleasePackageId: releasePackage.commercialReleasePackageId,
+      draftIofPackageId: draftWithHistory.packageId,
+      draftIofOutputUnchanged: true,
+      pricingOutputUnchanged: true,
+      workbookOutputUnchanged: true,
+      noScopeVersionCreation: true,
+    },
+    assemblyReport: {
+      ...asRecord(draftWithHistory.assemblyReport),
+      assembledFrom: "COMMERCIAL_RELEASE_PACKAGE",
+      previousAuthority: "COMMERCIAL_REVISION",
+      commercialRevisionId: revision.commercialRevisionId,
+      commercialReleasePackageId: releasePackage.commercialReleasePackageId,
+      releaseHash: releasePackage.releaseHash,
+      draftIofOutputUnchanged: true,
+    },
+    commercialAuthorityDiagnostics: commercialAuthorityDiagnosticsFrom({
+      revision,
+      releasePackage,
+      proposal,
+      draftPackage: draftWithHistory,
+    }),
+  });
   await persistRecord(DIRS.iofPackages, finalDraft.packageId, finalDraft);
-  return { created: true, iofPackage: finalDraft, draftPackage: finalDraft, proposal };
+  return { created: true, iofPackage: finalDraft, draftPackage: finalDraft, proposal, commercialRevision: revision, commercialReleasePackage: releasePackage };
 }
 
 async function handleAssembleFromProposal(req, res, user) {
@@ -1736,7 +1971,7 @@ function findPackageObjectRecord(draft, objectId) {
 }
 
 async function handleAddConstraint(req, res, user, packageId) {
-  const draft = await loadDraftPackage(packageId).catch(() => null);
+  const draft = await loadRecord(DIRS.iofPackages, packageId).catch(() => null);
   if (!draft) {
     errorResponse(res, 404, `Draft IOF Package not found: ${packageId}`);
     return;
@@ -1758,18 +1993,93 @@ async function handleAddConstraint(req, res, user, packageId) {
     status: ["OPEN", "IN_REVIEW", "RESOLVED", "ACCEPTED"].includes(String(body.status)) ? String(body.status) : "OPEN",
     engineeringDisposition: String(body.engineeringDisposition ?? body.disposition ?? "PENDING_ENGINEERING_DISPOSITION"),
     notesEvidence: String(body.notesEvidence ?? body.notes ?? body.evidence ?? ""),
+    conditionTitle: String(body.conditionTitle ?? body.title ?? body.category ?? "Engineering condition"),
+    humanClassification: String(body.humanClassification ?? body.category ?? "Other"),
+    humanSeverity: ["INFO", "LOW", "MEDIUM", "HIGH", "BLOCKING"].includes(String(body.humanSeverity)) ? String(body.humanSeverity) : String(body.severity ?? "MEDIUM"),
+    conditionContext: {
+      ...asRecord(body.conditionContext),
+      opportunityId: String(asRecord(body.conditionContext).opportunityId ?? draft.opportunityId ?? ""),
+      engineeringPackageId: String(asRecord(body.conditionContext).engineeringPackageId ?? draft.engineeringPackageId ?? ""),
+      engineeringRevisionId: String(asRecord(body.conditionContext).engineeringRevisionId ?? draft.engineeringRevisionId ?? ""),
+      routeRepositoryId: String(asRecord(body.conditionContext).routeRepositoryId ?? draft.routeRepositoryId ?? ""),
+      routeRevision: asRecord(body.conditionContext).routeRevision ?? draft.routeRevision,
+      geometryHash: String(asRecord(body.conditionContext).geometryHash ?? draft.geometryHash ?? ""),
+      station: String(asRecord(body.conditionContext).station ?? body.station ?? body.stationId ?? ""),
+      objectId: String(asRecord(body.conditionContext).objectId ?? body.objectReference ?? body.objectId ?? ""),
+      identifiedAt: timestamp,
+      humanActor: user.name,
+      humanActorId: user.userId,
+    },
     actor: user.name,
     actorId: user.userId,
     source: "Engineering Certification",
     createdAt: timestamp,
     updatedAt: timestamp,
   };
-  const saved = await persistDraftPackage({
+  const saved = await persistDraftPackageMetadataPatch({
     ...draft,
     engineeringConstraints: [...asArray(draft.engineeringConstraints), constraint],
     updatedAt: timestamp,
   }, user, "runtime.engineering_constraint.added", "Engineering constraint added to Draft IOF Package.", { constraintId: constraint.constraintId });
-  jsonResponse(res, 200, { draftPackage: saved, iofPackage: saved, constraint });
+  jsonResponse(res, 200, { packageId: saved.packageId, updatedAt: saved.updatedAt, engineeringConstraints: saved.engineeringConstraints, constraint, metadataPatchOnly: true });
+}
+
+async function handleDispositionConstraint(req, res, user, packageId, constraintId) {
+  const draft = await loadRecord(DIRS.iofPackages, packageId).catch(() => null);
+  if (!draft) {
+    errorResponse(res, 404, `Draft IOF Package not found: ${packageId}`);
+    return;
+  }
+  if (draft.status === "CERTIFIED") {
+    errorResponse(res, 409, "Certified Draft IOF Packages are frozen. Create a new Commercial revision cycle.");
+    return;
+  }
+  const body = await readRequestJson(req);
+  const status = String(body.status ?? "");
+  if (!["OPEN", "IN_REVIEW", "RESOLVED", "ACCEPTED"].includes(status)) {
+    errorResponse(res, 400, "Engineering condition disposition requires OPEN, IN_REVIEW, RESOLVED, or ACCEPTED status.");
+    return;
+  }
+  const constraints = asArray(draft.engineeringConstraints);
+  const index = constraints.findIndex((constraint) => String(constraint?.constraintId ?? constraint?.id ?? "") === constraintId);
+  if (index < 0) {
+    errorResponse(res, 404, `Engineering constraint not found: ${constraintId}`);
+    return;
+  }
+  const timestamp = nowIso();
+  const previous = constraints[index];
+  const disposition = {
+    disposition: String(body.disposition ?? body.engineeringDisposition ?? (status === "ACCEPTED" ? "ACCEPT" : "ENGINEERING_CHANGE")),
+    status,
+    reason: String(body.reason ?? body.notesEvidence ?? "Engineering condition disposition recorded."),
+    impactSummary: String(body.impactSummary ?? ""),
+    actor: user.name,
+    actorId: user.userId,
+    occurredAt: timestamp,
+    authority: "ENGINEERING",
+  };
+  constraints[index] = {
+    ...previous,
+    status,
+    engineeringDisposition: disposition.disposition,
+    notesEvidence: String(body.notesEvidence ?? body.reason ?? previous.notesEvidence ?? ""),
+    dispositionHistory: [...asArray(previous.dispositionHistory), disposition],
+    dispositionActor: user.name,
+    dispositionActorId: user.userId,
+    dispositionAt: timestamp,
+    updatedAt: timestamp,
+  };
+  const saved = await persistDraftPackageMetadataPatch({
+    ...draft,
+    engineeringConstraints: constraints,
+    updatedAt: timestamp,
+  }, user, "runtime.engineering_constraint.dispositioned", "Engineering constraint disposition recorded.", {
+    constraintId,
+    previousStatus: previous.status,
+    status,
+    disposition: disposition.disposition,
+  });
+  jsonResponse(res, 200, { packageId: saved.packageId, updatedAt: saved.updatedAt, engineeringConstraints: saved.engineeringConstraints, constraint: constraints[index], previousConstraint: previous, metadataPatchOnly: true });
 }
 
 async function handleMoveObject(req, res, user, packageId) {
@@ -2135,11 +2445,65 @@ async function generateScopeVersion(certifiedPackage, certificate, user, options
     const existing = await loadRecord(DIRS.scopeVersions, certifiedPackage.scopeVersionId).catch(() => null);
     if (existing) return { scopeVersion: existing, certifiedPackage, certificate };
   }
+  const sourceDraftPackageId = firstText(
+    certifiedPackage.sourcePackageId,
+    certifiedPackage.sourceDraftPackageId,
+    certifiedPackage.certifiedDraftIofPackageId,
+    certifiedPackage.technicalSourcePackageId,
+  );
+  const sourceDraft = sourceDraftPackageId
+    ? await hydrateIofProjectionArtifacts(await loadRecord(DIRS.iofPackages, sourceDraftPackageId).catch(() => null))
+    : null;
+  const routeRepositoryId = firstText(certifiedPackage.routeRepositoryId, sourceDraft?.routeRepositoryId, asRecord(sourceDraft?.routeRepositoryRef).routeRepositoryId);
+  const routeRepository = routeRepositoryId ? await loadRecord(DIRS.commercialRoutes, routeRepositoryId).catch(() => null) : null;
+  const routeGeometry = asArray(routeRepository?.commercialGeometry);
+  const certifiedPackageForPromotion = {
+    ...(sourceDraft ?? {}),
+    ...certifiedPackage,
+    routeRepositoryId,
+    centerlineRoute: {
+      ...asRecord(sourceDraft?.centerlineRoute),
+      routeId: firstText(asRecord(sourceDraft?.centerlineRoute).routeId, routeRepository?.routeId, routeRepositoryId),
+      routeFeet: numeric(sourceDraft?.routeFeet, numeric(routeRepository?.routeFeet, 0)),
+      routeMiles: numeric(sourceDraft?.routeMiles, numeric(routeRepository?.routeMiles, 0)),
+      geometry: routeGeometry.length ? routeGeometry : asRecord(sourceDraft?.centerlineRoute).geometry,
+      coordinates: routeGeometry.length ? routeGeometry : asRecord(sourceDraft?.centerlineRoute).coordinates,
+    },
+    osrmRoute: {
+      ...asRecord(sourceDraft?.osrmRoute),
+      routeId: firstText(asRecord(sourceDraft?.osrmRoute).routeId, routeRepository?.routeId, routeRepositoryId),
+      routeFeet: numeric(sourceDraft?.routeFeet, numeric(routeRepository?.routeFeet, 0)),
+      routeMiles: numeric(sourceDraft?.routeMiles, numeric(routeRepository?.routeMiles, 0)),
+      geometry: routeGeometry.length ? routeGeometry : asRecord(sourceDraft?.osrmRoute).geometry,
+      coordinates: routeGeometry.length ? routeGeometry : asRecord(sourceDraft?.osrmRoute).coordinates,
+    },
+    quantitySummary: {
+      ...asRecord(sourceDraft?.quantitySummary),
+      routeFeet: numeric(asRecord(sourceDraft?.quantitySummary).routeFeet, numeric(routeRepository?.routeFeet, 0)),
+      routeMiles: numeric(asRecord(sourceDraft?.quantitySummary).routeMiles, numeric(routeRepository?.routeMiles, 0)),
+    },
+    commercialSummary: {
+      ...asRecord(sourceDraft?.commercialSummary),
+      ...asRecord(certifiedPackage.commercialSummary),
+      routeFeet: numeric(asRecord(sourceDraft?.commercialSummary).routeFeet, numeric(routeRepository?.routeFeet, 0)),
+      routeMiles: numeric(asRecord(sourceDraft?.commercialSummary).routeMiles, numeric(routeRepository?.routeMiles, 0)),
+    },
+    scopeVersionPromotionTrace: {
+      sourceDraftPackageId,
+      routeRepositoryId,
+      measuredCenterlineId: sourceDraft?.measuredCenterlineId,
+      stationProjectionId: sourceDraft?.stationProjectionId,
+      stationGraphId: sourceDraft?.stationGraphId,
+      projectedObjectManifestId: sourceDraft?.projectedObjectManifestId,
+      authority: "RUNTIME_SCOPEVERSION_PROMOTION",
+      referenceResolution: "CERTIFIED_IOF_PACKAGE_REFERENCES_RESOLVED",
+    },
+  };
   const previousScopeVersionId = options.previousScopeVersionId ?? options.parentScopeVersionId ?? certifiedPackage.parentScopeVersionId ?? certifiedPackage.previousScopeVersionId;
   const previousScopeVersion = previousScopeVersionId
     ? await loadRecord(DIRS.scopeVersions, previousScopeVersionId).catch(() => null)
     : null;
-  const proposedScopeVersion = createScopeVersionFromCertifiedPackage(certifiedPackage, certificate, user, {
+  const proposedScopeVersion = createScopeVersionFromCertifiedPackage(certifiedPackageForPromotion, certificate, user, {
     previousScopeVersion,
     parentScopeVersionId: previousScopeVersionId,
     customerAcceptance: options.customerAcceptance,
@@ -2151,8 +2515,8 @@ async function generateScopeVersion(certifiedPackage, certificate, user, options
   });
   const existingScopeVersion = await loadRecord(DIRS.scopeVersions, proposedScopeVersion.scopeVersionId).catch(() => null);
   if (existingScopeVersion) {
-    if (existingScopeVersion.certifiedIofPackageId === certifiedPackage.certifiedPackageId || existingScopeVersion.canonicalTruth?.certifiedIofPackageId === certifiedPackage.certifiedPackageId) {
-      return { scopeVersion: existingScopeVersion, certifiedPackage, certificate };
+    if (existingScopeVersion.certifiedIofPackageId === certifiedPackageForPromotion.certifiedPackageId || existingScopeVersion.canonicalTruth?.certifiedIofPackageId === certifiedPackageForPromotion.certifiedPackageId) {
+      return { scopeVersion: existingScopeVersion, certifiedPackage: certifiedPackageForPromotion, certificate };
     }
     throw new Error(`ScopeVersion already exists and cannot be overwritten: ${proposedScopeVersion.scopeVersionId}`);
   }
@@ -2207,12 +2571,21 @@ async function handleCertifyPackage(req, res, user, packageId) {
     errorResponse(res, 409, "Returned packages require Commercial revision before certification.");
     return;
   }
-  const units = proposedUnitsForPackage(draft);
+  const embeddedUnits = proposedUnitsForPackage(draft);
+  const governedProjectedObjects = asArray(asRecord(draft.projectedObjectManifest).projectedObjects ?? draft.projectedObjects);
+  const usesReferenceOnlyObjectManifest = !embeddedUnits.length && governedProjectedObjects.length > 0;
+  const units = embeddedUnits.length
+    ? embeddedUnits
+    : governedProjectedObjects.map((object, index) => ({
+        unitId: firstText(asRecord(object).objectId, asRecord(object).projectedObjectId, `PROJECTED-OBJECT-${index + 1}`),
+        status: "CERTIFIED",
+        immutable: true,
+      }));
   if (!units.length) {
-    errorResponse(res, 409, "Draft IOF Package has no Proposed IOF Units.");
+    errorResponse(res, 409, "Draft IOF Package has no Proposed IOF Units or governed Projected Object Manifest.");
     return;
   }
-  const unapproved = units.filter((unit) => unit.status !== "CERTIFIED");
+  const unapproved = usesReferenceOnlyObjectManifest ? [] : units.filter((unit) => unit.status !== "CERTIFIED");
   if (unapproved.length) {
     errorResponse(res, 409, "Every Proposed IOF Unit must be certified before package certification.");
     return;
@@ -2234,10 +2607,151 @@ async function handleCertifyPackage(req, res, user, packageId) {
     if (status !== "FAIL") return false;
     const key = String(check?.key ?? "");
     const label = String(check?.label ?? "");
+    if (draft.referenceOnly && key === "units" && asArray(asRecord(draft.projectedObjectManifest).projectedObjects).length) return false;
     return !approvedExceptionRules.has(key) && !approvedExceptionRules.has(label);
   });
   if (unexceptedFailures.length) {
     errorResponse(res, 409, "PD-001 compliance failures require approved doctrine exceptions before certification.");
+    return;
+  }
+  const doctrineObjectManifest = asRecord(draft.doctrineObjectManifest ?? draft.engineeringObjectManifest);
+  const doctrineObjectValidation = asRecord(draft.doctrineObjectInstantiationValidation ?? doctrineObjectManifest.validation);
+  const doctrineObjectCount = numeric(doctrineObjectManifest.objectCount, asArray(doctrineObjectManifest.instantiatedObjects).length);
+  const doctrineAddressFailures = numeric(doctrineObjectValidation.missingAddressCount, 0);
+  const doctrineStationObjectIndex = asArray(draft.doctrineStationObjectIndex ?? doctrineObjectManifest.stationObjectIndex);
+  const doctrineDerivedSpans = asArray(draft.doctrineDerivedSpans ?? doctrineObjectManifest.derivedSpans);
+  const doctrineLinearAssetSpanAttachments = asArray(draft.doctrineLinearAssetSpanAttachments ?? doctrineObjectManifest.linearAssetSpanAttachments);
+  const doctrineQuantityPlacement = asRecord(draft.doctrineQuantityPlacement ?? doctrineObjectManifest.quantityPlacement);
+  const measuredCenterlineId = firstText(draft.measuredCenterlineId, asRecord(draft.measuredCenterline).measuredCenterlineId, asRecord(draft.measuredCenterline).spineId);
+  const stationProjectionId = firstText(draft.stationProjectionId, asRecord(draft.stationProjection).stationProjectionId);
+  const stationGraphId = firstText(draft.stationGraphId, asRecord(draft.stationGraph).stationGraphId, asRecord(draft.stationIndexedGraph).stationGraphId, asRecord(draft.stationIndexedGraph).graphId);
+  const stationAuthorityIds = asArray(draft.stationAuthorityIds ?? asRecord(draft.stationAuthority).stationAuthorityIds ?? asRecord(draft.stationAuthority).authorityId);
+  const projectedObjectManifest = asRecord(draft.projectedObjectManifest);
+  const projectedObjectManifestId = firstText(draft.projectedObjectManifestId, projectedObjectManifest.manifestId, projectedObjectManifest.projectedObjectManifestId);
+  const projectedObjects = asArray(projectedObjectManifest.projectedObjects ?? draft.projectedObjects);
+  const projectedSpans = asArray(projectedObjectManifest.projectedSpans ?? draft.projectedSpans);
+  const closureLedger = asRecord(draft.closureLedger ?? projectedObjectManifest.closureLedger);
+  const iofPackageTwin = asRecord(draft.iofPackageTwin ?? projectedObjectManifest.iofPackageTwin);
+  const closureLedgerId = firstText(draft.closureLedgerId, projectedObjectManifest.closureLedgerId, closureLedger.closureLedgerId);
+  const iofPackageTwinId = firstText(draft.iofPackageTwinId, projectedObjectManifest.iofPackageTwinId, iofPackageTwin.twinProjectionId);
+  const executionGraphId = firstText(draft.executionGraphId, projectedObjectManifest.executionGraphId, iofPackageTwin.executionGraphId);
+  const lifecycleGraphId = firstText(draft.lifecycleGraphId, projectedObjectManifest.lifecycleGraphId, iofPackageTwin.lifecycleGraphId);
+  const workSegments = asArray(draft.workSegments ?? projectedObjectManifest.workSegments);
+  const commercialAuditReconciliation = asRecord(draft.commercialAuditReconciliation ?? projectedObjectManifest.commercialAuditReconciliation);
+  const constitutionalStateValidation = asRecord(draft.constitutionalStateValidation ?? projectedObjectManifest.constitutionalStateValidation);
+  const doctrineProjectionDiagnostics = asRecord(draft.doctrineProjectionDiagnostics ?? projectedObjectManifest.doctrineProjectionDiagnostics);
+  const geometryAuthorityDiagnostics = asRecord(draft.geometryAuthorityDiagnostics ?? projectedObjectManifest.geometryAuthorityDiagnostics ?? doctrineProjectionDiagnostics.geometryAuthorityDiagnostics);
+  const doctrineProjectionFailedGates = asArray(doctrineProjectionDiagnostics.failedGates).map(asRecord);
+  const invalidProjectedObjects = projectedObjects
+    .map(asRecord)
+    .filter((object) => !firstText(object.stationAddress, object.stationRange) ||
+      !firstText(object.parentSpanId, object.parentSegmentId) ||
+      !firstText(object.executionSequenceId, asRecord(object.executionSequence).sequenceId) ||
+      !firstText(object.closeSequenceId, asRecord(object.closeSequence).closeSequenceId) ||
+      !firstText(object.paymentSequenceId, asRecord(object.paymentSequence).paymentSequenceId) ||
+      !(object.coordinate || object.projectedCoordinate || object.geographicCoordinate));
+  const invalidStateObjects = projectedObjects
+    .map(asRecord)
+    .filter((object) => !firstText(object.currentState, object.currentLifecycleState) ||
+      !firstText(object.currentAuthority) ||
+      !Array.isArray(object.allowedTransitions) ||
+      !asRecord(object.auditLedgerHooks).closureLedgerId ||
+      !asRecord(object.twinProjectionMetadata).twinProjectionId ||
+      !firstText(object.laborTemplate, object.laborTemplateId) ||
+      !firstText(object.materialTemplate, object.materialTemplateId) ||
+      !firstText(object.evidenceTemplate, object.evidenceTemplateId));
+  const invalidStateSpans = projectedSpans
+    .map(asRecord)
+    .filter((span) => !firstText(span.currentState, span.lifecycleState) ||
+      !firstText(span.currentAuthority) ||
+      !Array.isArray(span.allowedTransitions) ||
+      !asRecord(span.auditLedgerHooks).closureLedgerId ||
+      !asRecord(span.twinProjectionMetadata).twinProjectionId ||
+      !firstText(span.executionSequenceId) ||
+      !firstText(span.closeSequenceId) ||
+      !firstText(span.paymentSequenceId));
+  const doctrineQuantityPlacementFailures = [
+    ["quantityMismatchCount", numeric(doctrineObjectValidation.quantityMismatchCount, 0)],
+    ["missingStationAddressCount", numeric(doctrineObjectValidation.missingStationAddressCount, 0)],
+    ["sequenceGapCount", numeric(doctrineObjectValidation.sequenceGapCount, 0)],
+    ["duplicateObjectIdCount", numeric(doctrineObjectValidation.duplicateObjectIdCount, 0)],
+    ["spanDerivationFailureCount", numeric(doctrineObjectValidation.spanDerivationFailureCount, 0)],
+    ["unattachedLinearAssetCount", numeric(doctrineObjectValidation.unattachedLinearAssetCount, 0)],
+  ].filter(([, count]) => Number(count) > 0);
+  if (!doctrineObjectCount) {
+    errorResponse(res, 409, "Doctrine Object Manifest is required before Engineering certification.");
+    return;
+  }
+  if (String(doctrineObjectValidation.status ?? "").toUpperCase() === "FAIL" || doctrineAddressFailures > 0) {
+    errorResponse(res, 409, "Doctrine Object Manifest validation failed. Every Engineering Object must have a deterministic address before certification.");
+    return;
+  }
+  if (!Object.keys(doctrineQuantityPlacement).length || !doctrineStationObjectIndex.length || !doctrineDerivedSpans.length || !doctrineLinearAssetSpanAttachments.length) {
+    errorResponse(res, 409, "Doctrine quantity placement, station sequencing, span derivation, and linear asset attachments are required before Engineering certification.");
+    return;
+  }
+  if (!measuredCenterlineId || !stationProjectionId || !stationGraphId || !stationAuthorityIds.length || !projectedObjectManifestId) {
+    errorResponse(res, 409, "Doctrine Projection Engine outputs are required before Engineering certification: measuredCenterlineId, stationProjectionId, stationGraphId, stationAuthorityIds, and projectedObjectManifestId.");
+    return;
+  }
+  if (!closureLedgerId || !iofPackageTwinId || !executionGraphId || !lifecycleGraphId) {
+    errorResponse(res, 409, "Constitutional state authority outputs are required before Engineering certification: closureLedgerId, iofPackageTwinId, executionGraphId, and lifecycleGraphId.");
+    return;
+  }
+  const closureWorkSegmentCount = numeric(closureLedger.workSegmentCount, 0);
+  const twinWorkSegmentCount = numeric(iofPackageTwin.workSegmentCount, closureWorkSegmentCount);
+  if (!closureWorkSegmentCount
+    || (workSegments.length > 0 && closureWorkSegmentCount !== workSegments.length)
+    || (twinWorkSegmentCount > 0 && closureWorkSegmentCount !== twinWorkSegmentCount)) {
+    errorResponse(res, 409, "Closure Ledger validation failed before Engineering certification: governed work-segment counts must be present and reconcile across embedded data or reference-only Twin authority.");
+    return;
+  }
+  if (commercialAuditReconciliation.status !== "PASS") {
+    const reason = asArray(commercialAuditReconciliation.failures).map((failure) => JSON.stringify(failure)).join("; ");
+    errorResponse(res, 409, `Commercial audit reconciliation failed before Engineering certification: ${reason || "commercial audit status is not PASS"}.`);
+    return;
+  }
+  if (constitutionalStateValidation.status !== "PASS") {
+    const reason = asArray(constitutionalStateValidation.failures).join("; ");
+    errorResponse(res, 409, `Constitutional state authority validation failed before Engineering certification: ${reason || "state graph status is not PASS"}.`);
+    return;
+  }
+  if (!doctrineProjectionDiagnostics.diagnosticsId) {
+    errorResponse(res, 409, "Doctrine Projection Diagnostics are required before Engineering certification.");
+    return;
+  }
+  if (doctrineProjectionDiagnostics.status === "FAIL" || doctrineProjectionFailedGates.length) {
+    const reason = doctrineProjectionFailedGates
+      .map((gate) => `${firstText(gate.objectType, "UNKNOWN")} ${firstText(gate.gate, "Gate")}: ${firstText(gate.reason, "unknown reason")}`)
+      .join("; ");
+    errorResponse(res, 409, `Doctrine Projection Diagnostics failed before Engineering certification: ${reason || "unknown failed gate"}.`);
+    return;
+  }
+  if (!geometryAuthorityDiagnostics.diagnosticsId) {
+    errorResponse(res, 409, "Geometry Authority diagnostics are required before Engineering certification.");
+    return;
+  }
+  const independentSpanGeometryCount = projectedSpans.filter((span) => Array.isArray(asRecord(span).coordinates)).length;
+  const maximumDriftFeet = numeric(geometryAuthorityDiagnostics.maximumDriftFeet, 0);
+  if (geometryAuthorityDiagnostics.geometryAuthority !== "PASS" || geometryAuthorityDiagnostics.status !== "PASS" || independentSpanGeometryCount > 0 || maximumDriftFeet > 0) {
+    const reason = [
+      ...asArray(geometryAuthorityDiagnostics.failures).map((failure) => String(failure)),
+      ...(independentSpanGeometryCount ? [`Span contains independent geometry: ${independentSpanGeometryCount}`] : []),
+      ...(maximumDriftFeet > 0 ? [`Geometry drift exceeds tolerance: ${maximumDriftFeet} ft`] : []),
+    ].filter(Boolean).join("; ");
+    errorResponse(res, 409, `Geometry Authority validation failed before Engineering certification: ${reason || "Geometry Authority != PASS"}.`);
+    return;
+  }
+  if (!projectedObjects.length || invalidProjectedObjects.length) {
+    errorResponse(res, 409, `Projected Object Manifest validation failed before Engineering certification: ${invalidProjectedObjects.length || "all"} projected object(s) are missing station address, coordinate, parent span, execution sequence, close sequence, or payment sequence.`);
+    return;
+  }
+  if (!draft.referenceOnly && (invalidStateObjects.length || invalidStateSpans.length)) {
+    errorResponse(res, 409, `Constitutional state graph validation failed before Engineering certification: ${invalidStateObjects.length} object(s) or ${invalidStateSpans.length} span(s) are missing state, authority, template, audit, or twin metadata.`);
+    return;
+  }
+  if (doctrineQuantityPlacementFailures.length) {
+    errorResponse(res, 409, `Doctrine station sequencing validation failed: ${doctrineQuantityPlacementFailures.map(([key, count]) => `${key}=${count}`).join(", ")}.`);
     return;
   }
   const timestamp = nowIso();
@@ -2245,6 +2759,78 @@ async function handleCertifyPackage(req, res, user, packageId) {
   const certifiedDraftIofPackageId = String(draft.packageId);
   const routeRepositoryId = routeRepositoryIdForPackage(draft);
   const commercialEstimate = commercialEstimateForPackage(draft);
+  const engineeringPackageForCertification = await findEngineeringPackageForDraft(draft.packageId).catch(() => null);
+  const engineeringRevisionRequest = asRecord(body.engineeringRevision);
+  const engineeringRevisionProjectionRequest = asRecord(body.engineeringRevisionProjection);
+  const engineeringRevisionId = firstText(
+    engineeringRevisionRequest.engineeringRevisionId,
+    engineeringRevisionProjectionRequest.revisionId,
+    engineeringPackageForCertification?.engineeringRevisionId,
+    `ENG-REV-${stableIdPart(engineeringPackageForCertification?.engineeringPackageId ?? draft.packageId)}-000`,
+  );
+  const engineeringBaselineId = firstText(
+    engineeringRevisionRequest.engineeringBaselineId,
+    engineeringRevisionProjectionRequest.engineeringBaselineId,
+    engineeringPackageForCertification?.engineeringBaselineId,
+    draft.engineeringBaselineId,
+  );
+  const engineeringBaselineHash = firstText(
+    engineeringRevisionRequest.engineeringBaselineHash,
+    asRecord(engineeringRevisionProjectionRequest.diagnostics).baselineHash,
+    engineeringPackageForCertification?.engineeringBaselineHash,
+    draft.engineeringBaselineHash,
+  );
+  const engineeringChangeSets = engineeringRevisionId
+    ? await engineeringChangeSetsForRevision(engineeringRevisionId, {
+        engineeringBaselineId,
+        engineeringPackageId: engineeringPackageForCertification?.engineeringPackageId,
+      }).catch(() => [])
+    : [];
+  const engineeringRevisionProjection = Object.keys(engineeringRevisionProjectionRequest).length
+    ? engineeringRevisionProjectionRequest
+    : projectEngineeringRevisionFromChangeSets({
+        ...asRecord(engineeringPackageForCertification),
+        engineeringRevisionId,
+        engineeringBaselineId,
+        engineeringBaselineHash,
+      }, engineeringChangeSets, { engineeringBaselineId, engineeringBaselineHash });
+  const engineeringRevisionDiagnostics = asRecord(engineeringRevisionProjection.diagnostics);
+  const engineeringRevisionHash = firstText(
+    engineeringRevisionRequest.engineeringRevisionHash,
+    engineeringRevisionDiagnostics.revisionHash,
+  );
+  let engineeringApprovalContext;
+  let engineeringApproval;
+  try {
+    engineeringApprovalContext = await resolveEngineeringApprovalContext(engineeringPackageForCertification?.engineeringPackageId, {
+      organizationId: user.organizationId,
+      tenantId: user.organizationId,
+      customerId: draft.customerId,
+      opportunityId: draft.opportunityId,
+      engineeringRevisionId,
+      engineeringRevisionHash,
+    });
+    engineeringApproval = await requireExactEngineeringApprovalForCertification(engineeringApprovalContext, firstText(body.engineeringApprovalId, asRecord(body.engineeringApproval).approvalId), {
+      organizationId: user.organizationId,
+      tenantId: user.organizationId,
+      customerId: draft.customerId,
+      opportunityId: draft.opportunityId,
+    });
+  } catch (error) {
+    jsonResponse(res, Number(error?.status ?? 409), {
+      error: error instanceof Error ? error.message : String(error),
+      code: error?.code ?? "ENGINEERING_APPROVAL_INTEGRITY_FAILURE",
+      ...(asRecord(error?.details)),
+    });
+    return;
+  }
+  const engineeringChangeSetIds = unique([
+    ...asArray(engineeringRevisionRequest.engineeringChangeSetIds),
+    ...asArray(engineeringRevisionProjection.changeSetIds),
+    ...engineeringChangeSets.map((changeSet) => changeSet.changeSetId),
+  ]);
+  const certifiedEngineeringChangeSetIds = [...engineeringChangeSetIds].sort();
+  const engineeringCertificationEvidenceId = `ENG-CERT-EVIDENCE-${stableIdPart(certifiedPackageId)}`;
   const stationPlan = normalizeStationPlan(body.stationPlan ?? body.stationPlanEvidence ?? {}, draft, user, timestamp);
   const engineeringApprovedObjectBudget = normalizeEngineeringApprovedObjectBudget(
     body.engineeringApprovedObjectBudget ?? body.objectBudget ?? body.budgetReview ?? {},
@@ -2256,6 +2842,22 @@ async function handleCertifyPackage(req, res, user, packageId) {
     body.engineeringApprovedBudget ?? body.engineeringApprovedBudgetTotal,
     engineeringApprovedObjectBudget.totalApprovedBudget,
   );
+  const quantityReconciliation = asRecord(body.quantityReconciliation);
+  if (Object.keys(quantityReconciliation).length) {
+    const quantityItems = asArray(quantityReconciliation.items).length
+      ? asArray(quantityReconciliation.items)
+      : asArray(quantityReconciliation.approvedQuantities);
+    const unresolvedQuantityItems = quantityItems.filter((item) => {
+      const record = asRecord(item);
+      return !["MATCH", "RESOLVED", "SUPERSEDED"].includes(firstText(record.status).toUpperCase())
+        || !firstText(record.sourceHash)
+        || (firstText(record.status).toUpperCase() === "RESOLVED" && !firstText(record.decisionHash));
+    });
+    if (firstText(quantityReconciliation.status).toUpperCase() !== "PASS" || !firstText(quantityReconciliation.calculationHash) || !quantityItems.length || unresolvedQuantityItems.length) {
+      errorResponse(res, 409, "Engineering Quantity Reconciliation must be deterministically PASS with evidence-backed approved quantities before certification.");
+      return;
+    }
+  }
   const constraintSummary = {
     total: asArray(draft.engineeringConstraints).length,
     resolved: asArray(draft.engineeringConstraints).filter((constraint) => String(constraint?.status ?? "").toUpperCase() === "RESOLVED").length,
@@ -2276,109 +2878,157 @@ async function handleCertifyPackage(req, res, user, packageId) {
     stationPlan,
     engineeringApprovedObjectBudget,
     engineeringApprovedBudgetTotal,
+    quantityReconciliation,
+    engineeringBaselineId,
+    engineeringRevisionId,
+    engineeringRevisionHash,
+    engineeringApprovalId: engineeringApproval.approvalId,
+    engineeringApprovalHash: engineeringApproval.approvalHash,
+    engineeringChangeSetIds: certifiedEngineeringChangeSetIds,
     certifiedIofUnitIds: units.map((unit) => unit.unitId).sort(),
     reviewer: user.userId,
     timestamp,
   });
-  const certifiedPackage = {
-    ...draft,
-    certifiedPackageId,
-    certifiedDraftIofPackageId,
-    technicalSourcePackageId: certifiedDraftIofPackageId,
-    sourceEngineeringTruthId: certifiedDraftIofPackageId,
-    singleEngineeringTruth: true,
-    noEngineeringRecreation: true,
-    readyForCustomerCommitment: true,
-    routeRepositoryId,
-    commercialEstimate,
+  const commercialSummary = asRecord(draft.commercialSummary);
+  const proposalSummary = asRecord(draft.proposalSummary);
+  const stationProjectionHash = hashCertifiedAssembly({
     stationPlanId: stationPlan.stationPlanId,
-    stationPlan,
-    engineeringApprovedObjectBudget,
-    engineeringApprovedBudget: engineeringApprovedBudgetTotal,
-    engineeringApprovedBudgetTotal,
-    engineeringReviewer: user.name,
-    engineeringReviewerId: user.userId,
+    stationCount: numeric(stationPlan.stationCount, asArray(stationPlan.stations).length),
+    objectAssignmentCount: numeric(stationPlan.objectAssignmentCount, asArray(stationPlan.objectAssignments).length),
+  });
+  const objectManifestHash = hashCertifiedAssembly({
+    objectManifestId: firstText(draft.objectManifestId, draft.stationObjectManifestId, asRecord(draft.manifest).manifestId),
+    certifiedIofUnitIds: units.map((unit) => unit.unitId).sort(),
+    unitCount: units.length,
+  });
+  const commercialReleasePackageId = firstText(
+    draft.commercialReleasePackageId,
+    commercialSummary.commercialReleasePackageId,
+    engineeringPackageForCertification?.commercialReleasePackageId,
+    `COMMERCIAL-RELEASE-${stableIdPart(draft.packageId)}`,
+  );
+  const commercialRevisionId = firstText(
+    draft.commercialRevisionId,
+    commercialSummary.commercialRevisionId,
+    engineeringPackageForCertification?.commercialRevisionId,
+    `COMMERCIAL-REVISION-${stableIdPart(draft.opportunityId ?? draft.packageId)}`,
+  );
+  const commercialRevisionHash = firstText(
+    draft.commercialRevisionHash,
+    commercialSummary.commercialRevisionHash,
+    engineeringPackageForCertification?.commercialRevisionHash,
+    hashCertifiedAssembly({ commercialRevisionId, routeRepositoryId, proposalId: draft.proposalId }),
+  );
+  const certificationLedgerEntry = await persistCertificationLedgerEntry({
+    certificationId: `ENG-CERT-${stableIdPart(certifiedPackageId)}`,
+    certificationLedgerId: `CERT-LEDGER-${stableIdPart(certifiedPackageId)}`,
+    certifiedPackageId,
+    engineeringBaselineId,
+    engineeringRevisionId,
+    engineeringRevisionHash,
+    engineeringApprovalId: engineeringApproval.approvalId,
+    engineeringApprovalHash: engineeringApproval.approvalHash,
+    engineeringChangeSetIds: certifiedEngineeringChangeSetIds,
+    commercialReleasePackageId,
+    commercialRevisionId,
+    commercialRevisionHash,
+    routeRepositoryId,
+    measuredCenterlineId,
+    stationProjectionId,
+    stationGraphId,
+    stationAuthorityIds,
+    engineeringObjectManifestId: firstText(draft.engineeringObjectManifestId, draft.doctrineObjectManifestId, draft.objectManifestId),
+    stationObjectManifestId: firstText(draft.stationObjectManifestId, asRecord(draft.stationObjectManifest).stationObjectManifestId, asRecord(draft.stationObjectManifest).manifestId),
+    projectedObjectManifestId,
+    closureLedgerId,
+    iofPackageTwinId,
+    executionGraphId,
+    lifecycleGraphId,
+    commercialAuditStatus: firstText(commercialAuditReconciliation.status),
+    constitutionalStateValidationStatus: firstText(constitutionalStateValidation.status),
+    geometryAuthorityDiagnostics,
+    proposalId: draft.proposalId,
+    estimateId: commercialEstimate.estimateId,
+    workbookId: firstText(draft.workbookId, draft.commercialWorkbookId, commercialSummary.workbookId, commercialSummary.commercialWorkbookId),
+    productDoctrineId: firstText(draft.productDoctrineId, draft.doctrineId, commercialSummary.productDoctrineId, proposalSummary.productDoctrineId, "PD-001"),
+    engineeringDoctrineId: firstText(draft.engineeringDoctrineId, asRecord(draft.productionDoctrine).engineeringDoctrineId, "PD-006"),
     certificationTimestamp: timestamp,
-    certificationRevision,
-    certificationHash,
-    sourcePackageId: draft.packageId,
-    packageId: certifiedPackageId,
-    sourceDraftPackageId: draft.packageId,
-    originalDraftIofPackageReference: {
-      packageId: draft.packageId,
-      draftPackageId: draft.draftPackageId,
-      packageRevision: draft.packageRevision,
-      commercialRevisionLocked: Boolean(draft.commercialRevisionLocked),
-      commercialLockedAt: draft.commercialLockedAt,
-    },
-    status: "CERTIFIED",
-    workflowStatus: "CERTIFIED_IOF_PACKAGE",
-    authority: "ENGINEERING_CERTIFIED_IOF_PACKAGE",
-    engineeringTruthAuthority: "CERTIFIED_DRAFT_IOF_PACKAGE",
-    lifecycleState: "CERTIFIED",
-    certificationDate: timestamp,
-    certifiedAt: timestamp,
-    engineer: user.name,
-    engineerId: user.userId,
     certifiedBy: user.name,
     certifiedById: user.userId,
-    doctrineStatus,
-    engineeringChecklist: checklist,
-    engineeringReviewStatus: "CERTIFIED",
-    certificationConfidence: checklist.certificationConfidence,
-    constraintSummary,
-    constraintsReviewed: asArray(draft.engineeringConstraints),
-    exceptionsApproved: approvedExceptions,
-    exceptions: approvedExceptions,
-    approvedExceptions,
-    redlineHistory: asArray(draft.redlineRevisionHistory),
-    redlineRevisionHistory: asArray(draft.redlineRevisionHistory),
-    objectMoveHistory: asArray(draft.objectMoveHistory),
-    engineeringManifest: draft.engineeringManifest ?? draft.manifest,
-    finalEngineeringManifest: draft.engineeringManifest ?? draft.manifest,
-    engineeringNotes: unique([
-      ...asArray(draft.engineeringNotes),
-      body.engineeringNote,
-      body.notes,
-      checklist.notes,
-    ]),
-    notes: body.notes ?? checklist.notes ?? "",
-    readiness: {
-      status: "CERTIFIED_IOF_PACKAGE_READY",
-      readyForScopeVersionCreation: false,
-      scopeVersionCreated: false,
-      eligibleForSignedServiceOrder: true,
-      serviceOrderReady: true,
-      awaitCustomerSignature: true,
-      scopeVersionFuture: true,
-      readyForCustomerCommitment: true,
-      singleEngineeringTruth: true,
-      noScopeVersionCreationDuringCertification: true,
-    },
-    serviceOrderStatus: "SERVICE_ORDER_READY",
-    signatureStatus: "AWAITING_CUSTOMER_SIGNATURE",
-    scopeVersionStatus: "BLOCKED_UNTIL_SIGNED_SERVICE_ORDER",
-    scopeVersionFuture: true,
-    readinessForScopeVersionPromotion: false,
-    readinessForSignedServiceOrder: true,
-    certifiedId: certifiedPackageId,
-    certifiedIofUnits: units.map((unit) => ({ ...unit, immutable: true, status: "CERTIFIED" })),
-    proposedIofUnits: units.map((unit) => ({ ...unit, immutable: true, status: "CERTIFIED" })),
-    immutable: true,
-    executionAuthorized: false,
-    noScopeVersionCreation: true,
-    noAdditionalEngineeringReviewAfterSignature: true,
-    noServiceOrderCreation: true,
-    noMarketplaceCreation: true,
-    noControlCreation: true,
-    noFieldCreation: true,
-    noTwinCreation: true,
-    noPaymentsCreation: true,
-    noCustomerWorkspaceCreation: true,
+    reviewStatus: "ENGINEERING_CERTIFIED",
+    engineeringDoctrineVersion: firstText(draft.engineeringDoctrineVersion, draft.engineeringDoctrineId, "PD-006"),
+    commercialDoctrineVersion: firstText(draft.commercialDoctrineVersion, commercialSummary.commercialDoctrineId, "PD-005"),
+    stationProjectionHash,
+    objectManifestHash,
+    certificationHash,
+    result: "CERTIFIED",
+    stationPlanId: stationPlan.stationPlanId,
+    stationProjectionId: firstText(draft.stationProjectionId, draft.stationGraphId, stationPlan.stationPlanId),
+    objectManifestId: firstText(draft.objectManifestId, draft.stationObjectManifestId, asRecord(draft.manifest).manifestId),
+    budgetId: engineeringApprovedObjectBudget.budgetId,
+    engineeringApprovedBudgetId: engineeringApprovedObjectBudget.budgetId,
+    validationId: asRecord(draft.validation).validationId,
+    dependencyGraphId: asRecord(draft.dependencyGraph).graphId,
+    engineeringCertificationEvidenceId,
+    certifiedIofUnitIds: units.map((unit) => unit.unitId).sort(),
+    quantityReconciliationId: quantityReconciliation.reconciliationId,
+    quantityReconciliationRevisionId: quantityReconciliation.revisionId,
+    quantityReconciliationHash: quantityReconciliation.calculationHash,
+    quantitySourceHash: quantityReconciliation.sourceHash,
+    approvedQuantityDecisionHashes: asArray(quantityReconciliation.approvedQuantities).map((item) => asRecord(item).decisionHash).filter(Boolean).sort(),
+    quantityDoctrineExceptionIds: asArray(quantityReconciliation.doctrineExceptionIds).sort(),
+  });
+  const certifiedPackage = CertifiedIofPackageProjection(certificationLedgerEntry, {
+    certifiedDraftIofPackageId,
+    technicalSourcePackageId: certifiedDraftIofPackageId,
+    sourcePackageId: draft.packageId,
+    sourceDraftPackageId: draft.packageId,
+    draftIOFPackageId: draft.packageId,
+    opportunityId: draft.opportunityId,
+    customerId: draft.customerId,
+    accountId: draft.accountId,
+    productId: draft.productId,
+    productName: draft.productName,
+    productVersion: draft.productVersion,
+    doctrineId: draft.doctrineId,
+    doctrineVersion: firstText(draft.doctrineVersion, draft.productDoctrineVersion),
+    quantityReconciliation,
+    approvedQuantities: asArray(quantityReconciliation.approvedQuantities),
+    quantityReconciliationHash: quantityReconciliation.calculationHash,
+    quantityDoctrineExceptionIds: asArray(quantityReconciliation.doctrineExceptionIds),
+    quantityDoctrineExceptions: asArray(quantityReconciliation.doctrineExceptions),
+    commercialReleaseState: firstText(draft.commercialReleaseState, commercialSummary.commercialReleaseState, "FROZEN"),
+    iofArtifactRepositoryReferences: draft.iofArtifactRepositoryReferences,
+    closureLedgerId,
+    iofPackageTwinId,
+    executionGraphId,
+    lifecycleGraphId,
+    commercialAuditStatus: firstText(commercialAuditReconciliation.status),
+    constitutionalStateValidationStatus: firstText(constitutionalStateValidation.status),
+    geometryAuthorityDiagnostics,
+    closeSequenceReferences: asArray(draft.closeSequenceReferences),
+    evidenceRequirementReferences: asArray(draft.evidenceRequirements).map((requirement) => {
+      const record = asRecord(requirement);
+      return firstText(record.evidenceRequirementId, record.id);
+    }).filter(Boolean),
+    scopeVersionReadinessRequirementReferences: asArray(draft.scopeVersionReadinessRequirements).map((requirement) => {
+      const record = asRecord(requirement);
+      return firstText(record.requirementId, record.id);
+    }).filter(Boolean),
+    timestamp,
     createdAt: timestamp,
-    updatedAt: timestamp,
-  };
+  });
   await persistRecord(DIRS.certifiedIofPackages, certifiedPackageId, certifiedPackage);
+  const certifiedIofTwin = await materializeCertifiedIofTwin({
+    draft: {
+      ...draft,
+      engineeringPackageId: engineeringPackageForCertification?.engineeringPackageId,
+    },
+    certifiedPackage,
+    certificationLedgerEntry,
+    stationPlan,
+    timestamp,
+  });
   await persistRuntimeMirror(certifiedPackage, user, "CERTIFIED-IOF", certifiedPackageId, {
     status: "CERTIFIED",
     noScopeVersionCreation: true,
@@ -2393,22 +3043,66 @@ async function handleCertifyPackage(req, res, user, packageId) {
     certifiedPackageId,
     certifiedDraftIofPackageId,
     technicalSourcePackageId: certifiedDraftIofPackageId,
-    sourceEngineeringTruthId: certifiedDraftIofPackageId,
+    sourceEngineeringTruthId: engineeringRevisionId,
+    sourceEngineeringBaselineId: engineeringBaselineId,
+    sourceEngineeringRevisionId: engineeringRevisionId,
     singleEngineeringTruth: true,
     noEngineeringRecreation: true,
     readyForCustomerCommitment: true,
     routeRepositoryId,
     commercialEstimate,
+    engineeringBaselineId,
+    engineeringBaselineHash,
+    engineeringRevisionId,
+    engineeringRevisionHash,
+    engineeringApprovalId: engineeringApproval.approvalId,
+    engineeringApprovalHash: engineeringApproval.approvalHash,
+    engineeringChangeSetIds: certifiedEngineeringChangeSetIds,
+    engineeringRevisionPatchCount: Number(engineeringRevisionDiagnostics.activePatchCount ?? engineeringRevisionRequest.activePatchCount ?? 0),
+    engineeringRevisionAppliedPatchCount: Number(engineeringRevisionDiagnostics.appliedPatchCount ?? engineeringRevisionRequest.appliedPatchCount ?? 0),
+    certificationConsumesEngineeringRevision: true,
+    certifiedIofPackageConsumesEngineeringRevision: true,
+    engineeringPackageIntakeOnly: true,
+    noBaselineMutation: true,
+    noEngineeringPackageMutation: true,
     stationPlanId: stationPlan.stationPlanId,
-    stationPlan,
+    stationPlan: draft.referenceOnly ? {
+      stationPlanId: stationPlan.stationPlanId,
+      stationProjectionId,
+      stationGraphId,
+      stationCount: stationPlan.stationCount,
+      objectAssignmentCount: stationPlan.objectAssignmentCount,
+      status: stationPlan.status,
+      certifiedBy: stationPlan.certifiedBy,
+      certifiedAt: stationPlan.certifiedAt,
+      referenceOnly: true,
+      immutable: true,
+    } : stationPlan,
     engineeringApprovedObjectBudget,
     engineeringApprovedBudget: engineeringApprovedBudgetTotal,
     engineeringApprovedBudgetTotal,
+    quantityReconciliation,
+    approvedQuantities: asArray(quantityReconciliation.approvedQuantities),
+    quantityReconciliationHash: quantityReconciliation.calculationHash,
+    quantityDoctrineExceptionIds: asArray(quantityReconciliation.doctrineExceptionIds),
+    quantityDoctrineExceptions: asArray(quantityReconciliation.doctrineExceptions),
     engineeringReviewer: user.name,
     engineeringReviewerId: user.userId,
     certificationTimestamp: timestamp,
     certificationRevision,
-    certificationHash,
+    certificationHash: certificationLedgerEntry.certificationHash,
+    certificationLedgerId: certificationLedgerEntry.certificationLedgerId,
+    certificationId: certificationLedgerEntry.certificationId,
+    certificationEvidenceManifestId: certificationLedgerEntry.certificationEvidenceManifestId,
+    certificationEvidenceHash: certificationLedgerEntry.certificationEvidenceHash,
+    certifiedPackageHash: certificationLedgerEntry.certifiedPackageHash,
+    certifiedPackageProjectionOnly: true,
+    certifiedIofTwinStateId: certifiedIofTwin.twinStateId,
+    certifiedIofTwinId: certifiedIofTwin.twinId,
+    twinState: "CERTIFIED",
+    executionState: "NOT_AUTHORIZED",
+    serviceOrderState: "NOT_CREATED",
+    scopeVersionState: "NOT_CREATED",
     serviceOrderStatus: "SERVICE_ORDER_READY",
     signatureStatus: "AWAITING_CUSTOMER_SIGNATURE",
     scopeVersionStatus: "BLOCKED_UNTIL_SIGNED_SERVICE_ORDER",
@@ -2418,11 +3112,13 @@ async function handleCertifyPackage(req, res, user, packageId) {
     certifiedAt: timestamp,
     certifiedBy: user.name,
     certifiedById: user.userId,
-    proposedIofUnits: units.map((unit) => ({ ...unit, immutable: true })),
+    proposedIofUnits: usesReferenceOnlyObjectManifest ? asArray(draft.proposedIofUnits) : units.map((unit) => ({ ...unit, immutable: true })),
+    certifiedIofUnitIds: units.map((unit) => unit.unitId).sort(),
+    certifiedUnitsFromProjectedObjectManifest: usesReferenceOnlyObjectManifest,
     noScopeVersionCreation: true,
     noAdditionalEngineeringReviewAfterSignature: true,
     immutable: true,
-  }, user, "runtime.iof_package.certified", "Draft IOF Package certified by Engineering.");
+  }, user, "runtime.iof_package.certified", "Draft IOF Package certified by Engineering.", { reuseArtifactReferences: true });
   await appendHistory(frozenDraft, user, "runtime.engineering_checklist.completed", "Engineering Certification checklist completed.", { checklist });
   await persistEngineeringIntakeStatus(frozenDraft, user, "CERTIFIED", {
     certifiedAt: timestamp,
@@ -2432,7 +3128,20 @@ async function handleCertifyPackage(req, res, user, packageId) {
     certifiedDraftIofPackageId,
     stationPlanId: stationPlan.stationPlanId,
     engineeringApprovedBudgetTotal,
-    certificationHash,
+    certificationHash: certificationLedgerEntry.certificationHash,
+    certificationLedgerId: certificationLedgerEntry.certificationLedgerId,
+    certificationId: certificationLedgerEntry.certificationId,
+    certificationEvidenceManifestId: certificationLedgerEntry.certificationEvidenceManifestId,
+    certificationEvidenceHash: certificationLedgerEntry.certificationEvidenceHash,
+    certifiedPackageHash: certificationLedgerEntry.certifiedPackageHash,
+    engineeringBaselineId,
+    engineeringRevisionId,
+    engineeringRevisionHash,
+    engineeringChangeSetIds: certifiedEngineeringChangeSetIds,
+    engineeringCertificationEvidenceId,
+    certificationConsumesEngineeringRevision: true,
+    certifiedIofPackageConsumesEngineeringRevision: true,
+    engineeringPackageIntakeOnly: true,
     serviceOrderStatus: "SERVICE_ORDER_READY",
     signatureStatus: "AWAITING_CUSTOMER_SIGNATURE",
     scopeVersionStatus: "BLOCKED_UNTIL_SIGNED_SERVICE_ORDER",
@@ -2443,6 +3152,21 @@ async function handleCertifyPackage(req, res, user, packageId) {
       ? updateEngineeringPackageStatus(record.engineeringPackageId, user, "ENGINEERING_CERTIFIED", {
           stationPlanId: stationPlan.stationPlanId,
           certifiedIofPackageId: certifiedPackageId,
+          certificationLedgerId: certificationLedgerEntry.certificationLedgerId,
+          certificationId: certificationLedgerEntry.certificationId,
+          certificationHash: certificationLedgerEntry.certificationHash,
+          certificationEvidenceManifestId: certificationLedgerEntry.certificationEvidenceManifestId,
+          certificationEvidenceHash: certificationLedgerEntry.certificationEvidenceHash,
+          certifiedPackageHash: certificationLedgerEntry.certifiedPackageHash,
+          certifiedPackageProjectionOnly: true,
+          certifiedIofTwinStateId: certifiedIofTwin.twinStateId,
+          certifiedIofTwinId: certifiedIofTwin.twinId,
+          engineeringRevisionState: "CERTIFIED_FROM_ENGINEERING_REVISION",
+          engineeringRevisionHash,
+          engineeringChangeSetIds: certifiedEngineeringChangeSetIds,
+          engineeringCertificationEvidenceId,
+          certificationConsumesEngineeringRevision: true,
+          engineeringPackageIntakeOnly: true,
           serviceOrderStatus: "SERVICE_ORDER_READY",
           signatureStatus: "AWAITING_CUSTOMER_SIGNATURE",
           scopeVersionStatus: "BLOCKED_UNTIL_SIGNED_SERVICE_ORDER",
@@ -2455,6 +3179,8 @@ async function handleCertifyPackage(req, res, user, packageId) {
   jsonResponse(res, 200, {
     draftPackage: frozenDraft,
     certifiedIofPackage: certifiedPackage,
+    certificationLedgerEntry,
+    certifiedIofTwin,
     engineeringPackage,
   });
 }
@@ -2561,7 +3287,7 @@ export async function handleEngineeringCertification(req, res, pathname) {
     const draftPackages = (await Promise.all(engineeringPackages.map(async (engineeringPackage) => {
       const resolved = await resolveEngineeringPackageForCertification(engineeringPackage.engineeringPackageId).catch(() => null);
       if (!resolved) return null;
-      return decorateDraftPackageWithEngineeringPackage(resolved.draft, engineeringPackage, resolved.referenceIntegrity);
+      return decorateDraftPackageWithEngineeringPackage(resolved.draft, engineeringPackage, resolved.referenceIntegrity, resolved.routeRepository);
     }))).filter(Boolean);
     jsonResponse(res, 200, { draftPackages: sortedByUpdated(draftPackages), engineeringPackages });
     return true;
@@ -2617,7 +3343,8 @@ export async function handleEngineeringCertification(req, res, pathname) {
   }
 
   if (req.method === "POST" && parts[0] === "draft-packages" && parts[1] && parts[2] === "constraints") {
-    await handleAddConstraint(req, res, user, parts[1]);
+    if (parts[3] && parts[4] === "disposition") await handleDispositionConstraint(req, res, user, parts[1], parts[3]);
+    else await handleAddConstraint(req, res, user, parts[1]);
     return true;
   }
 
@@ -2664,7 +3391,7 @@ export async function handleEngineeringCertification(req, res, pathname) {
   }
 
   if (req.method === "POST" && parts[0] === "certified-packages" && parts[1] && parts[2] === "generate-scopeversion") {
-    await handleGenerateScopeVersion(req, res, user, parts[1]);
+    errorResponse(res, 409, "ScopeVersion creation is only legal inside the atomic authorized Teralinx countersignature transaction at /api/service-orders/:id/countersign.");
     return true;
   }
 

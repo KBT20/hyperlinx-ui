@@ -9,6 +9,11 @@ import {
   readRuntimeArtifact,
 } from "./ProjectionCache";
 import { getRuntimeDiagnosticsSnapshot } from "./RuntimeDiagnostics";
+import {
+  getReasoningServiceSnapshot,
+  refreshReasoningService,
+  startReasoningService,
+} from "../kernel/ReasoningServiceManager";
 import type { RuntimeArtifactRequest, RuntimeArtifactType } from "./RuntimeContracts";
 import type { ConstitutionalArtifactType } from "./ProjectionCache";
 
@@ -29,6 +34,9 @@ export const ConstitutionalRuntimeKernel = {
   getArtifactLineage,
   getDependencyGraph: getRuntimeDependencyGraphSnapshot,
   getDiagnostics: getRuntimeDiagnosticsSnapshot,
+  startReasoningService,
+  refreshReasoningService,
+  getReasoningService: getReasoningServiceSnapshot,
 };
 
 export function requestArtifact<T>(request: RuntimeArtifactRequest<T>) {

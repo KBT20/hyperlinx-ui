@@ -12,6 +12,7 @@ import {
   routeMatch,
   sortedByUpdated,
   unwrapBody,
+  updateTransactionManifest,
 } from "./_shared.js";
 import { requireAnyPermission } from "./authority.js";
 
@@ -217,11 +218,20 @@ export async function handleCommercialRoutes(req, res, pathname) {
     const saved = [];
     for (const record of records) {
       const routeRepositoryId = String(record?.routeRepositoryId ?? record?.routeSnapshotId ?? createId("commercial-route"));
+      const transactionId = String(record?.transactionId ?? createId("route-save"));
       const normalized = normalizeCommercialRoute({
         ...record,
         routeRepositoryId,
+        transactionId,
       });
-      saved.push(await persistRecord(DIRS.commercialRoutes, normalized.routeRepositoryId, normalized));
+      await updateTransactionManifest({ transactionId, operationType: "ROUTE_OPPORTUNITY_SAVE", state: "STARTED", customerId: normalized.customerId, opportunityId: normalized.opportunityId, plannedWrites: [`commercial-routes/${normalized.routeRepositoryId}.json`, `commercial-opportunities/${normalized.opportunityId}.json`], artifactIds: [normalized.routeRepositoryId], hashes: [normalized.geometryHash].filter(Boolean) });
+      try {
+        saved.push(await persistRecord(DIRS.commercialRoutes, normalized.routeRepositoryId, normalized));
+        await updateTransactionManifest({ transactionId, operationType: "ROUTE_OPPORTUNITY_SAVE", state: "STARTED", completedWrites: [`commercial-routes/${normalized.routeRepositoryId}.json`], artifactIds: [normalized.routeRepositoryId], hashes: [normalized.geometryHash].filter(Boolean) });
+      } catch (error) {
+        await updateTransactionManifest({ transactionId, operationType: "ROUTE_OPPORTUNITY_SAVE", state: "RECOVERY_REQUIRED", failureReason: error instanceof Error ? error.message : String(error) });
+        throw error;
+      }
     }
     const diagnostics = logRouteRepositoryDiagnostics(routeRepositoryDiagnostics({
       method: req.method,

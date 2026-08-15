@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   generateServiceOrder,
+  downloadRuntimeArtifact,
   listCertifiedIofPackages,
   listProposalDrafts,
   listServiceOrders,
@@ -243,7 +244,7 @@ export default function ServiceOrderWorkspace() {
             <button type="button" onClick={handleGenerateServiceOrder} disabled={pending || !selectedProposal || !selectedCertifiedPackage}>Generate Service Order</button>
             <button type="button" onClick={() => setNotice("Preview uses the active Service Order panel below.")} disabled={!activeServiceOrder}>Preview Service Order</button>
             <button type="button" onClick={() => window.print()} disabled={!activeServiceOrder}>Print Service Order</button>
-            <button type="button" onClick={() => setNotice("Export PDF placeholder only. Legal/PDF generation belongs to Commercial Release 2.")} disabled={!activeServiceOrder}>Export PDF Placeholder</button>
+            <button type="button" onClick={() => activeServiceOrder && void downloadRuntimeArtifact(`/api/exports/service-orders/${encodeURIComponent(activeServiceOrder.serviceOrderId)}/pdf`, session).then((artifact) => setNotice(`Downloaded ${artifact.filename}.`)).catch((error) => setNotice(`Service Order PDF failed: ${error.message}`))} disabled={!activeServiceOrder}>Download Service Order PDF</button>
           </div>
           <div className="dal-status">{notice}</div>
         </section>

@@ -1,4 +1,5 @@
 import { DAL_API } from "../config/dalApi";
+import { runtimeDiagnosticsLog } from "../performance/RuntimeDiagnostics";
 import { withStoredAuthHeaders } from "./authHeaders";
 
 export type TeralinxUserRole = "ADMINISTRATOR_COO" | "CRO" | "CEO" | "CUSTOMER_PARTICIPANT";
@@ -142,6 +143,9 @@ export type ProposalRuntimeStatus =
 
 export type ProposalReadiness = {
   proposalId: string;
+  proposalRevisionId?: string;
+  proposalHash?: string;
+  proposalRevisionNumber?: number;
   status: "READY" | "BLOCKED" | string;
   canCreateDraftIofPackage: boolean;
   customerApproved: boolean;
@@ -194,6 +198,27 @@ export type ProposalRuntimeObject = {
   approvalState: string;
   lifecycleState: string;
   version: number;
+  proposalRevisionId?: string;
+  parentProposalRevisionId?: string;
+  derivedFromProposalHash?: string;
+  proposalHash?: string;
+  revisionNumber?: number;
+  revisionReason?: string;
+  revisionStatus?: "WORKING" | "SAVED" | "ISSUED" | "CUSTOMER_APPROVED" | string;
+  proposalRevisions?: Array<{
+    proposalId: string;
+    proposalRevisionId: string;
+    parentProposalRevisionId?: string;
+    derivedFromProposalHash?: string;
+    revisionNumber: number;
+    revisionReason: string;
+    revisionStatus: string;
+    proposalHash: string;
+    createdBy: string;
+    createdByName?: string;
+    createdAt: string;
+    snapshot: Record<string, unknown>;
+  }>;
   title: string;
   summary: string;
   executiveSummary: string;
@@ -230,6 +255,10 @@ export type ProposalRuntimeObject = {
 export type EngineeringReviewQueueItem = {
   engineeringPackageId?: string;
   packageId: string;
+  engineeringBaselineId?: string;
+  engineeringBaselineHash?: string;
+  engineeringRevisionId?: string;
+  engineeringAuthority?: string;
   draftIofPackageId?: string;
   packageName?: string;
   packageReadiness: Record<string, unknown>;
@@ -266,8 +295,66 @@ export type EngineeringReviewQueueItem = {
   updatedAt: string;
 };
 
+export type EngineeringBaselineRuntime = {
+  engineeringBaselineId: string;
+  engineeringBaselineManifestId: string;
+  engineeringBaselineProjectionId: string;
+  engineeringBaselineHash: string;
+  draftIOFPackageId: string;
+  draftIofPackageId?: string;
+  commercialReleasePackageId: string;
+  commercialRevisionId: string;
+  commercialRevisionHash: string;
+  commercialReleaseHash: string;
+  routeRepositoryId: string;
+  stationProjectionId: string;
+  measuredCenterlineId?: string;
+  stationGraphId?: string;
+  stationAuthorityIds?: string[];
+  objectManifestId: string;
+  stationObjectManifestId?: string;
+  projectedObjectManifestId?: string;
+  estimateId: string;
+  workbookId: string;
+  commercialWorkbookId: string;
+  proposalId: string;
+  productDoctrineId: string;
+  engineeringDoctrineId: string;
+  opportunityId: string;
+  customerId?: string;
+  customerTwinId?: string;
+  submittedBy?: string;
+  submittedById?: string;
+  submittedAt: string;
+  baselineState: "FROZEN" | string;
+  engineeringAuthority: "ENGINEERING_BASELINE" | string;
+  authority: "ENGINEERING_BASELINE_AUTHORITY" | string;
+  repositoryType: "ENGINEERING_BASELINE" | string;
+  referenceOnly: true;
+  immutable: true;
+  draftIofPackageUnchanged: true;
+  noCommercialMutation: true;
+  noScopeVersionCreation: true;
+  noGeometryDuplication: true;
+  noWorkbookDuplication: true;
+  noProposalDuplication: true;
+  referenceIntegrity?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  [key: string]: unknown;
+};
+
 export type EngineeringPackageRuntime = {
   engineeringPackageId: string;
+  engineeringBaselineId?: string;
+  engineeringBaselineManifestId?: string;
+  engineeringBaselineProjectionId?: string;
+  engineeringBaselineHash?: string;
+  baselineState?: string;
+  derivedFromBaseline?: boolean;
+  engineeringRevisionId?: string;
+  engineeringRevisionSource?: string;
+  engineeringRevisionState?: string;
   customerId?: string;
   opportunityId: string;
   customerTwinId: string;
@@ -277,6 +364,10 @@ export type EngineeringPackageRuntime = {
   workbookId?: string;
   draftIOFPackageId: string;
   draftIofPackageId?: string;
+  commercialRevisionId?: string;
+  commercialReleasePackageId?: string;
+  commercialRevisionHash?: string;
+  commercialReleaseHash?: string;
   routeRepositoryId: string;
   measuredCenterlineId?: string;
   stationGraphId?: string;
@@ -297,6 +388,7 @@ export type EngineeringPackageRuntime = {
   scopeVersionState: string;
   scopeVersionStatus?: string;
   authority: "ENGINEERING_REPOSITORY" | string;
+  engineeringAuthority?: "ENGINEERING_BASELINE" | string;
   repositoryType?: "ENGINEERING_PACKAGE" | string;
   referenceOnly: true;
   referenceHash?: string;
@@ -308,6 +400,243 @@ export type EngineeringPackageRuntime = {
   noScopeVersionCreation: true;
   createdAt: string;
   updatedAt: string;
+  [key: string]: unknown;
+};
+
+export type CommercialRevisionRuntime = {
+  commercialRevisionId: string;
+  revisionId: string;
+  opportunityId: string;
+  repositoryId: string;
+  routeRepositoryId: string;
+  estimateId: string;
+  workbookId: string;
+  commercialWorkbookId?: string;
+  proposalId: string;
+  proposalRevisionId?: string;
+  proposalHash?: string;
+  proposalRevisionNumber?: number;
+  revisionStatus: string;
+  createdBy: string;
+  createdById?: string;
+  createdOn: string;
+  parentRevision?: string;
+  commercialReleaseState: string;
+  productDoctrineId?: string;
+  commercialDoctrineId?: string;
+  commercialAssumptionIds?: string[];
+  evidenceReferences?: string[];
+  revisionHash: string;
+  authority: "COMMERCIAL_REVISION" | string;
+  repositoryType: "COMMERCIAL_REVISION" | string;
+  editableAuthority: true;
+  referenceOnly: true;
+  repositoryTruthImmutable: true;
+  mutableWorkspaceStateAuthority: false;
+  noScopeVersionCreation: true;
+  noPricingMutation: true;
+  noProposalOutputMutation: true;
+  noWorkbookOutputMutation: true;
+  createdAt: string;
+  updatedAt: string;
+  [key: string]: unknown;
+};
+
+export type CommercialReleasePackageRuntime = {
+  commercialReleasePackageId: string;
+  commercialRevisionId: string;
+  revisionId: string;
+  opportunityId: string;
+  repositoryId: string;
+  routeRepositoryId: string;
+  estimateId: string;
+  workbookId: string;
+  commercialWorkbookId?: string;
+  proposalId: string;
+  proposalRevisionId?: string;
+  proposalHash?: string;
+  proposalRevisionNumber?: number;
+  productDoctrineId?: string;
+  commercialDoctrineId?: string;
+  revisionHash: string;
+  releaseHash: string;
+  evidenceReferences?: string[];
+  status: "FROZEN" | string;
+  commercialReleaseState: "RELEASED" | string;
+  createdBy: string;
+  createdById?: string;
+  authority: "COMMERCIAL_RELEASE_PACKAGE" | string;
+  repositoryType: "COMMERCIAL_RELEASE_PACKAGE" | string;
+  referenceOnly: true;
+  immutable: true;
+  frozen: true;
+  noCommercialTruthDuplication: true;
+  noScopeVersionCreation: true;
+  noEngineeringAuthorityMutation: true;
+  noPricingMutation: true;
+  noProposalOutputMutation: true;
+  noWorkbookOutputMutation: true;
+  createdAt: string;
+  updatedAt: string;
+  [key: string]: unknown;
+};
+
+export type CommercialPatchRuntime = {
+  patchId: string;
+  revisionId: string;
+  patchType: string;
+  targetObjectId: string;
+  targetProperty: string;
+  oldValue: unknown;
+  newValue: unknown;
+  createdBy: string;
+  createdAt: string;
+  reason: string;
+  authority: "COMMERCIAL_CHANGE_SET" | string;
+  validationState: string;
+};
+
+export type CommercialChangeSetRuntime = {
+  changeSetId: string;
+  revisionId: string;
+  opportunityId?: string;
+  repositoryId?: string;
+  proposalId?: string;
+  routeRepositoryId?: string;
+  estimateId?: string;
+  workbookId?: string;
+  revisionNumber: number;
+  repositoryHash: string;
+  revisionHash: string;
+  projectionHash: string;
+  status: "ACTIVE" | "APPLIED" | "DISCARDED" | "INACTIVE" | string;
+  patchCount: number;
+  activePatchCount: number;
+  appliedPatchCount: number;
+  patches: CommercialPatchRuntime[];
+  createdBy: string;
+  createdById?: string;
+  createdAt: string;
+  updatedAt: string;
+  authority: "COMMERCIAL_CHANGE_SET" | string;
+  repositoryType: "COMMERCIAL_CHANGE_SET" | string;
+  additive: true;
+  patchSetOnly: true;
+  repositoryTruthImmutable: true;
+  noScopeVersionCreation: true;
+  noPricingMutation: true;
+  noProposalOutputMutation: true;
+  noEngineeringAuthorityMutation: true;
+  [key: string]: unknown;
+};
+
+export type CommercialRevisionProjectionRuntime = {
+  projectionId: string;
+  revisionId: string;
+  repositoryId: string;
+  opportunityId?: string;
+  proposalId?: string;
+  changeSetIds: string[];
+  patches: CommercialPatchRuntime[];
+  diagnostics: {
+    repositoryHash: string;
+    revisionHash: string;
+    activePatchCount: number;
+    appliedPatchCount: number;
+    patchReplayTimeMs: number;
+    projectionTimeMs: number;
+    warnings: string[];
+  };
+  workbookConsumesCommercialRevision: true;
+  estimateConsumesCommercialRevision: true;
+  proposalConsumesCommercialRevision: true;
+  commercialReleasePackageConsumesCommercialRevision: true;
+  draftIofConsumesCommercialRevision: true;
+  repositoryTruthImmutable: true;
+  noRepositoryMutation: true;
+  noPricingFormulaMutation: true;
+  noProposalOutputMutation: true;
+  noScopeVersionCreation: true;
+  [key: string]: unknown;
+};
+
+export type EngineeringPatchRuntime = {
+  patchId: string;
+  revisionId: string;
+  patchType: string;
+  targetObjectId: string;
+  targetProperty: string;
+  oldValue: unknown;
+  newValue: unknown;
+  createdBy: string;
+  createdAt: string;
+  reason: string;
+  authority: "ENGINEERING_CHANGE_SET" | string;
+  validationState: string;
+};
+
+export type EngineeringChangeSetRuntime = {
+  changeSetId: string;
+  revisionId: string;
+  engineeringBaselineId: string;
+  engineeringPackageId?: string;
+  draftIOFPackageId?: string;
+  opportunityId?: string;
+  routeRepositoryId?: string;
+  proposalId?: string;
+  estimateId?: string;
+  workbookId?: string;
+  revisionNumber: number;
+  baselineHash: string;
+  revisionHash: string;
+  projectionHash: string;
+  status: "ACTIVE" | "APPLIED" | "DISCARDED" | "INACTIVE" | string;
+  patchCount: number;
+  activePatchCount: number;
+  appliedPatchCount: number;
+  patches: EngineeringPatchRuntime[];
+  createdBy: string;
+  createdById?: string;
+  createdAt: string;
+  updatedAt: string;
+  authority: "ENGINEERING_CHANGE_SET" | string;
+  repositoryType: "ENGINEERING_CHANGE_SET" | string;
+  additive: true;
+  patchSetOnly: true;
+  baselineImmutable: true;
+  repositoryTruthImmutable: true;
+  noScopeVersionCreation: true;
+  noStationProjectionMutation: true;
+  noPricingMutation: true;
+  noCommercialAuthorityMutation: true;
+  [key: string]: unknown;
+};
+
+export type EngineeringRevisionProjectionRuntime = {
+  projectionId: string;
+  revisionId: string;
+  engineeringBaselineId: string;
+  engineeringPackageId?: string;
+  changeSetIds: string[];
+  patches: EngineeringPatchRuntime[];
+  diagnostics: {
+    baselineHash: string;
+    revisionHash: string;
+    activePatchCount: number;
+    appliedPatchCount: number;
+    patchReplayTimeMs: number;
+    projectionTimeMs: number;
+    warnings: string[];
+  };
+  certificationConsumesEngineeringRevision: true;
+  certifiedIofPackageConsumesEngineeringRevision: true;
+  baselineImmutable: true;
+  noBaselineMutation: true;
+  noEngineeringPackageMutation: true;
+  noStationProjectionMutation: true;
+  noPricingMutation: true;
+  noCommercialAuthorityMutation: true;
+  noScopeVersionCreation: true;
   [key: string]: unknown;
 };
 
@@ -430,6 +759,79 @@ export type DraftIofPackageRuntime = {
   visibility?: string;
   authority?: string;
   lifecycleState?: string;
+  engineeringStatus?: string;
+  commercialRevisionLocked?: boolean;
+  doctrineId?: string;
+  productDoctrineVersion?: string;
+  productDoctrineRegistry?: unknown;
+  productDoctrineExecution?: Record<string, unknown>;
+  requiredServices?: unknown[];
+  requiredAssets?: unknown[];
+  productDoctrineEngineeringObjects?: unknown[];
+  executionSequences?: unknown[];
+  closeSequences?: unknown[];
+  closeSequenceReferences?: unknown[];
+  evidenceRequirements?: unknown[];
+  certificationRules?: unknown;
+  stationLevelLifecycleProjection?: unknown;
+  scopeVersionReadinessRequirements?: unknown[];
+  doctrineObjectInstantiation?: unknown;
+  doctrineObjectManifest?: unknown;
+  engineeringObjectManifest?: unknown;
+  doctrineObjectManifestId?: string;
+  engineeringObjectManifestId?: string;
+  doctrineInstantiatedObjects?: unknown[];
+  doctrineObjectAddresses?: unknown[];
+  doctrineObjectDependencyGraph?: unknown;
+  doctrineObjectExecutionSequence?: unknown[];
+  doctrineObjectCloseSequence?: unknown[];
+  doctrineObjectPaymentSequence?: unknown[];
+  doctrineObjectEvidenceRequirements?: unknown[];
+  doctrineStationLifecycleRules?: unknown[];
+  doctrineQuantityPlacement?: unknown;
+  doctrineStationObjectIndex?: unknown[];
+  doctrineSequencedActionObjects?: unknown[];
+  doctrineDerivedSpans?: unknown[];
+  doctrineLinearAssetSpanAttachments?: unknown[];
+  doctrineEngineeringMovementPolicy?: unknown;
+  doctrineContinuousStationClosure?: boolean;
+  doctrineObjectInstantiationValidation?: unknown;
+  doctrineObjectInstantiationSummary?: unknown;
+  doctrineProjectionDiagnostics?: unknown;
+  geometryAuthorityDiagnostics?: unknown;
+  commercialAuditReconciliation?: unknown;
+  constitutionalStateValidation?: unknown;
+  executionGraphId?: string;
+  lifecycleGraphId?: string;
+  closureLedger?: unknown;
+  closureLedgerId?: string;
+  iofPackageTwin?: unknown;
+  iofPackageTwinId?: string;
+  workSegments?: unknown[];
+  doctrineMarketplaceProjection?: unknown;
+  doctrineControlProjection?: unknown;
+  doctrineFieldProjection?: unknown;
+  doctrineTwinProjection?: unknown;
+  commercialRevisionId?: string;
+  revisionId?: string;
+  commercialRevisionHash?: string;
+  commercialRepositoryId?: string;
+  commercialReleasePackageId?: string;
+  commercialReleaseHash?: string;
+  commercialReleaseState?: string;
+  changeSetIds?: string[];
+  activeChangeSetIds?: string[];
+  patchCount?: number;
+  activePatchCount?: number;
+  appliedPatchCount?: number;
+  repositoryHash?: string;
+  projectionHash?: string;
+  patchReplayTimeMs?: number;
+  projectionTimeMs?: number;
+  currentAuthority?: string;
+  proposalAuthorityFlow?: Record<string, unknown>;
+  draftIofAuthorityFlow?: Record<string, unknown>;
+  commercialAuthorityDiagnostics?: Record<string, unknown>;
   proposalId: string;
   customerId: string;
   opportunityId: string;
@@ -618,6 +1020,447 @@ export type RuntimeLifecycleBridgeResult = {
   workspaceSession?: RuntimeWorkspaceSession;
 };
 
+type DraftIofPayloadSizeEntry = {
+  key: string;
+  approxBytes: number;
+  descriptor: string;
+};
+
+type DraftIofSavePayloadSizeAudit = {
+  topLevelKeys: string[];
+  originalApproxBytes: number;
+  referenceOnlyBytes: number;
+  largestFields: DraftIofPayloadSizeEntry[];
+  inspectedSections: DraftIofPayloadSizeEntry[];
+  offendingField: string | null;
+  thresholdBytes: number;
+  referenceOnlyThresholdBytes: number;
+};
+
+const DRAFT_IOF_REFERENCE_ONLY_MAX_BYTES = 4 * 1024 * 1024;
+const DRAFT_IOF_OFFENDING_FIELD_THRESHOLD_BYTES = 512 * 1024;
+
+function runtimeRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function runtimeText(...values: unknown[]) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function runtimeNumber(value: unknown, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function runtimeStringList(...values: unknown[]) {
+  const seen = new Set<string>();
+  const list: string[] = [];
+  for (const value of values) {
+    const entries = Array.isArray(value) ? value : [value];
+    for (const entry of entries) {
+      const text = String(entry ?? "").trim();
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      list.push(text);
+    }
+  }
+  return list;
+}
+
+function approximatePayloadBytes(value: unknown, seen = new WeakSet<object>(), depth = 0): number {
+  if (value === null || value === undefined) return 4;
+  if (typeof value === "string") return value.length * 2 + 2;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value).length;
+  if (typeof value === "function" || typeof value === "symbol") return 0;
+  if (depth > 8) return 64;
+  if (typeof value !== "object") return 0;
+  if (seen.has(value)) return 16;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    if (!value.length) return 2;
+    const sampleCount = Math.min(value.length, 100);
+    const sampleBytes = value.slice(0, sampleCount).reduce((total, item) => total + approximatePayloadBytes(item, seen, depth + 1), 2);
+    const average = sampleBytes / sampleCount;
+    return Math.round(2 + average * value.length);
+  }
+  const record = value as Record<string, unknown>;
+  return Object.entries(record).reduce((total, [key, item]) => (
+    total + key.length * 2 + approximatePayloadBytes(item, seen, depth + 1)
+  ), 2);
+}
+
+function byteLengthOfSmallJson(value: unknown) {
+  return new TextEncoder().encode(JSON.stringify(value)).length;
+}
+
+function payloadDescriptor(value: unknown) {
+  if (Array.isArray(value)) return `array(${value.length})`;
+  if (value && typeof value === "object") return `object(${Object.keys(value as Record<string, unknown>).length})`;
+  return typeof value;
+}
+
+function sectionSize(key: string, value: unknown): DraftIofPayloadSizeEntry {
+  return {
+    key,
+    approxBytes: approximatePayloadBytes(value),
+    descriptor: payloadDescriptor(value),
+  };
+}
+
+function draftIofSavePayloadSizeAudit(
+  draftPackage: DraftIofPackageRuntime,
+  referenceOnlyDraftPackage: DraftIofPackageRuntime,
+): DraftIofSavePayloadSizeAudit {
+  const draft = draftPackage as Record<string, unknown>;
+  const commercialSummary = runtimeRecord(draftPackage.commercialSummary);
+  const geometry = runtimeRecord(draftPackage.geometry);
+  const sections = [
+    sectionSize("route geometry", {
+      routeGeometry: draft.routeGeometry,
+      commercialGeometry: draft.commercialGeometry,
+      convertedRuntimeGeometry: draft.convertedRuntimeGeometry,
+      renderedGeometryCache: draft.renderedGeometryCache,
+      geometry,
+      centerline: draftPackage.centerline,
+      route: draftPackage.route,
+      osrmRoute: draftPackage.osrmRoute,
+    }),
+    sectionSize("workbook", {
+      workbook: draft.workbook,
+      workbookRows: draft.workbookRows,
+      commercialWorkbook: draft.commercialWorkbook,
+      commercialWorkbookSections: draft.commercialWorkbookSections,
+      commercialSummaryWorkbook: commercialSummary.workbook,
+    }),
+    sectionSize("proposal", {
+      proposalSummary: draftPackage.proposalSummary,
+      proposalBody: draft.proposalBody,
+      proposalDocument: draft.proposalDocument,
+      proposalHtml: draft.proposalHtml,
+    }),
+    sectionSize("estimate", {
+      estimate: draft.estimate,
+      commercialEstimate: draft.commercialEstimate,
+      pricing: draft.pricing,
+      pricingSummary: draft.pricingSummary,
+      commercialSummaryPricing: commercialSummary.pricingSummary,
+      financialAuthority: draft.financialAuthority,
+    }),
+    sectionSize("customer twin/runtime inventory", {
+      customerTwin: draft.customerTwin,
+      customerTwinSnapshot: draft.customerTwinSnapshot,
+      runtimeInventory: draft.runtimeInventory,
+      objectInventory: draft.objectInventory,
+      inventory: draft.inventory,
+      existingInventoryReferences: draftPackage.existingInventoryReferences,
+      customerDesignReferences: draftPackage.customerDesignReferences,
+    }),
+    sectionSize("station graph", {
+      stationGraph: draft.stationGraph,
+      stationIndexedGraph: draftPackage.stationIndexedGraph,
+      stationAuthority: draftPackage.stationAuthority,
+      stationAddressRegistry: draftPackage.stationAddressRegistry,
+      stations: draftPackage.stations,
+      measuredCenterline: draftPackage.measuredCenterline,
+      measuredSpine: draftPackage.measuredSpine,
+    }),
+    sectionSize("object manifest", {
+      manifest: draftPackage.manifest,
+      objectManifest: draft.objectManifest,
+      doctrineObjectManifest: draft.doctrineObjectManifest,
+      doctrineProjection: draft.doctrineProjection,
+      doctrineProjectionDiagnostics: draft.doctrineProjectionDiagnostics,
+      objectManifestSummary: draftPackage.objectManifestSummary,
+      auditObjectManifest: draftPackage.auditObjectManifest,
+      auditObjectManifestEntries: draftPackage.auditObjectManifestEntries,
+      stationObjectManifest: draft.stationObjectManifest,
+      projectedObjectManifest: draft.projectedObjectManifest,
+      objects: draftPackage.objects,
+      instantiatedSpineObjects: draftPackage.instantiatedSpineObjects,
+    }),
+    sectionSize("commercial revision", {
+      commercialRevisionId: draftPackage.commercialRevisionId,
+      revisionId: draftPackage.revisionId,
+      commercialRevisionHash: draftPackage.commercialRevisionHash,
+      commercialAuthorityDiagnostics: draftPackage.commercialAuthorityDiagnostics,
+      proposalAuthorityFlow: draftPackage.proposalAuthorityFlow,
+      draftIofAuthorityFlow: draftPackage.draftIofAuthorityFlow,
+    }),
+    sectionSize("commercial release package", {
+      commercialReleasePackageId: draftPackage.commercialReleasePackageId,
+      commercialReleaseHash: draftPackage.commercialReleaseHash,
+      commercialReleaseState: draftPackage.commercialReleaseState,
+    }),
+  ].sort((a, b) => b.approxBytes - a.approxBytes);
+  const largestFields = Object.entries(draft)
+    .map(([key, value]) => ({
+      key,
+      approxBytes: approximatePayloadBytes(value),
+      descriptor: payloadDescriptor(value),
+    }))
+    .sort((a, b) => b.approxBytes - a.approxBytes)
+    .slice(0, 25);
+  const offending = largestFields.find((entry) => entry.approxBytes > DRAFT_IOF_OFFENDING_FIELD_THRESHOLD_BYTES) ?? null;
+  return {
+    topLevelKeys: Object.keys(draftPackage),
+    originalApproxBytes: approximatePayloadBytes(draftPackage),
+    referenceOnlyBytes: byteLengthOfSmallJson({ draftPackage: referenceOnlyDraftPackage }),
+    largestFields,
+    inspectedSections: sections,
+    offendingField: offending?.key ?? null,
+    thresholdBytes: DRAFT_IOF_OFFENDING_FIELD_THRESHOLD_BYTES,
+    referenceOnlyThresholdBytes: DRAFT_IOF_REFERENCE_ONLY_MAX_BYTES,
+  };
+}
+
+function draftIofPackageRecordForRepository(draftPackage: DraftIofPackageRuntime): DraftIofPackageRuntime {
+  const draft = draftPackage as Record<string, unknown>;
+  const commercialSummary = runtimeRecord(draftPackage.commercialSummary);
+  const routeRepositoryRef = runtimeRecord(draft.routeRepositoryRef);
+  const geometry = runtimeRecord(draftPackage.geometry);
+  const proposalSummary = runtimeRecord(draftPackage.proposalSummary);
+  const customerSummary = runtimeRecord(draftPackage.customerSummary);
+  const packageReadiness = runtimeRecord(draftPackage.packageReadiness);
+  const assemblyReport = runtimeRecord(draftPackage.assemblyReport);
+  const artifactReferences = runtimeRecord(draft.iofArtifactRepositoryReferences);
+  const routeRepositoryId = runtimeText(
+    draft.routeRepositoryId,
+    routeRepositoryRef.routeRepositoryId,
+    commercialSummary.routeRepositoryId,
+  );
+  const routeGeometryId = runtimeText(
+    draft.routeGeometryId,
+    routeRepositoryRef.routeGeometryId,
+    geometry.routeGeometryId,
+    draft.centerlineId,
+  );
+  const geometryHash = runtimeText(
+    draft.geometryHash,
+    routeRepositoryRef.geometryHash,
+    geometry.geometryHash,
+  );
+  const workbookId = runtimeText(
+    draft.workbookId,
+    draft.commercialWorkbookId,
+    commercialSummary.workbookId,
+    runtimeRecord(commercialSummary.commercialWorkbook).workbookId,
+  );
+  const commercialWorkbookId = runtimeText(
+    draft.commercialWorkbookId,
+    draft.workbookId,
+    commercialSummary.commercialWorkbookId,
+    commercialSummary.workbookId,
+  );
+  const estimateId = runtimeText(
+    draft.estimateId,
+    draft.commercialEstimateId,
+    commercialSummary.estimateId,
+    runtimeRecord(draft.pricingSummary).estimateId,
+    runtimeRecord(commercialSummary.pricingSummary).estimateId,
+  );
+  const proposalId = runtimeText(draftPackage.proposalId, proposalSummary.proposalId);
+  const proposalRevisionId = runtimeText(draftPackage.proposalRevisionId, proposalSummary.proposalRevisionId, draft.proposalRevisionId);
+  const proposalHash = runtimeText(draftPackage.proposalHash, proposalSummary.proposalHash, draft.proposalHash);
+  const proposalRevisionNumber = runtimeNumber(draftPackage.proposalRevisionNumber ?? proposalSummary.proposalRevisionNumber ?? draft.proposalRevisionNumber, 0);
+  const customerId = runtimeText(draftPackage.customerId, customerSummary.customerId, draft.customerId);
+  const opportunityId = runtimeText(draftPackage.opportunityId, draft.opportunityId);
+  const commercialRevisionId = runtimeText(draftPackage.commercialRevisionId, draftPackage.revisionId, draft.commercialRevisionId);
+  const commercialReleasePackageId = runtimeText(draftPackage.commercialReleasePackageId, draft.commercialReleasePackageId);
+  const missing = [
+    ["proposalId", proposalId],
+    ["customerId", customerId],
+    ["opportunityId", opportunityId],
+    ["routeRepositoryId", routeRepositoryId],
+    ["workbookId", workbookId || commercialWorkbookId],
+    ["estimateId", estimateId],
+    ["commercialRevisionId", commercialRevisionId],
+    ["commercialReleasePackageId", commercialReleasePackageId],
+  ].filter(([, value]) => !String(value ?? "").trim());
+  if (missing.length) {
+    throw new Error(`Draft IOF reference-only save blocked: missing ${missing.map(([field]) => field).join(", ")}.`);
+  }
+  const referenceOnly = {
+    packageId: draftPackage.packageId,
+    draftPackageId: draftPackage.draftPackageId ?? draftPackage.packageId,
+    packageName: draftPackage.packageName,
+    packageType: draftPackage.packageType ?? "ENGINEERING",
+    status: draftPackage.status ?? "DRAFT",
+    workflowStatus: draftPackage.workflowStatus ?? "ENGINEERING_REVIEW",
+    organizationId: draftPackage.organizationId,
+    workspaceId: draftPackage.workspaceId,
+    ownerId: draftPackage.ownerId,
+    owner: draftPackage.owner,
+    visibility: draftPackage.visibility ?? "ORGANIZATION",
+    authority: draftPackage.authority ?? "COMMERCIAL_DRAFT_IOF_PACKAGE",
+    lifecycleState: draftPackage.lifecycleState ?? "IN_REVIEW",
+    commercialRepositoryId: draftPackage.commercialRepositoryId,
+    commercialRevisionId,
+    revisionId: draftPackage.revisionId ?? commercialRevisionId,
+    commercialRevisionHash: draftPackage.commercialRevisionHash,
+    commercialReleasePackageId,
+    commercialReleaseHash: draftPackage.commercialReleaseHash,
+    commercialReleaseState: draftPackage.commercialReleaseState,
+    changeSetIds: runtimeStringList(draftPackage.changeSetIds),
+    activeChangeSetIds: runtimeStringList(draftPackage.activeChangeSetIds, draftPackage.changeSetIds),
+    patchCount: runtimeNumber(draftPackage.patchCount, 0),
+    activePatchCount: runtimeNumber(draftPackage.activePatchCount, 0),
+    appliedPatchCount: runtimeNumber(draftPackage.appliedPatchCount, 0),
+    repositoryHash: draftPackage.repositoryHash,
+    projectionHash: draftPackage.projectionHash,
+    currentAuthority: draftPackage.currentAuthority ?? (commercialReleasePackageId ? "COMMERCIAL_RELEASE_PACKAGE" : "COMMERCIAL_REVISION"),
+    proposalId,
+    proposalRevisionId,
+    proposalHash,
+    proposalRevisionNumber,
+    customerId,
+    opportunityId,
+    accountId: draft.accountId,
+    productId: draftPackage.productId,
+    productName: draftPackage.productName,
+    assignedEngineerId: draftPackage.assignedEngineerId ?? "",
+    assignedEngineer: draftPackage.assignedEngineer ?? "Unassigned",
+    priority: draftPackage.priority ?? "NORMAL",
+    submittedAt: draftPackage.submittedAt,
+    routeRepositoryId,
+    routeRepositoryRef: {
+      routeRepositoryId,
+      routeGeometryId,
+      geometryHash,
+      repositoryType: "COMMERCIAL_ROUTE_REPOSITORY",
+    },
+    routeGeometryId,
+    geometryHash,
+    geometryReferences: runtimeStringList(draftPackage.geometryReferences, routeGeometryId),
+    workbookId,
+    commercialWorkbookId: commercialWorkbookId || workbookId,
+    estimateId,
+    commercialEstimateId: estimateId,
+    stationProjectionId: runtimeText(draft.stationProjectionId, draft.stationGraphId),
+    stationGraphId: runtimeText(draft.stationGraphId),
+    stationAuthorityIds: runtimeStringList(draft.stationAuthorityIds),
+    measuredCenterlineId: runtimeText(draft.measuredCenterlineId),
+    stationObjectManifestId: runtimeText(draft.stationObjectManifestId),
+    projectedObjectManifestId: runtimeText(draft.projectedObjectManifestId),
+    objectManifestId: runtimeText(draft.objectManifestId, draft.stationObjectManifestId, draft.projectedObjectManifestId),
+    productDoctrineId: runtimeText(draft.productDoctrineId, draft.doctrineId),
+    doctrineId: runtimeText(draft.doctrineId, draft.productDoctrineId),
+    proposalSummary: {
+      proposalId,
+      proposalRevisionId,
+      proposalHash,
+      proposalRevisionNumber,
+      proposalNumber: proposalSummary.proposalNumber,
+      title: proposalSummary.title,
+      status: proposalSummary.status,
+      repositoryType: "PROPOSAL_REPOSITORY",
+    },
+    commercialSummary: {
+      routeRepositoryId,
+      routeGeometryId,
+      geometryHash,
+      workbookId,
+      commercialWorkbookId: commercialWorkbookId || workbookId,
+      estimateId,
+      proposalId,
+      proposalRevisionId,
+      proposalHash,
+      proposalRevisionNumber,
+      commercialRevisionId,
+      commercialReleasePackageId,
+      commercialReleaseHash: draftPackage.commercialReleaseHash,
+      repositoryType: "COMMERCIAL_RELEASE_PACKAGE_REFERENCES",
+    },
+    customerSummary: {
+      customerId,
+      customerTwinId: runtimeText(customerSummary.customerTwinId, draft.customerTwinId, draftPackage.customerTwinReference),
+      name: customerSummary.name,
+    },
+    packageReadiness: {
+      status: packageReadiness.status ?? "REFERENCE_ONLY",
+      readinessScore: packageReadiness.readinessScore,
+      canSubmitToEngineering: packageReadiness.canSubmitToEngineering,
+    },
+    engineeringReadiness: draftPackage.engineeringReadiness ?? "READY_FOR_ENGINEERING_REVIEW",
+    commercialConfidence: runtimeNumber(draftPackage.commercialConfidence, 0),
+    engineeringConfidence: runtimeNumber(draftPackage.engineeringConfidence, 0),
+    assemblyConfidence: runtimeNumber(draftPackage.assemblyConfidence, 0),
+    packageCompleteness: runtimeNumber(draftPackage.packageCompleteness, 0),
+    assemblyReport: {
+      assemblyId: assemblyReport.assemblyId,
+      assembledBy: assemblyReport.assembledBy ?? "IOFPackageAssemblyEngine",
+      referenceOnly: true,
+    },
+    doctrineObjectManifestId: runtimeText(draft.doctrineObjectManifestId, runtimeRecord(draft.doctrineObjectManifest).manifestId, runtimeRecord(draft.engineeringObjectManifest).manifestId),
+    engineeringObjectManifestId: runtimeText(draft.engineeringObjectManifestId, runtimeRecord(draft.engineeringObjectManifest).manifestId, runtimeRecord(draft.doctrineObjectManifest).manifestId),
+    doctrineProjectionId: runtimeText(draft.doctrineProjectionId, runtimeRecord(draft.doctrineProjection).projectionId),
+    executionGraphId: runtimeText(draft.executionGraphId, runtimeRecord(draft.projectedObjectManifest).executionGraphId, runtimeRecord(draft.iofPackageTwin).executionGraphId),
+    lifecycleGraphId: runtimeText(draft.lifecycleGraphId, runtimeRecord(draft.projectedObjectManifest).lifecycleGraphId, runtimeRecord(draft.iofPackageTwin).lifecycleGraphId),
+    closureLedgerId: runtimeText(draft.closureLedgerId, runtimeRecord(draft.closureLedger).closureLedgerId),
+    iofPackageTwinId: runtimeText(draft.iofPackageTwinId, runtimeRecord(draft.iofPackageTwin).twinProjectionId),
+    iofArtifactRepositoryReferences: artifactReferences,
+    objectManifestRef: artifactReferences.engineeringObjectManifest,
+    stationProjectionRef: artifactReferences.stationProjection,
+    stationGraphRef: artifactReferences.stationGraph,
+    measuredCenterlineRef: artifactReferences.measuredCenterline,
+    productDoctrineAssemblyRef: artifactReferences.productDoctrineAssembly,
+    projectConfigurationRef: artifactReferences.projectConfiguration,
+    quantityReconciliationRef: artifactReferences.quantityReconciliation,
+    routeRevision: draft.routeRevision ?? routeRepositoryRef.routeRevision,
+    productVersion: draft.productVersion,
+    productDoctrineVersion: draft.productDoctrineVersion,
+    estimateRevisionId: draft.estimateRevisionId,
+    estimateHash: draft.estimateHash,
+    sourceEvidenceRefs: Array.isArray(draft.sourceEvidenceRefs) ? draft.sourceEvidenceRefs : [],
+    proposedIofUnits: [],
+    runtimeObjectIds: runtimeStringList(draftPackage.runtimeObjectIds),
+    runtimeRelationshipIds: runtimeStringList(draftPackage.runtimeRelationshipIds),
+    runtimeEvidenceIds: runtimeStringList(draftPackage.runtimeEvidenceIds),
+    existingInventoryReferences: runtimeStringList(draftPackage.existingInventoryReferences),
+    customerDesignReferences: runtimeStringList(draftPackage.customerDesignReferences),
+    customerTwinReference: runtimeText(draftPackage.customerTwinReference, customerSummary.customerTwinId, draft.customerTwinId),
+    historyIds: runtimeStringList(draftPackage.historyIds, `${draftPackage.packageId}:HISTORY:COMMERCIAL_ASSEMBLED`),
+    draftIofSavePayload: {
+      referenceOnly: true,
+      noEmbeddedRouteGeometry: true,
+      noEmbeddedWorkbookRows: true,
+      noEmbeddedProposalBody: true,
+      noEmbeddedRuntimeInventory: true,
+      noEmbeddedMapObjects: true,
+      replacedByReferences: [
+        "routeRepositoryId",
+        "routeGeometryId",
+        "geometryHash",
+        "workbookId",
+        "estimateId",
+        "proposalId",
+        "commercialRevisionId",
+        "commercialReleasePackageId",
+        "stationProjectionId",
+        "objectManifestId",
+      ],
+    },
+    referenceOnly: true,
+    noScopeVersionCreation: true,
+    noInventoryMutation: true,
+    noMarketplaceCreation: true,
+    noControlCreation: true,
+    noFieldCreation: true,
+    createdAt: draftPackage.createdAt,
+    updatedAt: draftPackage.updatedAt,
+  } as DraftIofPackageRuntime;
+  const referenceBytes = byteLengthOfSmallJson({ draftPackage: referenceOnly });
+  if (referenceBytes > DRAFT_IOF_REFERENCE_ONLY_MAX_BYTES) {
+    const largest = draftIofSavePayloadSizeAudit(draftPackage, referenceOnly).largestFields[0];
+    throw new Error(`Draft IOF reference-only save blocked: payload is ${referenceBytes} bytes; largest source field is ${largest.key} (${largest.approxBytes} bytes).`);
+  }
+  return referenceOnly;
+}
+
 export type RuntimeWorkspaceSession = {
   sessionId: string;
   workspaceSessionId: string;
@@ -688,6 +1531,22 @@ export type ProposalCustomerRecipientInput = {
 
 export type CertifiedIofPackageRuntime = DraftIofPackageRuntime & {
   certifiedPackageId: string;
+  certificationLedgerId?: string;
+  certificationId?: string;
+  packageHash?: string;
+  certifiedPackageHash?: string;
+  certificationEvidenceManifestId?: string;
+  evidenceManifestId?: string;
+  certificationEvidenceHash?: string;
+  engineeringBaselineId?: string;
+  engineeringRevisionId?: string;
+  engineeringRevisionHash?: string;
+  engineeringApprovalId?: string;
+  engineeringApprovalHash?: string;
+  engineeringChangeSetIds?: string[];
+  commercialReleasePackageId?: string;
+  commercialRevisionId?: string;
+  commercialRevisionHash?: string;
   certifiedDraftIofPackageId?: string;
   technicalSourcePackageId?: string;
   sourceEngineeringTruthId?: string;
@@ -734,6 +1593,111 @@ export type CertifiedIofPackageRuntime = DraftIofPackageRuntime & {
   scopeVersionId?: string;
   executionAuthorized?: boolean;
   immutable: boolean;
+};
+
+export type CertificationLedgerEntryRuntime = {
+  certificationLedgerId: string;
+  certificationId: string;
+  engineeringBaselineId: string;
+  engineeringRevisionId: string;
+  engineeringRevisionHash: string;
+  engineeringApprovalId?: string;
+  engineeringApprovalHash?: string;
+  engineeringChangeSetIds?: string[];
+  commercialReleasePackageId: string;
+  commercialRevisionId: string;
+  commercialRevisionHash: string;
+  routeRepositoryId?: string;
+  proposalId?: string;
+  estimateId?: string;
+  workbookId?: string;
+  productDoctrineId?: string;
+  engineeringDoctrineId?: string;
+  certificationEvidenceManifestId: string;
+  certificationEvidenceManifest?: Record<string, unknown>;
+  certificationEvidenceHash: string;
+  certificationTimestamp: string;
+  certifiedBy: string;
+  certifiedById?: string;
+  reviewStatus: string;
+  engineeringDoctrineVersion: string;
+  commercialDoctrineVersion: string;
+  stationProjectionHash: string;
+  objectManifestHash: string;
+  packageHash: string;
+  certificationHash: string;
+  result: string;
+  certifiedPackageId: string;
+  certifiedIofPackageProjectionId: string;
+  certifiedPackageHash: string;
+  authority: "CERTIFICATION_LEDGER" | string;
+  repositoryType: "CERTIFICATION_LEDGER" | string;
+  immutable: boolean;
+  appendOnly: boolean;
+  referenceOnly: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EngineeringApprovalRuntime = {
+  approvalId: string;
+  organizationId: string;
+  tenantId: string;
+  customerId: string;
+  opportunityId: string;
+  engineeringPackageId: string;
+  engineeringBaselineId: string;
+  engineeringRevisionId: string;
+  engineeringRevisionHash: string;
+  draftIofPackageId: string;
+  proposalRevisionId?: string;
+  proposalHash?: string;
+  commercialRevisionId?: string;
+  commercialRevisionHash?: string;
+  decision: "APPROVED";
+  approvedBy: string;
+  approvedById: string;
+  approvedAt: string;
+  reviewSummary: Record<string, unknown>;
+  reviewSummaryHash: string;
+  approvalHash: string;
+  authority: "ENGINEERING_APPROVAL";
+  repositoryType: "ENGINEERING_APPROVAL";
+  immutable: true;
+  referenceOnly: true;
+};
+
+export type EngineeringApprovalEligibilityRuntime = {
+  engineeringPackageId: string;
+  engineeringRevisionId: string;
+  engineeringRevisionHash: string;
+  draftIofPackageId: string;
+  proposalRevisionId?: string;
+  commercialRevisionId?: string;
+  organizationId: string;
+  tenantId: string;
+  customerId: string;
+  opportunityId: string;
+  packageIntegrity: "PASS" | "FAIL" | string;
+  routeAuthority: "PASS" | "FAIL" | string;
+  quantityReconciliation: "PASS" | "INCOMPLETE" | string;
+  constitutionalQuantity: "PASS" | "INCOMPLETE" | string;
+  budgetApproval: "APPROVED" | "NOT_APPROVED" | string;
+  blockingConditions: number;
+  compliance: "PASS" | "FAIL" | string;
+  reviewSummaryHash: string;
+  reviewComplete: boolean;
+  approvalEligible: boolean;
+  blockers: Array<{
+    code: string;
+    predicate: string;
+    expected: unknown;
+    actual: unknown;
+    sourceAuthority: string;
+  }>;
+  sourceAuthority: "ENGINEERING_APPROVAL_ELIGIBILITY";
+  derivedFromGovernedState: true;
+  reasoningRequired: false;
 };
 
 export type ServiceOrderRuntime = {
@@ -838,10 +1802,32 @@ function apiUrl(path: string) {
   return `${DAL_API}${path}`;
 }
 
+export class TeralinxRuntimeRequestError extends Error {
+  status: number;
+  statusText: string;
+  body: Record<string, unknown>;
+
+  constructor(status: number, statusText: string, body: Record<string, unknown>, rawText: string) {
+    super(String(body.error ?? `${status} ${statusText}${rawText ? `: ${rawText}` : ""}`));
+    this.name = "TeralinxRuntimeRequestError";
+    this.status = status;
+    this.statusText = statusText;
+    this.body = body;
+  }
+}
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(apiUrl(path), init);
   const text = await response.text().catch(() => "");
-  if (!response.ok) throw new Error(`${response.status} ${response.statusText}${text ? `: ${text}` : ""}`);
+  if (!response.ok) {
+    let body: Record<string, unknown> = {};
+    try {
+      body = text ? JSON.parse(text) as Record<string, unknown> : {};
+    } catch {
+      body = {};
+    }
+    throw new TeralinxRuntimeRequestError(response.status, response.statusText, body, text);
+  }
   return (text ? JSON.parse(text) : {}) as T;
 }
 
@@ -851,6 +1837,45 @@ function authHeaders(session?: TeralinxAuthSession | null, headers: HeadersInit 
     ...headers,
     Authorization: `Bearer ${session.token}`,
   };
+}
+
+export async function downloadRuntimeArtifact(path: string, session?: TeralinxAuthSession | null) {
+  const response = await fetch(apiUrl(path), { headers: authHeaders(session) });
+  if (!response.ok) {
+    const rawText = await response.text().catch(() => "");
+    let body: Record<string, unknown> = {};
+    try { body = rawText ? JSON.parse(rawText) as Record<string, unknown> : {}; } catch { body = {}; }
+    throw new TeralinxRuntimeRequestError(response.status, response.statusText, body, rawText);
+  }
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? "Teralinx_Deliverable";
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url; anchor.download = filename; anchor.style.display = "none";
+  document.body.appendChild(anchor); anchor.click(); anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  return { filename, size: blob.size, contentType: blob.type, exportHash: response.headers.get("x-teralinx-export-hash") ?? "" };
+}
+
+export async function loadMarketplaceFulfillment<T>(scopeVersionId: string, session?: TeralinxAuthSession | null): Promise<T> {
+  return requestJson<T>(`/api/marketplace/fulfillment/${encodeURIComponent(scopeVersionId)}`, { headers: authHeaders(session) });
+}
+
+export async function bootstrapMarketplaceFulfillment<T>(scopeVersionId: string, session?: TeralinxAuthSession | null): Promise<T> {
+  return requestJson<T>(`/api/marketplace/fulfillment/${encodeURIComponent(scopeVersionId)}/bootstrap`, { method: "POST", headers: authHeaders(session) });
+}
+
+export async function createMarketplaceResponse<T>(scopeVersionId: string, input: Record<string, unknown>, session?: TeralinxAuthSession | null): Promise<T> {
+  return requestJson<T>(`/api/marketplace/fulfillment/${encodeURIComponent(scopeVersionId)}/responses`, { method: "POST", headers: { ...authHeaders(session), "Content-Type": "application/json" }, body: JSON.stringify(input) });
+}
+
+export async function createMarketplaceAllocation<T>(scopeVersionId: string, input: Record<string, unknown>, session?: TeralinxAuthSession | null): Promise<T> {
+  return requestJson<T>(`/api/marketplace/fulfillment/${encodeURIComponent(scopeVersionId)}/allocations`, { method: "POST", headers: { ...authHeaders(session), "Content-Type": "application/json" }, body: JSON.stringify(input) });
+}
+
+export async function createMarketplaceAward<T>(scopeVersionId: string, input: Record<string, unknown>, session?: TeralinxAuthSession | null): Promise<T> {
+  return requestJson<T>(`/api/marketplace/fulfillment/${encodeURIComponent(scopeVersionId)}/awards`, { method: "POST", headers: { ...authHeaders(session), "Content-Type": "application/json" }, body: JSON.stringify(input) });
 }
 
 function unwrapList<T>(data: any, keys: string[]): T[] {
@@ -886,7 +1911,7 @@ type CommercialRouteRepositoryClientMethod =
 function logCommercialRouteRepositoryDiagnostics(action: string, data: any) {
   const diagnostics = data?.routeRepositoryDiagnostics as CommercialRouteRepositoryDiagnostics | undefined;
   if (!diagnostics) return;
-  console.info("[CommercialRouteRepository]", {
+  runtimeDiagnosticsLog("CommercialRouteRepository", {
     action,
     endpointSelected: diagnostics.endpointSelected,
     endpointRegistered: diagnostics.endpointRegistered,
@@ -919,7 +1944,7 @@ async function commercialRouteRepositoryRequest<T>(
   init: Omit<RequestInit, "headers"> & { headers?: Record<string, string> } = {},
 ) {
   const endpointUsed = `${COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT}${pathSuffix}`;
-  console.info("[CommercialRouteRepositoryClient]", {
+  runtimeDiagnosticsLog("CommercialRouteRepositoryClient", {
     clientMethod,
     endpointUsed,
     endpointSelected: COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT,
@@ -1038,13 +2063,181 @@ export async function verifyCommercialRoute<T extends { routeRepositoryId: strin
   if (expected.geometryHash && route.geometryHash && route.geometryHash !== expected.geometryHash) {
     throw new Error(`Commercial Route Repository verification failed. Expected geometry hash ${expected.geometryHash}; found ${route.geometryHash}.`);
   }
-  console.info("[CommercialRouteRepositoryClient]", {
+  runtimeDiagnosticsLog("CommercialRouteRepositoryClient", {
     clientMethod: "verifyCommercialRoute",
     endpointUsed: `${COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT}/${routeRepositoryId}`,
     repositoryIdentifier: routeRepositoryId,
     verificationResult: "PASS",
   });
   return route;
+}
+
+export async function listCommercialRevisions(session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/commercial/revisions", {
+    headers: authHeaders(session),
+  });
+  return unwrapList<CommercialRevisionRuntime>(data, ["commercialRevisions", "items", "data"]);
+}
+
+export async function openCommercialRevision(commercialRevisionId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/commercial/revisions/${encodeURIComponent(commercialRevisionId)}`, {
+    headers: authHeaders(session),
+  });
+  return (data.commercialRevision ?? data) as CommercialRevisionRuntime;
+}
+
+export async function saveCommercialRevision(
+  commercialRevision: Partial<CommercialRevisionRuntime>,
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>("/api/commercial/revisions", {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ commercialRevision }),
+  });
+  return (data.commercialRevision ?? data) as CommercialRevisionRuntime;
+}
+
+export async function listCommercialReleasePackages(session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/commercial/release-packages", {
+    headers: authHeaders(session),
+  });
+  return unwrapList<CommercialReleasePackageRuntime>(data, ["commercialReleasePackages", "items", "data"]);
+}
+
+export async function openCommercialReleasePackage(commercialReleasePackageId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/commercial/release-packages/${encodeURIComponent(commercialReleasePackageId)}`, {
+    headers: authHeaders(session),
+  });
+  return (data.commercialReleasePackage ?? data) as CommercialReleasePackageRuntime;
+}
+
+export async function saveCommercialReleasePackage(
+  commercialReleasePackage: Partial<CommercialReleasePackageRuntime>,
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>("/api/commercial/release-packages", {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ commercialReleasePackage }),
+  });
+  return (data.commercialReleasePackage ?? data) as CommercialReleasePackageRuntime;
+}
+
+export async function listCommercialChangeSets(session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/commercial/change-sets", {
+    headers: authHeaders(session),
+  });
+  return unwrapList<CommercialChangeSetRuntime>(data, ["commercialChangeSets", "items", "data"]);
+}
+
+export async function openCommercialChangeSet(changeSetId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/commercial/change-sets/${encodeURIComponent(changeSetId)}`, {
+    headers: authHeaders(session),
+  });
+  return (data.commercialChangeSet ?? data) as CommercialChangeSetRuntime;
+}
+
+export async function saveCommercialChangeSet(
+  commercialChangeSet: Partial<CommercialChangeSetRuntime>,
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>("/api/commercial/change-sets", {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ commercialChangeSet }),
+  });
+  return (data.commercialChangeSet ?? data) as CommercialChangeSetRuntime;
+}
+
+export async function replayCommercialRevision(revisionId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/commercial/change-sets/${encodeURIComponent(revisionId)}/replay`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+  });
+  return (data.replay ?? data.projection ?? data) as CommercialRevisionProjectionRuntime;
+}
+
+export async function compareCommercialRevision(revisionId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/commercial/change-sets/${encodeURIComponent(revisionId)}/compare`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+  });
+  return data.comparison ?? data;
+}
+
+export async function discardCommercialRevision(revisionIdOrChangeSetId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/commercial/change-sets/${encodeURIComponent(revisionIdOrChangeSetId)}/discard`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+  });
+  return data.commercialChangeSet ?? data.commercialChangeSets ?? data;
+}
+
+export async function restoreOriginalCommercialRevision(revisionId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/commercial/change-sets/${encodeURIComponent(revisionId)}/restore-original`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+  });
+  return data.commercialChangeSets ?? data;
+}
+
+export async function listEngineeringChangeSets(session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/engineering/change-sets", {
+    headers: authHeaders(session),
+  });
+  return unwrapList<EngineeringChangeSetRuntime>(data, ["engineeringChangeSets", "items", "data"]);
+}
+
+export async function openEngineeringChangeSet(changeSetId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/engineering/change-sets/${encodeURIComponent(changeSetId)}`, {
+    headers: authHeaders(session),
+  });
+  return (data.engineeringChangeSet ?? data) as EngineeringChangeSetRuntime;
+}
+
+export async function saveEngineeringChangeSet(
+  engineeringChangeSet: Partial<EngineeringChangeSetRuntime>,
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>("/api/engineering/change-sets", {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ engineeringChangeSet }),
+  });
+  return (data.engineeringChangeSet ?? data) as EngineeringChangeSetRuntime;
+}
+
+export async function replayEngineeringRevision(revisionId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/engineering/change-sets/${encodeURIComponent(revisionId)}/replay`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+  });
+  return (data.replay ?? data.projection ?? data) as EngineeringRevisionProjectionRuntime;
+}
+
+export async function compareEngineeringRevision(revisionId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/engineering/change-sets/${encodeURIComponent(revisionId)}/compare`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+  });
+  return data.comparison ?? data;
+}
+
+export async function discardEngineeringRevision(revisionIdOrChangeSetId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/engineering/change-sets/${encodeURIComponent(revisionIdOrChangeSetId)}/discard`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+  });
+  return data.engineeringChangeSet ?? data.engineeringChangeSets ?? data;
+}
+
+export async function restoreOriginalEngineeringRevision(revisionId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/engineering/change-sets/${encodeURIComponent(revisionId)}/restore-original`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+  });
+  return data.engineeringChangeSets ?? data;
 }
 
 export async function cloneCommercialOpportunity<T>(opportunityId: string, session?: TeralinxAuthSession | null) {
@@ -1176,7 +2369,7 @@ export async function archiveProposalRuntimeObject<T extends ProposalRuntimeObje
 
 export async function createProposalRevision<T extends ProposalRuntimeObject = ProposalRuntimeObject>(
   proposalId: string,
-  input: { reason?: string; proposal?: Partial<T>; changes?: Record<string, unknown> } = {},
+  input: { reason?: string; basisProposalRevisionId?: string; proposal?: Partial<T>; changes?: Record<string, unknown> } = {},
   session?: TeralinxAuthSession | null,
 ) {
   return proposalAction<T>(proposalId, "revision", input, session);
@@ -1274,6 +2467,32 @@ export async function listEngineeringPackages(session?: TeralinxAuthSession | nu
   return unwrapList<EngineeringPackageRuntime>(data, ["engineeringPackages", "items", "data"]);
 }
 
+export async function listEngineeringBaselines(session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/engineering/baselines", {
+    headers: authHeaders(session),
+  });
+  return unwrapList<EngineeringBaselineRuntime>(data, ["engineeringBaselines", "items", "data"]);
+}
+
+export async function openEngineeringBaseline(engineeringBaselineId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/engineering/baselines/${encodeURIComponent(engineeringBaselineId)}`, {
+    headers: authHeaders(session),
+  });
+  return (data.engineeringBaseline ?? data) as EngineeringBaselineRuntime;
+}
+
+export async function saveEngineeringBaseline(
+  engineeringBaseline: Partial<EngineeringBaselineRuntime>,
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>("/api/engineering/baselines", {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ engineeringBaseline }),
+  });
+  return (data.engineeringBaseline ?? data) as EngineeringBaselineRuntime;
+}
+
 export async function openEngineeringPackage(engineeringPackageId: string, session?: TeralinxAuthSession | null) {
   const data = await requestJson<any>(`/api/engineering/packages/${encodeURIComponent(engineeringPackageId)}`, {
     headers: authHeaders(session),
@@ -1316,12 +2535,60 @@ export async function saveCommercialDraftIofPackage(
   draftPackage: DraftIofPackageRuntime,
   session?: TeralinxAuthSession | null,
 ) {
+  const initialReferenceOnlyDraftPackage = draftIofPackageRecordForRepository(draftPackage);
+  const draft = draftPackage as Record<string, unknown>;
+  const artifactPersistenceDraftPackage = {
+    ...initialReferenceOnlyDraftPackage,
+    engineeringObjectManifest: draft.engineeringObjectManifest ?? draft.doctrineObjectManifest,
+    stationProjection: draft.stationProjection,
+    stationGraph: draft.stationGraph ?? draft.stationIndexedGraph,
+    stationObjectManifest: draft.stationObjectManifest,
+    measuredCenterline: draft.measuredCenterline ?? draft.measuredSpine,
+    projectedObjectManifest: draft.projectedObjectManifest,
+    closureLedger: draft.closureLedger,
+    iofPackageTwin: draft.iofPackageTwin ?? draft.iofTwin,
+    productDoctrineAssembly: draft.productDoctrineAssembly ?? draft.doctrineAssembly,
+    projectConfiguration: draft.projectConfiguration,
+    quantityReconciliation: draft.quantityReconciliation ?? draft.commercialAuditReconciliation,
+  };
+  const artifactData = await requestJson<any>(`/api/commercial/iof-packages/${encodeURIComponent(draftPackage.packageId)}/artifacts`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ draftPackage: artifactPersistenceDraftPackage }),
+  });
+  const referenceOnlyDraftPackage = draftIofPackageRecordForRepository({
+    ...draftPackage,
+    ...(artifactData.authorityBindings ?? {}),
+    iofArtifactRepositoryReferences: artifactData.artifactReferences ?? {},
+  } as DraftIofPackageRuntime);
+  const payloadAudit = draftIofSavePayloadSizeAudit(draftPackage, referenceOnlyDraftPackage);
+  console.info("[Draft IOF Save] payload size audit", payloadAudit);
+  if (payloadAudit.offendingField) {
+    console.warn("[Draft IOF Save] large embedded source field stripped before serialization", {
+      offendingField: payloadAudit.offendingField,
+      largestFields: payloadAudit.largestFields,
+      referenceOnlyBytes: payloadAudit.referenceOnlyBytes,
+    });
+  }
+  let body: string;
+  try {
+    body = JSON.stringify({ draftPackage: referenceOnlyDraftPackage });
+  } catch (error) {
+    throw new Error(`Draft IOF reference-only save serialization failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
   const data = await requestJson<any>("/api/commercial/iof-packages", {
     method: "POST",
     headers: authHeaders(session, { "Content-Type": "application/json" }),
-    body: JSON.stringify({ draftPackage }),
+    body,
   });
   return (data.draftPackage ?? data.iofPackage ?? data) as DraftIofPackageRuntime;
+}
+
+export async function listCommercialDraftIofPackages(session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/commercial/iof-packages", {
+    headers: authHeaders(session),
+  });
+  return unwrapList<DraftIofPackageRuntime>(data, ["draftPackages", "iofPackages", "items", "data"]);
 }
 
 export async function submitDraftIofPackageToEngineering(
@@ -1339,8 +2606,10 @@ export async function submitDraftIofPackageToEngineering(
     draftPackage: DraftIofPackageRuntime;
     iofPackage: DraftIofPackageRuntime;
     engineeringIntake: EngineeringIntakeRecord;
+    engineeringBaseline: EngineeringBaselineRuntime;
     engineeringPackage: EngineeringPackageRuntime;
     commercialOpportunity?: Record<string, unknown> | null;
+    proposal?: ProposalRuntimeObject | null;
     engineeringTransactionLog?: Record<string, unknown>[];
   }>(`/api/commercial/iof-packages/${encodeURIComponent(packageId)}/submit-engineering`, {
     method: "POST",
@@ -1400,6 +2669,9 @@ export async function getDraftIofPackageDifferences(packageId: string, session?:
 export async function addEngineeringCertificationConstraint(
   packageId: string,
   input: {
+    conditionTitle?: string;
+    humanClassification?: string;
+    humanSeverity?: string;
     category: string;
     station?: string;
     stationRange?: string;
@@ -1408,6 +2680,7 @@ export async function addEngineeringCertificationConstraint(
     status?: string;
     engineeringDisposition?: string;
     notesEvidence?: string;
+    conditionContext?: Record<string, unknown>;
   },
   session?: TeralinxAuthSession | null,
 ) {
@@ -1416,7 +2689,27 @@ export async function addEngineeringCertificationConstraint(
     headers: authHeaders(session, { "Content-Type": "application/json" }),
     body: JSON.stringify(input),
   });
-  return (data.draftPackage ?? data.iofPackage ?? data) as DraftIofPackageRuntime;
+  return data as { packageId: string; updatedAt: string; engineeringConstraints: Record<string, unknown>[]; constraint: Record<string, unknown>; metadataPatchOnly: true };
+}
+
+export async function dispositionEngineeringCertificationConstraint(
+  packageId: string,
+  constraintId: string,
+  input: {
+    status: "OPEN" | "IN_REVIEW" | "RESOLVED" | "ACCEPTED";
+    disposition: string;
+    reason: string;
+    impactSummary?: string;
+    notesEvidence?: string;
+  },
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/constraints/${encodeURIComponent(constraintId)}/disposition`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return data as { packageId: string; updatedAt: string; engineeringConstraints: Record<string, unknown>[]; constraint: Record<string, unknown>; previousConstraint: Record<string, unknown>; metadataPatchOnly: true };
 }
 
 export async function moveEngineeringCertificationObject(
@@ -1560,6 +2853,10 @@ export async function certifyDraftIofPackage(
     stationPlan?: Record<string, unknown>;
     engineeringApprovedObjectBudget?: Record<string, unknown>;
     engineeringApprovedBudget?: number;
+    quantityReconciliation?: Record<string, unknown>;
+    engineeringRevision?: Record<string, unknown>;
+    engineeringRevisionProjection?: EngineeringRevisionProjectionRuntime | Record<string, unknown>;
+    engineeringApprovalId?: string;
     manualHandoff?: Record<string, unknown>;
     notes?: string;
   },
@@ -1568,10 +2865,61 @@ export async function certifyDraftIofPackage(
   return requestJson<{
     draftPackage: DraftIofPackageRuntime;
     certifiedIofPackage: CertifiedIofPackageRuntime;
+    certifiedIofTwin?: Record<string, unknown>;
+    certificationLedgerEntry?: CertificationLedgerEntryRuntime;
     engineeringPackage?: EngineeringPackageRuntime | null;
     executionAuthorizationCertificate?: ExecutionAuthorizationCertificate;
     scopeVersion?: Record<string, unknown>;
   }>(`/api/engineering/certification/draft-packages/${encodeURIComponent(packageId)}/certify`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+}
+
+export async function listEngineeringApprovals(
+  input: { engineeringPackageId?: string; engineeringRevisionId?: string } = {},
+  session?: TeralinxAuthSession | null,
+) {
+  const query = new URLSearchParams();
+  if (input.engineeringPackageId) query.set("engineeringPackageId", input.engineeringPackageId);
+  if (input.engineeringRevisionId) query.set("engineeringRevisionId", input.engineeringRevisionId);
+  const data = await requestJson<any>(`/api/engineering/approvals${query.size ? `?${query}` : ""}`, {
+    headers: authHeaders(session),
+  });
+  return unwrapList<EngineeringApprovalRuntime>(data, ["engineeringApprovals", "items"]);
+}
+
+export async function getEngineeringApprovalStatus(
+  input: { engineeringPackageId: string; engineeringRevisionId?: string },
+  session?: TeralinxAuthSession | null,
+) {
+  const query = new URLSearchParams({ engineeringPackageId: input.engineeringPackageId });
+  if (input.engineeringRevisionId) query.set("engineeringRevisionId", input.engineeringRevisionId);
+  return requestJson<{
+    currentEngineeringApproval: EngineeringApprovalRuntime | null;
+    engineeringApprovals: EngineeringApprovalRuntime[];
+    reviewSummary: Record<string, unknown>;
+    reviewSummaryHash: string;
+    approvalEligibility: EngineeringApprovalEligibilityRuntime;
+    missingRequirements: string[];
+  }>(`/api/engineering/approvals?${query}`, { headers: authHeaders(session) });
+}
+
+export async function approveEngineeringRevision(
+  input: {
+    engineeringPackageId: string;
+    engineeringRevisionId: string;
+    engineeringRevisionHash: string;
+    reviewSummaryHash: string;
+    organizationId?: string;
+    tenantId?: string;
+    customerId?: string;
+    opportunityId?: string;
+  },
+  session?: TeralinxAuthSession | null,
+) {
+  return requestJson<{ engineeringApproval: EngineeringApprovalRuntime; idempotentReplay: boolean; reviewComplete: boolean; sizeBytes?: number }>("/api/engineering/approvals", {
     method: "POST",
     headers: authHeaders(session, { "Content-Type": "application/json" }),
     body: JSON.stringify(input),
@@ -1590,6 +2938,20 @@ export async function openCertifiedIofPackage(certifiedPackageId: string, sessio
     headers: authHeaders(session),
   });
   return (data.certifiedIofPackage ?? data) as CertifiedIofPackageRuntime;
+}
+
+export async function listCertificationLedgerEntries(session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>("/api/engineering/certification-ledger", {
+    headers: authHeaders(session),
+  });
+  return unwrapList<CertificationLedgerEntryRuntime>(data, ["certificationLedger", "certificationLedgerEntries", "items"]);
+}
+
+export async function openCertificationLedgerEntry(certificationLedgerId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/engineering/certification-ledger/${encodeURIComponent(certificationLedgerId)}`, {
+    headers: authHeaders(session),
+  });
+  return (data.certificationLedgerEntry ?? data) as CertificationLedgerEntryRuntime;
 }
 
 export async function listServiceOrders(session?: TeralinxAuthSession | null) {
@@ -1637,6 +2999,36 @@ export async function recordServiceOrderSignaturePlaceholder(
     body: JSON.stringify(input),
   });
   return (data.serviceOrder ?? data) as ServiceOrderRuntime;
+}
+
+export async function recordServiceOrderCustomerSignature(
+  serviceOrderId: string,
+  input: { documentHash?: string; typedName?: string; authorityAcknowledged?: boolean } = {},
+  session?: TeralinxAuthSession | null,
+) {
+  const data = await requestJson<any>(`/api/service-orders/${encodeURIComponent(serviceOrderId)}/record-signature`, {
+    method: "POST",
+    headers: authHeaders(session, { "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  return (data.serviceOrder ?? data) as ServiceOrderRuntime;
+}
+
+export async function issueServiceOrder(serviceOrderId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<any>(`/api/service-orders/${encodeURIComponent(serviceOrderId)}/issue`, {
+    method: "POST", headers: authHeaders(session, { "Content-Type": "application/json" }),
+  });
+  return (data.serviceOrder ?? data) as ServiceOrderRuntime;
+}
+
+export async function countersignServiceOrder(
+  serviceOrderId: string,
+  input: { documentHash: string; authorizationAcknowledged: boolean },
+  session?: TeralinxAuthSession | null,
+) {
+  return requestJson<{ serviceOrder: ServiceOrderRuntime; scopeVersion: Record<string, unknown>; authorizedTwin: Record<string, unknown>; transaction: Record<string, unknown> }>(`/api/service-orders/${encodeURIComponent(serviceOrderId)}/countersign`, {
+    method: "POST", headers: authHeaders(session, { "Content-Type": "application/json" }), body: JSON.stringify(input),
+  });
 }
 
 export async function generateScopeVersionFromCertifiedIofPackage(

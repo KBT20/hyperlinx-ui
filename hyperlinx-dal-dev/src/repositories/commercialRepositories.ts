@@ -1,17 +1,47 @@
 import {
   archiveCommercialOpportunity,
+  compareCommercialRevision,
+  compareEngineeringRevision,
+  discardCommercialRevision,
+  discardEngineeringRevision,
+  listCommercialReleasePackages,
+  listCommercialChangeSets,
+  listCommercialRevisions,
+  listEngineeringBaselines,
+  listEngineeringChangeSets,
   listEngineeringPackages,
   listCommercialRoutes,
   listCommercialOpportunities,
   loadCommercialRoute,
+  openCommercialChangeSet,
+  openCommercialReleasePackage,
+  openCommercialRevision,
+  openEngineeringBaseline,
+  openEngineeringChangeSet,
   openEngineeringPackage,
   listProposalDrafts,
   openCommercialOpportunity,
+  replayCommercialRevision,
+  replayEngineeringRevision,
+  restoreOriginalCommercialRevision,
+  restoreOriginalEngineeringRevision,
+  saveCommercialRevision,
+  saveCommercialReleasePackage,
+  saveCommercialChangeSet,
+  saveEngineeringBaseline,
+  saveEngineeringChangeSet,
   saveEngineeringPackage,
   saveCommercialRoute,
   saveCommercialOpportunity,
   saveProposalDraft,
   verifyCommercialRoute,
+  type CommercialChangeSetRuntime,
+  type CommercialReleasePackageRuntime,
+  type CommercialRevisionRuntime,
+  type CommercialRevisionProjectionRuntime,
+  type EngineeringBaselineRuntime,
+  type EngineeringChangeSetRuntime,
+  type EngineeringRevisionProjectionRuntime,
   type EngineeringPackageRuntime,
   type ProposalRuntimeObject,
   type TeralinxAuthSession,
@@ -32,11 +62,24 @@ import { buildRuntimeCommitFromExistingInventoryImport, type RuntimeTranslationC
 import {
   attachPricedDraftToImportedRoute,
   markImportedRoutePromoted,
-  parseCustomerDesignFile,
 } from "../translate/CustomerDesignImportEngine";
+import { parseCustomerDesignFileAsync, type AsyncImportProgressState } from "../performance/AsyncCustomerDesignImport";
 import type { CustomerDesignImport, ImportedCustomerRoute } from "../translate/CustomerDesignImport";
 import type { CommercialCorridorDraft } from "../commercial/CommercialCorridorDraftEngine";
+import type { ImportedRouteEndpointAuthority } from "../commercial/CommercialRouteEndpointAuthority";
 import type { DALCoordinate } from "../types/dal";
+import {
+  projectCommercialOpportunitySummary,
+  projectEngineeringPackageSummary,
+  projectIofPackageSummary,
+  projectProposalSummary,
+  projectRouteSummary,
+  type CommercialOpportunitySummary,
+  type EngineeringPackageSummary,
+  type IofPackageSummary,
+  type ProposalSummary,
+  type RouteSummary,
+} from "./CommercialSummaryProjections";
 
 export type ExistingNetworkImportInput = {
   file: File;
@@ -48,6 +91,7 @@ export type ExistingNetworkImportInput = {
   currentOrganizationId: string;
   currentWorkspaceId: string;
   session?: TeralinxAuthSession | null;
+  onProgress?: (state: AsyncImportProgressState) => void;
 };
 
 export type ExistingNetworkImportResult = {
@@ -60,6 +104,7 @@ export type RouteImportInput = {
   accountId: string;
   customerName: string;
   uploadedBy: string;
+  onProgress?: (state: AsyncImportProgressState) => void;
 };
 
 export type CommercialRouteEvidence = {
@@ -75,6 +120,7 @@ export type CommercialRouteEvidence = {
 };
 
 export type CommercialRouteRepositoryRecord = {
+  transactionId?: string;
   routeRepositoryId: string;
   routeSnapshotId: string;
   routeGeometryId?: string;
@@ -89,6 +135,13 @@ export type CommercialRouteRepositoryRecord = {
   sourceImportId?: string;
   sourceRouteId?: string;
   sourceFileName?: string;
+  sourceFileType?: string;
+  sourceFileHash?: string;
+  sourceGeometryId?: string;
+  sourceGeometryHash?: string;
+  routeRevision?: number;
+  parentRouteRepositoryId?: string;
+  endpointAuthority?: ImportedRouteEndpointAuthority;
   importedEvidence: CommercialRouteEvidence[];
   immutableImportedEvidence: true;
   commercialGeometry: DALCoordinate[];
@@ -104,7 +157,7 @@ export type CommercialRouteRepositoryRecord = {
   commercialDraftSnapshot?: CommercialCorridorDraft | null;
   selectedRouteSnapshot?: ImportedCustomerRoute | null;
   sourceImportSnapshot?: CustomerDesignImport | null;
-  routeSource: "IMPORTED_EVIDENCE" | "COMMERCIAL_DRAFT" | "MANUAL" | "NONE";
+  routeSource: "IMPORTED_EVIDENCE" | "COMMERCIAL_DRAFT" | "EXISTING_ROUTE" | "MANUAL" | "NONE";
   authority: "COMMERCIAL_ROUTE_REPOSITORY";
   noScopeVersionCreation: true;
   noInventoryMutation: true;
@@ -117,11 +170,12 @@ export interface RouteRepository {
   loadRoute(routeRepositoryId: string, session?: TeralinxAuthSession | null): Promise<CommercialRouteRepositoryRecord>;
   saveRoute(record: CommercialRouteRepositoryRecord, session?: TeralinxAuthSession | null): Promise<CommercialRouteRepositoryRecord>;
   verifyRoute(routeRepositoryId: string, expected?: { geometryHash?: string }, session?: TeralinxAuthSession | null): Promise<CommercialRouteRepositoryRecord>;
+  listSummaries(session?: TeralinxAuthSession | null): Promise<RouteSummary[]>;
 }
 
 export interface CustomerRepository {
   listCustomers(): Promise<GovernedAccount[]>;
-  listContacts(): Promise<GovernedContact[]>;
+  listContacts(accountId?: string): Promise<GovernedContact[]>;
   listHistory(): Promise<RuntimeHistoryEvent[]>;
   saveCustomer(record: Partial<GovernedAccount>): Promise<GovernedAccount>;
   saveContact(record: Partial<GovernedContact>): Promise<GovernedContact>;
@@ -137,16 +191,57 @@ export interface OpportunityRepository {
   saveOpportunity<T extends { opportunityId: string }>(record: T, session?: TeralinxAuthSession | null): Promise<T>;
   openOpportunity<T>(opportunityId: string, session?: TeralinxAuthSession | null): Promise<T>;
   archiveOpportunity<T>(opportunityId: string, session?: TeralinxAuthSession | null): Promise<T>;
+  listSummaries(session?: TeralinxAuthSession | null): Promise<CommercialOpportunitySummary[]>;
 }
 
 export interface EngineeringRepository {
   listPackages(session?: TeralinxAuthSession | null): Promise<EngineeringPackageRuntime[]>;
+  listSummaries(session?: TeralinxAuthSession | null): Promise<EngineeringPackageSummary[]>;
   openPackage(engineeringPackageId: string, session?: TeralinxAuthSession | null): Promise<EngineeringPackageRuntime>;
   savePackage(record: Partial<EngineeringPackageRuntime>, session?: TeralinxAuthSession | null): Promise<EngineeringPackageRuntime>;
 }
 
+export interface EngineeringBaselineRepository {
+  listBaselines(session?: TeralinxAuthSession | null): Promise<EngineeringBaselineRuntime[]>;
+  openBaseline(engineeringBaselineId: string, session?: TeralinxAuthSession | null): Promise<EngineeringBaselineRuntime>;
+  saveBaseline(record: Partial<EngineeringBaselineRuntime>, session?: TeralinxAuthSession | null): Promise<EngineeringBaselineRuntime>;
+}
+
+export interface EngineeringChangeSetRepository {
+  listChangeSets(session?: TeralinxAuthSession | null): Promise<EngineeringChangeSetRuntime[]>;
+  openChangeSet(changeSetId: string, session?: TeralinxAuthSession | null): Promise<EngineeringChangeSetRuntime>;
+  saveChangeSet(record: Partial<EngineeringChangeSetRuntime>, session?: TeralinxAuthSession | null): Promise<EngineeringChangeSetRuntime>;
+  replayRevision(revisionId: string, session?: TeralinxAuthSession | null): Promise<EngineeringRevisionProjectionRuntime>;
+  compareRevision(revisionId: string, session?: TeralinxAuthSession | null): Promise<unknown>;
+  discardRevision(revisionIdOrChangeSetId: string, session?: TeralinxAuthSession | null): Promise<unknown>;
+  restoreOriginal(revisionId: string, session?: TeralinxAuthSession | null): Promise<unknown>;
+}
+
+export interface CommercialRevisionRepository {
+  listRevisions(session?: TeralinxAuthSession | null): Promise<CommercialRevisionRuntime[]>;
+  openRevision(commercialRevisionId: string, session?: TeralinxAuthSession | null): Promise<CommercialRevisionRuntime>;
+  saveRevision(record: Partial<CommercialRevisionRuntime>, session?: TeralinxAuthSession | null): Promise<CommercialRevisionRuntime>;
+}
+
+export interface CommercialChangeSetRepository {
+  listChangeSets(session?: TeralinxAuthSession | null): Promise<CommercialChangeSetRuntime[]>;
+  openChangeSet(changeSetId: string, session?: TeralinxAuthSession | null): Promise<CommercialChangeSetRuntime>;
+  saveChangeSet(record: Partial<CommercialChangeSetRuntime>, session?: TeralinxAuthSession | null): Promise<CommercialChangeSetRuntime>;
+  replayRevision(revisionId: string, session?: TeralinxAuthSession | null): Promise<CommercialRevisionProjectionRuntime>;
+  compareRevision(revisionId: string, session?: TeralinxAuthSession | null): Promise<unknown>;
+  discardRevision(revisionIdOrChangeSetId: string, session?: TeralinxAuthSession | null): Promise<unknown>;
+  restoreOriginal(revisionId: string, session?: TeralinxAuthSession | null): Promise<unknown>;
+}
+
+export interface CommercialReleasePackageRepository {
+  listReleasePackages(session?: TeralinxAuthSession | null): Promise<CommercialReleasePackageRuntime[]>;
+  openReleasePackage(commercialReleasePackageId: string, session?: TeralinxAuthSession | null): Promise<CommercialReleasePackageRuntime>;
+  saveReleasePackage(record: Partial<CommercialReleasePackageRuntime>, session?: TeralinxAuthSession | null): Promise<CommercialReleasePackageRuntime>;
+}
+
 export const RouteRepository: RouteRepository = {
   listRoutes: listCommercialRoutes,
+  listSummaries: async (session) => (await listCommercialRoutes<CommercialRouteRepositoryRecord>(session)).map(projectRouteSummary),
   loadRoute: loadCommercialRoute,
   saveRoute: saveCommercialRoute,
   verifyRoute: verifyCommercialRoute,
@@ -154,12 +249,52 @@ export const RouteRepository: RouteRepository = {
 
 export const EngineeringRepository: EngineeringRepository = {
   listPackages: listEngineeringPackages,
+  listSummaries: async (session) => (await listEngineeringPackages(session)).map(projectEngineeringPackageSummary),
   openPackage: openEngineeringPackage,
   savePackage: saveEngineeringPackage,
 };
 
+export const EngineeringBaselineRepository: EngineeringBaselineRepository = {
+  listBaselines: listEngineeringBaselines,
+  openBaseline: openEngineeringBaseline,
+  saveBaseline: saveEngineeringBaseline,
+};
+
+export const EngineeringChangeSetRepository: EngineeringChangeSetRepository = {
+  listChangeSets: listEngineeringChangeSets,
+  openChangeSet: openEngineeringChangeSet,
+  saveChangeSet: saveEngineeringChangeSet,
+  replayRevision: replayEngineeringRevision,
+  compareRevision: compareEngineeringRevision,
+  discardRevision: discardEngineeringRevision,
+  restoreOriginal: restoreOriginalEngineeringRevision,
+};
+
+export const CommercialRevisionRepository: CommercialRevisionRepository = {
+  listRevisions: listCommercialRevisions,
+  openRevision: openCommercialRevision,
+  saveRevision: saveCommercialRevision,
+};
+
+export const CommercialChangeSetRepository: CommercialChangeSetRepository = {
+  listChangeSets: listCommercialChangeSets,
+  openChangeSet: openCommercialChangeSet,
+  saveChangeSet: saveCommercialChangeSet,
+  replayRevision: replayCommercialRevision,
+  compareRevision: compareCommercialRevision,
+  discardRevision: discardCommercialRevision,
+  restoreOriginal: restoreOriginalCommercialRevision,
+};
+
+export const CommercialReleasePackageRepository: CommercialReleasePackageRepository = {
+  listReleasePackages: listCommercialReleasePackages,
+  openReleasePackage: openCommercialReleasePackage,
+  saveReleasePackage: saveCommercialReleasePackage,
+};
+
 export interface ProposalRepository {
   listProposals<T>(session?: TeralinxAuthSession | null): Promise<T[]>;
+  listSummaries(session?: TeralinxAuthSession | null): Promise<ProposalSummary[]>;
   saveProposal<T extends ProposalRuntimeObject>(record: T, session?: TeralinxAuthSession | null): Promise<T>;
 }
 
@@ -386,6 +521,7 @@ export const CustomerTwinRepository: CustomerTwinRepository = {
           accountId: input.accountId,
           customerName: input.customerName,
           uploadedBy: input.uploadedBy,
+          onProgress: input.onProgress,
         });
         runtimeCommit = buildRuntimeCommitFromExistingInventoryImport({
           ...imported,
@@ -416,6 +552,7 @@ export const CustomerTwinRepository: CustomerTwinRepository = {
         accountId: input.accountId,
         customerName: input.customerName,
         uploadedBy: input.uploadedBy,
+        onProgress: input.onProgress,
       });
       runtimeCommit = buildRuntimeCommitFromExistingInventoryImport({
         ...imported,
@@ -432,6 +569,7 @@ export const CustomerTwinRepository: CustomerTwinRepository = {
 
 export const OpportunityRepository: OpportunityRepository = {
   listOpportunities: listCommercialOpportunities,
+  listSummaries: async (session) => (await listCommercialOpportunities<Record<string, unknown>>(session)).map(projectCommercialOpportunitySummary),
   saveOpportunity: saveCommercialOpportunity,
   openOpportunity: openCommercialOpportunity,
   archiveOpportunity: archiveCommercialOpportunity,
@@ -439,7 +577,22 @@ export const OpportunityRepository: OpportunityRepository = {
 
 export const ProposalRepository: ProposalRepository = {
   listProposals: listProposalDrafts,
+  listSummaries: async (session) => (await listProposalDrafts<Record<string, unknown>>(session)).map(projectProposalSummary),
   saveProposal: saveProposalDraft,
+};
+
+export const CommercialSummaryRepository = {
+  opportunity: projectCommercialOpportunitySummary,
+  route: projectRouteSummary,
+  proposal: projectProposalSummary,
+  iofPackage: projectIofPackageSummary,
+  engineeringPackage: projectEngineeringPackageSummary,
+} satisfies {
+  opportunity(value: unknown): CommercialOpportunitySummary;
+  route(value: unknown): RouteSummary;
+  proposal(value: unknown): ProposalSummary;
+  iofPackage(value: unknown): IofPackageSummary;
+  engineeringPackage(value: unknown): EngineeringPackageSummary;
 };
 
 export const RevisionRepository: RevisionRepository = {
@@ -457,7 +610,10 @@ export const TemplateRepository: TemplateRepository = {
 };
 
 export const ImportRepository: ImportRepository = {
-  parseRouteImport: parseCustomerDesignFile,
+  async parseRouteImport(input) {
+    const result = await parseCustomerDesignFileAsync(input);
+    return result.record;
+  },
   attachPricedDraft: attachPricedDraftToImportedRoute,
   markRoutePromoted: markImportedRoutePromoted,
 };

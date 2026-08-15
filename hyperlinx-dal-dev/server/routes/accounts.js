@@ -18,6 +18,7 @@ import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./aut
 const DEFAULT_ACCOUNT_BLUEPRINTS = [
   {
     accountId: "google",
+    accountNumber: 1,
     customerId: "customer-google",
     name: "Google",
     accountType: "Hyperscaler",
@@ -35,47 +36,9 @@ const DEFAULT_ACCOUNT_BLUEPRINTS = [
     engineeringHistory: ["No ScopeVersion created; Route Engineering not yet owner"],
     notes: "Google remains the first production customer scenario for DAL Commercial Planning.",
   },
-  {
-    accountId: "fiberlight",
-    customerId: "customer-fiberlight",
-    name: "FiberLight",
-    accountType: "Carrier",
-    status: "Prospect",
-    salesOwner: "Ryan",
-    contacts: ["Carrier sales contact", "Network planning contact"],
-    notes: "Account data is isolated. Selecting FiberLight does not display Google corridors, proposals, or assets.",
-  },
-  {
-    accountId: "verizon",
-    customerId: "customer-verizon",
-    name: "Verizon",
-    accountType: "Carrier",
-    status: "Prospect",
-    salesOwner: "Ryan",
-    contacts: ["Carrier account contact"],
-    notes: "Account context gates downstream commercial and map data.",
-  },
-  {
-    accountId: "crown-castle",
-    customerId: "customer-crown-castle",
-    name: "Crown Castle",
-    accountType: "Infrastructure provider",
-    status: "Prospect",
-    salesOwner: "Ryan",
-    contacts: ["Infrastructure account contact"],
-    notes: "Future imported networks will remain account-owned assets, not proposals.",
-  },
-  {
-    accountId: "municipality",
-    customerId: "customer-municipality",
-    name: "Municipality",
-    accountType: "Public sector",
-    status: "Prospect",
-    salesOwner: "Ryan",
-    contacts: ["Municipal broadband lead"],
-    notes: "Municipal network imports will enter as customer assets with authority state.",
-  },
 ];
+
+const RETIRED_DEMO_ACCOUNT_IDS = new Set(["fiberlight", "verizon", "crown-castle", "municipality"]);
 
 const DEFAULT_GOOGLE_CONTACTS = [
   {
@@ -167,6 +130,7 @@ function normalizeAccount(record = {}, user, existing = null, options = {}) {
     ...existing,
     ...record,
     accountId,
+    accountNumber: Number(record.accountNumber ?? existing?.accountNumber ?? (accountId === "google" ? 1 : 0)),
     objectId: accountId,
     runtimeObjectId: String(record.runtimeObjectId ?? existing?.runtimeObjectId ?? `RUNTIME-ACCOUNT-${runtimeCleanId(accountId)}`),
     objectType: "ACCOUNT",
@@ -442,7 +406,7 @@ async function handleListAccounts(res, user) {
   await seedDefaultAccounts(user);
   const records = await Promise.all(sortedByUpdated(await listRecords(DIRS.accounts))
     .map((record) => normalizeAccount(record, user, record, { bumpVersion: false }))
-    .filter((record) => canReadAccount(record, user))
+    .filter((record) => canReadAccount(record, user) && !RETIRED_DEMO_ACCOUNT_IDS.has(record.accountId))
     .map(decorateAccount));
   jsonResponse(res, 200, { accounts: records, items: records });
 }
@@ -473,7 +437,9 @@ async function handleSaveAccount(req, res, user, accountId = "") {
   for (const item of records) {
     const id = cleanId(item?.accountId ?? accountId ?? item?.name ?? createId("account"));
     const existing = await loadRecord(DIRS.accounts, id).catch(() => null);
-    const normalized = normalizeAccount({ ...item, accountId: id }, user, existing);
+    const allAccounts = await listRecords(DIRS.accounts);
+    const nextAccountNumber = Math.max(0, ...allAccounts.map((account) => Number(account.accountNumber ?? (account.accountId === "google" ? 1 : 0)))) + 1;
+    const normalized = normalizeAccount({ ...item, accountId: id, accountNumber: Number(item?.accountNumber ?? existing?.accountNumber ?? nextAccountNumber) }, user, existing);
     saved.push(await persistAccount(normalized, user));
   }
   if (Array.isArray(input)) jsonResponse(res, 201, { accounts: saved, items: saved });

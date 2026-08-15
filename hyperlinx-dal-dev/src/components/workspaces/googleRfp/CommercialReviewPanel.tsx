@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { DraftIofPackageRuntime } from "../../../api/teralinxRuntime";
 
 type CommercialReviewPanelProps = {
@@ -16,8 +16,6 @@ type CommercialReviewPanelProps = {
   engineeringStatus?: string;
   onSaveDraft: () => void;
   onValidate: () => void;
-  onSubmitToEngineering: () => void;
-  onOpenEngineeringCertification?: () => void;
 };
 
 function text(value: unknown, fallback = "n/a") {
@@ -57,10 +55,7 @@ export function CommercialReviewPanel({
   engineeringStatus,
   onSaveDraft,
   onValidate,
-  onSubmitToEngineering,
-  onOpenEngineeringCertification,
 }: CommercialReviewPanelProps) {
-  const [previewOpen, setPreviewOpen] = useState(false);
   const status = String(draftPackage?.status ?? "");
   const locked = Boolean(draftPackage?.commercialRevisionLocked) || ["SUBMITTED_TO_ENGINEERING", "UNDER_ENGINEERING_REVIEW", "CERTIFIED"].includes(status);
   const validationStatus = text((draftPackage?.validationSummary as any)?.status ?? draftPackage?.validation?.status, "Missing");
@@ -210,28 +205,10 @@ export function CommercialReviewPanel({
       <div className="dal-actions">
         <button type="button" onClick={onSaveDraft} disabled={!canEdit || locked || pending || !draftPackage}>Save Draft</button>
         <button type="button" className="secondary" onClick={onValidate} disabled={pending || !draftPackage}>Validate</button>
-        <button type="button" className="secondary" onClick={() => setPreviewOpen((open) => !open)} disabled={!draftPackage}>
-          Preview Package
-        </button>
-        {!engineeringPackageId && !locked ? (
-          <button type="button" onClick={onSubmitToEngineering} disabled={!canEdit || pending || !draftPackage || draftIofApprovalDisabled}>Submit to Engineering</button>
-        ) : null}
-        {engineeringPackageId && onOpenEngineeringCertification ? (
-          <button type="button" onClick={onOpenEngineeringCertification} disabled={pending}>Open Engineering Certification</button>
-        ) : null}
       </div>
 
       {notice ? <div className="dal-status">{notice}</div> : null}
       {draftPackage && draftIofApprovalDisabled && draftIofApprovalReason ? <div className="dal-status fail">{draftIofApprovalReason}</div> : null}
-
-      {previewOpen ? (
-        <details open>
-          <summary>{draftPackage?.packageId ?? "Package Preview"}</summary>
-          <pre className="commercial-review-package-preview">
-            {draftPackage ? JSON.stringify(draftPackage, null, 2) : "No Draft IOF Package is available."}
-          </pre>
-        </details>
-      ) : null}
     </section>
   );
 }

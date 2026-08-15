@@ -27,6 +27,7 @@ export const DAL_REASONING_LEGACY_API = resolveExternalApiBase(["VITE_DAL_REASON
 export const DAL_REASONING_PRIMARY_MODEL = env.VITE_DAL_REASONING_PRIMARY_MODEL?.trim() || "unknown";
 export const DAL_REASONING_SECONDARY_MODEL = env.VITE_DAL_REASONING_SECONDARY_MODEL?.trim() || "unknown";
 export const DAL_REASONING_FALLBACK_MODEL = env.VITE_DAL_REASONING_FALLBACK_MODEL?.trim() || "unknown";
+export const DAL_REASONING_ENABLED = (env.VITE_DAL_REASONING_ENABLED?.trim().toLowerCase() ?? "true") !== "false";
 export const DAL_GEOCODER_PROVIDER = env.VITE_DAL_GEOCODER_PROVIDER?.trim() || "server";
 export const DAL_MAPBOX_GEOCODING_TOKEN = env.VITE_DAL_MAPBOX_GEOCODING_TOKEN?.trim() || "";
 export const DAL_GOOGLE_GEOCODING_KEY = env.VITE_DAL_GOOGLE_GEOCODING_KEY?.trim() || "";

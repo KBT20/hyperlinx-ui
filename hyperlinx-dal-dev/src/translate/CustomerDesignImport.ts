@@ -178,6 +178,8 @@ export interface CustomerDesignImport {
   libraryPath: string[];
   sourceFileName: string;
   sourceType: CustomerDesignSourceType;
+  sourceFileHash?: string;
+  parserVersion?: string;
   uploadedAt: string;
   uploadedBy: string;
   status: CustomerDesignImportStatus;

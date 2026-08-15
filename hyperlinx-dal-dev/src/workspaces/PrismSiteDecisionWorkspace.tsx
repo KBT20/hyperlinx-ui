@@ -2628,6 +2628,7 @@ export default function PrismSiteDecisionWorkspace() {
           {decisionMapSpecs.length ? (
             <MapKernel
               specs={decisionMapSpecs}
+              presentationContext="PRISM"
               layerVisibility={{
                 scopeVersion: true,
                 streetReference: true,

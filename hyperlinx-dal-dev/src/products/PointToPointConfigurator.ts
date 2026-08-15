@@ -9,6 +9,7 @@ import {
 } from "./pointToPointLongHaulDoctrine";
 import type { ProductDoctrineAssembly, ProductDoctrineSite } from "./ProductDoctrineContracts";
 import { routeLengthFeet } from "../spine/MeasuredSpineEngine";
+import { DUCT_DARK_FIBER_COMMERCIAL_DEFAULT } from "./DuctDarkFiberProjectConfiguration";
 
 export const POINT_TO_POINT_CONFIGURATOR_ID = "PointToPointConfigurator";
 export const POINT_TO_POINT_CONFIGURATOR_VERSION = "20D.1";
@@ -227,11 +228,27 @@ export function executePointToPointConfigurator(input: PointToPointConfiguratorI
     zSite,
     osrmRoute: {
       routeId,
-      source: "OSRM",
+      source: "OSRM_ASSISTED_ROUTE",
       routeMiles,
       routeFeet,
       distanceMeters: Math.round(routeFeet / 3.28084),
       geometry: routeGeometry,
+      routeAuthority: "COMMERCIAL_ROUTE_REPOSITORY",
+      routeRevision: "CONFIGURATOR-R1",
+      routeHash: routeId,
+      measurementAuthority: "MEASURED_CENTERLINE",
+    },
+    projectConfiguration: {
+      ductCount: Number(input.commercialAssumptions?.ductCount ?? DUCT_DARK_FIBER_COMMERCIAL_DEFAULT.ductCount),
+      ductDiameter: Number(input.commercialAssumptions?.ductDiameter ?? DUCT_DARK_FIBER_COMMERCIAL_DEFAULT.ductDiameter),
+      ductMaterialSpec: DUCT_DARK_FIBER_COMMERCIAL_DEFAULT.ductMaterialSpec,
+      fiberCount: Number(input.commercialAssumptions?.fiberCount ?? DUCT_DARK_FIBER_COMMERCIAL_DEFAULT.fiberCount),
+      fiberCableType: String(input.commercialAssumptions?.fiberCableType ?? DUCT_DARK_FIBER_COMMERCIAL_DEFAULT.fiberCableType),
+      fiberPlacementPolicy: DUCT_DARK_FIBER_COMMERCIAL_DEFAULT.fiberPlacementPolicy,
+      slackPolicy: { mode: "ENGINEERING_DEFINED", authority: "UNKNOWN", source: "PROJECT_CONFIGURATION_REQUIRED", revision: "R1" },
+      structurePlanAuthority: "UNKNOWN",
+      spliceArchitectureAuthority: "UNKNOWN",
+      terminationConfiguration: "ENGINEERING_DEFINED",
     },
     routeSegments: input.routeSegments,
     pricingSummary: input.pricingSummary,

@@ -7,3 +7,6 @@ export * from "./MapSelectionManager";
 export * from "./MapStyleManager";
 export * from "./MapViewportManager";
 export * from "./ScopeVersionRenderer";
+export * from "./SharedOpportunityMapProjection";
+export * from "./SharedMapDisclosurePolicy";
+export * from "./SpineSpatialIndex";

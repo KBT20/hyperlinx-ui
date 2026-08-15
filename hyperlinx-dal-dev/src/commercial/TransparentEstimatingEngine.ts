@@ -9,7 +9,7 @@ import {
 import { ESTIMATOR_DEFAULTS } from "./EstimatorDefaults";
 import {
   DEFAULT_ILA_PLANNING_CONTROLS,
-  buildIlaPlanningResult,
+  buildMemoizedIlaPlanningResult,
   buildIlaFacilityProfiles,
   normalizeIlaPlanningControls,
   type IlaFacilityProfileId,
@@ -17,6 +17,9 @@ import {
   type IlaPlanningResult,
 } from "./IlaPlanningEngine";
 import type { DALCoordinate } from "../types/dal";
+import { startRuntimePerformanceOperation } from "../performance/RuntimePerformanceInstrumentation";
+import { DUCT_DARK_FIBER_COMMERCIAL_POLICY, DUCT_DARK_FIBER_ESTIMATING_DOCTRINE } from "./DuctDarkFiberAuthorityLayers";
+import { resolveConstructionCapability, teralinxBoreRate } from "./CommercialPricingArchitecture";
 
 export type TransparentEstimateValueStatus =
   | "CALCULATED"
@@ -195,12 +198,35 @@ export interface TransparentEstimateFinancialControls {
   monthlyOmPerRouteMile: number;
 }
 
+export interface TransparentProjectConfigurationControls {
+  configurationRevision: number;
+  ductCount: number;
+  ductDiameter: number;
+  ductMaterialSpec: string;
+  fiberCount: number;
+  fiberCableType: string;
+  fiberPlacementPolicy: "BLOWN" | "PULLED" | "JETTED" | "ENGINEERING_DEFINED" | "SOURCE_DEFINED" | "UNKNOWN";
+  slackPolicyMode: "NONE" | "PERCENTAGE" | "ENGINEERING_DEFINED" | "SOURCE_DEFINED";
+  slackPercent: number;
+  slackAuthority: "PROJECT_CONFIGURATION" | "SOURCE_EVIDENCE" | "ENGINEERING" | "UNKNOWN";
+  slackSource: string;
+  slackRevision: string;
+  slackApprovedBy?: string;
+  structurePlanAuthority: "SOURCE_DEFINED" | "COMMERCIAL_ASSUMPTION" | "ENGINEERING_DEFINED" | "UNKNOWN";
+  handholeCount?: number;
+  vaultCount?: number;
+  spliceArchitectureAuthority: "SOURCE_DEFINED" | "COMMERCIAL_ASSUMPTION" | "ENGINEERING_DEFINED" | "UNKNOWN";
+  spliceCaseCount?: number;
+  terminationConfiguration: string;
+}
+
 export interface TransparentEstimateControls {
   targetDurationDays: number;
   civilMixMode: TransparentCivilMixMode;
   production: TransparentEstimateProductionControls;
   financial: TransparentEstimateFinancialControls;
   ilaPlanning: IlaPlanningControls;
+  projectConfiguration: TransparentProjectConfigurationControls;
   constraints?: Record<string, ConstraintValue>;
   algorithmConstraints?: Record<string, ConstraintValue>;
   humanAuditTrail?: TransparentEstimateHumanAuditEntry[];
@@ -332,6 +358,9 @@ export interface TransparentEstimateAuditEntry {
   notes?: string;
   userOverride: string | null;
   calculated: boolean;
+  authorityLayer: "PRODUCT_DOCTRINE" | "PROJECT_CONFIGURATION" | "SOURCE_EVIDENCE" | "RATE_CATALOG" | "MATERIAL_CATALOG" | "ESTIMATING_DOCTRINE" | "COMMERCIAL_POLICY" | "HUMAN_CALIBRATION" | "ENGINEERING" | "UNKNOWN";
+  costLedgerId: string;
+  costContributionMode: "PRIMARY" | "COMPONENT" | "REFERENCE_ONLY" | "ROLLUP";
 }
 
 export interface TransparentEstimateHumanAuditEntry {
@@ -376,6 +405,8 @@ export interface TransparentCorridorEstimate {
   nrc: number;
   mrc: number;
   grossMarginPercent: number;
+  estimatingDoctrineId: string;
+  commercialPolicyId: string;
   noScopeVersionCreation: true;
   noInventoryMutation: true;
 }
@@ -402,6 +433,23 @@ export const DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS: TransparentEstimateControls 
     monthlyOmPerRouteMile: 1200 / 12,
   },
   ilaPlanning: { ...DEFAULT_ILA_PLANNING_CONTROLS },
+  projectConfiguration: {
+    configurationRevision: 1,
+    ductCount: 3,
+    ductDiameter: 1.25,
+    ductMaterialSpec: "HDPE",
+    fiberCount: 864,
+    fiberCableType: "864-count shielded fiber",
+    fiberPlacementPolicy: "BLOWN",
+    slackPolicyMode: "PERCENTAGE",
+    slackPercent: 5,
+    slackAuthority: "PROJECT_CONFIGURATION",
+    slackSource: "COMMERCIAL_PLANNING_ASSUMPTION",
+    slackRevision: "PROJECT-CONFIG-R1",
+    structurePlanAuthority: "COMMERCIAL_ASSUMPTION",
+    spliceArchitectureAuthority: "COMMERCIAL_ASSUMPTION",
+    terminationConfiguration: "ENGINEERING_DEFINED",
+  },
   constraints: {},
   algorithmConstraints: {},
   humanAuditTrail: [],
@@ -451,9 +499,17 @@ const FIBER_SUMMARY_WORKBOOK = "Google Fiber Project - 20251121.xlsx / Fiber Sum
 const ILA_LOCATION_WORKBOOK = "Google Fiber Project - 20251121.xlsx / ILA Locations";
 const ILA_PROFILE_CATALOG_SOURCE = "ILA Facility Profile Catalog / Proposal Capital";
 
+export const CURRENT_PRODUCT1_DIRT_RATE_AUTHORITY = Object.freeze({
+  rate: ESTIMATOR_DEFAULTS.construction.baseDirtBorePerFoot,
+  unit: "USD/ROUTE_FOOT",
+  authority: "ESTIMATING_RATE_AUTHORITY",
+  source: "EstimatorDefaults / approved Product #1 baseline",
+  appliesTo: "NEW_ESTIMATE_REVISION",
+});
+
 const WORKBOOK_RATES = {
   plowLaborPerFoot: 5,
-  dirtBoreLaborPerFoot: 11,
+  dirtBoreLaborPerFoot: CURRENT_PRODUCT1_DIRT_RATE_AUTHORITY.rate,
   openTrenchLaborPerFoot: 38,
   conduitMaterialPerFoot: 0.65,
   futurePathPerFoot: 1.8,
@@ -503,6 +559,10 @@ function cloneControls(controls?: TransparentEstimateControls): TransparentEstim
       ...(controls?.financial ?? {}),
     },
     ilaPlanning: normalizeIlaPlanningControls(controls?.ilaPlanning),
+    projectConfiguration: {
+      ...DEFAULT_TRANSPARENT_ESTIMATE_CONTROLS.projectConfiguration,
+      ...(controls?.projectConfiguration ?? {}),
+    },
     constraints: { ...(controls?.constraints ?? {}) },
     algorithmConstraints: { ...(controls?.algorithmConstraints ?? {}) },
     humanAuditTrail: [...(controls?.humanAuditTrail ?? [])],
@@ -519,6 +579,12 @@ function buildConstraintValues(assumptionState: BudgetAssumptionState, controls:
   const omScale = defaultOmTotal > 0 ? annualOmTotal / defaultOmTotal : 1;
   const defaultIlaProfile = buildIlaFacilityProfiles(controls.ilaPlanning)
     .find((profile) => profile.profileId === controls.ilaPlanning.defaultFacilityProfileId);
+  const dirtCapability = resolveConstructionCapability({
+    ductCount: controls.projectConfiguration.ductCount,
+    ductDiameterInches: controls.projectConfiguration.ductDiameter,
+    materialSpec: controls.projectConfiguration.ductMaterialSpec,
+  }, "DIRECTIONAL_BORE");
+  const activeDirtBaseline = teralinxBoreRate(dirtCapability).totalRate;
   const base: ConstraintValue[] = [
     constraint<number>({
       key: "civil.plowPercent",
@@ -547,11 +613,11 @@ function buildConstraintValues(assumptionState: BudgetAssumptionState, controls:
     constraint<number>({
       key: "civil.directionalBoreRockPercent",
       label: "Directional bore rock %",
-      value: null,
+      value: 0,
       unit: "%",
-      authorityMode: "UNKNOWN",
-      source: "Geotechnical review required",
-      sourceDetail: "Rock percentage is not guessed into cost.",
+      authorityMode: "ALGORITHM",
+      source: "Standard civil mix",
+      sourceDetail: "Standard commercial calibration starts at zero percent rock and remains editable.",
       affectsCost: true,
       affectsSchedule: true,
       affectsConfidence: true,
@@ -839,10 +905,11 @@ function buildConstraintValues(assumptionState: BudgetAssumptionState, controls:
     constraint<number>({
       key: "labor.dirtBoreLaborPerFoot",
       label: "Directional bore dirt labor rate",
-      value: WORKBOOK_RATES.dirtBoreLaborPerFoot,
+      value: activeDirtBaseline,
       unit: "$/ft",
       authorityMode: "ALGORITHM",
-      source: MASTER_OSP_WORKBOOK,
+      source: CURRENT_PRODUCT1_DIRT_RATE_AUTHORITY.source,
+      sourceDetail: `$15 is the approved new-revision base; governed ${dirtCapability.requiredReamClassInches ?? 6}-inch construction capability resolves the active ${activeDirtBaseline}/ft package rate. Historical saved constraints and project calibration remain preserved.`,
       affectsCost: true,
       affectsSchedule: false,
       affectsConfidence: true,
@@ -1347,6 +1414,34 @@ function unknownLine(sectionId: TransparentEstimateSectionId, id: string, descri
   };
 }
 
+function unresolvedRateLine(args: {
+  lineItemId: string;
+  description: string;
+  quantity: number;
+  quantitySource: string;
+  rateAuthority: ConstraintValue;
+  dependencies: string[];
+}): TransparentEstimateLineItem {
+  return {
+    lineItemId: args.lineItemId,
+    sectionId: "LABOR",
+    category: "LABOR",
+    description: args.description,
+    quantity: numericValue({ value: Math.max(0, args.quantity), formula: "Route feet x approved rock percentage.", source: args.quantitySource, suffix: " ft" }),
+    production: pendingValue("SYNTHESIS_PENDING", "Rock production authority", "Production remains independently calibratable."),
+    requiredProduction: pendingValue("SYNTHESIS_PENDING", "Rock production authority", "Required production awaits a resolved rate/production pairing."),
+    crewCount: pendingValue("SYNTHESIS_PENDING", "Rock production authority", "Crew count awaits a resolved rock rate."),
+    durationDays: pendingValue("SYNTHESIS_PENDING", "Rock production authority", "Duration awaits resolved rock production."),
+    unitCost: pendingValue("UNKNOWN", args.rateAuthority.source, "UNRESOLVED RATE: no authoritative rock adder is active."),
+    extendedCost: pendingValue("UNKNOWN", args.rateAuthority.source, "ROCK QUANTITY x ROCK RATE; rate is unresolved and is not coerced to $0."),
+    source: args.rateAuthority.source,
+    formula: "ROCK QUANTITY x ROCK RATE / ADDER",
+    authority: args.rateAuthority,
+    dependencies: args.dependencies,
+    editableFields: ["civil.rockAdderPerFoot", "civil.directionalBoreRockPercent"],
+  };
+}
+
 function buildTransparentIlaFacilities(ilaPlan: IlaPlanningResult): TransparentIlaFacility[] {
   return ilaPlan.stationObjects.map((station) => ({
     facilityId: station.stationId,
@@ -1453,7 +1548,19 @@ function auditEntries(
   financialAuthority: ConstraintValue,
   omAuthority: ConstraintValue,
 ): TransparentEstimateAuditEntry[] {
-  const lineAudits = sections.flatMap((section) => section.lineItems.map((line) => ({
+  const authorityLayerFor = (label: string, source: string): TransparentEstimateAuditEntry["authorityLayer"] => {
+    const value = `${label} ${source}`.toUpperCase();
+    if (/MARKUP|SELL PRICE|\bNRC\b|\bMRC\b|FINANCIAL|REVENUE|O&M/.test(value)) return "COMMERCIAL_POLICY";
+    if (/RATE|LABOR|MATERIAL|PRODUCTION|CONTINGENCY|EQUIPMENT ENGINE/.test(value)) return "ESTIMATING_DOCTRINE";
+    if (/ILA PLANNING|PHYSICAL QUANTITIES|ASSUMPTION/.test(value)) return "PROJECT_CONFIGURATION";
+    if (/WORKBOOK|SOURCE|ROUTE|GEOMETRY/.test(value)) return "SOURCE_EVIDENCE";
+    if (/ENGINEERING/.test(value)) return "ENGINEERING";
+    return "UNKNOWN";
+  };
+  const lineAudits = sections.flatMap((section) => section.lineItems.map((line) => {
+    const ilaLedger = `${line.lineItemId.split(":").slice(0, 1).join(":")}:COST:ILA-FACILITY`;
+    const isIlaReference = section.sectionId === "EQUIPMENT" && line.description === "ILA equipment bundle";
+    return ({
     auditId: line.lineItemId,
     label: `${section.label} / ${line.description}`,
     value: line.extendedCost.display,
@@ -1469,7 +1576,11 @@ function auditEntries(
     notes: line.authority.notes,
     userOverride: line.extendedCost.userOverride,
     calculated: line.extendedCost.calculated,
-  })));
+    authorityLayer: authorityLayerFor(`${section.label} ${line.description}`, line.source),
+    costLedgerId: /ILA/.test(`${section.sectionId} ${line.description}`.toUpperCase()) ? ilaLedger : `${line.lineItemId}:COST-LEDGER`,
+    costContributionMode: isIlaReference ? "REFERENCE_ONLY" as const : section.sectionId === "EXECUTIVE_SUMMARY" || section.sectionId === "FINANCIAL_MODEL" || section.sectionId === "REVENUE" ? "ROLLUP" as const : "PRIMARY" as const,
+  });
+  }));
   const totalAudits = [
     ["AUDIT-CONSTRUCTION-COST", "Construction Cost", financialModel.constructionCost],
     ["AUDIT-CONTINGENCY", "Contingency", financialModel.contingency],
@@ -1497,6 +1608,9 @@ function auditEntries(
       notes: totalAuthority.notes,
       userOverride: estimateValue.userOverride,
       calculated: estimateValue.calculated,
+      authorityLayer: authorityLayerFor(label as string, estimateValue.source),
+      costLedgerId: `${auditId}:COST-LEDGER`,
+      costContributionMode: "ROLLUP" as const,
     };
   });
   const unknownAudits = unknowns.map((unknown) => ({
@@ -1514,6 +1628,9 @@ function auditEntries(
     notes: unknown.authority.notes,
     userOverride: null,
     calculated: false,
+    authorityLayer: unknown.label.toUpperCase().includes("CROSSING") ? "PRODUCT_DOCTRINE" as const : "UNKNOWN" as const,
+    costLedgerId: `${unknown.unknownId}:UNRESOLVED-COST-LEDGER`,
+    costContributionMode: "REFERENCE_ONLY" as const,
   }));
   return [...totalAudits, ...lineAudits, ...unknownAudits];
 }
@@ -1555,7 +1672,8 @@ export function buildTransparentCorridorEstimate(args: {
   const openTrenchFeet = Math.round(routeFeet * (openTrenchPercent / 100));
   const rockPercentAuthority = authorityFor(constraintValues, "civil.directionalBoreRockPercent");
   const rockAdderAuthority = authorityFor(constraintValues, "civil.rockAdderPerFoot");
-  const rockAdderPerFoot = authorityModeCostIncluded(rockAdderAuthority) && typeof rockAdderAuthority.value === "number" ? rockAdderAuthority.value : 30;
+  const rockAdderResolved = authorityModeCostIncluded(rockAdderAuthority) && typeof rockAdderAuthority.value === "number";
+  const rockAdderPerFoot = rockAdderResolved ? rockAdderAuthority.value as number : null;
   const plowLaborPerFoot = constraintNumber(constraintValues, "labor.plowLaborPerFoot", WORKBOOK_RATES.plowLaborPerFoot);
   const dirtBoreLaborPerFoot = constraintNumber(constraintValues, "labor.dirtBoreLaborPerFoot", WORKBOOK_RATES.dirtBoreLaborPerFoot);
   const openTrenchLaborPerFoot = constraintNumber(constraintValues, "labor.openTrenchLaborPerFoot", WORKBOOK_RATES.openTrenchLaborPerFoot);
@@ -1569,9 +1687,18 @@ export function buildTransparentCorridorEstimate(args: {
   const handholeMaterialEach = constraintNumber(constraintValues, "material.handholeMaterialEach", WORKBOOK_RATES.handholeMaterialEach);
   const spliceCaseEach = constraintNumber(constraintValues, "material.spliceCaseEach", WORKBOOK_RATES.spliceCaseEach);
   const stationCount = Math.max(2, Math.ceil(routeFeet / WORKBOOK_RATES.stationSpacingFeet) + 1);
-  const vaultCount = Math.max(2, Math.ceil(routeMiles / 8));
-  const handholeCount = Math.max(4, Math.ceil(routeFeet / WORKBOOK_RATES.handholeSpacingFeet));
-  const ilaPlan = buildIlaPlanningResult({
+  const structurePlanningAssumption = controls.projectConfiguration.structurePlanAuthority === "COMMERCIAL_ASSUMPTION";
+  const vaultCount = Number.isFinite(controls.projectConfiguration.vaultCount)
+    ? Number(controls.projectConfiguration.vaultCount)
+    : structurePlanningAssumption ? Math.max(2, Math.ceil(routeMiles / 8)) : 0;
+  const handholeCount = Number.isFinite(controls.projectConfiguration.handholeCount)
+    ? Number(controls.projectConfiguration.handholeCount)
+    : structurePlanningAssumption ? Math.max(4, Math.ceil(routeFeet / WORKBOOK_RATES.handholeSpacingFeet)) : 0;
+  const ilaMetric = startRuntimePerformanceOperation("ila-recalculation", "ILA", {
+    estimateId: args.estimateId,
+    routeMiles,
+  });
+  const ilaPlan = buildMemoizedIlaPlanningResult({
     estimateId: args.estimateId,
     routeId: args.routeId,
     scopeVersionLineage: args.scopeVersionLineage,
@@ -1581,19 +1708,28 @@ export function buildTransparentCorridorEstimate(args: {
     routeMiles,
     controls: controls.ilaPlanning,
   });
+  ilaMetric.end({
+    recordsProcessed: ilaPlan.spans.length,
+    recordsRendered: ilaPlan.stationObjects.length,
+    cacheStatus: "BYPASS",
+  });
   const ilaCount = ilaPlan.stationObjects.length;
   const regenCount = ilaPlan.stationObjects.filter((station) => station.stationType === "INTERMEDIATE").length;
   const routeFiberFeet = routeFeet;
-  const slackStorageFeet = vaultCount * args.assumptionState.slack.vaultSlackFeet + handholeCount * args.assumptionState.slack.handholeSlackFeet;
+  const slackStorageFeet = controls.projectConfiguration.slackPolicyMode === "PERCENTAGE"
+    ? Math.round(routeFeet * controls.projectConfiguration.slackPercent / 100)
+    : controls.projectConfiguration.slackPolicyMode === "NONE" ? 0 : 0;
   const fiberBeforeWaste = routeFiberFeet + slackStorageFeet;
   const fiberWasteFeet = Math.round(fiberBeforeWaste * (args.assumptionState.waste.fiberWastePercent / 100));
   const purchasedFiberFeet = fiberBeforeWaste + fiberWasteFeet;
-  const conduitBaseFeet = routeFeet * args.assumptionState.materials.standardDuctPackageConduitCount;
+  const conduitBaseFeet = routeFeet * controls.projectConfiguration.ductCount;
   const conduitWasteFeet = Math.round(conduitBaseFeet * (args.assumptionState.waste.conduitWastePercent / 100));
   const conduitFeet = conduitBaseFeet + conduitWasteFeet;
   const fieldSpliceLocations = Math.max(0, Math.ceil(purchasedFiberFeet / args.assumptionState.splicing.reelLengthFeet) - 1);
-  const spliceCaseCount = Math.max(2, fieldSpliceLocations);
-  const fiberTerminations = fieldSpliceLocations * WORKBOOK_RATES.fiberCount * 2;
+  const spliceCaseCount = Number.isFinite(controls.projectConfiguration.spliceCaseCount)
+    ? Number(controls.projectConfiguration.spliceCaseCount)
+    : controls.projectConfiguration.spliceArchitectureAuthority === "COMMERCIAL_ASSUMPTION" ? Math.max(2, fieldSpliceLocations) : 0;
+  const fiberTerminations = fieldSpliceLocations * controls.projectConfiguration.fiberCount * 2;
   const targetDurationDays = controls.targetDurationDays;
 
   const laborLines = [
@@ -1609,7 +1745,7 @@ export function buildTransparentCorridorEstimate(args: {
       quantityFormula: "Route feet x selected plow percentage.",
       unitCostFormula: "Master OSP Build Metrics: Plow Labor / Plow Ft / Labor.",
       productionFormula: "Phase 4 default: Plowing 5,280 ft/day.",
-      authority: authorityFor(constraintValues, "civil.plowPercent"),
+      authority: authorityFor(constraintValues, "labor.plowLaborPerFoot"),
       dependencies: ["civil.plowPercent", "labor.plowLaborPerFoot", "production.plowFeetPerDay", "targetDurationDays", "financial"],
     }),
     laborLine({
@@ -1619,27 +1755,33 @@ export function buildTransparentCorridorEstimate(args: {
       unitCost: dirtBoreLaborPerFoot,
       productionFeetPerDay: constraintProduction(constraintValues, "production.directionalBoreDirtFeetPerDay", controls.production.directionalBoreDirtFeetPerDay),
       targetDurationDays,
-      source: "Production Engine",
-      workbook: MASTER_OSP_WORKBOOK,
+      source: CURRENT_PRODUCT1_DIRT_RATE_AUTHORITY.source,
       quantityFormula: "Route feet x selected directional bore percentage; rock quantity remains UNKNOWN.",
-      unitCostFormula: "Master OSP Build Metrics: Bore Labor / Bore Ft / Labor.",
+      unitCostFormula: "Approved Product #1 estimating baseline or active project calibration.",
       productionFormula: "Phase 4 default: Directional Bore Dirt 600 ft/day.",
-      authority: authorityFor(constraintValues, "civil.directionalBoreDirtPercent"),
+      authority: authorityFor(constraintValues, "labor.dirtBoreLaborPerFoot"),
       dependencies: ["civil.directionalBoreDirtPercent", "labor.dirtBoreLaborPerFoot", "production.directionalBoreDirtFeetPerDay", "targetDurationDays", "financial"],
     }),
-    laborLine({
+    rockBoreFeet > 0 && rockAdderPerFoot === null ? unresolvedRateLine({
       lineItemId: `${args.estimateId}:LABOR:ROCK-ADDER`,
       description: "Directional bore - rock",
       quantity: rockBoreFeet,
-      unitCost: dirtBoreLaborPerFoot + rockAdderPerFoot,
+      quantitySource: rockPercentAuthority.source,
+      rateAuthority: rockAdderAuthority,
+      dependencies: ["civil.directionalBoreRockPercent", "civil.rockAdderPerFoot", "labor.dirtBoreLaborPerFoot"],
+    }) : laborLine({
+      lineItemId: `${args.estimateId}:LABOR:ROCK-ADDER`,
+      description: "Directional bore - rock",
+      quantity: rockBoreFeet,
+      unitCost: dirtBoreLaborPerFoot + (rockAdderPerFoot ?? 0),
       productionFeetPerDay: constraintProduction(constraintValues, "production.directionalBoreRockFeetPerDay", controls.production.directionalBoreRockFeetPerDay),
       targetDurationDays,
-      source: rockPercentAuthority.source,
+      source: rockAdderAuthority.source,
       workbook: MASTER_OSP_WORKBOOK,
       quantityFormula: "Route feet x directional bore rock percentage.",
       unitCostFormula: "Directional bore dirt labor rate + explicit rock adder per foot.",
       productionFormula: "Phase 4 default: Directional Bore Rock 300 ft/day.",
-      authority: rockPercentAuthority,
+      authority: rockAdderAuthority,
       dependencies: ["civil.directionalBoreRockPercent", "civil.rockAdderPerFoot", "labor.dirtBoreLaborPerFoot", "production.directionalBoreRockFeetPerDay", "targetDurationDays", "contingency", "margin"],
     }),
     laborLine({
@@ -1653,7 +1795,7 @@ export function buildTransparentCorridorEstimate(args: {
       quantityFormula: "Route feet x selected open trench percentage; rock quantity remains UNKNOWN.",
       unitCostFormula: "Existing Hyperlinx development-seed open trench rate.",
       productionFormula: "Phase 4 default: Open Trench Dirt 300 ft/day.",
-      authority: authorityFor(constraintValues, "civil.openTrenchPercent"),
+      authority: authorityFor(constraintValues, "labor.openTrenchLaborPerFoot"),
       dependencies: ["civil.openTrenchPercent", "labor.openTrenchLaborPerFoot", "production.openTrenchDirtFeetPerDay", "targetDurationDays", "financial"],
     }),
     laborLine({
@@ -2069,7 +2211,7 @@ export function buildTransparentCorridorEstimate(args: {
     purchasedFiberFeet,
     conduitFeet,
     conduitWasteFeet,
-    fiberCount: WORKBOOK_RATES.fiberCount,
+    fiberCount: controls.projectConfiguration.fiberCount,
     handholeCount,
     vaultCount,
     spliceCaseCount,
@@ -2107,9 +2249,9 @@ export function buildTransparentCorridorEstimate(args: {
     { metricId: "STATION-COUNT", label: "Station count", value: numericValue({ value: stationCount, formula: "ceil(route feet / station spacing) + 1.", source: "Physical Quantities" }) },
   ];
   const fiberMetrics: TransparentEstimateMetric[] = [
-    { metricId: "FIBER-COUNT", label: "Fiber type", value: textMetricValue({ value: "864-count shielded fiber", formula: "Customer workbook fiber count.", source: "Physical Quantities", workbook: FIBER_SUMMARY_WORKBOOK }) },
+    { metricId: "FIBER-COUNT", label: "Fiber type", value: textMetricValue({ value: controls.projectConfiguration.fiberCableType, formula: "Explicit Project Configuration fiber selection.", source: "Project Configuration" }) },
     { metricId: "ROUTE-FIBER", label: "Route fiber", value: numericValue({ value: routeFiberFeet, formula: "Route feet.", source: "Physical Quantities", suffix: " ft" }) },
-    { metricId: "SLACK-STORAGE", label: "Slack storage", value: numericValue({ value: slackStorageFeet, formula: "Vault slack + handhole slack.", source: "Physical Quantities", suffix: " ft" }) },
+    { metricId: "SLACK-STORAGE", label: "Slack / placement allowance", value: numericValue({ value: slackStorageFeet, formula: controls.projectConfiguration.slackPolicyMode === "PERCENTAGE" ? `Measured route x ${controls.projectConfiguration.slackPercent}% attributable slack policy.` : `${controls.projectConfiguration.slackPolicyMode} slack policy.`, source: controls.projectConfiguration.slackSource, suffix: " ft" }) },
     { metricId: "PURCHASED-FIBER", label: "Purchased fiber", value: numericValue({ value: purchasedFiberFeet, formula: "Route fiber + slack + waste.", source: "Material Engine", suffix: " ft" }) },
   ];
   const assumptionMetrics: TransparentEstimateMetric[] = [
@@ -2267,6 +2409,8 @@ export function buildTransparentCorridorEstimate(args: {
     nrc: money(sellPrice),
     mrc: money(mrc),
     grossMarginPercent: round(margin, 1),
+    estimatingDoctrineId: DUCT_DARK_FIBER_ESTIMATING_DOCTRINE.estimatingDoctrineId,
+    commercialPolicyId: DUCT_DARK_FIBER_COMMERCIAL_POLICY.commercialPolicyId,
     noScopeVersionCreation: true,
     noInventoryMutation: true,
   };

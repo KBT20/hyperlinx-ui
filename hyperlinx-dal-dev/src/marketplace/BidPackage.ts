@@ -5,6 +5,8 @@ import { estimateBidPackageItemTotal } from "./BidPackageItem";
 
 export type BidPackageType =
   | "FULL_PROJECT"
+  | "CONSTRUCTION"
+  | "MATERIAL"
   | "SEGMENT"
   | "STATION_GROUP"
   | "DISCIPLINE"
@@ -13,6 +15,12 @@ export type BidPackageType =
 
 export type BidPackageStatus =
   | "DRAFT"
+  | "OPEN"
+  | "RESPONSES_RECEIVED"
+  | "ALLOCATION_REVIEW"
+  | "PARTIALLY_AWARDED"
+  | "AWARDED"
+  | "CLOSED"
   | "READY_FOR_REVIEW"
   | "REVIEWED"
   | "ARCHIVED";
@@ -35,6 +43,7 @@ export interface BidPackageDiagnostic {
 
 export interface BidPackage {
   packageId: string;
+  marketplacePackageId?: string;
   packageName: string;
   packageType: BidPackageType;
   status: BidPackageStatus;
@@ -51,6 +60,13 @@ export interface BidPackage {
   createdAt: string;
   updatedAt: string;
   notes?: string;
+  customerId?: string;
+  requiredStartDate?: string;
+  requiredCompletionDate?: string;
+  objectIds?: string[];
+  quantityReferences?: Array<Record<string, unknown>>;
+  materialReferences?: Array<Record<string, unknown>>;
+  conditionIds?: string[];
 }
 
 export interface BidPackageGenerationInput {
@@ -108,6 +124,8 @@ export function generateHybridPackage(input: Omit<BidPackageGenerationInput, "pa
 export function matchVendorCategories(packageType: BidPackageType, vendors: readonly VendorProfile[]): VendorProfile[] {
   const categoriesByPackageType: Record<BidPackageType, VendorCategory[]> = {
     FULL_PROJECT: ["CONSTRUCTION", "ENGINEERING", "FIBER_PROVIDER", "TRANSPORT_PROVIDER"],
+    CONSTRUCTION: ["CONSTRUCTION", "ENGINEERING", "EQUIPMENT_SUPPLIER"],
+    MATERIAL: ["MATERIAL_SUPPLIER", "EQUIPMENT_SUPPLIER", "FIBER_PROVIDER"],
     SEGMENT: ["CONSTRUCTION", "ENGINEERING"],
     STATION_GROUP: ["CONSTRUCTION", "ENGINEERING"],
     DISCIPLINE: ["CONSTRUCTION", "ENGINEERING", "POWER", "PERMITTING_PROVIDER", "TRANSPORT_PROVIDER", "INTERCONNECTION_PROVIDER"],

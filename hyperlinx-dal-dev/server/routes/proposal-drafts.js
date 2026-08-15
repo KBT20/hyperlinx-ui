@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   DIRS,
   createId,
@@ -15,6 +16,10 @@ import {
 } from "./_shared.js";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
 import { loadCommercialDraftIofPackageForProposal } from "./commercial-iof-packages.js";
+import {
+  commercialAuthorityDiagnosticsFrom,
+  ensureCommercialRevisionForProposal,
+} from "./commercial-revisions.js";
 import { assembleDraftIofPackageFromProposal } from "./engineering-certification.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 
@@ -643,6 +648,93 @@ function normalizeVersionEntry(record, user, reason = "Initial commercial propos
   };
 }
 
+const PROPOSAL_REVISION_SNAPSHOT_FIELDS = Object.freeze([
+  "proposalId", "proposalNumber", "customerId", "accountId", "opportunityId",
+  "productId", "productName", "productConfigurator", "productConfiguratorVersion",
+  "configuratorVersion", "configuratorLifecycle", "productInvocationAuthority",
+  "engineeringObjectDoctrine", "productConfiguration", "commercialDesign",
+  "routeSnapshot", "routeId", "routeRepositoryId", "routeRevision", "routeGeometryId", "routeGeometryHash", "aSite", "zSite", "geometryReferences", "existingInventoryReferences",
+  "customerDesignReferences", "customerTwinReference", "commercialAssumptionIds",
+  "dealPointIds", "estimateId", "estimateRevision", "estimateControls",
+  "transparentEstimate", "constructionQuantities", "pricingSummary", "marginSummary",
+  "commercialTerms", "proposalContent", "title", "summary", "executiveSummary",
+  "proposalDocumentReferences", "runtimeObjectIds", "runtimeRelationshipIds",
+  "runtimeEvidenceIds", "fulfillmentPlanId", "fulfillmentStrategy", "fulfillmentPlan",
+  "fulfillmentMix", "commercialRevisionId", "commercialRevisionHash",
+  "commercialRepositoryId", "estimatingDoctrineId", "commercialPolicyId",
+]);
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+export function proposalSnapshot(record = {}) {
+  return Object.fromEntries(PROPOSAL_REVISION_SNAPSHOT_FIELDS
+    .filter((key) => record[key] !== undefined)
+    .map((key) => [key, structuredClone(record[key])]));
+}
+
+export function proposalSnapshotHash(snapshot) {
+  return createHash("sha256").update(canonicalJson(snapshot)).digest("hex");
+}
+
+export function currentProposalApproval(record = {}) {
+  const revisionId = String(record.proposalRevisionId ?? "");
+  const proposalHash = String(record.proposalHash ?? "");
+  return asArray(record.approvals).find((approval) =>
+    approval?.decision === "APPROVED" &&
+    String(approval?.proposalRevisionId ?? "") === revisionId &&
+    String(approval?.proposalHash ?? "") === proposalHash
+  ) ?? null;
+}
+
+export function saveImmutableProposalRevision(record, user, reason = "Commercial proposal revision saved.") {
+  const priorRevisions = asArray(record.proposalRevisions);
+  const currentSaved = priorRevisions.find((revision) => revision?.proposalRevisionId === record.proposalRevisionId);
+  const revisionNumber = currentSaved
+    ? Math.max(0, ...priorRevisions.map((revision) => Number(revision?.revisionNumber ?? 0))) + 1
+    : Math.max(1, Number(record.revisionNumber ?? record.version ?? priorRevisions.length + 1));
+  const parent = currentSaved ?? priorRevisions.at(-1) ?? null;
+  const proposalRevisionId = currentSaved
+    ? `${record.proposalId}-revision-${revisionNumber}`
+    : firstText(record.proposalRevisionId, `${record.proposalId}-revision-${revisionNumber}`);
+  const snapshot = proposalSnapshot({ ...record, proposalRevisionId, revisionNumber });
+  const proposalHash = proposalSnapshotHash(snapshot);
+  const createdAt = nowIso();
+  const revision = {
+    proposalId: record.proposalId,
+    proposalRevisionId,
+    parentProposalRevisionId: firstText(record.parentProposalRevisionId, parent?.proposalRevisionId),
+    derivedFromProposalHash: firstText(record.derivedFromProposalHash, parent?.proposalHash),
+    revisionNumber,
+    revisionReason: reason,
+    revisionStatus: "SAVED",
+    proposalHash,
+    createdBy: user.userId,
+    createdByName: user.name,
+    createdAt,
+    snapshot,
+  };
+  return {
+    ...record,
+    proposalRevisionId,
+    parentProposalRevisionId: revision.parentProposalRevisionId,
+    derivedFromProposalHash: revision.derivedFromProposalHash,
+    revisionNumber,
+    revisionReason: reason,
+    revisionStatus: "SAVED",
+    proposalHash,
+    version: revisionNumber,
+    proposalRevisions: [...priorRevisions, revision],
+    approvalState: "NOT_SUBMITTED",
+    approvedAt: undefined,
+  };
+}
+
 export function computeProposalReadiness(record = {}) {
   const missingInformation = [];
   const blockingIssues = [];
@@ -663,20 +755,34 @@ export function computeProposalReadiness(record = {}) {
   if (!runtimeObjectIds.length && !geometryReferences.length) missingInformation.push("Runtime object or geometry references");
   if (!existingInventoryReferences.length && !record.customerTwinReference) missingInformation.push("Customer Twin or Existing Inventory reference");
 
-  const customerApproved = APPROVED_PROPOSAL_STATUSES.has(canonicalProposalRepositoryStatus(record.status));
+  const hasRevisionLifecycle = Boolean(record.proposalRevisionId || asArray(record.proposalRevisions).length);
+  const exactRevisionApproval = currentProposalApproval(record);
+  const customerApproved = hasRevisionLifecycle
+    ? Boolean(exactRevisionApproval)
+    : APPROVED_PROPOSAL_STATUSES.has(canonicalProposalRepositoryStatus(record.status));
+  const savedProposalRevision = !hasRevisionLifecycle || (
+    record.revisionStatus === "SAVED" &&
+    asArray(record.proposalRevisions).some((revision) =>
+      revision?.proposalRevisionId === record.proposalRevisionId && revision?.proposalHash === record.proposalHash
+    )
+  );
   const proposalComplete = missingInformation.length === 0;
   const runtimeValid = (runtimeObjectIds.length > 0 || geometryReferences.length > 0) &&
     (runtimeEvidenceIds.length > 0 || existingInventoryReferences.length > 0 || proposalDocumentReferences.length > 0 || record.customerTwinReference);
   if (!customerApproved) blockingIssues.push("Customer approval is required before Draft IOF package creation.");
+  if (!savedProposalRevision) blockingIssues.push("Save the active Proposal Revision before customer approval or Engineering handoff.");
   if (!proposalComplete) blockingIssues.push("Proposal completeness checks have unresolved fields.");
   if (!runtimeValid) blockingIssues.push("Runtime references or evidence are missing.");
 
-  const readinessScore = [customerApproved, proposalComplete, runtimeValid].filter(Boolean).length;
-  const confidence = Math.round((readinessScore / 3) * 100);
+  const readinessScore = [savedProposalRevision, customerApproved, proposalComplete, runtimeValid].filter(Boolean).length;
+  const confidence = Math.round((readinessScore / 4) * 100);
   return {
     proposalId: record.proposalId,
-    status: customerApproved && proposalComplete && runtimeValid ? "READY" : "BLOCKED",
-    canCreateDraftIofPackage: customerApproved && proposalComplete && runtimeValid,
+    status: savedProposalRevision && customerApproved && proposalComplete && runtimeValid ? "READY" : "BLOCKED",
+    canCreateDraftIofPackage: savedProposalRevision && customerApproved && proposalComplete && runtimeValid,
+    savedProposalRevision,
+    proposalRevisionId: record.proposalRevisionId ?? "",
+    proposalHash: record.proposalHash ?? "",
     customerApproved,
     proposalComplete,
     runtimeValid,
@@ -693,7 +799,7 @@ export function computeProposalReadiness(record = {}) {
       attachments: asArray(record.attachments).length,
     },
     engineering: {
-      status: customerApproved && runtimeValid ? "READY_FOR_DRAFT_IOF" : "NOT_READY",
+      status: savedProposalRevision && customerApproved && runtimeValid ? "READY_FOR_DRAFT_IOF" : "NOT_READY",
       runtimeObjectCount: runtimeObjectIds.length,
       relationshipCount: runtimeRelationshipIds.length,
       geometryReferenceCount: geometryReferences.length,
@@ -712,7 +818,7 @@ export function computeProposalReadiness(record = {}) {
     confidence,
     missingInformation,
     blockingIssues,
-    recommendation: customerApproved && proposalComplete && runtimeValid
+    recommendation: savedProposalRevision && customerApproved && proposalComplete && runtimeValid
       ? "Expose Create Draft IOF Package source references without assembling a package."
       : "Resolve blocking issues before Sales Engineering handoff.",
   };
@@ -813,6 +919,14 @@ export function normalizeProposalRecord(record = {}, user, existing = null, opti
     lifecycleState: record.lifecycleState ?? lifecycleForStatus(status),
     status,
     version,
+    proposalRevisionId: record.proposalRevisionId ?? existing?.proposalRevisionId ?? "",
+    parentProposalRevisionId: record.parentProposalRevisionId ?? existing?.parentProposalRevisionId ?? "",
+    derivedFromProposalHash: record.derivedFromProposalHash ?? existing?.derivedFromProposalHash ?? "",
+    proposalHash: record.proposalHash ?? existing?.proposalHash ?? "",
+    revisionNumber: Number(record.revisionNumber ?? existing?.revisionNumber ?? version),
+    revisionReason: record.revisionReason ?? existing?.revisionReason ?? "",
+    revisionStatus: record.revisionStatus ?? existing?.revisionStatus ?? "WORKING",
+    proposalRevisions: asArray(record.proposalRevisions ?? existing?.proposalRevisions),
     title: record.title ?? existing?.title ?? record.name ?? existing?.name ?? `${record.accountName ?? existing?.accountName ?? customerId} Commercial Proposal`,
     summary: record.summary ?? existing?.summary ?? record.note ?? existing?.note ?? "",
     executiveSummary: record.executiveSummary ?? existing?.executiveSummary ?? "",
@@ -983,6 +1097,44 @@ export async function saveProposal(record, user, eventType = "runtime.proposal.s
     modifiedDate: history.timestamp,
     updatedAt: history.timestamp,
   };
+  const commercialRevision = await ensureCommercialRevisionForProposal(recordWithHistory, user, {
+    timestamp: history.timestamp,
+  });
+  Object.assign(recordWithHistory, {
+    commercialRevisionId: commercialRevision.commercialRevisionId,
+    revisionId: commercialRevision.revisionId,
+    commercialRevisionHash: commercialRevision.revisionHash,
+    commercialRepositoryId: commercialRevision.repositoryId,
+    commercialReleaseState: commercialRevision.commercialReleaseState,
+    changeSetIds: commercialRevision.changeSetIds ?? [],
+    activeChangeSetIds: commercialRevision.activeChangeSetIds ?? commercialRevision.changeSetIds ?? [],
+    patchCount: commercialRevision.patchCount ?? 0,
+    activePatchCount: commercialRevision.activePatchCount ?? 0,
+    appliedPatchCount: commercialRevision.appliedPatchCount ?? 0,
+    repositoryHash: commercialRevision.repositoryHash,
+    projectionHash: commercialRevision.projectionHash,
+    patchReplayTimeMs: commercialRevision.patchReplayTimeMs ?? 0,
+    projectionTimeMs: commercialRevision.projectionTimeMs ?? 0,
+    currentAuthority: "COMMERCIAL_REVISION",
+    proposalAuthorityFlow: {
+      inputAuthority: "COMMERCIAL_REVISION",
+      projection: "PROPOSAL_PROJECTION",
+      repository: "PROPOSAL_REPOSITORY",
+      commercialRevisionId: commercialRevision.commercialRevisionId,
+      revisionHash: commercialRevision.revisionHash,
+      changeSetIds: commercialRevision.changeSetIds ?? [],
+      patchCount: commercialRevision.patchCount ?? 0,
+      commercialRevisionProjection: "COMMERCIAL_REVISION_PROJECTION",
+      proposalOutputUnchanged: true,
+      pricingOutputUnchanged: true,
+      workbookOutputUnchanged: true,
+      noScopeVersionCreation: true,
+    },
+    commercialAuthorityDiagnostics: commercialAuthorityDiagnosticsFrom({
+      revision: commercialRevision,
+      proposal: recordWithHistory,
+    }),
+  });
   recordWithHistory.readiness = computeProposalReadiness(recordWithHistory);
   recordWithHistory.nextLifecycleAction = nextLifecycleActionFor(recordWithHistory, recordWithHistory.readiness);
   const saved = await persistRecord(DIRS.proposalDrafts, recordWithHistory.proposalRecordId, recordWithHistory);
@@ -1056,12 +1208,25 @@ async function handleSave(req, res, user, id = "") {
       errorResponse(res, 403, "You cannot modify a proposal unless you own it or have commercial contributor/approver authority.");
       return;
     }
+    const saveAsRevision = item?.saveProposalRevision === true;
+    const revisionReason = String(item?.revisionReason ?? body?.revisionReason ?? "Commercial proposal revision saved.");
+    const cleanItem = { ...item };
+    delete cleanItem.saveProposalRevision;
     const normalized = normalizeProposalRecord({
-      ...item,
+      ...cleanItem,
       proposalId: proposalId || item?.proposalId,
       proposalRecordId: proposalId || item?.proposalRecordId,
     }, user, existing);
-    saved.push(await saveProposal(normalized, user, "runtime.proposal.saved", "Proposal saved with owner, workspace, visibility, authority, lifecycle, evidence, and relationship metadata."));
+    const revisionAware = saveAsRevision ? saveImmutableProposalRevision(normalized, user, revisionReason) : normalized;
+    saved.push(await saveProposal(
+      revisionAware,
+      user,
+      saveAsRevision ? "runtime.proposal.revision.saved" : "runtime.proposal.saved",
+      saveAsRevision
+        ? `Immutable Proposal Revision ${revisionAware.revisionNumber} saved with hash ${revisionAware.proposalHash}.`
+        : "Proposal working state saved with owner, workspace, visibility, authority, lifecycle, evidence, and relationship metadata.",
+      saveAsRevision ? { proposalRevisionId: revisionAware.proposalRevisionId, proposalHash: revisionAware.proposalHash } : {},
+    ));
   }
   if (Array.isArray(input)) jsonResponse(res, 201, { proposals: saved, proposalDrafts: saved, items: saved });
   else jsonResponse(res, 201, { proposal: saved[0] });
@@ -1138,6 +1303,15 @@ async function handleSubmitCustomer(req, res, id, user) {
   }
   if (!canGovernProposal(existing, user)) {
     errorResponse(res, 403, "Only the commercial owner or approver can submit this proposal for customer review.");
+    return;
+  }
+  if (existing.proposalRevisionId && (
+    existing.revisionStatus !== "SAVED" ||
+    !asArray(existing.proposalRevisions).some((revision) =>
+      revision?.proposalRevisionId === existing.proposalRevisionId && revision?.proposalHash === existing.proposalHash
+    )
+  )) {
+    errorResponse(res, 409, "Save the active Proposal Revision before submitting it to the customer.");
     return;
   }
   const body = await readRequestJson(req);
@@ -1261,19 +1435,46 @@ async function handleRevision(req, res, id, user) {
   const body = await readRequestJson(req);
   const updates = unwrapBody(body, "proposal", ["updates"]) ?? {};
   const revisionReason = String(body.reason ?? updates.reason ?? "Commercial revision created.");
-  const nextVersion = Number(existing.version ?? 1) + 1;
+  const savedRevisions = asArray(existing.proposalRevisions);
+  const requestedBasisId = String(body.basisProposalRevisionId ?? updates.basisProposalRevisionId ?? existing.proposalRevisionId ?? "");
+  const basisRevision = savedRevisions.find((revision) => revision?.proposalRevisionId === requestedBasisId)
+    ?? savedRevisions.at(-1)
+    ?? null;
+  const basisSnapshot = asRecord(basisRevision?.snapshot);
+  const nextVersion = Math.max(
+    Number(existing.version ?? 1),
+    ...savedRevisions.map((revision) => Number(revision?.revisionNumber ?? 0)),
+  ) + 1;
+  const nextProposalRevisionId = `${existing.proposalId}-revision-${nextVersion}`;
   const revised = normalizeProposalRecord({
     ...existing,
+    ...basisSnapshot,
     ...updates,
     version: nextVersion,
     status: "COMMERCIAL_REVISION",
     approvalState: "REVISION_IN_PROGRESS",
+    approvedAt: undefined,
+    proposalRevisionId: nextProposalRevisionId,
+    parentProposalRevisionId: basisRevision?.proposalRevisionId ?? existing.proposalRevisionId ?? "",
+    derivedFromProposalHash: basisRevision?.proposalHash ?? existing.proposalHash ?? "",
+    proposalHash: "",
+    revisionNumber: nextVersion,
+    revisionReason,
+    revisionStatus: "WORKING",
+    proposalRevisions: savedRevisions,
+    approvals: asArray(existing.approvals),
     versions: [
       ...asArray(existing.versions),
       normalizeVersionEntry({ ...existing, ...updates, proposalId: existing.proposalId, version: nextVersion }, user, revisionReason, body.changes ?? updates.changes ?? {}),
     ],
   }, user, existing);
-  jsonResponse(res, 200, { proposal: await saveProposal(revised, user, "runtime.proposal.revision.created", revisionReason, { version: nextVersion }) });
+  jsonResponse(res, 200, { proposal: await saveProposal(revised, user, "runtime.proposal.revision.created", revisionReason, {
+    version: nextVersion,
+    proposalRevisionId: nextProposalRevisionId,
+    parentProposalRevisionId: revised.parentProposalRevisionId,
+    derivedFromProposalHash: revised.derivedFromProposalHash,
+    approvalTransferred: false,
+  }) });
 }
 
 async function handleComment(req, res, id, user) {
@@ -1428,6 +1629,15 @@ async function handleApprove(req, res, id, user) {
     return;
   }
   const record = normalizeProposalRecord(existing, user, existing);
+  if (record.proposalRevisionId && (
+    record.revisionStatus !== "SAVED" ||
+    !asArray(record.proposalRevisions).some((revision) =>
+      revision?.proposalRevisionId === record.proposalRevisionId && revision?.proposalHash === record.proposalHash
+    )
+  )) {
+    errorResponse(res, 409, "Customer approval can only attach to an exact saved Proposal Revision and proposal hash.");
+    return;
+  }
   const decisionTrace = buildProposalApprovalDecisionTrace({
     proposalId: id,
     repositoryRecord: existing,
@@ -1447,12 +1657,23 @@ async function handleApprove(req, res, id, user) {
     approver: user.name,
     customerId: user.customerId,
     decision: "APPROVED",
+    proposalRevisionId: record.proposalRevisionId ?? `${record.proposalId}-legacy-v${record.version}`,
+    proposalHash: record.proposalHash ?? "LEGACY-PROPOSAL-HASH-NOT-AVAILABLE",
+    revisionNumber: record.revisionNumber ?? record.version,
     comment: body.comment ?? "",
     createdAt: timestamp,
   };
   const approved = normalizeProposalRecord({
     ...record,
-    approvals: [...asArray(record.approvals), approval],
+    approvals: [
+      ...asArray(record.approvals).map((priorApproval) => priorApproval?.decision === "APPROVED" &&
+        priorApproval?.proposalRevisionId &&
+        priorApproval.proposalRevisionId !== approval.proposalRevisionId &&
+        !priorApproval.supersededByRevisionId
+        ? { ...priorApproval, supersededByRevisionId: approval.proposalRevisionId }
+        : priorApproval),
+      approval,
+    ],
     status: PROPOSAL_REPOSITORY_APPROVED_STATUS,
     approvalState: "APPROVED",
     approvedAt: timestamp,
@@ -1560,10 +1781,31 @@ async function handleCreateDraftIofPackage(res, id, user) {
     errorResponse(res, 409, "Proposal is not ready for Draft IOF package creation.");
     return;
   }
+  const commercialRevision = await ensureCommercialRevisionForProposal(record, user, {
+    timestamp: nowIso(),
+  });
   const source = {
-    sourceType: "APPROVED_PROPOSAL_RUNTIME_OBJECT",
+    sourceType: "COMMERCIAL_REVISION",
+    previousSourceType: "APPROVED_PROPOSAL_RUNTIME_OBJECT",
+    commercialRevisionId: commercialRevision.commercialRevisionId,
+    revisionId: commercialRevision.revisionId,
+    commercialRevisionHash: commercialRevision.revisionHash,
+    commercialRepositoryId: commercialRevision.repositoryId,
+    changeSetIds: commercialRevision.changeSetIds ?? [],
+    activeChangeSetIds: commercialRevision.activeChangeSetIds ?? commercialRevision.changeSetIds ?? [],
+    patchCount: commercialRevision.patchCount ?? 0,
+    activePatchCount: commercialRevision.activePatchCount ?? 0,
+    appliedPatchCount: commercialRevision.appliedPatchCount ?? 0,
+    repositoryHash: commercialRevision.repositoryHash,
+    projectionHash: commercialRevision.projectionHash,
+    patchReplayTimeMs: commercialRevision.patchReplayTimeMs ?? 0,
+    projectionTimeMs: commercialRevision.projectionTimeMs ?? 0,
+    proposalConsumesCommercialRevision: true,
     proposalId: record.proposalId,
     proposalNumber: record.proposalNumber,
+    proposalRevisionId: record.proposalRevisionId,
+    proposalHash: record.proposalHash,
+    proposalRevisionNumber: record.revisionNumber,
     customerId: record.customerId,
     opportunityId: record.opportunityId,
     version: record.version,
@@ -1578,10 +1820,43 @@ async function handleCreateDraftIofPackage(res, id, user) {
     proposalDocumentReferences: record.proposalDocumentReferences,
     noIofPackageCreated: true,
     sprint13_3AssemblyRequired: true,
+    noScopeVersionCreation: true,
   };
   const exposed = normalizeProposalRecord({
     ...record,
     status: PROPOSAL_REPOSITORY_APPROVED_STATUS,
+    commercialRevisionId: commercialRevision.commercialRevisionId,
+    revisionId: commercialRevision.revisionId,
+    commercialRevisionHash: commercialRevision.revisionHash,
+    commercialRepositoryId: commercialRevision.repositoryId,
+    changeSetIds: commercialRevision.changeSetIds ?? [],
+    activeChangeSetIds: commercialRevision.activeChangeSetIds ?? commercialRevision.changeSetIds ?? [],
+    patchCount: commercialRevision.patchCount ?? 0,
+    activePatchCount: commercialRevision.activePatchCount ?? 0,
+    appliedPatchCount: commercialRevision.appliedPatchCount ?? 0,
+    repositoryHash: commercialRevision.repositoryHash,
+    projectionHash: commercialRevision.projectionHash,
+    patchReplayTimeMs: commercialRevision.patchReplayTimeMs ?? 0,
+    projectionTimeMs: commercialRevision.projectionTimeMs ?? 0,
+    currentAuthority: "COMMERCIAL_REVISION",
+    proposalAuthorityFlow: {
+      inputAuthority: "COMMERCIAL_REVISION",
+      projection: "PROPOSAL_PROJECTION",
+      repository: "PROPOSAL_REPOSITORY",
+      commercialRevisionId: commercialRevision.commercialRevisionId,
+      revisionHash: commercialRevision.revisionHash,
+      changeSetIds: commercialRevision.changeSetIds ?? [],
+      patchCount: commercialRevision.patchCount ?? 0,
+      commercialRevisionProjection: "COMMERCIAL_REVISION_PROJECTION",
+      proposalOutputUnchanged: true,
+      pricingOutputUnchanged: true,
+      workbookOutputUnchanged: true,
+      noScopeVersionCreation: true,
+    },
+    commercialAuthorityDiagnostics: commercialAuthorityDiagnosticsFrom({
+      revision: commercialRevision,
+      proposal: record,
+    }),
     draftIofPackageSource: source,
   }, user, record);
   const saved = await saveProposal(exposed, user, "runtime.proposal.draft_iof.source_exposed", "Approved Proposal references exposed for Sprint 13.3 Draft IOF package assembly. No IOF package was created.", { source });

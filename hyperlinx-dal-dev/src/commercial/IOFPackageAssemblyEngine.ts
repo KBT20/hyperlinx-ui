@@ -11,6 +11,8 @@ import type {
 import type { CommercialCorridorDraft, CommercialCorridorSegment } from "./CommercialCorridorDraftEngine";
 import type { OpportunityQuickQuote } from "./OpportunityScoutEngine";
 import type { ProductDoctrine, ProductDoctrineAssembly } from "../products/ProductDoctrineContracts";
+import { instantiateDoctrineObjects } from "../products/DoctrineObjectInstantiationEngine";
+import { projectDoctrineToStationSpine } from "../products/DoctrineProjectionEngine";
 import { createObjectAddressing } from "../doctrine/pd002/addressing/PD002AObjectAddressingEngine";
 import { createPD003ProductionArtifacts } from "../doctrine/pd003/ProductionProfileEngine";
 import { buildKernelExecutionGraph } from "../kernel/ExecutionGraphBuilder";
@@ -63,6 +65,18 @@ export type IOFPackageAssemblyInput = {
   customerDesignReferences?: string[];
   customerTwinReference?: string;
   geometryReferences?: string[];
+  /** Existing immutable authorities used by the structural cache instead of rehashing full runtime mirrors. */
+  routeGeometryHash?: string;
+  stationAuthorityRevision?: string;
+  objectInventoryAuthorityRevision?: string;
+  commercialRevisionId?: string;
+  revisionId?: string;
+  commercialRevisionHash?: string;
+  commercialRepositoryId?: string;
+  commercialReleasePackageId?: string;
+  commercialReleaseHash?: string;
+  commercialReleaseState?: string;
+  currentAuthority?: string;
 };
 
 const MODEL_VERSION = "iof-package-assembly-v1";
@@ -413,6 +427,8 @@ function buildValidation(args: {
   kernelExecutionGraphSummary?: unknown;
   constitutionalAssembly?: unknown;
   instantiationHealth?: unknown;
+  doctrineObjectInstantiation?: unknown;
+  doctrineProjection?: unknown;
 }): IofPackageValidation {
   const proposal = args.proposal;
   const checks = [
@@ -491,6 +507,74 @@ function buildValidation(args: {
         label: "Draft IOF approval prohibited until Constitutional Assembly succeeds",
         status: asRecord(args.constitutionalAssembly).draftIofApprovalProhibitedUntilPass === true &&
           asRecord(args.constitutionalAssembly).status === "PASS" ? "PASS" : "FAIL",
+      },
+    ] : []),
+    ...(args.doctrineObjectInstantiation ? [
+      {
+        key: "doctrine-object-instantiation-engine",
+        label: "Doctrine Object Instantiation Engine",
+        status: asRecord(args.doctrineObjectInstantiation).status === "FAIL" ? "FAIL" : "PASS",
+      },
+      {
+        key: "doctrine-object-addressing",
+        label: "Every doctrine object has a deterministic address",
+        status: asNumber(asRecord(args.doctrineObjectInstantiation).missingAddressCount, 0) === 0 ? "PASS" : "FAIL",
+      },
+      {
+        key: "doctrine-payment-close-sequences",
+        label: "Doctrine payment and close sequences instantiated",
+        status: asNumber(asRecord(args.doctrineObjectInstantiation).missingPaymentSequenceCount, 0) === 0 &&
+          asNumber(asRecord(args.doctrineObjectInstantiation).missingCloseSequenceCount, 0) === 0 ? "PASS" : "FAIL",
+      },
+      {
+        key: "doctrine-station-sequencing",
+        label: "Doctrine quantity placement and station sequencing validated",
+        status: asNumber(asRecord(args.doctrineObjectInstantiation).quantityMismatchCount, 0) === 0 &&
+          asNumber(asRecord(args.doctrineObjectInstantiation).missingStationAddressCount, 0) === 0 &&
+          asNumber(asRecord(args.doctrineObjectInstantiation).sequenceGapCount, 0) === 0 &&
+          asNumber(asRecord(args.doctrineObjectInstantiation).duplicateObjectIdCount, 0) === 0 ? "PASS" : "FAIL",
+      },
+      {
+        key: "doctrine-span-derivation",
+        label: "Doctrine station spans derived from sequenced action objects",
+        status: asNumber(asRecord(args.doctrineObjectInstantiation).spanDerivationFailureCount, 0) === 0 ? "PASS" : "FAIL",
+      },
+      {
+        key: "doctrine-linear-asset-attachments",
+        label: "Conduit, fiber, trace wire, warning tape, and pull tape attached to station spans",
+        status: asNumber(asRecord(args.doctrineObjectInstantiation).unattachedLinearAssetCount, 0) === 0 ? "PASS" : "FAIL",
+      },
+    ] : []),
+    ...(args.doctrineProjection ? [
+      {
+        key: "doctrine-projection-engine",
+        label: "Doctrine Projection Engine",
+        status: asRecord(args.doctrineProjection).status === "FAIL" ? "FAIL" : "PASS",
+      },
+      {
+        key: "doctrine-projection-measured-centerline",
+        label: "Measured Centerline materialized",
+        status: asString(asRecord(args.doctrineProjection).measuredCenterlineId) ? "PASS" : "FAIL",
+      },
+      {
+        key: "doctrine-projection-station-projection",
+        label: "Station Projection materialized",
+        status: asString(asRecord(args.doctrineProjection).stationProjectionId) ? "PASS" : "FAIL",
+      },
+      {
+        key: "doctrine-projection-station-graph",
+        label: "Station Graph materialized",
+        status: asString(asRecord(args.doctrineProjection).stationGraphId) ? "PASS" : "FAIL",
+      },
+      {
+        key: "doctrine-projection-station-authorities",
+        label: "Station Authorities materialized",
+        status: asNumber(asRecord(args.doctrineProjection).stationAuthorityCount, 0) > 0 ? "PASS" : "FAIL",
+      },
+      {
+        key: "doctrine-projection-projected-object-manifest",
+        label: "Projected Object Manifest materialized",
+        status: asString(asRecord(args.doctrineProjection).projectedObjectManifestId) ? "PASS" : "FAIL",
       },
     ] : []),
     ...(args.instantiationHealth ? [
@@ -1149,6 +1233,34 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     kernelExecutionGraph: baseKernelExecutionGraph,
     generatedAt: timestamp,
   });
+  const doctrineObjectInstantiation = input.productDoctrine && doctrineAssembly ? instantiateDoctrineObjects({
+    packageId,
+    productDoctrine: input.productDoctrine,
+    productDoctrineAssembly: doctrineAssembly,
+    routeId: packageRouteId,
+    scopeVersionCandidateId: `${packageId}:SCOPEVERSION-CANDIDATE`,
+    geometryHash: measuredSpine?.geometryHash ?? centerlineId,
+  }) : null;
+  const routeRepositoryId = asString(
+    firstDefined(
+      asRecord(input.commercialCandidate).routeRepositoryId,
+      asRecord(input.commercialDraft).routeRepositoryId,
+      asRecord(input.quickQuote).routeRepositoryId,
+      packageRouteId,
+    ),
+    packageRouteId,
+  );
+  const doctrineProjection = input.productDoctrine && doctrineObjectInstantiation && measuredSpine && stationAuthority && stationIndexedGraph ? projectDoctrineToStationSpine({
+    packageId,
+    productDoctrine: input.productDoctrine,
+    doctrineObjectManifest: doctrineObjectInstantiation.engineeringObjectManifest,
+    measuredSpine,
+    stationAuthority,
+    stationIndexedGraph,
+    routeRepositoryId,
+    routeGeometryId: centerlineId,
+    commercialReleasePackageId: input.commercialReleasePackageId,
+  }) : null;
   const kernelSpineObjectReferences = spineObjectInstantiation.instantiatedSpineObjects.map((object) => ({
     spineObjectId: object.spineObjectId,
     objectType: object.objectType,
@@ -1191,6 +1303,16 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     kernelExecutionGraphSummary: kernelExecutionGraph?.summary,
     constitutionalAssembly: kernelExecutionGraph?.constitutionalAssembly,
     instantiationHealth: spineObjectInstantiation.instantiationHealth,
+    doctrineObjectInstantiation: doctrineObjectInstantiation?.validation,
+    doctrineProjection: doctrineProjection ? {
+      status: doctrineProjection.validation.status,
+      measuredCenterlineId: doctrineProjection.measuredCenterline.measuredCenterlineId,
+      stationProjectionId: doctrineProjection.stationProjection.stationProjectionId,
+      stationGraphId: doctrineProjection.stationGraph.stationGraphId,
+      stationAuthorityCount: doctrineProjection.stationAuthorityIds.length,
+      projectedObjectManifestId: doctrineProjection.projectedObjectManifest.manifestId,
+      diagnosticsStatus: doctrineProjection.doctrineProjectionDiagnostics.status,
+    } : null,
   });
   const readiness = packageReadiness(validation, proposedIofUnits);
   const draftIofReadiness = buildDraftIofReadiness({
@@ -1405,6 +1527,29 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
         pricing: Boolean(pricing),
         productDoctrine: Boolean(input.productDoctrine),
         productDoctrineAssembly: Boolean(doctrineAssembly),
+        requiredServices: input.productDoctrine?.requiredServices.length ?? 0,
+        requiredAssets: input.productDoctrine?.requiredAssets.length ?? 0,
+        productDoctrineEngineeringObjects: input.productDoctrine?.engineeringObjects.length ?? 0,
+        executionSequences: input.productDoctrine?.executionSequences.length ?? 0,
+        closeSequences: input.productDoctrine?.closeSequences.length ?? 0,
+        evidenceRequirements: input.productDoctrine?.evidenceRequirements.length ?? 0,
+        scopeVersionReadinessRequirements: input.productDoctrine?.scopeVersionReadinessRequirements.length ?? 0,
+        doctrineObjectInstantiation: Boolean(doctrineObjectInstantiation),
+        doctrineInstantiatedObjects: doctrineObjectInstantiation?.instantiatedObjects.length ?? 0,
+        doctrineObjectAddresses: doctrineObjectInstantiation?.summary.addressCount ?? 0,
+        doctrineStationLifecycleRules: doctrineObjectInstantiation?.stationLifecycleRules.length ?? 0,
+        doctrineStationObjectIndex: doctrineObjectInstantiation?.stationObjectIndex.length ?? 0,
+        doctrineDerivedSpans: doctrineObjectInstantiation?.derivedSpans.length ?? 0,
+        doctrineLinearAssetSpanAttachments: doctrineObjectInstantiation?.linearAssetSpanAttachments.length ?? 0,
+        doctrineProjectionEngine: Boolean(doctrineProjection),
+        doctrineProjectionStatus: doctrineProjection?.validation.status ?? "MISSING",
+        doctrineProjectionObjects: doctrineProjection?.projectedObjects.length ?? 0,
+        doctrineProjectedSpans: doctrineProjection?.projectedSpans.length ?? 0,
+        doctrineProjectedObjectManifest: Boolean(doctrineProjection?.projectedObjectManifest.manifestId),
+        doctrineProjectionDiagnosticsStatus: doctrineProjection?.doctrineProjectionDiagnostics.status ?? "MISSING",
+        doctrineProjectionExpectedObjects: doctrineProjection?.doctrineProjectionDiagnostics.expectedObjectCount ?? 0,
+        geometryAuthorityStatus: doctrineProjection?.geometryAuthorityDiagnostics.status ?? "MISSING",
+        independentSpanGeometryCount: doctrineProjection?.geometryAuthorityDiagnostics.independentSpanGeometryCount ?? 0,
         routeGeometryCoordinates: packageCenterline.length,
         validationOutputs: input.validation?.length ?? 0,
       },
@@ -1421,6 +1566,76 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     productDoctrineVersion: input.productDoctrine?.doctrineVersion,
     productDoctrineRules: input.productDoctrine?.rules,
     productDoctrineAssembly: doctrineAssembly ?? undefined,
+    doctrineObjectInstantiation,
+    doctrineObjectManifest: doctrineObjectInstantiation?.engineeringObjectManifest,
+    engineeringObjectManifest: doctrineObjectInstantiation?.engineeringObjectManifest,
+    doctrineObjectManifestId: doctrineObjectInstantiation?.engineeringObjectManifest.manifestId,
+    engineeringObjectManifestId: doctrineObjectInstantiation?.engineeringObjectManifest.manifestId,
+    objectManifestId: doctrineObjectInstantiation?.engineeringObjectManifest.manifestId ?? auditObjectManifest.manifestId,
+    doctrineInstantiatedObjects: doctrineObjectInstantiation?.instantiatedObjects ?? [],
+    doctrineObjectAddresses: doctrineObjectInstantiation?.instantiatedObjects.map((object) => object.address) ?? [],
+    doctrineObjectDependencyGraph: doctrineObjectInstantiation?.dependencyGraph,
+    doctrineObjectExecutionSequence: doctrineObjectInstantiation?.executionSequence,
+    doctrineObjectCloseSequence: doctrineObjectInstantiation?.closeSequence,
+    doctrineObjectPaymentSequence: doctrineObjectInstantiation?.paymentSequence,
+    doctrineObjectEvidenceRequirements: doctrineObjectInstantiation?.evidenceRequirements,
+    doctrineStationLifecycleRules: doctrineObjectInstantiation?.stationLifecycleRules,
+    doctrineQuantityPlacement: doctrineObjectInstantiation?.quantityPlacement,
+    doctrineStationObjectIndex: doctrineObjectInstantiation?.stationObjectIndex,
+    doctrineSequencedActionObjects: doctrineObjectInstantiation?.sequencedActionObjects,
+    doctrineDerivedSpans: doctrineObjectInstantiation?.derivedSpans,
+    doctrineLinearAssetSpanAttachments: doctrineObjectInstantiation?.linearAssetSpanAttachments,
+    doctrineEngineeringMovementPolicy: doctrineObjectInstantiation?.engineeringMovementPolicy,
+    doctrineContinuousStationClosure: doctrineObjectInstantiation ? true : undefined,
+    doctrineObjectInstantiationValidation: doctrineObjectInstantiation?.validation,
+    doctrineObjectInstantiationSummary: doctrineObjectInstantiation?.summary,
+    doctrineMarketplaceProjection: doctrineObjectInstantiation?.engineeringObjectManifest.marketplaceProjection,
+    doctrineControlProjection: doctrineObjectInstantiation?.engineeringObjectManifest.controlProjection,
+    doctrineFieldProjection: doctrineObjectInstantiation?.engineeringObjectManifest.fieldProjection,
+    doctrineTwinProjection: doctrineObjectInstantiation?.engineeringObjectManifest.twinProjection,
+    doctrineProjection,
+    doctrineProjectionId: doctrineProjection?.projectionId,
+    doctrineProjectionValidation: doctrineProjection?.validation,
+    doctrineProjectionSummary: doctrineProjection?.summary,
+    doctrineProjectionDiagnostics: doctrineProjection?.doctrineProjectionDiagnostics,
+    geometryAuthorityDiagnostics: doctrineProjection?.geometryAuthorityDiagnostics,
+    commercialAuditReconciliation: doctrineProjection?.commercialAuditReconciliation,
+    constitutionalStateValidation: doctrineProjection?.constitutionalStateValidation,
+    executionGraphId: doctrineProjection?.executionGraphId,
+    lifecycleGraphId: doctrineProjection?.lifecycleGraphId,
+    closureLedger: doctrineProjection?.closureLedger,
+    closureLedgerId: doctrineProjection?.closureLedger?.closureLedgerId,
+    iofPackageTwin: doctrineProjection?.iofPackageTwin,
+    iofPackageTwinId: doctrineProjection?.iofPackageTwin?.twinProjectionId,
+    workSegments: doctrineProjection?.workSegments,
+    productDoctrineRegistry: input.productDoctrine?.registry,
+    productDoctrineExecution: input.productDoctrine ? {
+      requiredServices: input.productDoctrine.requiredServices,
+      requiredAssets: input.productDoctrine.requiredAssets,
+      engineeringObjects: input.productDoctrine.engineeringObjects,
+      executionSequences: input.productDoctrine.executionSequences,
+      closeSequences: input.productDoctrine.closeSequences,
+      evidenceRequirements: input.productDoctrine.evidenceRequirements,
+      certificationRules: input.productDoctrine.certificationRules,
+      stationLevelLifecycleProjection: input.productDoctrine.stationLevelLifecycleProjection,
+      scopeVersionReadinessRequirements: input.productDoctrine.scopeVersionReadinessRequirements,
+      serviceVsAssetRule: "Services are not assets. Services consume labor, equipment, subcontractors, or professional effort. Assets are tangible infrastructure objects placed into the network and represented in the Twin.",
+      noScopeVersionCreation: true,
+    } : undefined,
+    requiredServices: input.productDoctrine?.requiredServices,
+    requiredAssets: input.productDoctrine?.requiredAssets,
+    productDoctrineEngineeringObjects: input.productDoctrine?.engineeringObjects,
+    executionSequences: input.productDoctrine?.executionSequences,
+    closeSequences: input.productDoctrine?.closeSequences,
+    closeSequenceReferences: input.productDoctrine?.closeSequences.map((sequence) => ({
+      closeSequenceId: sequence.closeSequenceId,
+      appliesTo: sequence.appliesTo,
+      appliesToId: sequence.appliesToId,
+    })),
+    evidenceRequirements: input.productDoctrine?.evidenceRequirements,
+    certificationRules: input.productDoctrine?.certificationRules,
+    stationLevelLifecycleProjection: input.productDoctrine?.stationLevelLifecycleProjection,
+    scopeVersionReadinessRequirements: input.productDoctrine?.scopeVersionReadinessRequirements,
     aSite: doctrineAssembly?.aSite,
     zSite: doctrineAssembly?.zSite,
     azSites: doctrineAssembly ? [doctrineAssembly.aSite, doctrineAssembly.zSite].filter(Boolean) : undefined,
@@ -1431,12 +1646,26 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     centerlineId,
     centerlineRoute,
     spine,
+    measuredCenterlineId: doctrineProjection?.measuredCenterline.measuredCenterlineId,
+    measuredCenterline: doctrineProjection?.measuredCenterline,
     measuredSpine,
+    stationProjectionId: doctrineProjection?.stationProjection.stationProjectionId,
+    stationProjection: doctrineProjection?.stationProjection,
+    stationGraphId: doctrineProjection?.stationGraph.stationGraphId ?? stationIndexedGraph?.graphId,
+    stationGraph: doctrineProjection?.stationGraph,
+    stationAuthorityIds: doctrineProjection?.stationAuthorityIds ?? (stationAuthority ? [stationAuthority.authorityId] : []),
+    stationAuthorities: doctrineProjection?.stationAuthorities,
     stationAuthority,
     stationIndex: stationAuthority?.stationIndex,
     stationToCoordinateMap: stationAuthority?.stationToCoordinateMap,
-    objectStationAttachments,
-    stationIndexedGraph,
+    objectStationAttachments: doctrineProjection?.objectStationAttachments ?? objectStationAttachments,
+    stationIndexedGraph: doctrineProjection?.stationGraph ?? stationIndexedGraph,
+    stationObjectManifestId: doctrineProjection?.stationObjectManifest.manifestId,
+    stationObjectManifest: doctrineProjection?.stationObjectManifest,
+    projectedObjectManifestId: doctrineProjection?.projectedObjectManifest.manifestId,
+    projectedObjectManifest: doctrineProjection?.projectedObjectManifest,
+    projectedObjects: doctrineProjection?.projectedObjects,
+    projectedSpans: doctrineProjection?.projectedSpans,
     spineAuditProjection,
     spineAuditAttachments: spineAuditProjection?.attachments ?? [],
     stationedExpectations: spineAuditProjection?.stationedExpectations ?? [],
@@ -1446,7 +1675,7 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     auditProjectionSummary: spineAuditProjection?.summary,
     objectAddressingDoctrine: objectAddressing?.objectAddressingDoctrine,
     stationAddressRegistry: objectAddressing?.stationAddressRegistry,
-    objectAddresses: objectAddressing?.objectAddresses ?? [],
+    objectAddresses: doctrineProjection?.objectAddresses ?? objectAddressing?.objectAddresses ?? [],
     unassignedReviewObjects: objectAddressing?.unassignedReviewObjects ?? [],
     addressedReviewObjects: objectAddressing?.addressedReviewObjects ?? [],
     addressValidation: objectAddressing?.addressValidation,
@@ -1532,7 +1761,7 @@ export function assembleDraftIofPackage(input: IOFPackageAssemblyInput): DraftIo
     stations,
     structures,
     dependencies,
-    objects: packageObjects,
+    objects: doctrineObjectInstantiation?.instantiatedObjects ?? packageObjects,
     relationships: runtimeRelationshipIds.map((relationshipId) => ({ relationshipId, source: "proposal.runtimeRelationshipIds" })),
     evidence: runtimeEvidenceIds.map((evidenceId) => ({ evidenceId, source: "proposal.runtimeEvidenceIds" })),
     proposalDocumentReferences,

@@ -9,12 +9,30 @@ import type { ProposedGraphEdge } from "../../../proposedGraph/ProposedGraphEdge
 import type { ProposedGraphNode } from "../../../proposedGraph/ProposedGraphNode";
 import { sourceLayerIdsForVisibleDomain, visibleCommercialMapLayerIds, type CommercialMapLayer } from "../../../commercial/CommercialMapLayerManager";
 import type { CustomerTwinLayer, CustomerTwinObjectType, CustomerTwinRenderableState, CustomerTwinStation } from "../../../customerTwin/CustomerTwin";
+import type { CorridorViewportProjection } from "../../../corridorExecution";
+import {
+  geometryForViewport,
+  mapLevelOfDetail,
+  type ViewportBounds,
+} from "../../../performance/MapVirtualization";
+import { startRuntimePerformanceOperation } from "../../../performance/RuntimePerformanceInstrumentation";
+import { measuredSpineCoordinates, type MeasuredCenterlineLike } from "../../../rendering/MeasuredSpineRenderer";
+import { renderSpan } from "../../../rendering/ProjectedSpanRenderer";
+import { deriveDomainProjection, deriveObjectDomainProjection } from "../../../state/DomainProjectionEngine";
+import {
+  sharedMapDisclosureLevel,
+  sharedMapFeatureLimits,
+  sharedMapRoutineFeatureVisible,
+  sharedMapRoutineLabelVisible,
+} from "../../../mapkernel/SharedMapDisclosurePolicy";
 
 export type ProposedNetworkSelection =
   | { type: "node"; value: ProposedGraphNode }
   | { type: "edge"; value: ProposedGraphEdge }
   | { type: "station"; value: CorridorStation }
   | { type: "object"; value: CorridorInventoryObject }
+  | { type: "commercialIofObject"; value: CommercialIofProjectedObject }
+  | { type: "commercialIofSpan"; value: CommercialIofProjectedSpan }
   | null;
 
 type LayerState = {
@@ -22,6 +40,11 @@ type LayerState = {
   route: boolean;
   stations: boolean;
   labels: boolean;
+  commercialMeasuredSpine: boolean;
+  commercialProjectedSpans: boolean;
+  commercialProjectedObjects: boolean;
+  commercialStationGraph: boolean;
+  commercialObjectAddresses: boolean;
   vaults: boolean;
   regenSites: boolean;
   crossings: boolean;
@@ -59,6 +82,14 @@ type ProjectedLabel = {
 };
 
 type ProjectedPoint = {
+  x: number;
+  y: number;
+};
+
+type CommercialIofHoverState = {
+  kind: "object" | "span";
+  object?: CommercialIofProjectedObject;
+  span?: CommercialIofProjectedSpan;
   x: number;
   y: number;
 };
@@ -132,6 +163,154 @@ export type CommercialIlaMapStation = {
   totalCost: number;
 };
 
+export type CommercialIofProjectedObject = {
+  objectId: string;
+  objectType: string;
+  doctrineObjectType?: string;
+  measure?: number;
+  stationAddress: string;
+  stationSequence?: number;
+  coordinate?: DALCoordinate;
+  geographicCoordinate?: DALCoordinate;
+  latitude?: number;
+  longitude?: number;
+  stationStart?: string;
+  stationEnd?: string;
+  routeRepositoryId?: string;
+  parentRouteId?: string;
+  parentSegmentId?: string;
+  geometryHash?: string;
+  placementAuthority?: string;
+  engineeringAuthority?: string;
+  coordinateAuthority?: string;
+  placementReason?: string;
+  doctrineQuantitySource?: string;
+  executionSequenceId?: string;
+  closeSequenceId?: string;
+  paymentSequenceId?: string;
+  currentState?: string;
+  currentAuthority?: string;
+  nextState?: string;
+  nextAuthority?: string;
+  auditStatus?: string;
+  allowedTransitions?: string[];
+  requiredEvidenceForNextTransition?: string[];
+  domainResponsibilityMatrix?: Record<string, string>;
+  auditLedgerHooks?: { closureLedgerId?: string };
+  twinProjectionMetadata?: { twinProjectionId?: string };
+  dependencyList?: string[];
+  dependencies?: string[];
+  evidenceRequirements?: unknown[];
+  currentLifecycleState?: string;
+  lifecycleState?: string;
+  billableMaterial?: string;
+  billableLabor?: string;
+  materialTemplate?: string;
+  materialTemplateId?: string;
+  laborTemplate?: string;
+  laborTemplateId?: string;
+  evidenceTemplate?: string;
+  evidenceTemplateId?: string;
+};
+
+export type CommercialIofProjectedSpan = {
+  spanId: string;
+  spanType?: string;
+  measuredCenterlineId?: string;
+  startMeasure?: number;
+  endMeasure?: number;
+  startObjectId?: string;
+  endObjectId?: string;
+  startStation?: string;
+  endStation?: string;
+  stationStart?: string;
+  stationEnd?: string;
+  startStationFeet?: number;
+  endStationFeet?: number;
+  lengthFeet?: number;
+  containedAssets?: string[];
+  constructionMethod?: string;
+  billableMaterial?: string;
+  billableLabor?: string;
+  materialTemplate?: string;
+  materialTemplateId?: string;
+  laborTemplate?: string;
+  laborTemplateId?: string;
+  evidenceTemplate?: string;
+  evidenceTemplateId?: string;
+  doctrineQuantitySource?: string;
+  executionSequenceId?: string;
+  closeSequenceId?: string;
+  paymentSequenceId?: string;
+  evidenceRequirements?: unknown[];
+  dependencies?: string[];
+  lifecycleState?: string;
+  currentState?: string;
+  currentAuthority?: string;
+  nextState?: string;
+  nextAuthority?: string;
+  auditStatus?: string;
+  allowedTransitions?: string[];
+  requiredEvidenceForNextTransition?: string[];
+  domainResponsibilityMatrix?: Record<string, string>;
+  auditLedgerHooks?: { closureLedgerId?: string };
+  twinProjectionMetadata?: { twinProjectionId?: string };
+  closureSegments?: Array<{ closureSegmentId?: string; workType?: string; currentState?: string }>;
+  openClosureSegments?: string[];
+  closedClosureSegments?: string[];
+  percentComplete?: number;
+  nextClosableSegment?: string;
+  placementAuthority?: string;
+  renderAuthority?: string;
+  independentGeometryProhibited?: boolean;
+};
+
+type CommercialIofStationGraphEdge = {
+  edgeId?: string;
+  fromStationId?: string;
+  toStationId?: string;
+  startMeasureFeet?: number;
+  endMeasureFeet?: number;
+  fromMeasureFeet?: number;
+  toMeasureFeet?: number;
+  lengthFeet?: number;
+  edgeLengthFeet?: number;
+};
+
+type CommercialIofStationNode = {
+  stationId?: string;
+  stationAddress?: string;
+  stationLabel?: string;
+  label?: string;
+  measureFeet?: number;
+  measuredDistanceFeet?: number;
+  stationValue?: number;
+  coordinate?: DALCoordinate;
+};
+
+export type CommercialIofProjectionOverlay = {
+  measuredCenterline?: MeasuredCenterlineLike | null;
+  measuredCenterlineId?: string;
+  stationProjection?: {
+    stationProjectionId?: string;
+    stations?: CommercialIofStationNode[];
+  } | Record<string, unknown> | null;
+  stationGraph?: {
+    stationGraphId?: string;
+    graphId?: string;
+    nodes?: CommercialIofStationNode[];
+    edges?: CommercialIofStationGraphEdge[];
+  } | Record<string, unknown> | null;
+  projectedObjects: CommercialIofProjectedObject[];
+  projectedSpans: CommercialIofProjectedSpan[];
+  objectStationAttachments?: Array<Record<string, unknown>>;
+  linearAssetSpanAttachments?: Array<Record<string, unknown>>;
+  objectAddresses?: Array<Record<string, unknown>>;
+  routeRepositoryId?: string;
+  geometryHash?: string;
+  projectionAuthority?: string;
+};
+
 const MIN_ZOOM = 4;
 const MAX_ZOOM = 19;
 
@@ -163,6 +342,87 @@ function objectColor(type: CorridorInventoryObjectType) {
   if (type.includes("CROSSING") || type === "UNKNOWN_CONSTRAINT") return "#ef4444";
   if (type === "DUCT" || type === "FIBER") return "#64748b";
   return "#0ea5e9";
+}
+
+function commercialIofObjectCoordinate(object: CommercialIofProjectedObject): DALCoordinate | null {
+  if (Array.isArray(object.coordinate) && object.coordinate.length >= 2) return object.coordinate;
+  if (Array.isArray(object.geographicCoordinate) && object.geographicCoordinate.length >= 2) return object.geographicCoordinate;
+  const longitude = Number(object.longitude);
+  const latitude = Number(object.latitude);
+  return Number.isFinite(longitude) && Number.isFinite(latitude) ? [longitude, latitude] : null;
+}
+
+function commercialIofObjectColor(type: string) {
+  const upper = type.toUpperCase();
+  if (upper.includes("HANDHOLE")) return "#d97706";
+  if (upper.includes("VAULT")) return "#ea580c";
+  if (upper.includes("SPLICE")) return "#9333ea";
+  if (upper.includes("ILA") || upper.includes("REGEN")) return "#7c3aed";
+  if (upper.includes("MARKER")) return "#0d9488";
+  if (upper.includes("SLACK")) return "#0891b2";
+  if (upper.includes("TERM")) return "#2563eb";
+  if (upper.includes("CROSSING")) return "#dc2626";
+  return "#0f766e";
+}
+
+function commercialIofSpanColor(span: CommercialIofProjectedSpan) {
+  const assets = (span.containedAssets ?? []).join("|").toUpperCase();
+  if (assets.includes("FIBER")) return "#2563eb";
+  if (assets.includes("CONDUIT")) return "#0f766e";
+  return "#64748b";
+}
+
+function asCommercialRecords(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object") : [];
+}
+
+function commercialNumber(value: unknown, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function commercialText(value: unknown, fallback = "Missing") {
+  const text = String(value ?? "").trim();
+  return text || fallback;
+}
+
+function commercialList(value: unknown, fallback = "None") {
+  if (Array.isArray(value)) {
+    const items = value.map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        return String(record.evidenceId ?? record.templateId ?? record.requirementId ?? record.id ?? record.objectId ?? record.spanId ?? "").trim();
+      }
+      return String(item ?? "").trim();
+    }).filter(Boolean);
+    return items.length ? items.slice(0, 4).join(", ") : fallback;
+  }
+  const text = String(value ?? "").trim();
+  return text || fallback;
+}
+
+function commercialFeet(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? `${Math.round(numeric).toLocaleString()} ft` : "Missing";
+}
+
+function commercialIofStateProjection(value: unknown) {
+  return deriveObjectDomainProjection(value && typeof value === "object" ? value as Record<string, unknown> : {});
+}
+
+function commercialIofNextAuthority(value: unknown) {
+  const nextState = commercialIofStateProjection(value).nextAllowedStates[0];
+  return nextState ? deriveDomainProjection(nextState).currentAuthority : "";
+}
+
+function commercialAddressCoordinate(address: Record<string, unknown>, objectsById: Map<string, CommercialIofProjectedObject>): DALCoordinate | null {
+  const object = objectsById.get(String(address.objectId ?? ""));
+  const objectCoordinate = object ? commercialIofObjectCoordinate(object) : null;
+  if (objectCoordinate) return objectCoordinate;
+  const longitude = Number(address.longitude);
+  const latitude = Number(address.latitude);
+  return Number.isFinite(longitude) && Number.isFinite(latitude) ? [longitude, latitude] : null;
 }
 
 function customerTwinFeatureColor(type: CustomerTwinObjectType) {
@@ -199,48 +459,32 @@ function customerTwinLineStyle(layer: CustomerTwinLayer, index: number) {
 }
 
 function objectVisible(type: CorridorInventoryObjectType, layers: LayerState, zoom: number) {
-  if (type === "REGEN_SITE") return layers.regenSites;
-  if (type === "VAULT" || type === "HANDHOLE") return layers.vaults && zoom >= 9;
-  if (type.includes("CROSSING")) return layers.crossings && zoom >= 8;
-  if (type === "UNKNOWN_CONSTRAINT") return layers.constraints && zoom >= 11;
-  if (type === "DUCT" || type === "FIBER" || type === "SPLICE_POINT") return layers.ductFiberObjects && zoom >= 14;
-  return zoom >= 14;
+  if (type === "REGEN_SITE") return layers.regenSites && sharedMapRoutineFeatureVisible("FACILITY", zoom);
+  if (type.includes("CROSSING") || type === "UNKNOWN_CONSTRAINT") return (layers.crossings || layers.constraints) && sharedMapRoutineFeatureVisible("CONDITION", zoom);
+  if (type === "VAULT" || type === "HANDHOLE") return layers.vaults && sharedMapRoutineFeatureVisible("ROUTINE_OBJECT", zoom);
+  if (type === "DUCT" || type === "FIBER" || type === "SPLICE_POINT") return layers.ductFiberObjects && sharedMapRoutineFeatureVisible("ROUTINE_OBJECT", zoom);
+  return sharedMapRoutineFeatureVisible("ROUTINE_OBJECT", zoom);
 }
 
 function customerTwinObjectVisible(type: CustomerTwinObjectType, zoom: number) {
-  if (zoom < 9) return type === "POP" || type === "FACILITY" || type === "CUSTOMER_FACILITY" || type === "CAMPUS";
-  if (zoom < 12) return ["POP", "FACILITY", "CUSTOMER_FACILITY", "CAMPUS", "BUILDING", "REGENERATION_SITE"].includes(type);
-  if (zoom < 14) return !["HANDHOLE"].includes(type);
-  return true;
-}
-
-function stationRenderSpacingFeet(zoom: number) {
-  if (zoom < 10) return Number.POSITIVE_INFINITY;
-  if (zoom < 11) return 5 * 5280;
-  if (zoom < 13) return 1000;
-  if (zoom < 15) return 250;
-  return 0;
+  const facility = ["POP", "FACILITY", "CUSTOMER_FACILITY", "CAMPUS", "BUILDING", "REGENERATION_SITE"].includes(type);
+  return sharedMapRoutineFeatureVisible(facility ? "FACILITY" : "ROUTINE_OBJECT", zoom);
 }
 
 function visibleStationsForZoom(stations: CorridorStation[], zoom: number) {
-  if (zoom < 10) return [];
-  const spacingFeet = stationRenderSpacingFeet(zoom);
-  if (spacingFeet === 0) return stations;
-  let lastRenderedFeet = -Number.POSITIVE_INFINITY;
-  return stations.filter((station, index) => {
-    const endpoint = index === 0 || index === stations.length - 1;
-    if (endpoint || station.stationFeet - lastRenderedFeet >= spacingFeet) {
-      lastRenderedFeet = station.stationFeet;
-      return true;
-    }
-    return false;
-  });
+  if (!sharedMapRoutineFeatureVisible("STATION", zoom)) return [];
+  return limitEvenly(stations, sharedMapFeatureLimits(zoom).stations);
 }
 
 function visibleCustomerTwinStationsForZoom(stations: CustomerTwinStation[], zoom: number) {
-  if (zoom < 11) return [];
-  const step = zoom < 13 ? 20 : zoom < 15 ? 5 : 1;
-  return stations.filter((station) => station.stationIndex === 0 || station.stationIndex % step === 0);
+  if (!sharedMapRoutineFeatureVisible("STATION", zoom)) return [];
+  return limitEvenly(stations, sharedMapFeatureLimits(zoom).stations);
+}
+
+function limitEvenly<T>(items: T[], limit: number) {
+  if (!Number.isFinite(limit) || items.length <= limit) return items;
+  if (limit <= 0) return [];
+  return Array.from({ length: limit }, (_, index) => items[Math.min(items.length - 1, Math.floor((index * items.length) / limit))]);
 }
 
 function inViewport(point: { x: number; y: number }, width: number, height: number, pad = 48) {
@@ -299,6 +543,8 @@ export default function ProposedNetworkMapPanel({
   customerTwinState,
   commercialMapLayers = [],
   commercialOpportunityOverlay,
+  corridorViewportProjection,
+  commercialIofProjection,
   commercialIlaStations = [],
   selectedCommercialIlaStationId,
   mapMinHeight = 560,
@@ -316,6 +562,8 @@ export default function ProposedNetworkMapPanel({
   customerTwinState?: CustomerTwinRenderableState | null;
   commercialMapLayers?: CommercialMapLayer[];
   commercialOpportunityOverlay?: CommercialMapOpportunityOverlay;
+  corridorViewportProjection?: CorridorViewportProjection | null;
+  commercialIofProjection?: CommercialIofProjectionOverlay | null;
   commercialIlaStations?: CommercialIlaMapStation[];
   selectedCommercialIlaStationId?: string | null;
   mapMinHeight?: number;
@@ -376,13 +624,22 @@ export default function ProposedNetworkMapPanel({
     .map((layer) => `${layer.id}:${layer.visibility}:${layer.renderState}:${layer.featureCount}`)
     .join("|");
   const opportunityOverlayRouteKey = useMemo(() => {
-    const path = commercialOpportunityOverlay?.corridorGeometry ?? [];
+    const path = corridorViewportProjection?.visibleGeometry?.length
+      ? corridorViewportProjection.visibleGeometry
+      : commercialOpportunityOverlay?.corridorGeometry ?? [];
     const first = path[0];
     const last = path.at(-1);
     return path.length && first && last
       ? `${path.length}:${first[0].toFixed(5)},${first[1].toFixed(5)}:${last[0].toFixed(5)},${last[1].toFixed(5)}`
       : "NO_OPPORTUNITY_OVERLAY";
-  }, [commercialOpportunityOverlay?.corridorGeometry]);
+  }, [commercialOpportunityOverlay?.corridorGeometry, corridorViewportProjection?.visibleGeometry]);
+  const commercialIofProjectionRouteKey = useMemo(() => {
+    const object = commercialIofProjection?.projectedObjects[0];
+    const span = commercialIofProjection?.projectedSpans[0];
+    return commercialIofProjection
+      ? `${commercialIofProjection.routeRepositoryId ?? "NO_ROUTE"}:${commercialIofProjection.projectedObjects.length}:${commercialIofProjection.projectedSpans.length}:${object?.objectId ?? "NO_OBJECT"}:${span?.spanId ?? "NO_SPAN"}`
+      : "NO_IOF_PROJECTION";
+  }, [commercialIofProjection]);
   const sortedCustomerTwinRouteLayers = useMemo(
     () => [...routeVisibleCustomerTwinLayers].sort((a, b) => customerTwinLayerRank(a) - customerTwinLayerRank(b)),
     [routeVisibleCustomerTwinLayers],
@@ -397,6 +654,9 @@ export default function ProposedNetworkMapPanel({
       .sort((a, b) => b.zIndex - a.zIndex || a.label.localeCompare(b.label)),
     [commercialMapLayers],
   );
+  const commercialIofMeasuredSpineCoordinates = useMemo(() => (
+    measuredSpineCoordinates(commercialIofProjection?.measuredCenterline)
+  ), [commercialIofProjection?.measuredCenterline]);
   const coordinates = useMemo(
     () => [
       ...(graphFeatureRenderingVisible ? collectCoordinates(graph) : []),
@@ -406,10 +666,13 @@ export default function ProposedNetworkMapPanel({
       ...(commercialOpportunityOverlay?.candidateCoordinate ? [commercialOpportunityOverlay.candidateCoordinate] : []),
       ...(commercialOpportunityOverlay?.azPoints?.map((point) => point.coordinate) ?? []),
       ...(commercialOpportunityOverlay?.attachmentCandidates?.map((attachment) => attachment.coordinate) ?? []),
+      ...(corridorViewportProjection?.visibleGeometry ?? []),
       ...(commercialOpportunityOverlay?.corridorGeometry ?? []),
+      ...(commercialIofProjection?.projectedObjects.map(commercialIofObjectCoordinate).filter((coordinate): coordinate is DALCoordinate => Boolean(coordinate)) ?? []),
+      ...commercialIofMeasuredSpineCoordinates,
       ...commercialIlaStations.map((station) => station.coordinate),
     ],
-    [commercialIlaStations, commercialOpportunityOverlay?.attachmentCandidates, commercialOpportunityOverlay?.azPoints, commercialOpportunityOverlay?.candidateCoordinate, commercialOpportunityOverlay?.corridorGeometry, compare, graph, graphFeatureRenderingVisible, inventoryCoordinates],
+    [commercialIlaStations, commercialIofMeasuredSpineCoordinates, commercialIofProjection?.projectedObjects, commercialOpportunityOverlay?.attachmentCandidates, commercialOpportunityOverlay?.azPoints, commercialOpportunityOverlay?.candidateCoordinate, commercialOpportunityOverlay?.corridorGeometry, compare, corridorViewportProjection?.visibleGeometry, graph, graphFeatureRenderingVisible, inventoryCoordinates],
   );
   const [view, setView] = useState<ViewState>(() => ({
     center: centerFromCoordinates(coordinates, [-97.7431, 30.2672]),
@@ -419,11 +682,17 @@ export default function ProposedNetworkMapPanel({
   const [controlDrag, setControlDrag] = useState<ControlDragState | null>(null);
   const latestControlCoordinateRef = useRef<DALCoordinate | null>(null);
   const [developerLayersOpen, setDeveloperLayersOpen] = useState(false);
+  const [commercialIofHover, setCommercialIofHover] = useState<CommercialIofHoverState | null>(null);
   const [layers, setLayers] = useState<LayerState>({
     originalCorridor: true,
     route: true,
     stations: true,
     labels: true,
+    commercialMeasuredSpine: true,
+    commercialProjectedSpans: true,
+    commercialProjectedObjects: true,
+    commercialStationGraph: true,
+    commercialObjectAddresses: false,
     vaults: true,
     regenSites: true,
     crossings: true,
@@ -457,11 +726,11 @@ export default function ProposedNetworkMapPanel({
   }
 
   useEffect(() => {
-    const routeKey = `${graph.proposedGraphId}:${graph.centerlineRouteId ?? "NO_CENTERLINE"}:${compare?.secondaryGraph.proposedGraphId ?? "SINGLE"}:${inventoryRouteKey}:${opportunityOverlayRouteKey}`;
+    const routeKey = `${graph.proposedGraphId}:${graph.centerlineRouteId ?? "NO_CENTERLINE"}:${compare?.secondaryGraph.proposedGraphId ?? "SINGLE"}:${inventoryRouteKey}:${opportunityOverlayRouteKey}:${commercialIofProjectionRouteKey}`;
     if (fittedRouteRef.current === routeKey) return;
     fittedRouteRef.current = routeKey;
     fitViewForCoordinates(coordinates, "initial-route-load");
-  }, [compare?.secondaryGraph.proposedGraphId, coordinates, graph.centerlineRouteId, graph.proposedGraphId, inventoryRouteKey, opportunityOverlayRouteKey]);
+  }, [commercialIofProjectionRouteKey, compare?.secondaryGraph.proposedGraphId, coordinates, graph.centerlineRouteId, graph.proposedGraphId, inventoryRouteKey, opportunityOverlayRouteKey]);
 
   useEffect(() => {
     const previous = previousViewRef.current;
@@ -475,6 +744,18 @@ export default function ProposedNetworkMapPanel({
   }, [view]);
 
   const centerWorld = useMemo(() => lonLatToWorld(view.center, view.zoom), [view.center, view.zoom]);
+  const viewportBounds = useMemo<ViewportBounds>(() => {
+    const westNorth = worldToLonLat({ x: centerWorld.x - size.width / 2, y: centerWorld.y - size.height / 2 }, view.zoom);
+    const eastSouth = worldToLonLat({ x: centerWorld.x + size.width / 2, y: centerWorld.y + size.height / 2 }, view.zoom);
+    return {
+      west: Math.min(westNorth[0], eastSouth[0]),
+      south: Math.min(westNorth[1], eastSouth[1]),
+      east: Math.max(westNorth[0], eastSouth[0]),
+      north: Math.max(westNorth[1], eastSouth[1]),
+    };
+  }, [centerWorld.x, centerWorld.y, size.height, size.width, view.zoom]);
+  const viewportLod = mapLevelOfDetail(view.zoom);
+  const virtualizeGeometry = (geometry: DALCoordinate[]) => geometryForViewport(geometry, viewportBounds, view.zoom).geometry;
   const project = (coordinate: DALCoordinate) => {
     const point = lonLatToWorld(coordinate, view.zoom);
     return {
@@ -686,28 +967,87 @@ export default function ProposedNetworkMapPanel({
     setLayers((prev) => ({ ...prev, [layer]: !prev[layer] }));
   }
 
-  const centerlinePath = graph.centerlineRoute?.geometry ?? [];
+  const centerlineSourcePath = graph.centerlineRoute?.geometry ?? [];
   const graphEdgePath = graph.edges.flatMap((edge) => edge.coordinates);
-  const importedBaselinePath = centerlinePath.length > 1 ? centerlinePath : graphEdgePath;
-  const originalPath = redline?.originalGeometry?.length ? redline.originalGeometry : centerlinePath;
-  const secondaryCenterlinePath = compare?.secondaryGraph.centerlineRoute?.geometry ?? [];
-  const sharedCenterlinePath = compare?.sharedCoordinates ?? [];
+  const centerlinePath = virtualizeGeometry(centerlineSourcePath);
+  const importedBaselinePath = virtualizeGeometry(centerlineSourcePath.length > 1 ? centerlineSourcePath : graphEdgePath);
+  const originalPath = virtualizeGeometry(redline?.originalGeometry?.length ? redline.originalGeometry : centerlineSourcePath);
+  const secondaryCenterlinePath = virtualizeGeometry(compare?.secondaryGraph.centerlineRoute?.geometry ?? []);
+  const sharedCenterlinePath = virtualizeGeometry(compare?.sharedCoordinates ?? []);
   const revisionPath = redline?.revisionGeometry ?? [];
   const pendingViaPoints = redline?.pendingViaPoints ?? [];
   const avoidancePolygon = redline?.avoidancePolygon ?? [];
-  const proposalPath = salesMode && revisionPath.length > 1 ? revisionPath : centerlinePath;
+  const proposalPath = virtualizeGeometry(salesMode && revisionPath.length > 1 ? revisionPath : centerlineSourcePath);
   const stations = graph.stationedCorridor?.stations ?? [];
   const objects = graph.stationedCorridor?.inventoryObjects ?? [];
+  const disclosureLimits = sharedMapFeatureLimits(view.zoom);
+  const selectedCorridorObject = selected?.type === "object" ? selected.value : null;
+  const selectedCommercialObject = selected?.type === "commercialIofObject" ? selected.value : null;
   const visibleStations = visibleStationsForZoom(stations, view.zoom).filter((station) => inViewport(project(station.coordinate), size.width, size.height));
-  const visibleObjects = objects
+  const disclosedObjects = limitEvenly(objects
     .filter((object) => objectVisible(object.objectType, layers, view.zoom))
-    .filter((object) => inViewport(project([object.lng, object.lat]), size.width, size.height));
-  const visibleCustomerTwinObjects = sortedCustomerTwinObjectLayers.flatMap((layer) => layer.objects)
+    .filter((object) => inViewport(project([object.lng, object.lat]), size.width, size.height)), disclosureLimits.routineObjects);
+  const visibleObjects = selectedCorridorObject && !disclosedObjects.some((object) => object.objectId === selectedCorridorObject.objectId)
+    ? [...disclosedObjects, selectedCorridorObject]
+    : disclosedObjects;
+  const disclosedCommercialIofObjects = limitEvenly((commercialIofProjection?.projectedObjects ?? [])
+    .map((object) => ({ object, coordinate: commercialIofObjectCoordinate(object) }))
+    .filter((entry): entry is { object: CommercialIofProjectedObject; coordinate: DALCoordinate } => Boolean(entry.coordinate))
+    .filter((entry) => {
+      const type = entry.object.objectType.toUpperCase();
+      const role = ["ILA", "REGEN", "POP", "FACILITY"].some((token) => type.includes(token)) ? "FACILITY" : type.includes("CROSSING") || type.includes("CONSTRAINT") ? "CONDITION" : "ROUTINE_OBJECT";
+      return sharedMapRoutineFeatureVisible(role, view.zoom) && inViewport(project(entry.coordinate), size.width, size.height, 40);
+    }), disclosureLimits.routineObjects);
+  const selectedCommercialEntry = selectedCommercialObject ? { object: selectedCommercialObject, coordinate: commercialIofObjectCoordinate(selectedCommercialObject) } : null;
+  const visibleCommercialIofObjects = selectedCommercialEntry?.coordinate && !disclosedCommercialIofObjects.some((entry) => entry.object.objectId === selectedCommercialObject?.objectId)
+    ? [...disclosedCommercialIofObjects, selectedCommercialEntry as { object: CommercialIofProjectedObject; coordinate: DALCoordinate }]
+    : disclosedCommercialIofObjects;
+  const commercialIofObjectsById = new Map(visibleCommercialIofObjects.map(({ object }) => [object.objectId, object]));
+  const disclosureLevel = sharedMapDisclosureLevel(view.zoom);
+  const visibleCommercialIofMeasuredSpinePath = layers.commercialMeasuredSpine && disclosureLevel !== "REGIONAL"
+    ? virtualizeGeometry(commercialIofMeasuredSpineCoordinates)
+    : [];
+  const selectedCommercialSpanId = selected?.type === "commercialIofSpan" ? selected.value.spanId : null;
+  const visibleCommercialIofSpans = (commercialIofProjection?.projectedSpans ?? [])
+    .map((span) => ({ span, coordinates: virtualizeGeometry(renderSpan(commercialIofProjection?.measuredCenterline, span)) }))
+    .filter((entry) => entry.coordinates.length >= 2)
+    .filter((entry) => disclosureLevel !== "REGIONAL" || entry.span.spanId === selectedCommercialSpanId);
+  const visibleCommercialStationGraphEdges = asCommercialRecords((commercialIofProjection?.stationGraph as Record<string, unknown> | undefined)?.edges)
+    .map((edge) => {
+      const startMeasure = commercialNumber(edge.startMeasureFeet ?? edge.fromMeasureFeet, Number.NaN);
+      const endMeasure = commercialNumber(edge.endMeasureFeet ?? edge.toMeasureFeet, Number.NaN);
+      if (!Number.isFinite(startMeasure) || !Number.isFinite(endMeasure)) return null;
+      const coordinates = virtualizeGeometry(renderSpan(commercialIofProjection?.measuredCenterline, {
+        spanId: String(edge.edgeId ?? `${startMeasure}-${endMeasure}`),
+        startMeasure,
+        endMeasure,
+      }));
+      return { edge, coordinates };
+    })
+    .filter((entry): entry is { edge: Record<string, unknown>; coordinates: DALCoordinate[] } => entry !== null && entry.coordinates.length >= 2);
+  const visibleCommercialStationGraphNodes = limitEvenly(asCommercialRecords((commercialIofProjection?.stationProjection as Record<string, unknown> | undefined)?.stations)
+    .map((station) => {
+      const coordinate = Array.isArray(station.coordinate) ? station.coordinate as DALCoordinate : null;
+      return coordinate ? { station, coordinate } : null;
+    })
+    .filter((entry): entry is { station: Record<string, unknown>; coordinate: DALCoordinate } => Boolean(entry))
+    .filter((entry) => sharedMapRoutineFeatureVisible("STATION", view.zoom) && inViewport(project(entry.coordinate), size.width, size.height, 30)), disclosureLimits.stations);
+  const visibleCommercialObjectAddresses = limitEvenly((commercialIofProjection?.objectAddresses ?? [])
+    .map((address) => {
+      const coordinate = commercialAddressCoordinate(address, commercialIofObjectsById);
+      return coordinate ? { address, coordinate } : null;
+    })
+    .filter((entry): entry is { address: Record<string, unknown>; coordinate: DALCoordinate } => Boolean(entry))
+    .filter((entry) => sharedMapRoutineFeatureVisible("ROUTINE_OBJECT", view.zoom) && inViewport(project(entry.coordinate), size.width, size.height, 60)), disclosureLimits.routineObjects);
+  const visibleCustomerTwinObjects = limitEvenly(sortedCustomerTwinObjectLayers.flatMap((layer) => layer.objects)
     .filter((object) => customerTwinObjectVisible(object.objectType, view.zoom))
-    .filter((object) => inViewport(project(object.coordinate), size.width, size.height, 40));
-  const visibleCustomerTwinStations = sortedCustomerTwinObjectLayers.flatMap((layer) => visibleCustomerTwinStationsForZoom(layer.stations, view.zoom))
-    .filter((station) => inViewport(project(station.coordinate), size.width, size.height, 40));
+    .filter((object) => inViewport(project(object.coordinate), size.width, size.height, 40)), disclosureLimits.routineObjects);
+  const visibleCustomerTwinStations = limitEvenly(sortedCustomerTwinObjectLayers.flatMap((layer) => visibleCustomerTwinStationsForZoom(layer.stations, view.zoom))
+    .filter((station) => inViewport(project(station.coordinate), size.width, size.height, 40)), disclosureLimits.stations);
   const siteNodes = graph.nodes.filter((node) => node.type === "A_SITE" || node.type === "Z_SITE" || node.type === "INTERMEDIATE_SITE");
+  const visibleSiteNodes = sharedMapDisclosureLevel(view.zoom) === "REGIONAL"
+    ? siteNodes.filter((node) => node.type === "A_SITE" || node.type === "Z_SITE")
+    : siteNodes;
   const regenObjects = objects.filter((object) => object.objectType === "REGEN_SITE");
   const selectedStation = selected?.type === "station" ? selected.value : null;
   const firstRegen = regenObjects[0];
@@ -716,7 +1056,7 @@ export default function ProposedNetworkMapPanel({
   const selectedSegmentMidpoint = selectedSegmentCoordinates.length ? selectedSegmentCoordinates[Math.floor(selectedSegmentCoordinates.length / 2)] : null;
   const stagedRevisionPath = useMemo(() => {
     if (revisionPath.length > 1 || !pendingViaPoints.length) return [];
-    const sourcePath = centerlinePath.length > 1 ? centerlinePath : graph.edges.flatMap((edge) => edge.coordinates);
+    const sourcePath = centerlineSourcePath.length > 1 ? centerlineSourcePath : graph.edges.flatMap((edge) => edge.coordinates);
     if (sourcePath.length < 2) return pendingViaPoints;
     if (selectedSegment) {
       const selectedIndex = graph.edges.findIndex((edge) => edge.id === selectedSegment.id);
@@ -736,25 +1076,27 @@ export default function ProposedNetworkMapPanel({
     }
     const midpoint = Math.max(1, Math.floor(sourcePath.length / 2));
     return [...sourcePath.slice(0, midpoint), ...pendingViaPoints, ...sourcePath.slice(midpoint)];
-  }, [centerlinePath, graph.edges, pendingViaPoints, revisionPath.length, selectedSegment]);
-  const visibleRevisionPath = revisionPath.length > 1 ? revisionPath : stagedRevisionPath;
+  }, [centerlineSourcePath, graph.edges, pendingViaPoints, revisionPath.length, selectedSegment]);
+  const visibleRevisionPath = virtualizeGeometry(revisionPath.length > 1 ? revisionPath : stagedRevisionPath);
   const originalLabelPoint = originalPath.length > 1 ? project(originalPath[Math.floor(originalPath.length / 2)]) : null;
   const proposalLabelPoint = proposalPath.length > 1 ? project(proposalPath[Math.floor(proposalPath.length / 2)]) : null;
-  const renderStationLabels = layers.labels && view.zoom >= 12;
-  const renderDetailedLabels = layers.labels && view.zoom >= 14;
+  const renderStationLabels = layers.labels && sharedMapRoutineLabelVisible("STATION", view.zoom);
+  const renderDetailedLabels = layers.labels && sharedMapRoutineLabelVisible("ROUTINE_OBJECT", view.zoom);
   const fitButtonCoordinates = salesMode && !salesDraftVisible && inventoryCoordinates.length
     ? inventoryCoordinates
-    : centerlinePath.length > 1
-      ? centerlinePath
+    : centerlineSourcePath.length > 1
+      ? centerlineSourcePath
       : importedDesignVisible && importedBaselinePath.length > 1
         ? importedBaselinePath
       : coordinates;
   const opportunityOverlayPoint = commercialOpportunityOverlay?.candidateCoordinate ? project(commercialOpportunityOverlay.candidateCoordinate) : null;
   const opportunityAzPoints = commercialOpportunityOverlay?.azPoints ?? [];
   const opportunityAttachmentCandidates = commercialOpportunityOverlay?.attachmentCandidates ?? [];
-  const opportunityOverlayPath = commercialOpportunityOverlay?.corridorGeometry ?? [];
+  const opportunityOverlayPath = corridorViewportProjection?.visibleGeometry?.length
+    ? corridorViewportProjection.visibleGeometry
+    : virtualizeGeometry(commercialOpportunityOverlay?.corridorGeometry ?? []);
   const projectedLabels = labelsWithoutCollisions([
-    ...(layers.labels && view.zoom >= 10
+    ...(layers.labels && sharedMapRoutineLabelVisible("FACILITY", view.zoom)
       ? visibleCustomerTwinObjects.map((object) => {
           const point = project(object.coordinate);
           return {
@@ -768,7 +1110,7 @@ export default function ProposedNetworkMapPanel({
           };
         })
       : []),
-    ...(layers.labels && view.zoom >= 12
+    ...(layers.labels && sharedMapRoutineLabelVisible("STATION", view.zoom)
       ? visibleCustomerTwinStations.map((station) => {
           const point = project(station.coordinate);
           return {
@@ -783,7 +1125,7 @@ export default function ProposedNetworkMapPanel({
         })
       : []),
     ...(graphFeatureRenderingVisible
-      ? siteNodes.map((node) => {
+      ? visibleSiteNodes.map((node) => {
           const point = project([node.lng, node.lat]);
           return {
             key: `node-label:${node.id}`,
@@ -796,7 +1138,7 @@ export default function ProposedNetworkMapPanel({
           };
         })
       : []),
-    ...(graphFeatureRenderingVisible && layers.labels && view.zoom >= 12
+    ...(graphFeatureRenderingVisible && layers.labels && sharedMapRoutineLabelVisible("FACILITY", view.zoom)
       ? regenObjects.map((object) => {
           const point = project([object.lng, object.lat]);
           return {
@@ -840,7 +1182,50 @@ export default function ProposedNetworkMapPanel({
             };
           })
       : []),
-  ].filter((label) => inViewport(label, size.width, size.height, 80)));
+    ...(layers.labels
+      ? visibleCommercialIofObjects.filter(({ object }) => object.objectId === selectedCommercialObject?.objectId || sharedMapRoutineLabelVisible("ROUTINE_OBJECT", view.zoom)).map(({ object, coordinate }) => {
+          const point = project(coordinate);
+          return {
+            key: `commercial-iof-object-label:${object.objectId}`,
+            text: object.objectId,
+            x: point.x + 10,
+            y: point.y + 4,
+            priority: 78,
+            fill: "#0f172a",
+            fontSize: view.zoom >= 13 ? 11 : 10,
+          };
+        })
+      : []),
+    ...(selectedCorridorObject ? [{ key: `selected-object-label:${selectedCorridorObject.objectId}`, text: selectedCorridorObject.objectId, ...project([selectedCorridorObject.lng, selectedCorridorObject.lat]), priority: 110, fill: "#0f172a", fontSize: 11 }] : []),
+  ].filter((label) => inViewport(label, size.width, size.height, 80))).sort((a, b) => b.priority - a.priority).slice(0, disclosureLimits.labels);
+
+  useEffect(() => {
+    const metric = startRuntimePerformanceOperation("map-viewport-render", "MAP", {
+      lod: viewportLod,
+      zoom: view.zoom,
+    });
+    metric.end({
+      recordsRendered: visibleObjects.length + visibleCommercialIofObjects.length + visibleCommercialIofSpans.length + visibleCustomerTwinObjects.length + visibleCustomerTwinStations.length + visibleStations.length,
+      metadata: {
+        visibleRoutes: sortedCustomerTwinRouteLayers.reduce((count, layer) => count + layer.routes.length, 0),
+        visibleStations: visibleStations.length + visibleCustomerTwinStations.length,
+        renderedObjects: visibleObjects.length + visibleCommercialIofObjects.length + visibleCustomerTwinObjects.length,
+        renderedCommercialIofSpans: visibleCommercialIofSpans.length,
+        viewportObjectCount: projectedLabels.length,
+      },
+    });
+  }, [
+    projectedLabels.length,
+    sortedCustomerTwinRouteLayers,
+    view.zoom,
+    viewportLod,
+    visibleCustomerTwinObjects.length,
+    visibleCustomerTwinStations.length,
+    visibleCommercialIofObjects.length,
+    visibleCommercialIofSpans.length,
+    visibleObjects.length,
+    visibleStations.length,
+  ]);
 
   return (
     <section className="dal-panel">
@@ -919,6 +1304,16 @@ export default function ProposedNetworkMapPanel({
         className={`dal-leaflet-map proposed-network-map${drag ? " panning" : ""}`}
         ref={wrapRef}
         style={{ minHeight: mapMinHeight }}
+        data-map-presentation-context="COMMERCIAL_PLANNER"
+        data-map-disclosure-level={sharedMapDisclosureLevel(view.zoom)}
+        data-projected-routes={centerlineSourcePath.length > 1 ? 1 : 0}
+        data-projected-features={(centerlineSourcePath.length > 1 ? 1 : 0) + siteNodes.length + stations.length + objects.length + (commercialIofProjection?.projectedObjects.length ?? 0)}
+        data-projected-stations={stations.length + asCommercialRecords((commercialIofProjection?.stationProjection as Record<string, unknown> | undefined)?.stations).length}
+        data-projected-objects={objects.length + (commercialIofProjection?.projectedObjects.length ?? 0)}
+        data-rendered-features={(centerlineSourcePath.length > 1 ? 1 : 0) + visibleSiteNodes.length + visibleStations.length + visibleCommercialStationGraphNodes.length + visibleCustomerTwinStations.length + visibleObjects.length + visibleCommercialIofObjects.length + visibleCustomerTwinObjects.length}
+        data-rendered-stations={visibleStations.length + visibleCommercialStationGraphNodes.length + visibleCustomerTwinStations.length}
+        data-rendered-objects={visibleObjects.length + visibleCommercialIofObjects.length + visibleCustomerTwinObjects.length}
+        data-rendered-labels={projectedLabels.length}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={clearDrag}
@@ -932,31 +1327,10 @@ export default function ProposedNetworkMapPanel({
       >
         <BasemapLayer tiles={tiles} />
         <svg className="dal-map-svg" width={size.width} height={size.height} role="img" aria-label="Proposed network visualization">
-          {sortedCustomerTwinObjectLayers.map((layer) => (
-            <g key={`customer-twin-objects-${layer.layerId}`} className="customer-inventory-object-layer" pointerEvents="none">
-              {layer.objects
-                .filter((object) => customerTwinObjectVisible(object.objectType, view.zoom))
-                .filter((object) => inViewport(project(object.coordinate), size.width, size.height, 40))
-                .map((object) => {
-                  const projected = project(object.coordinate);
-                  return (
-                    <g key={object.objectId} transform={`translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`}>
-                      <circle r={view.zoom >= 10 ? 6 : 4.5} fill={customerTwinFeatureColor(object.objectType)} stroke="#111827" strokeWidth={1.5} opacity={0.9} />
-                    </g>
-                  );
-                })}
-              {visibleCustomerTwinStationsForZoom(layer.stations, view.zoom)
-                .filter((station) => inViewport(project(station.coordinate), size.width, size.height, 40))
-                .map((station) => {
-                  const projected = project(station.coordinate);
-                  return (
-                    <g key={station.stationId} transform={`translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`}>
-                      <rect x={-3} y={-3} width={6} height={6} rx={1} fill="#0ea5e9" stroke="#e0f2fe" strokeWidth={1.3} opacity={0.78} />
-                    </g>
-                  );
-                })}
-            </g>
-          ))}
+          <g className="customer-inventory-object-layer" pointerEvents="none">
+            {visibleCustomerTwinObjects.map((object) => { const projected = project(object.coordinate); return <g key={object.objectId} transform={`translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`}><circle r={view.zoom >= 10 ? 6 : 4.5} fill={customerTwinFeatureColor(object.objectType)} stroke="#111827" strokeWidth={1.5} opacity={0.9} /></g>; })}
+            {visibleCustomerTwinStations.map((station) => { const projected = project(station.coordinate); return <g key={station.stationId} transform={`translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`}><rect x={-3} y={-3} width={6} height={6} rx={1} fill="#0ea5e9" stroke="#e0f2fe" strokeWidth={1.3} opacity={0.78} /></g>; })}
+          </g>
           {sortedCustomerTwinRouteLayers.map((layer, layerIndex) => {
             const style = customerTwinLineStyle(layer, layerIndex);
             return (
@@ -964,7 +1338,7 @@ export default function ProposedNetworkMapPanel({
                 {layer.routes.map((route) => (
                   <path
                     key={route.routeId}
-                    d={pathData(route.coordinates, project)}
+                    d={pathData(virtualizeGeometry(route.coordinates), project)}
                     stroke={style.stroke}
                     strokeWidth={layer.domain === "CUSTOMER_PROPOSED" ? 5 : 4}
                     fill="none"
@@ -1041,7 +1415,120 @@ export default function ProposedNetworkMapPanel({
               </g>
             );
           })}
-          {commercialIlaStations.map((station) => {
+          {visibleCommercialIofMeasuredSpinePath.length > 1 ? (
+            <path
+              d={pathData(visibleCommercialIofMeasuredSpinePath, project)}
+              className="commercial-iof-measured-spine"
+              stroke="#0f766e"
+              strokeWidth={3}
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity={0.54}
+              pointerEvents="none"
+            />
+          ) : null}
+          {layers.commercialStationGraph && sharedMapRoutineFeatureVisible("STATION", view.zoom) ? (
+            <g className="commercial-iof-station-graph-layer" pointerEvents="none">
+              {visibleCommercialStationGraphEdges.map(({ edge, coordinates }) => (
+                <path
+                  key={String(edge.edgeId ?? `${edge.fromStationId}-${edge.toStationId}`)}
+                  d={pathData(coordinates, project)}
+                  className="commercial-iof-station-graph-edge"
+                  stroke="#334155"
+                  strokeWidth={1.4}
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray="2 6"
+                  opacity={0.46}
+                />
+              ))}
+              {visibleCommercialStationGraphNodes.map(({ station, coordinate }) => {
+                const projected = project(coordinate);
+                return (
+                  <g
+                    key={String(station.stationId ?? `${projected.x}-${projected.y}`)}
+                    className="commercial-iof-station-graph-node"
+                    transform={`translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`}
+                  >
+                    <line x1={0} y1={-5} x2={0} y2={5} stroke="#0f172a" strokeWidth={1.4} opacity={0.54} />
+                    <circle r={2.4} fill="#f8fafc" stroke="#0f172a" strokeWidth={1} opacity={0.78} />
+                  </g>
+                );
+              })}
+            </g>
+          ) : null}
+          {layers.commercialProjectedSpans ? visibleCommercialIofSpans.map(({ span, coordinates }) => {
+            const selectedSpan = selected?.type === "commercialIofSpan" && selected.value.spanId === span.spanId;
+            return (
+              <path
+                key={span.spanId}
+                d={pathData(coordinates, project)}
+                className="commercial-iof-projected-span"
+                stroke={commercialIofSpanColor(span)}
+                strokeWidth={selectedSpan ? 8 : 5}
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={selectedSpan ? 0.96 : 0.72}
+                onPointerDown={(event) => event.stopPropagation()}
+                onPointerEnter={(event) => setCommercialIofHover({ kind: "span", span, x: event.clientX, y: event.clientY })}
+                onPointerMove={(event) => setCommercialIofHover({ kind: "span", span, x: event.clientX, y: event.clientY })}
+                onPointerLeave={() => setCommercialIofHover(null)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect({ type: "commercialIofSpan", value: span });
+                }}
+              />
+            );
+          }) : null}
+          {layers.commercialProjectedObjects ? visibleCommercialIofObjects.map(({ object, coordinate }) => {
+            const projected = project(coordinate);
+            const selectedObject = selected?.type === "commercialIofObject" && selected.value.objectId === object.objectId;
+            const upper = object.objectType.toUpperCase();
+            const crossing = upper.includes("CROSSING");
+            return (
+              <g
+                key={object.objectId}
+                className="commercial-iof-projected-object"
+                transform={`translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`}
+                onPointerDown={(event) => event.stopPropagation()}
+                onPointerEnter={(event) => setCommercialIofHover({ kind: "object", object, x: event.clientX, y: event.clientY })}
+                onPointerMove={(event) => setCommercialIofHover({ kind: "object", object, x: event.clientX, y: event.clientY })}
+                onPointerLeave={() => setCommercialIofHover(null)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect({ type: "commercialIofObject", value: object });
+                }}
+              >
+                {crossing ? <circle r={selectedObject ? 14 : 10} fill="none" stroke="#dc2626" strokeWidth={2.5} strokeDasharray="3 3" /> : null}
+                <circle r={selectedObject ? 9 : 6} fill={commercialIofObjectColor(object.objectType)} stroke="#ffffff" strokeWidth={2} />
+                <circle r={selectedObject ? 14 : 10} fill="none" stroke={selectedObject ? "#0f172a" : "rgba(15,23,42,0.18)"} strokeWidth={selectedObject ? 2 : 1} />
+              </g>
+            );
+          }) : null}
+          {layers.commercialObjectAddresses && disclosureLevel === "CLOSE_ENGINEERING_DETAIL" ? (
+            <g className="commercial-iof-object-address-layer" pointerEvents="none">
+              {visibleCommercialObjectAddresses.map(({ address, coordinate }) => {
+                const projected = project(coordinate);
+                const label = commercialText(address.objectId, "Object");
+                return (
+                  <g
+                    key={String(address.addressId ?? address.objectId ?? label)}
+                    className="commercial-iof-object-address"
+                    transform={`translate(${projected.x.toFixed(1)} ${projected.y.toFixed(1)})`}
+                  >
+                    <line x1={7} y1={-7} x2={17} y2={-17} stroke="#475569" strokeWidth={1} opacity={0.5} />
+                    <text x={20} y={-19} fill="#0f172a" fontSize={10} fontWeight={800} paintOrder="stroke" stroke="#ffffff" strokeWidth={3}>
+                      {label.length > 54 ? `${label.slice(0, 51)}...` : label}
+                    </text>
+                  </g>
+                );
+              })}
+            </g>
+          ) : null}
+          {sharedMapRoutineFeatureVisible("FACILITY", view.zoom) && commercialIlaStations.map((station) => {
             const projected = project(station.coordinate);
             const selectedIla = station.stationId === selectedCommercialIlaStationId;
             return (
@@ -1217,7 +1704,7 @@ export default function ProposedNetworkMapPanel({
               return (
                 <path
                   key={edge.id}
-                  d={pathData(edge.coordinates, project)}
+                  d={pathData(virtualizeGeometry(edge.coordinates), project)}
                   className="proposed-network-segment"
                   stroke={salesMode ? "#2563eb" : protectedEdge ? "#16a34a" : selectedEdge ? "#38bdf8" : compare ? "#2563eb" : "#64748b"}
                   strokeWidth={salesMode ? 7 : protectedEdge ? 8 : selectedEdge ? 7 : 5}
@@ -1282,7 +1769,7 @@ export default function ProposedNetworkMapPanel({
               </g>
             );
           })}
-          {graphFeatureRenderingVisible && siteNodes.map((node) => {
+          {graphFeatureRenderingVisible && visibleSiteNodes.map((node) => {
             const point = project([node.lng, node.lat]);
             const selectedNode = selected?.type === "node" && selected.value.id === node.id;
             return (
@@ -1343,72 +1830,29 @@ export default function ProposedNetworkMapPanel({
           </div>
         )}
         {!salesMode && (
-          <div
-            className="dal-map-layer-controls"
-            onPointerDown={(event) => event.stopPropagation()}
-            style={{
-              position: "absolute",
-              top: 12,
-              right: 12,
-              display: "grid",
-              gap: 4,
-              padding: 8,
-              background: "rgba(255,255,255,0.92)",
-              border: "1px solid rgba(15,23,42,0.14)",
-              borderRadius: 6,
-              fontSize: 12,
-            }}
-          >
-            <>
-              <b>Corridor</b>
-              {([
-                ["route", "Original Route / Proposed Revision / Selected Proposal Route"],
-                ["stations", "Stationing / Mileposts"],
-                ["regenSites", "Regen / ILA Sites"],
-              ] as Array<[keyof LayerState, string]>).map(([key, label]) => (
-                <label key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} />
-                  <span>{label}</span>
-                </label>
-              ))}
-              <b>Engineering</b>
-              {([
-                ["crossings", "Crossings"],
-                ["vaults", "Vaults / Handholes"],
-                ["constraints", "Constraints / Civil Mix / Locked Segments"],
-              ] as Array<[keyof LayerState, string]>).map(([key, label]) => (
-                <label key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} />
-                  <span>{label}</span>
-                </label>
-              ))}
-              <b>Reference</b>
-              <span>Customer Sites / Existing Network / Existing Facilities</span>
-              <b>Base Map</b>
-              <span>Roads / Terrain / Satellite / Aerial / Parcels</span>
-              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <input type="checkbox" checked={developerLayersOpen} onChange={() => setDeveloperLayersOpen((open) => !open)} />
-                <span>Developer Layers</span>
-              </label>
-              {developerLayersOpen &&
-                ([
-                  ["labels", "Internal Labels"],
-                  ["ductFiberObjects", "Duct/Fiber Objects"],
-                ] as Array<[keyof LayerState, string]>).map(([key, label]) => (
-                  <label key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input type="checkbox" checked={layers[key]} onChange={() => toggleLayer(key)} />
-                    <span>{label}</span>
-                  </label>
-              ))}
-            </>
+          <div className="dal-map-layer-controls shared-planner-map-controls" onPointerDown={(event) => event.stopPropagation()}>
+            <button type="button" className={layers.route ? "active-toggle" : undefined} onClick={() => toggleLayer("route")}>Opportunity Route</button>
+            <button type="button" className={layers.constraints || layers.crossings ? "active-toggle" : undefined} onClick={() => setLayers((current) => ({ ...current, constraints: !current.constraints, crossings: !current.constraints }))}>Constraints</button>
+            <button type="button" className={layers.regenSites ? "active-toggle" : undefined} onClick={() => toggleLayer("regenSites")}>Facilities</button>
+            <button type="button" className={layers.stations ? "active-toggle" : undefined} onClick={() => toggleLayer("stations")}>Stations</button>
+            <button type="button" className={layers.vaults && layers.commercialProjectedObjects ? "active-toggle" : undefined} onClick={() => setLayers((current) => ({ ...current, vaults: !current.vaults, commercialProjectedObjects: !current.vaults, commercialObjectAddresses: !current.vaults }))}>Objects</button>
+            <span className="shared-map-scale-label">{sharedMapDisclosureLevel(view.zoom).replaceAll("_", " ")}</span>
+            <details open={developerLayersOpen} onToggle={(event) => setDeveloperLayersOpen(event.currentTarget.open)}>
+              <summary>Map diagnostics</summary>
+              <label><input type="checkbox" checked={layers.labels} onChange={() => toggleLayer("labels")} />Internal labels</label>
+              <label><input type="checkbox" checked={layers.ductFiberObjects} onChange={() => toggleLayer("ductFiberObjects")} />Duct / fiber objects</label>
+              <label><input type="checkbox" checked={layers.commercialMeasuredSpine} onChange={() => toggleLayer("commercialMeasuredSpine")} />Measured spine</label>
+              <label><input type="checkbox" checked={layers.commercialProjectedSpans} onChange={() => toggleLayer("commercialProjectedSpans")} />Projected spans</label>
+              <label><input type="checkbox" checked={layers.commercialStationGraph} onChange={() => toggleLayer("commercialStationGraph")} />Station graph</label>
+            </details>
           </div>
         )}
-        <div
+        <details
           className="commercial-map-layer-dock"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
-          <b>Commercial Layers</b>
+          <summary>Advanced commercial layers</summary>
           {mapLayerDockLayers.map((layer) => (
             <label key={layer.id}>
               <input
@@ -1420,7 +1864,79 @@ export default function ProposedNetworkMapPanel({
               <span>{layer.label}</span>
             </label>
           ))}
-        </div>
+        </details>
+        {commercialIofHover ? (
+          <div
+            className="commercial-map-hover-card commercial-iof-hover-card"
+            data-commercial-iof-hover-card="visible"
+            style={{
+              position: "absolute",
+              left: Math.max(12, Math.min(Math.max(12, size.width - 330), commercialIofHover.x - (wrapRef.current?.getBoundingClientRect().left ?? 0) + 14)),
+              top: Math.max(12, Math.min(Math.max(12, size.height - 270), commercialIofHover.y - (wrapRef.current?.getBoundingClientRect().top ?? 0) + 14)),
+              width: 318,
+              padding: 10,
+              borderRadius: 6,
+              border: "1px solid rgba(15,23,42,0.18)",
+              background: "rgba(255,255,255,0.97)",
+              boxShadow: "0 18px 40px rgba(15,23,42,0.18)",
+              pointerEvents: "none",
+              zIndex: 8,
+            }}
+          >
+            {commercialIofHover.kind === "object" && commercialIofHover.object ? (
+              <>
+                <b>{commercialIofHover.object.objectId}</b>
+                <span>{commercialIofHover.object.objectType.replaceAll("_", " ")}</span>
+                <div className="commercial-iof-hover-grid">
+                  <div><span>Doctrine</span><b>{commercialText(commercialIofHover.object.doctrineObjectType ?? commercialIofHover.object.objectType)}</b></div>
+                  <div><span>Quantity Source</span><b>{commercialText(commercialIofHover.object.doctrineQuantitySource, "Product Doctrine")}</b></div>
+                  <div><span>Station</span><b>{commercialText(commercialIofHover.object.stationAddress)}</b></div>
+                  <div><span>Measure</span><b>{commercialFeet(commercialIofHover.object.measure)}</b></div>
+                  <div><span>Lifecycle State</span><b>{commercialText(commercialIofHover.object.currentLifecycleState ?? commercialIofHover.object.lifecycleState, "PLANNED")}</b></div>
+                  <div><span>Current Authority</span><b>{commercialText(commercialIofHover.object.currentAuthority, commercialIofStateProjection(commercialIofHover.object).currentAuthority)}</b></div>
+                  <div><span>Next Authority</span><b>{commercialText(commercialIofHover.object.nextAuthority, commercialIofNextAuthority(commercialIofHover.object))}</b></div>
+                  <div><span>Domain Responsibility</span><b>{commercialText(commercialIofStateProjection(commercialIofHover.object).currentDomain, "Commercial")}</b></div>
+                  <div><span>Audit Status</span><b>{commercialText(commercialIofHover.object.auditStatus, "OPEN")}</b></div>
+                  <div><span>Closure Ledger</span><b>{commercialText(commercialIofHover.object.auditLedgerHooks?.closureLedgerId, "Pending")}</b></div>
+                  <div><span>Twin Projection</span><b>{commercialText(commercialIofHover.object.twinProjectionMetadata?.twinProjectionId, "Pending")}</b></div>
+                  <div><span>Execution Sequence</span><b>{commercialText(commercialIofHover.object.executionSequenceId)}</b></div>
+                  <div><span>Labor Template</span><b>{commercialText(commercialIofHover.object.laborTemplateId ?? commercialIofHover.object.laborTemplate ?? commercialIofHover.object.billableLabor, "Doctrine placement labor")}</b></div>
+                  <div><span>Material Template</span><b>{commercialText(commercialIofHover.object.materialTemplateId ?? commercialIofHover.object.materialTemplate ?? commercialIofHover.object.billableMaterial, commercialIofHover.object.objectType.replaceAll("_", " "))}</b></div>
+                  <div><span>Evidence Template</span><b>{commercialText(commercialIofHover.object.evidenceTemplateId ?? commercialIofHover.object.evidenceTemplate, commercialList(commercialIofHover.object.evidenceRequirements, "Doctrine evidence template"))}</b></div>
+                  <div><span>Dependencies</span><b>{commercialList(commercialIofHover.object.dependencyList ?? commercialIofHover.object.dependencies)}</b></div>
+                  <div><span>Payment Sequence</span><b>{commercialText(commercialIofHover.object.paymentSequenceId)}</b></div>
+                  <div><span>Close Sequence</span><b>{commercialText(commercialIofHover.object.closeSequenceId)}</b></div>
+                </div>
+              </>
+            ) : commercialIofHover.span ? (
+              <>
+                <b>{commercialIofHover.span.spanId}</b>
+                <span>{commercialText(commercialIofHover.span.spanType, "Projected Span").replaceAll("_", " ")}</span>
+                <div className="commercial-iof-hover-grid">
+                  <div><span>Doctrine</span><b>{commercialText(commercialIofHover.span.spanType, "Projected Span")}</b></div>
+                  <div><span>Quantity Source</span><b>{commercialText(commercialIofHover.span.doctrineQuantitySource, commercialList(commercialIofHover.span.containedAssets, "Linear asset span attachment"))}</b></div>
+                  <div><span>Station</span><b>{commercialText(`${commercialIofHover.span.startStation ?? commercialIofHover.span.stationStart ?? "Missing"} - ${commercialIofHover.span.endStation ?? commercialIofHover.span.stationEnd ?? "Missing"}`)}</b></div>
+                  <div><span>Measure</span><b>{commercialText(`${commercialFeet(commercialIofHover.span.startMeasure ?? commercialIofHover.span.startStationFeet)} - ${commercialFeet(commercialIofHover.span.endMeasure ?? commercialIofHover.span.endStationFeet)}`)}</b></div>
+                  <div><span>Lifecycle State</span><b>{commercialText(commercialIofHover.span.lifecycleState, "PLANNED")}</b></div>
+                  <div><span>Current Authority</span><b>{commercialText(commercialIofHover.span.currentAuthority, commercialIofStateProjection(commercialIofHover.span).currentAuthority)}</b></div>
+                  <div><span>Next Authority</span><b>{commercialText(commercialIofHover.span.nextAuthority, commercialIofNextAuthority(commercialIofHover.span))}</b></div>
+                  <div><span>Domain Responsibility</span><b>{commercialText(commercialIofStateProjection(commercialIofHover.span).currentDomain, "Commercial")}</b></div>
+                  <div><span>Audit Status</span><b>{commercialText(commercialIofHover.span.auditStatus, "OPEN")}</b></div>
+                  <div><span>Closure Ledger</span><b>{commercialText(commercialIofHover.span.auditLedgerHooks?.closureLedgerId, "Pending")}</b></div>
+                  <div><span>Twin Projection</span><b>{commercialText(commercialIofHover.span.twinProjectionMetadata?.twinProjectionId, "Pending")}</b></div>
+                  <div><span>Next Closable</span><b>{commercialText(commercialIofHover.span.nextClosableSegment, commercialList(commercialIofHover.span.openClosureSegments, "No open closure segment"))}</b></div>
+                  <div><span>Execution Sequence</span><b>{commercialText(commercialIofHover.span.executionSequenceId, "Derived from endpoint objects")}</b></div>
+                  <div><span>Labor Template</span><b>{commercialText(commercialIofHover.span.laborTemplateId ?? commercialIofHover.span.laborTemplate ?? commercialIofHover.span.billableLabor, "Span placement labor")}</b></div>
+                  <div><span>Material Template</span><b>{commercialText(commercialIofHover.span.materialTemplateId ?? commercialIofHover.span.materialTemplate ?? commercialIofHover.span.billableMaterial, commercialList(commercialIofHover.span.containedAssets))}</b></div>
+                  <div><span>Evidence Template</span><b>{commercialText(commercialIofHover.span.evidenceTemplateId ?? commercialIofHover.span.evidenceTemplate, commercialList(commercialIofHover.span.evidenceRequirements, "Span evidence template"))}</b></div>
+                  <div><span>Dependencies</span><b>{commercialList(commercialIofHover.span.dependencies)}</b></div>
+                  <div><span>Payment Sequence</span><b>{commercialText(commercialIofHover.span.paymentSequenceId, "Derived from endpoint objects")}</b></div>
+                  <div><span>Close Sequence</span><b>{commercialText(commercialIofHover.span.closeSequenceId, "Derived from endpoint objects")}</b></div>
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : null}
         <div className="dal-map-attribution">OpenStreetMap | Zoom {view.zoom}</div>
       </div>
       {compare && (

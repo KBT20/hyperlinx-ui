@@ -7,7 +7,7 @@ export const ESTIMATOR_DEFAULTS = {
       plowPercent: 82,
       openCutPercent: 6,
     },
-    defaultRockPercentOfDirtBore: 12,
+    defaultRockPercentOfDirtBore: 0,
   },
   fiber: {
     reelLengthFeet: 26000,

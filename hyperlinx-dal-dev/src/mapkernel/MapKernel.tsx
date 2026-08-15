@@ -15,6 +15,24 @@ import { resolvePrimitiveStyle } from "./MapStyleManager";
 import { isGeographicReferenceLayerId } from "../reference/ReferenceLayerManager";
 import { centerFromCoordinates, isCoordinate, lonLatToWorld, normalizeTileX, tileCount, validTileY, worldToLonLat, worldToTile, zoomForCoordinates } from "../gis/geo";
 import { markRuntimeDiagnostic } from "../runtime/RuntimeDiagnostics";
+import {
+  sharedMapFeatureIdentity,
+  sharedMapFeatureRole,
+  type SharedMapDisclosureMetrics,
+  type SharedMapPresentationContext,
+} from "./SharedMapDisclosurePolicy";
+import {
+  buildSpineAttachmentIndex,
+  buildSpineIndex,
+  formatStation,
+  layerAvailableAtResolution,
+  parseStationInput,
+  resolveSpineMapProjection,
+  routeMiles,
+  stationRangeBounds,
+  type MapLayerRole,
+  type MapLens,
+} from "./SpineSpatialIndex";
 
 // Constitutional guardrail: MapKernel renders ScopeVersion/IOF truth only.
 // It owns viewport, selection, and presentation state; it does not create authoritative geometry.
@@ -32,6 +50,12 @@ export type MapKernelProps = {
   editableRoute?: MapKernelEditableRoute;
   onSelectionChange?: (selection: MapSelection | null) => void;
   onMetricsChange?: (metrics: MapKernelMetrics) => void;
+  presentationProfile?: "default" | "engineeringReview" | "commercialPlanner";
+  presentationContext?: SharedMapPresentationContext;
+  mapLens?: MapLens;
+  selectedFeatureId?: string;
+  focusFeatureId?: string;
+  onDisclosureMetricsChange?: (metrics: SharedMapDisclosureMetrics) => void;
 };
 
 const SVG_WIDTH = 1000;
@@ -321,6 +345,19 @@ function primitiveSelectionRef(primitive: MapKernelPrimitive): MapFeatureRef {
   };
 }
 
+function lensForContext(context: SharedMapPresentationContext | null): MapLens {
+  if (context === "COMMERCIAL_PLANNER") return "PLANNER";
+  if (context === "ENGINEERING_REVIEW") return "ENGINEERING";
+  if (context === "CUSTOMER_PORTAL") return "CUSTOMER";
+  if (context === "MARKETPLACE") return "MARKETPLACE";
+  if (context === "CONTROL") return "CONTROL";
+  if (context === "FIELD") return "FIELD";
+  if (context === "TWIN") return "TWIN";
+  if (context === "PRISM") return "PRISM";
+  if (context === "OPERATIONAL_INTELLIGENCE") return "OPERATIONAL";
+  return "DEFAULT";
+}
+
 export default function MapKernel({
   specs,
   layerVisibility,
@@ -332,6 +369,12 @@ export default function MapKernel({
   editableRoute,
   onSelectionChange,
   onMetricsChange,
+  presentationProfile = "default",
+  presentationContext,
+  mapLens,
+  selectedFeatureId = "",
+  focusFeatureId = "",
+  onDisclosureMetricsChange,
 }: MapKernelProps) {
   const persistedViewState = useMemo(() => readPersistedViewState(), []);
   const [selection, setSelectionState] = useState<MapSelection | null>(null);
@@ -350,17 +393,52 @@ export default function MapKernel({
     bearing: persistedViewState?.bearing ?? 0,
   });
   const [isPanning, setIsPanning] = useState(false);
+  const [humanLayerVisibility, setHumanLayerVisibility] = useState<Record<MapLayerRole, boolean>>({ route: true, conditions: true, facilities: true, stations: true, objects: true, context: false, work: true, closures: true });
+  const [stationQuery, setStationQuery] = useState("");
+  const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const panDragRef = useRef<PanDragState | null>(null);
   const suppressNextSelectionRef = useRef(false);
-  const autoFitInitializedRef = useRef(Boolean(persistedViewState));
+  const autoFitInitializedRef = useRef(Boolean(persistedViewState) && presentationProfile === "default" && !presentationContext);
+  const lastFocusedFeatureIdRef = useRef("");
   const routeEditLocked = Boolean(editableRoute?.enabled && (draggingVertexIndex !== null || draggingSegmentIndex !== null || draggingCorridor));
+  const visibleGeoBounds = useMemo(() => visibleBoundsFromView(geoView, geoSize.width, geoSize.height), [geoSize.height, geoSize.width, geoView]);
+  const [settledGeoBounds, setSettledGeoBounds] = useState<MapBounds>(() => visibleBoundsFromView({ center: persistedViewState ? [persistedViewState.centerLon, persistedViewState.centerLat] : DEFAULT_CENTER, zoom: persistedViewState?.zoom ?? 16, bearing: persistedViewState?.bearing ?? 0 }, SVG_WIDTH, height));
   const mapProjection = useMemo(
     () => buildCachedMapRenderProjection(specs, { layerVisibility, stationDensityFeet, showStationLabels }),
     [layerVisibility, showStationLabels, specs, stationDensityFeet]
   );
-  const { primitives, metrics, audit: renderAudit } = mapProjection;
+  const { primitives: projectedPrimitives, metrics, audit: renderAudit } = mapProjection;
+  const sharedContext = presentationContext ?? (presentationProfile === "engineeringReview" ? "ENGINEERING_REVIEW" : presentationProfile === "commercialPlanner" ? "COMMERCIAL_PLANNER" : null);
+  const activeLens = mapLens ?? lensForContext(sharedContext);
+  const spineIndex = useMemo(() => buildSpineIndex(projectedPrimitives), [projectedPrimitives]);
+  const attachmentIndex = useMemo(() => buildSpineAttachmentIndex(projectedPrimitives, spineIndex), [projectedPrimitives, spineIndex]);
+  const enabledHumanLayers = useMemo(() => new Set<MapLayerRole>(Object.entries(humanLayerVisibility).filter(([, visible]) => visible).map(([role]) => role as MapLayerRole)), [humanLayerVisibility]);
+  const spatialViewport = viewportRequest?.mode === "FIT_CORRIDOR" && viewportRequest.bounds
+    ? viewportRequest.bounds
+    : settledGeoBounds;
+  const spatialProjection = useMemo(() => sharedContext && mode === "geographic" && spineIndex.routePrimitive
+    ? resolveSpineMapProjection({
+        primitives: projectedPrimitives,
+        spine: spineIndex,
+        attachments: attachmentIndex,
+        viewport: spatialViewport,
+        zoom: geoView.zoom,
+        lens: activeLens,
+        selectedIds: [selectedFeatureId, selection?.featureRef.id ?? "", selection?.featureRef.objectId ?? "", selection?.featureRef.stationId ?? ""],
+        enabledLayers: enabledHumanLayers,
+        governedRevision: specs.map((spec) => String(spec.metadata?.sourceRevision ?? spec.metadata?.revision ?? spec.specId)).join(":"),
+        selection: selection ? { canonicalId: selection.canonicalId ?? selection.featureRef.id, type: selection.selectionType ?? selection.kind, stationFeet: selection.station, label: typeof (selection.payload as { label?: unknown } | null)?.label === "string" ? String((selection.payload as { label: string }).label) : undefined } : undefined,
+      })
+    : null,
+    [activeLens, attachmentIndex, enabledHumanLayers, geoView.zoom, mode, projectedPrimitives, selectedFeatureId, selection?.featureRef.id, selection?.featureRef.objectId, selection?.featureRef.stationId, sharedContext, spatialViewport, specs, spineIndex]
+  );
+  const primitives = useMemo(() => {
+    if (!sharedContext) return projectedPrimitives;
+    return spatialProjection?.primitives ?? projectedPrimitives.filter((primitive) => sharedMapFeatureRole(primitive) === "ROUTE");
+  }, [projectedPrimitives, sharedContext, spatialProjection?.primitives]);
+
   const bounds = useMemo(() => {
     if (viewportRequest?.bounds) return viewportRequest.bounds;
     const editPrimitive: MapKernelPrimitive | null = editableRoute?.geometry.length
@@ -386,7 +464,7 @@ export default function MapKernel({
     [primitives]
   );
   const routeCoordinates = useMemo(
-    () =>
+    () => sharedContext && spineIndex.coordinates.length ? spineIndex.coordinates :
       collectPrimitiveCoordinates(
         primitives.filter(
           (primitive) =>
@@ -397,8 +475,9 @@ export default function MapKernel({
             String(primitive.metadata?.sourceLayer ?? "").startsWith("ROUTE_AUTHORITY_")
         )
       ),
-    [primitives]
+    [primitives, sharedContext, spineIndex.coordinates]
   );
+  const initialFitCoordinates = sharedContext && routeCoordinates.length ? routeCoordinates : focusCoordinates;
   const certifiedRouteCoordinates = useMemo(
     () =>
       collectPrimitiveCoordinates(
@@ -410,7 +489,12 @@ export default function MapKernel({
       ),
     [primitives]
   );
-  const visibleGeoBounds = useMemo(() => visibleBoundsFromView(geoView, geoSize.width, geoSize.height), [geoSize.height, geoSize.width, geoView]);
+  const selectionCoordinates = useMemo(() => {
+    const selectedIds = [selection?.featureRef.id, selection?.featureRef.objectId, selection?.featureRef.stationId, selectedFeatureId].filter(Boolean);
+    if (!selectedIds.length) return [];
+    const targets = projectedPrimitives.filter((primitive) => sharedMapFeatureRole(primitive) !== "LABEL" && sharedMapFeatureIdentity(primitive).some((id) => selectedIds.includes(id)));
+    return collectPrimitiveCoordinates(targets);
+  }, [projectedPrimitives, selectedFeatureId, selection?.featureRef.id, selection?.featureRef.objectId, selection?.featureRef.stationId]);
   const viewWidthFeet = useMemo(
     () => distanceFeet([visibleGeoBounds.west, geoView.center[1]], [visibleGeoBounds.east, geoView.center[1]]),
     [geoView.center, visibleGeoBounds.east, visibleGeoBounds.west]
@@ -422,6 +506,47 @@ export default function MapKernel({
   const routeLengthFeet = useMemo(() => lineLengthFeet(routeCoordinates), [routeCoordinates]);
   const activeLayerIds = useMemo(() => layerStates.filter((layer) => layer.visible).map((layer) => layer.layerId), [layerStates]);
   const geoCenterWorld = useMemo(() => lonLatToWorld(geoView.center, geoView.zoom), [geoView.center, geoView.zoom]);
+  const renderedPrimitives = useMemo(() => {
+    if (!sharedContext || mode !== "geographic") return primitives;
+    const labels = primitives.filter((primitive) => primitive.kind === "label" && primitive.coordinate)
+      .sort((a, b) => Number(b.metadata?.labelPriority ?? 0) - Number(a.metadata?.labelPriority ?? 0) || a.id.localeCompare(b.id));
+    const boxes: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+    const visibleLabels = labels.filter((primitive) => {
+      const coordinate = primitive.coordinate!;
+      const world = lonLatToWorld(coordinate, geoView.zoom);
+      const x = world.x - geoCenterWorld.x + geoSize.width / 2 + 6;
+      const y = world.y - geoCenterWorld.y + geoSize.height / 2 - 6;
+      const fontSize = Number(primitive.style?.fontSize ?? 11);
+      const width = Math.max(22, String(primitive.label ?? "").length * fontSize * 0.62);
+      const box = { x1: x, y1: y - fontSize - 4, x2: x + width, y2: y + 4 };
+      if (boxes.some((item) => !(box.x2 < item.x1 || box.x1 > item.x2 || box.y2 < item.y1 || box.y1 > item.y2))) return false;
+      boxes.push(box);
+      return true;
+    });
+    return [...primitives.filter((primitive) => primitive.kind !== "label"), ...visibleLabels];
+  }, [geoCenterWorld.x, geoCenterWorld.y, geoSize.height, geoSize.width, geoView.zoom, mode, primitives, sharedContext]);
+  useEffect(() => {
+    if (!sharedContext || !spatialProjection) return;
+    const nextMetrics: SharedMapDisclosureMetrics = {
+      context: sharedContext,
+      level: spatialProjection.resolution,
+      zoom: geoView.zoom,
+      projectedFeatureCount: projectedPrimitives.filter((item) => item.kind !== "label").length,
+      projectedStationCount: projectedPrimitives.filter((item) => sharedMapFeatureRole(item) === "STATION").length,
+      projectedObjectCount: projectedPrimitives.filter((item) => sharedMapFeatureRole(item) === "ROUTINE_OBJECT").length,
+      projectedLabelCount: projectedPrimitives.filter((item) => item.kind === "label").length,
+      visibleFeatureCount: renderedPrimitives.filter((item) => item.kind !== "label").length,
+      visibleStationCount: renderedPrimitives.filter((item) => sharedMapFeatureRole(item) === "STATION").length,
+      visibleObjectCount: renderedPrimitives.filter((item) => sharedMapFeatureRole(item) === "ROUTINE_OBJECT").length,
+      visibleLabelCount: renderedPrimitives.filter((item) => item.kind === "label").length,
+    };
+    onDisclosureMetricsChange?.(nextMetrics);
+  }, [geoView.zoom, onDisclosureMetricsChange, projectedPrimitives, renderedPrimitives, sharedContext, spatialProjection]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setSettledGeoBounds(visibleGeoBounds), 90);
+    return () => window.clearTimeout(timeout);
+  }, [visibleGeoBounds]);
   const geoTiles = useMemo<Tile[]>(() => {
     const leftWorld = geoCenterWorld.x - geoSize.width / 2;
     const topWorld = geoCenterWorld.y - geoSize.height / 2;
@@ -486,6 +611,7 @@ export default function MapKernel({
   }, []);
 
   useEffect(() => {
+    if (sharedContext) return;
     writePersistedViewState({
       centerLon: geoView.center[0],
       centerLat: geoView.center[1],
@@ -496,31 +622,58 @@ export default function MapKernel({
       baseLayer,
       updatedAt: new Date().toISOString(),
     });
-  }, [activeLayerIds, baseLayer, geoView.bearing, geoView.center, geoView.zoom, mode]);
+  }, [activeLayerIds, baseLayer, geoView.bearing, geoView.center, geoView.zoom, mode, sharedContext]);
 
   useEffect(() => {
-    if (mode !== "geographic" || routeEditLocked || autoFitInitializedRef.current || !focusCoordinates.length) return;
+    if (mode !== "geographic" || routeEditLocked || autoFitInitializedRef.current || !initialFitCoordinates.length) return;
     autoFitInitializedRef.current = true;
-    setGeoView(viewForCoordinates(focusCoordinates, geoSize.width, geoSize.height));
-  }, [focusCoordinates, geoSize.height, geoSize.width, mode, routeEditLocked]);
+    setGeoView(viewForCoordinates(initialFitCoordinates, geoSize.width, geoSize.height));
+  }, [geoSize.height, geoSize.width, initialFitCoordinates, mode, routeEditLocked]);
 
   useEffect(() => {
     if (mode !== "geographic" || routeEditLocked || !viewportRequest?.bounds) return;
     setGeoView(viewForCoordinates(coordinatesFromBounds(viewportRequest.bounds), geoSize.width, geoSize.height));
   }, [geoSize.height, geoSize.width, mode, routeEditLocked, viewportRequest]);
 
+  useEffect(() => {
+    if (!focusFeatureId) {
+      lastFocusedFeatureIdRef.current = "";
+      return;
+    }
+    if (focusFeatureId === lastFocusedFeatureIdRef.current || mode !== "geographic" || routeEditLocked) return;
+    const target = primitives.find((primitive) => [primitive.id, primitive.ref.id, primitive.ref.objectId, primitive.ref.stationId].includes(focusFeatureId));
+    if (!target) return;
+    const targetCoordinates = collectPrimitiveCoordinates([target]);
+    if (!targetCoordinates.length) return;
+    lastFocusedFeatureIdRef.current = focusFeatureId;
+    const next = viewForCoordinates(targetCoordinates, geoSize.width, geoSize.height);
+    setGeoView((current) => ({ ...next, zoom: Math.max(current.zoom, 14) }));
+  }, [focusFeatureId, geoSize.height, geoSize.width, mode, primitives, routeEditLocked]);
+
   function setSelection(selectionValue: MapSelection | null) {
     setSelectionState(selectionValue);
     onSelectionChange?.(selectionValue);
   }
 
-  function selectPrimitive(primitive: MapKernelPrimitive) {
+  function selectPrimitive(primitive: MapKernelPrimitive, event?: MouseEvent<SVGElement>) {
     if (suppressNextSelectionRef.current) {
       suppressNextSelectionRef.current = false;
       return;
     }
     if (primitive.metadata?.selectable === false) return;
-    setSelection(createMapSelection(primitiveSelectionRef(primitive), primitive.payload));
+    const clickCoordinate = event ? coordinateFromClientPoint(event.clientX, event.clientY) : primitive.coordinate;
+    const projectedStation = clickCoordinate && sharedMapFeatureRole(primitive) === "ROUTE" ? spineIndex.stationAtCoordinate(clickCoordinate) : null;
+    const role = sharedMapFeatureRole(primitive);
+    const selectionType = role === "ROUTE" ? "ROUTE" : role === "STATION" ? "STATION" : role === "FACILITY" ? "FACILITY" : role === "CONDITION" ? "CONDITION" : "OBJECT";
+    setSelection(createMapSelection(primitiveSelectionRef(primitive), primitive.payload ?? { label: primitive.label }, {
+      selectionType,
+      canonicalId: primitive.ref.objectId ?? primitive.ref.stationId ?? primitive.ref.id,
+      routeId: primitive.ref.routeId ?? spineIndex.routeId,
+      station: Number(primitive.metadata?.stationFeet ?? projectedStation?.stationFeet),
+      coordinate: clickCoordinate ?? undefined,
+      sourceAuthority: String(primitive.metadata?.renderAuthority ?? primitive.metadata?.sourceLayer ?? spineIndex.geometryAuthority),
+      lens: activeLens,
+    }));
   }
 
   function setGeoCenterFromWorld(point: { x: number; y: number }) {
@@ -899,7 +1052,7 @@ export default function MapKernel({
           strokeWidth={strokeWidth}
           strokeDasharray={style.dasharray}
           opacity={style.opacity}
-          onClick={() => selectPrimitive(primitive)}
+          onClick={(event) => selectPrimitive(primitive, event)}
         >
           <title>{primitive.label ?? primitive.ref.id}</title>
         </polyline>
@@ -914,7 +1067,7 @@ export default function MapKernel({
           stroke={style.stroke}
           strokeWidth={strokeWidth}
           opacity={style.opacity}
-          onClick={() => selectPrimitive(primitive)}
+          onClick={(event) => selectPrimitive(primitive, event)}
         >
           <title>{primitive.label ?? primitive.ref.id}</title>
         </polygon>
@@ -930,7 +1083,7 @@ export default function MapKernel({
           fill={style.fill}
           fontSize={style.fontSize}
           fontWeight={style.fontWeight}
-          onClick={() => selectPrimitive(primitive)}
+          onClick={(event) => selectPrimitive(primitive, event)}
         >
           <title>{primitive.label ?? primitive.ref.id}</title>
           {primitive.label}
@@ -949,7 +1102,7 @@ export default function MapKernel({
           stroke={style.stroke}
           strokeWidth={strokeWidth}
           opacity={style.opacity}
-          onClick={() => selectPrimitive(primitive)}
+          onClick={(event) => selectPrimitive(primitive, event)}
         >
           <title>{primitive.label ?? primitive.ref.id}</title>
         </circle>
@@ -981,7 +1134,19 @@ export default function MapKernel({
 
   function zoomGeographicView(delta: number) {
     if (routeEditLocked) return;
+    requestViewport(null);
     setGeoView((prev) => ({ ...prev, zoom: Math.max(3, Math.min(20, prev.zoom + delta)) }));
+  }
+
+  function goToStation() {
+    const parts = stationQuery.split(/\s*(?:–|—|\bto\b|-)\s*/i).filter(Boolean);
+    const start = parseStationInput(parts[0] ?? "");
+    const end = parseStationInput(parts[1] ?? parts[0] ?? "");
+    if (start === null || end === null || !spineIndex.coordinates.length) return;
+    const range = { startFeet: Math.min(start, end), endFeet: Math.max(start, end) };
+    const geometry = spineIndex.geometryForStationRange(range);
+    const coordinate = spineIndex.coordinateAtStation(start);
+    fitGeographicView(geometry.length > 1 ? geometry : coordinate ? [coordinate] : [], "FIT_CORRIDOR", `station-${start}-${end}`);
   }
 
   function renderBaseTiles(source: TileSource) {
@@ -1015,7 +1180,7 @@ export default function MapKernel({
         onMouseLeave={() => endEditableRouteDrag(false)}
       >
         <rect x="0" y="0" width={SVG_WIDTH} height={SVG_HEIGHT} fill="#f8fafc" />
-        {primitives.map(renderPrimitive)}
+        {renderedPrimitives.map(renderPrimitive)}
         {renderEditableRoute()}
       </svg>
     );
@@ -1053,7 +1218,7 @@ export default function MapKernel({
             endMapPan();
           }}
         >
-          {primitives.map(renderPrimitive)}
+          {renderedPrimitives.map(renderPrimitive)}
           {renderEditableRoute()}
         </svg>
         <div className="dal-map-kernel-geo-zoom">
@@ -1065,40 +1230,37 @@ export default function MapKernel({
           </button>
           <button
             type="button"
-            onClick={() => fitGeographicView(candidateCoordinates, "FIT_CANDIDATE", "candidate")}
-            disabled={routeEditLocked || !candidateCoordinates.length}
-          >
-            Fit Candidate
-          </button>
-          <button
-            type="button"
-            onClick={() => fitGeographicView(attachmentCoordinates, "FIT_ATTACHMENT", "attachment")}
-            disabled={routeEditLocked || !attachmentCoordinates.length}
-          >
-            Fit Attachment
-          </button>
-          <button
-            type="button"
             onClick={() => fitGeographicView(routeCoordinates, "FIT_ROUTE", "route")}
             disabled={routeEditLocked || !routeCoordinates.length}
           >
             Fit Route
           </button>
-          <button
-            type="button"
-            onClick={() => fitGeographicView(certifiedRouteCoordinates, "FIT_CERTIFIED_ROUTE", "certified-route")}
-            disabled={routeEditLocked || !certifiedRouteCoordinates.length}
-          >
-            Fit Certified Route
-          </button>
-          <button
-            type="button"
-            onClick={() => fitGeographicView(focusCoordinates, "FIT_ENTIRE_NETWORK", "entire-network")}
-            disabled={routeEditLocked || !focusCoordinates.length}
-          >
-            Fit Entire Network
-          </button>
+          {sharedContext ? (
+            <button type="button" onClick={() => fitGeographicView(selectionCoordinates, "FIT_SELECTION", "selection")} disabled={routeEditLocked || !selectionCoordinates.length}>Fit Selection</button>
+          ) : <>
+            <button type="button" onClick={() => fitGeographicView(candidateCoordinates, "FIT_CANDIDATE", "candidate")} disabled={routeEditLocked || !candidateCoordinates.length}>Fit Candidate</button>
+            <button type="button" onClick={() => fitGeographicView(attachmentCoordinates, "FIT_ATTACHMENT", "attachment")} disabled={routeEditLocked || !attachmentCoordinates.length}>Fit Attachment</button>
+            <button type="button" onClick={() => fitGeographicView(certifiedRouteCoordinates, "FIT_CERTIFIED_ROUTE", "certified-route")} disabled={routeEditLocked || !certifiedRouteCoordinates.length}>Fit Certified Route</button>
+            <button type="button" onClick={() => fitGeographicView(focusCoordinates, "FIT_ENTIRE_NETWORK", "entire-network")} disabled={routeEditLocked || !focusCoordinates.length}>Fit Entire Network</button>
+          </>}
         </div>
+        {sharedContext && spatialProjection ? <aside className={`map-lens-summary ${summaryCollapsed ? "collapsed" : ""}`} aria-label="Map summary">
+          <button type="button" className="map-lens-summary-toggle" onClick={() => setSummaryCollapsed((value) => !value)} aria-expanded={!summaryCollapsed}>{summaryCollapsed ? "Summary" : "Hide"}</button>
+          {!summaryCollapsed ? <>
+            <span className="map-lens-summary-kicker">{spatialProjection.summary.mode === "ROUTE" ? "Route summary" : spatialProjection.summary.mode === "VIEWPORT" ? "Visible corridor" : "Selection"}</span>
+            <strong>{spatialProjection.summary.selection?.label ?? spatialProjection.summary.selection?.canonicalId ?? spineIndex.routeId}</strong>
+            {spatialProjection.summary.mode === "ROUTE" ? <>
+              <span>{routeMiles(spineIndex).toLocaleString(undefined, { maximumFractionDigits: 2 })} mi · A → Z</span>
+              <span>{spatialProjection.summary.routeStationCount.toLocaleString()} stations · {spatialProjection.summary.routeObjectCount.toLocaleString()} objects</span>
+              <span>{spatialProjection.summary.routeFacilityCount.toLocaleString()} facilities · {spatialProjection.summary.routeConditionCount.toLocaleString()} conditions</span>
+            </> : <>
+              <span>STA {formatStation(spatialProjection.summary.selection?.stationFeet ?? spatialProjection.summary.visibleStationRange?.startFeet)}{spatialProjection.summary.selection ? "" : ` → ${formatStation(spatialProjection.summary.visibleStationRange?.endFeet)}`}</span>
+              {!spatialProjection.summary.selection ? <span>{formatDistance(spatialProjection.summary.visibleLengthFeet)} · {spatialProjection.summary.visibleStationCount.toLocaleString()} stations</span> : null}
+              <span>{spatialProjection.summary.visibleObjectCount.toLocaleString()} objects · {spatialProjection.summary.visibleFacilityCount.toLocaleString()} facilities · {spatialProjection.summary.visibleConditionCount.toLocaleString()} conditions</span>
+            </>}
+            <span className="map-lens-summary-resolution">{spatialProjection.resolution.toLowerCase()} · {activeLens.toLowerCase()} lens</span>
+          </> : null}
+        </aside> : null}
         <div className="dal-map-kernel-engineering-extent">
           <span>Route Length: {formatDistance(routeLengthFeet)}</span>
           <span>View Width: {formatDistance(viewWidthFeet)}</span>
@@ -1116,7 +1278,21 @@ export default function MapKernel({
   return (
     <MapSelectionContext.Provider value={{ selection, setSelection }}>
       <MapViewportContext.Provider value={{ viewportRequest, requestViewport }}>
-        <div className="dal-map-kernel" style={{ minHeight: height }}>
+        <div
+          className={`dal-map-kernel${sharedContext ? " shared-opportunity-map-presentation" : ""}`}
+          style={{ minHeight: height }}
+          data-map-presentation-context={sharedContext ?? "DEFAULT"}
+          data-map-disclosure-level={spatialProjection?.resolution ?? "UNFILTERED"}
+          data-map-resolution={spatialProjection?.resolution ?? "UNFILTERED"}
+          data-map-lens={activeLens}
+          data-projected-features={projectedPrimitives.filter((item) => item.kind !== "label").length}
+          data-projected-stations={projectedPrimitives.filter((item) => sharedMapFeatureRole(item) === "STATION").length}
+          data-projected-objects={projectedPrimitives.filter((item) => sharedMapFeatureRole(item) === "ROUTINE_OBJECT").length}
+          data-rendered-features={renderedPrimitives.filter((item) => item.kind !== "label").length}
+          data-rendered-stations={renderedPrimitives.filter((item) => sharedMapFeatureRole(item) === "STATION").length}
+          data-rendered-objects={renderedPrimitives.filter((item) => sharedMapFeatureRole(item) === "ROUTINE_OBJECT").length}
+          data-rendered-labels={renderedPrimitives.filter((item) => item.kind === "label").length}
+        >
           <div className="dal-map-kernel-toolbar">
             <div className="dal-map-kernel-mode-controls">
               <button type="button" className={mode === "topology" ? "active-toggle" : undefined} onClick={() => setMode("topology")}>
@@ -1135,17 +1311,33 @@ export default function MapKernel({
                 </select>
               ) : null}
             </div>
-            {MAP_LAYER_ORDER.map((layerId) => {
-              const layer = layerStates.find((item) => item.layerId === layerId);
-              return (
-                <span key={layerId} className={`dal-map-kernel-layer ${layer?.visible ? "visible" : "hidden"}`}>
-                  {layer?.label ?? layerId}
-                </span>
-              );
-            })}
+            {sharedContext ? (
+              <div className="shared-map-controls" aria-label="Map navigation controls">
+                <details className="shared-map-layer-control">
+                  <summary>Layers</summary>
+                  <div className="shared-map-layer-menu">
+                    <strong>Infrastructure</strong>
+                    {(["route", "stations", "objects", "facilities"] as const).map((key) => { const available = layerAvailableAtResolution(key, spatialProjection?.resolution ?? "REGIONAL"); return <button type="button" key={key} disabled={!available} className={humanLayerVisibility[key] ? "active-toggle" : undefined} title={available ? undefined : "Available at closer zoom"} onClick={() => setHumanLayerVisibility((current) => ({ ...current, [key]: !current[key] }))}>{humanLayerVisibility[key] ? "☑" : "☐"} {key[0].toUpperCase() + key.slice(1)}{!available ? " · Zoom closer" : ""}</button>; })}
+                    <strong>Context</strong>
+                    <button type="button" className={humanLayerVisibility.context ? "active-toggle" : undefined} onClick={() => setHumanLayerVisibility((current) => ({ ...current, context: !current.context }))}>{humanLayerVisibility.context ? "☑" : "☐"} Geographic context</button>
+                    <strong>Project</strong>
+                    {(["conditions", "work", "closures"] as const).map((key) => { const available = layerAvailableAtResolution(key, spatialProjection?.resolution ?? "REGIONAL"); return <button type="button" key={key} disabled={!available} className={humanLayerVisibility[key] ? "active-toggle" : undefined} title={available ? undefined : "Available at closer zoom"} onClick={() => setHumanLayerVisibility((current) => ({ ...current, [key]: !current[key] }))}>{humanLayerVisibility[key] ? "☑" : "☐"} {key[0].toUpperCase() + key.slice(1)}{!available ? " · Zoom closer" : ""}</button>; })}
+                  </div>
+                </details>
+                <form className="shared-map-station-search" onSubmit={(event) => { event.preventDefault(); goToStation(); }}>
+                  <input value={stationQuery} onChange={(event) => setStationQuery(event.target.value)} placeholder="Go to station" aria-label="Go to station or station range" />
+                  <button type="submit" disabled={parseStationInput(stationQuery.split(/\s*(?:–|—|\bto\b|-)\s*/i)[0] ?? "") === null}>Go</button>
+                </form>
+                <span className="shared-map-scale-label">{spatialProjection?.resolution ?? "REGIONAL"}</span>
+              </div>
+            ) : MAP_LAYER_ORDER.map((layerId) => {
+                const layer = layerStates.find((item) => item.layerId === layerId);
+                return <span key={layerId} className={`dal-map-kernel-layer ${layer?.visible ? "visible" : "hidden"}`}>{layer?.label ?? layerId}</span>;
+              })}
           </div>
           {mode === "geographic" ? renderGeographicView() : renderTopologyView()}
-          <div className="dal-map-kernel-footer">
+          {sharedContext ? <details className="shared-map-diagnostics"><summary>Diagnostics / Package Integrity</summary><div className="shared-map-diagnostic-grid"><span>Resolution: {spatialProjection?.resolution ?? "n/a"}</span><span>Zoom: {geoView.zoom}</span><span>Station range: {formatStation(spatialProjection?.visibleStationRange?.startFeet)} → {formatStation(spatialProjection?.visibleStationRange?.endFeet)}</span><span>Candidates: {spatialProjection?.candidatePrimitiveCount.toLocaleString() ?? "0"}</span><span>Rendered: {spatialProjection?.renderedPrimitiveCount.toLocaleString() ?? "0"}</span><span>Geometry: {spatialProjection?.geometryDetail ?? "n/a"}</span><span>Projection: {spatialProjection?.timings.totalProjectionMs.toFixed(2) ?? "0.00"} ms {spatialProjection?.cacheHit ? "(cache)" : ""}</span><span>Spine: {spatialProjection?.timings.spineResolutionMs.toFixed(2) ?? "0.00"} ms</span><span>Station lookup: {spatialProjection?.timings.stationLookupMs.toFixed(2) ?? "0.00"} ms</span><span>Attachment lookup: {spatialProjection?.timings.attachmentLookupMs.toFixed(2) ?? "0.00"} ms</span><span>Assembly: {spatialProjection?.timings.projectionAssemblyMs.toFixed(2) ?? "0.00"} ms</span><span>Primitive creation: {spatialProjection?.timings.primitiveCreationMs.toFixed(2) ?? "0.00"} ms</span><span>Source authority: {spineIndex.geometryAuthority}</span><span>Geometry hash: {spineIndex.geometryHash ?? "not supplied"}</span><span>Render Authority: {renderAudit.status}</span><span>Duplicate Keys: {renderAudit.duplicateKeyCount.toLocaleString()}</span><span>Duplicate Render Authorities: {renderAudit.duplicateRenderAuthorityCount.toLocaleString()}</span></div><div className="dal-map-kernel-layer-diagnostics">{MAP_LAYER_ORDER.map((layerId) => { const layer = layerStates.find((item) => item.layerId === layerId); return <span key={layerId} className={`dal-map-kernel-layer ${layer?.visible ? "visible" : "hidden"}`}>{layer?.label ?? layerId}</span>; })}</div>{renderAudit.duplicateRenderAuthorities.length ? <div className="dal-map-kernel-render-authority-diagnostics">{renderAudit.duplicateRenderAuthorities.map((group) => <span key={group.key}>{group.objectType} {group.objectId} · {group.renderType} · {group.occurrences} representations · {group.sourceLayers.join(", ")}</span>)}</div> : <span>Render authority validation PASS</span>}</details> : null}
+          {!sharedContext ? <div className="dal-map-kernel-footer">
             <span>Mode: {mode === "geographic" ? "Geographic Truth" : "Topological Truth"}</span>
             {mode === "geographic" ? <span>Base Layer: {BASE_LAYERS[baseLayer].label}</span> : null}
             <span>ScopeVersions: {metrics.visibleScopeVersions.toLocaleString()}</span>
@@ -1159,7 +1351,7 @@ export default function MapKernel({
             <span>Render Authority: {metrics.renderAuthorityStatus}</span>
             <span>Duplicate Keys: {metrics.duplicateKeyCount.toLocaleString()}</span>
             <span>Duplicate Render Authorities: {metrics.duplicateRenderAuthorityCount.toLocaleString()}</span>
-          </div>
+          </div> : null}
         </div>
       </MapViewportContext.Provider>
     </MapSelectionContext.Provider>

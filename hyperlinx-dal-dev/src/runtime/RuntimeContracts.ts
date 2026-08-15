@@ -4,6 +4,8 @@ export type ConstitutionalArtifactType =
   | "AuditObjectManifest"
   | "ConstitutionalAssembly"
   | "DraftIofPackage"
+  | "DraftIofStructuralProjection"
+  | "CommercialFinancialProjection"
   | "PD002AAddressProjection"
   | "SpineObjectCatalogProjection"
   | "PD003ProductionProjection"
@@ -42,6 +44,10 @@ export type RuntimeArtifactRecord<T = unknown> = {
   cacheStatus: RuntimeCacheStatus;
   validationStatus: RuntimeValidationStatus;
   value: T;
+  createdAt: string;
+  lastAccessedAt: string;
+  hitCount: number;
+  dependencyClass: string;
 };
 
 export type RuntimeArtifactRequest<T> = {
@@ -54,6 +60,8 @@ export type RuntimeArtifactRequest<T> = {
   producedFrom?: RuntimeArtifactReference[];
   validationStatus?: RuntimeValidationStatus;
   producer: string;
+  dependencyClass?: string;
+  ttlMs?: number | null;
   create: () => T;
 };
 
@@ -64,4 +72,3 @@ export function runtimeArtifactKey(artifactType: RuntimeArtifactType, artifactId
 export function runtimeArtifactReferenceKey(reference: RuntimeArtifactReference) {
   return runtimeArtifactKey(reference.artifactType, reference.artifactId);
 }
-

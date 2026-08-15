@@ -38,7 +38,7 @@ const CONNECTIVITY_TARGETS: Array<{
     key: "reasoning",
     label: "Reasoning Fabric",
     endpoint: "",
-    path: "/v1/models",
+    path: "kernel-cache",
   },
 ];
 
@@ -96,14 +96,16 @@ export async function testDalConnectivity() {
   const activeEndpoint = reasoning.activeEndpoint;
   const reasoningResult: DalConnectivityResult = {
     key: "reasoning",
-    label: "Reasoning Fabric",
+    label: "Kernel Reasoning Service",
     endpoint: activeEndpoint ? endpointBaseUrl(activeEndpoint) : "not configured",
-    testUrl: activeEndpoint ? `${endpointBaseUrl(activeEndpoint)}/v1/models` : "not configured",
+    testUrl: "StellaOS Kernel ReasoningServiceManager cache",
     reachable: Boolean(activeEndpoint),
     responseTimeMs: activeEndpoint?.latencyMs ?? 0,
     statusText: activeEndpoint
       ? `${activeEndpoint.name} ${activeEndpoint.healthStatus} ${activeEndpoint.provider ?? "unknown"} ${activeEndpoint.modelId ?? activeEndpoint.modelName}`
-      : "No reasoning endpoint configured or reachable",
+      : reasoning.reasoningEnabled
+        ? `Reasoning ${reasoning.serviceStatus}; circuit ${reasoning.circuitBreakerState}`
+        : "Reasoning disabled in Developer Mode",
     checkedAt: reasoning.checkedAt,
     error: activeEndpoint ? undefined : `${reasoning.failures} endpoint failure(s)`,
   };

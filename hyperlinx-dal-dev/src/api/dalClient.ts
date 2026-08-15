@@ -674,6 +674,11 @@ function normalizeTwinState(raw: any, requestedScopeVersionId = ""): TwinState {
   };
   return {
     twinStateId: String(projection.twinStateId ?? `twin-${projection.scopeVersionId ?? requestedScopeVersionId ?? "summary"}`),
+    projectionType: projection.projectionType,
+    certifiedTwin: projection.certifiedTwin,
+    certifiedIofPackage: projection.certifiedIofPackage,
+    sharedOpportunityMapProjection: projection.sharedOpportunityMapProjection,
+    sourceDraftPackageId: projection.sourceDraftPackageId,
     projectionSource: projection.projectionSource ?? "SERVER",
     inventoryId: projection.inventoryId,
     scopeVersionId: projection.scopeVersionId ?? requestedScopeVersionId,
@@ -758,6 +763,16 @@ export async function loadTwinState(scopeVersionId = "") {
     },
     updatedAt: now(),
   }, scopeVersionId);
+}
+
+export async function loadCertifiedIofTwinState(twinStateId = "") {
+  const query = new URLSearchParams({ certified: "true" });
+  if (twinStateId) query.set("twinStateId", twinStateId);
+  const path = `/api/twin/state?${query}`;
+  console.log("[CERTIFIED_IOF_TWIN_REQUEST]", { twinStateId: twinStateId || "latest", url: apiUrl(path) });
+  const remote = await tryRemote<any>(apiUrl(path));
+  if (!remote) throw new Error("No Certified IOF Twin is available.");
+  return normalizeTwinState(remote);
 }
 
 export async function getTwinState(scopeVersionId?: string) {

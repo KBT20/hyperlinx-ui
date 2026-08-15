@@ -18,6 +18,8 @@ hyperlinx-dal-dev/dist-dal/
 
 hyperlinx-dal-dev/.tmp/
 hyperlinx-dal-dev/server/data/
+hyperlinx-dal-dev/.browser-*/
+hyperlinx-dal-dev/artifacts/
 
 ###############################################################################
 # Temporary Files

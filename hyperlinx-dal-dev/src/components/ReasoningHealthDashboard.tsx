@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   endpointBaseUrl,
-  loadReasoningRegistryHealth,
   REASONING_WORKLOAD_ROUTES,
+  getReasoningServiceSnapshot,
+  refreshReasoningService,
+  setReasoningEnabled,
+  startReasoningService,
+  subscribeReasoningService,
   type ReasoningFabricHealth,
 } from "../api/reasoningRegistry";
 
@@ -19,30 +23,38 @@ export default function ReasoningHealthDashboard({
 }: {
   onHealthChange?: (health: ReasoningFabricHealth | null) => void;
 }) {
-  const [health, setHealth] = useState<ReasoningFabricHealth | null>(null);
-  const [status, setStatus] = useState("Reasoning fabric health not tested.");
+  const [health, setHealth] = useState<ReasoningFabricHealth | null>(() => getReasoningServiceSnapshot());
+  const [status, setStatus] = useState("Reasoning status is served from the StellaOS Kernel cache.");
 
   async function testHealth() {
     try {
-      setStatus("Testing reasoning fabric endpoints...");
-      const nextHealth = await loadReasoningRegistryHealth();
+      setStatus("Requesting Kernel reasoning refresh...");
+      const nextHealth = await refreshReasoningService();
       setHealth(nextHealth);
       onHealthChange?.(nextHealth);
       setStatus(
         nextHealth.activeEndpoint
           ? `Active reasoning endpoint: ${nextHealth.activeEndpoint.name}.`
-          : "No reasoning endpoint is currently reachable."
+          : nextHealth.reasoningEnabled
+            ? "Reasoning OFFLINE. Circuit breaker state is cached by Kernel."
+            : "Reasoning disabled in Developer Mode."
       );
     } catch (err: any) {
-      setHealth(null);
-      onHealthChange?.(null);
-      setStatus(`Reasoning fabric health test failed: ${err?.message ?? String(err)}`);
+      const snapshot = getReasoningServiceSnapshot();
+      setHealth(snapshot);
+      onHealthChange?.(snapshot);
+      setStatus(`Reasoning refresh returned cached state: ${err?.message ?? String(err)}`);
     }
   }
 
   useEffect(() => {
-    void testHealth();
-  }, []);
+    const unsubscribe = subscribeReasoningService((nextHealth) => {
+      setHealth(nextHealth);
+      onHealthChange?.(nextHealth);
+    });
+    startReasoningService();
+    return unsubscribe;
+  }, [onHealthChange]);
 
   const endpointRows = health?.endpoints ?? [];
   const diagnosticRows = health?.diagnostics ?? [];
@@ -63,8 +75,11 @@ export default function ReasoningHealthDashboard({
           <h3>Reasoning Health Dashboard</h3>
           <div className="dal-status">{status}</div>
         </div>
+        <button type="button" onClick={() => void setReasoningEnabled(!health?.reasoningEnabled)}>
+          {health?.reasoningEnabled ? "Disable Reasoning" : "Enable Reasoning"}
+        </button>
         <button type="button" onClick={() => void testHealth()}>
-          Test Reasoning Endpoint
+          Refresh Kernel Cache
         </button>
       </div>
 
@@ -77,6 +92,12 @@ export default function ReasoningHealthDashboard({
         <span>Provider: {activeEndpoint?.provider ?? "unknown"}</span>
         <span>Endpoint Type: {activeEndpoint?.endpointType ?? "unknown"}</span>
         <span>Response Time: {fmt(activeEndpoint?.latencyMs)} ms</span>
+        <span>Reasoning Enabled: {health?.reasoningEnabled ? "true" : "false"}</span>
+        <span>Service State: {health?.serviceStatus ?? "OFFLINE"}</span>
+        <span>Circuit Breaker: {health?.circuitBreakerState ?? "DISABLED"}</span>
+        <span>Retry Countdown: {fmt(health?.retryCountdownSeconds)} sec</span>
+        <span>Last Successful Probe: {health?.lastSuccessfulProbe ?? "none"}</span>
+        <span>Last Failure: {health?.lastFailure ?? "none"}</span>
         <span>Failures: {fmt(health?.failures)}</span>
       </div>
 
@@ -91,6 +112,8 @@ export default function ReasoningHealthDashboard({
               <th>Latency</th>
               <th>Endpoint Type</th>
               <th>Last Check</th>
+              <th>Retry After</th>
+              <th>Circuit</th>
               <th>Capabilities</th>
             </tr>
           </thead>
@@ -107,12 +130,14 @@ export default function ReasoningHealthDashboard({
                 <td>{fmt(endpoint.latencyMs)} ms</td>
                 <td>{endpoint.endpointType ?? "UNKNOWN"}</td>
                 <td>{endpoint.lastCheck ?? "not checked"}</td>
+                <td>{endpoint.retryAfter ?? "none"}</td>
+                <td>{endpoint.circuitBreakerState ?? "CLOSED"}</td>
                 <td>{endpoint.capabilities.join(", ")}</td>
               </tr>
             ))}
             {!endpointRows.length ? (
               <tr>
-                <td colSpan={8}>No reasoning endpoints configured. Set registry environment variables for GPU or fallback services.</td>
+                <td colSpan={10}>No reasoning endpoints configured. Set registry environment variables for GPU or fallback services.</td>
               </tr>
             ) : null}
           </tbody>
@@ -128,6 +153,8 @@ export default function ReasoningHealthDashboard({
               <th>TCP Reachability</th>
               <th>Health Check</th>
               <th>Latency</th>
+              <th>Circuit</th>
+              <th>Retry</th>
               <th>Response</th>
             </tr>
           </thead>
@@ -139,12 +166,14 @@ export default function ReasoningHealthDashboard({
                 <td>{diagnostic.tcpReachability}</td>
                 <td><span className={badgeClass(diagnostic.healthCheck)}>{diagnostic.healthCheck}</span></td>
                 <td>{fmt(diagnostic.latencyMs)} ms</td>
+                <td>{diagnostic.circuitBreakerState}</td>
+                <td>{fmt(diagnostic.retryAfterSeconds)} sec</td>
                 <td>{diagnostic.error ?? JSON.stringify(diagnostic.response ?? {})}</td>
               </tr>
             ))}
             {!diagnosticRows.length ? (
               <tr>
-                <td colSpan={6}>No diagnostics are available yet.</td>
+                <td colSpan={8}>No diagnostics are available yet.</td>
               </tr>
             ) : null}
           </tbody>

@@ -35,6 +35,36 @@ const DB_NAME = "hyperlinx-dal-dev";
 const DB_VERSION = 5;
 const LEGACY_STORAGE_PREFIX = "hyperlinx-dal-dev";
 
+export const DAL_PERSISTENCE_AUTHORITY = Object.freeze({
+  serverRepository: "AUTHORITATIVE_PERSISTED_STATE",
+  indexedDb: "CACHE_OR_OFFLINE_WORKING_COPY",
+  conflictPolicy: "SERVER_REVISION_WINS_UNLESS_EXPLICIT_UNSAVED_LOCAL_WORKING_REVISION",
+  silentEqualTruthMerge: false,
+});
+
+export type BrowserServerConflict<T> = { id: string; browser: T; server: T; resolution: "SERVER" | "EXPLICIT_LOCAL_WORKING_REVISION" };
+
+export function reconcileServerAuthoritativeRecords<T extends Record<string, unknown>>(
+  browser: T[],
+  server: T[],
+  idKey: keyof T,
+) {
+  const records = new Map<string, T>();
+  const conflicts: BrowserServerConflict<T>[] = [];
+  browser.forEach((record) => records.set(String(record[idKey]), record));
+  server.forEach((serverRecord) => {
+    const id = String(serverRecord[idKey]);
+    const browserRecord = records.get(id);
+    if (browserRecord && JSON.stringify(browserRecord) !== JSON.stringify(serverRecord)) {
+      const explicitLocal = browserRecord.unsavedLocalWorkingRevision === true;
+      conflicts.push({ id, browser: browserRecord, server: serverRecord, resolution: explicitLocal ? "EXPLICIT_LOCAL_WORKING_REVISION" : "SERVER" });
+      if (explicitLocal) return;
+    }
+    records.set(id, serverRecord);
+  });
+  return { records: [...records.values()], conflicts, authority: DAL_PERSISTENCE_AUTHORITY };
+}
+
 const COLLECTION_ID_KEYS: Record<DALCollectionName, string> = {
   inventoryGraphs: "inventoryId",
   inventoryImportJobs: "jobId",

@@ -1,3 +1,5 @@
+import { runtimeDiagnosticsLog } from "../performance/RuntimeDiagnostics";
+
 export type ProposalAuthorityRecord = {
   proposalId?: string | null;
   status?: string | null;
@@ -67,7 +69,7 @@ export function logProposalAuthorityStateHydration(
   record: ProposalAuthorityRecord | null | undefined,
   dashboardStatus = "",
 ) {
-  console.info("[ProposalStateAuthority:Kernel]", {
+  runtimeDiagnosticsLog("ProposalStateAuthority:Kernel", {
     source,
     ...evaluateProposalAuthorityState(record, dashboardStatus),
   });

@@ -227,10 +227,27 @@ function stationLabel(station, measureFeet) {
 }
 
 function certifiedStations(certifiedPackage, scopeVersionId, routeId, timestamp) {
-  return asArray(certifiedPackage.stations)
+  const stationProjection = asRecord(certifiedPackage.stationProjection);
+  const stationGraph = asRecord(certifiedPackage.stationGraph ?? certifiedPackage.stationIndexedGraph);
+  const sources = [
+    ...asArray(certifiedPackage.stations),
+    ...asArray(stationProjection.stations),
+    ...asArray(stationProjection.stationObjects),
+    ...asArray(stationGraph.stations),
+    ...asArray(stationGraph.nodes),
+  ];
+  const seen = new Set();
+  return sources
+    .filter((station, index) => {
+      const value = asRecord(station);
+      const identity = String(value.stationId ?? value.id ?? `${value.measureFeet ?? value.stationFeet ?? index}:${JSON.stringify(coordinateFrom(value.coordinate ?? value.geometry) ?? null)}`);
+      if (seen.has(identity)) return false;
+      seen.add(identity);
+      return true;
+    })
     .map((station, index) => {
       const record = asRecord(station);
-      const coordinate = coordinateFrom(record.coordinate ?? record.geometry ?? record);
+      const coordinate = coordinateFrom(record.coordinate ?? record.projectedCoordinate ?? record.geographicCoordinate ?? record.geometry ?? record);
       if (!coordinate) return null;
       const measureFeet = numeric(record.measureFeet ?? record.stationFeet ?? record.feet, index * 5280);
       const stationId = String(record.stationId ?? record.id ?? `${scopeVersionId}:STATION:${String(index + 1).padStart(4, "0")}`);
@@ -265,12 +282,24 @@ function stationForObject(stations, record) {
 }
 
 function certifiedObjects(certifiedPackage, scopeVersionId, stations, timestamp) {
+  const projectedObjectManifest = asRecord(certifiedPackage.projectedObjectManifest);
+  const stationObjectManifest = asRecord(certifiedPackage.stationObjectManifest);
   const sources = [
+    ...asArray(certifiedPackage.projectedObjects),
+    ...asArray(projectedObjectManifest.projectedObjects),
+    ...asArray(stationObjectManifest.objects),
     ...asArray(certifiedPackage.objects),
     ...asArray(certifiedPackage.structures),
   ];
   const sourceObjects = sources.length ? sources : asArray(certifiedPackage.certifiedIofUnits);
-  return sourceObjects.map((object, index) => {
+  const seen = new Set();
+  return sourceObjects.filter((object, index) => {
+    const value = asRecord(object);
+    const identity = String(value.objectId ?? value.unitId ?? value.structureId ?? value.id ?? `${objectType(value)}:${value.stationId ?? value.station ?? index}`);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  }).map((object, index) => {
     const record = asRecord(object);
     const metadata = asRecord(record.metadata);
     const station = stationForObject(stations, record);
@@ -499,6 +528,16 @@ function graphSummary(graph, stations, objects) {
   };
 }
 
+function geometryAuthorityDiagnosticsFromPackage(certifiedPackage = {}) {
+  const projectedObjectManifest = asRecord(certifiedPackage.projectedObjectManifest);
+  const doctrineProjectionDiagnostics = asRecord(certifiedPackage.doctrineProjectionDiagnostics);
+  return asRecord(
+    certifiedPackage.geometryAuthorityDiagnostics ??
+      projectedObjectManifest.geometryAuthorityDiagnostics ??
+      doctrineProjectionDiagnostics.geometryAuthorityDiagnostics,
+  );
+}
+
 export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, options = {}) {
   if (String(certifiedPackage.status ?? "").toUpperCase() !== "CERTIFIED") {
     throw new Error("Only Certified Draft IOF Packages may be promoted to ScopeVersion authority.");
@@ -553,6 +592,22 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     productDoctrineRules: certifiedPackage.productDoctrineRules,
     productDoctrineAssembly: certifiedPackage.productDoctrineAssembly,
   };
+  const geometryAuthorityDiagnostics = geometryAuthorityDiagnosticsFromPackage(certifiedPackage);
+  if (geometryAuthorityDiagnostics.geometryAuthority !== "PASS" || geometryAuthorityDiagnostics.status !== "PASS") {
+    throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: ScopeVersion cannot be created until Geometry Authority is PASS.");
+  }
+  const closureLedgerId = String(certifiedPackage.closureLedgerId ?? certifiedPackage.closureLedger?.closureLedgerId ?? "");
+  const iofPackageTwinId = String(certifiedPackage.iofPackageTwinId ?? certifiedPackage.iofPackageTwin?.twinProjectionId ?? "");
+  const executionGraphId = String(certifiedPackage.executionGraphId ?? certifiedPackage.iofPackageTwin?.executionGraphId ?? "");
+  const lifecycleGraphId = String(certifiedPackage.lifecycleGraphId ?? certifiedPackage.iofPackageTwin?.lifecycleGraphId ?? "");
+  const commercialAuditStatus = String(certifiedPackage.commercialAuditStatus ?? certifiedPackage.commercialAuditReconciliation?.status ?? "");
+  const constitutionalStateValidationStatus = String(certifiedPackage.constitutionalStateValidationStatus ?? certifiedPackage.constitutionalStateValidation?.status ?? "");
+  if (!closureLedgerId || !iofPackageTwinId || !executionGraphId || !lifecycleGraphId) {
+    throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: ScopeVersion requires Closure Ledger, IOF Package Twin, Execution Graph, and Lifecycle Graph references.");
+  }
+  if (commercialAuditStatus !== "PASS" || constitutionalStateValidationStatus !== "PASS") {
+    throw new Error("CONSTITUTIONAL_LAYER_INTEGRITY_BLOCKED: ScopeVersion requires Commercial Audit and Constitutional State Authority validation to be PASS.");
+  }
   const layerIntegrityAuthority = assertConstitutionalLayerIntegrityForScopeVersion(certifiedPackage, options);
   const certifiedPackageId = certifiedPackageRecordId(certifiedPackage);
   const certifiedDraftPackageId = certifiedDraftIofPackageId(certifiedPackage);
@@ -658,7 +713,7 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     rootScopeVersionId,
     previousRevision,
     changeSummary: options.changeSummary ?? certifiedPackage.changeSummary ?? (previousScopeVersion ? "Engineering revision promoted from Certified Draft IOF Package." : "Initial ScopeVersion authority from Certified Draft IOF Package."),
-    engineeringReason: options.engineeringReason ?? certifiedPackage.engineeringReason ?? "Runtime promoted the executed Service Order and Certified Draft IOF Package into the ScopeVersion Order for Execution.",
+    engineeringReason: options.engineeringReason ?? certifiedPackage.engineeringReason ?? "Authorized Teralinx countersignature atomically created the ScopeVersion Order for Execution from the exact Service Order and Certified Draft IOF Package.",
     approvedBy,
     approvedTimestamp,
     customer: {
@@ -681,6 +736,20 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     },
     productDoctrine,
     engineeringDoctrine,
+    measuredCenterlineId: certifiedPackage.measuredCenterlineId ?? geometryAuthorityDiagnostics.measuredCenterlineId,
+    projectedObjectManifestId: certifiedPackage.projectedObjectManifestId,
+    stationGraphId: certifiedPackage.stationGraphId,
+    stationAuthorityIds: unique(certifiedPackage.stationAuthorityIds),
+    closureLedgerId,
+    iofPackageTwinId,
+    executionGraphId,
+    lifecycleGraphId,
+    commercialAuditStatus,
+    constitutionalStateValidationStatus,
+    geometryAuthority: "MEASURED_CENTERLINE",
+    geometryAuthorityDiagnostics,
+    singleGeometryAuthority: true,
+    noIndependentSpanGeometry: true,
     routeGeometry: routeCoordinates,
     geometry: routeCoordinates,
     certifiedGeometry: {
@@ -768,7 +837,7 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
       engineeringTruth: "CERTIFIED_DRAFT_IOF_PACKAGE",
       proposal: "COMMERCIAL_PROJECTION_OF_CERTIFIED_DRAFT_IOF_PACKAGE",
       serviceOrder: "COMMERCIAL_AUTHORIZATION_REFERENCING_CERTIFIED_DRAFT_IOF_PACKAGE",
-      runtimePromotion: "SIGNED_SERVICE_ORDER_TRIGGERED_RUNTIME_PROMOTION",
+      runtimePromotion: "TERALINX_COUNTERSIGNATURE_ATOMIC_SCOPEVERSION_CREATION",
       scopeVersion: "ORDER_FOR_EXECUTION",
       downstreamExecution: "EXECUTES_ONLY_AGAINST_SCOPEVERSION",
       business: "MAY_AUTHORIZE_WITHOUT_ENGINEERING_MUTATION",
@@ -836,13 +905,27 @@ export function createScopeVersionFromCertifiedPackage(certifiedPackage = {}, op
     runtimeRelationshipIds: unique(certifiedPackage.runtimeRelationshipIds),
     runtimeEvidenceIds: unique(certifiedPackage.runtimeEvidenceIds),
     certifiedIofUnitIds,
+    measuredCenterlineId: certifiedPackage.measuredCenterlineId ?? geometryAuthorityDiagnostics.measuredCenterlineId,
+    projectedObjectManifestId: certifiedPackage.projectedObjectManifestId,
+    stationGraphId: certifiedPackage.stationGraphId,
+    stationAuthorityIds: unique(certifiedPackage.stationAuthorityIds),
+    closureLedgerId,
+    iofPackageTwinId,
+    executionGraphId,
+    lifecycleGraphId,
+    commercialAuditStatus,
+    constitutionalStateValidationStatus,
+    geometryAuthority: "MEASURED_CENTERLINE",
+    geometryAuthorityDiagnostics,
+    singleGeometryAuthority: true,
+    noIndependentSpanGeometry: true,
     decisionTimestamp: timestamp,
     canonicalTruth,
     createdAt: timestamp,
     updatedAt: timestamp,
     events: [{
       eventId: `event-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      type: "scopeversion.created_from_signed_service_order",
+      type: "scopeversion.created_from_authorized_teralinx_countersignature",
       entityId: scopeVersionIdValue,
       entityType: "ScopeVersion",
       payload: {
@@ -931,6 +1014,19 @@ export function validateScopeVersionAuthority(scopeVersion = {}) {
   );
   requireValue(truth.singleEngineeringTruth === true || Boolean(truth.certifiedDraftIofPackageId), "ScopeVersion must preserve the Certified Draft IOF Package as single engineering truth.");
   requireValue(truth.noAdditionalEngineeringReviewAfterSignature === true, "Runtime promotion must not require additional Engineering review after signature.");
+  const geometryAuthorityDiagnostics = asRecord(truth.geometryAuthorityDiagnostics ?? scopeVersion.geometryAuthorityDiagnostics);
+  requireValue((truth.geometryAuthority === "MEASURED_CENTERLINE" || scopeVersion.geometryAuthority === "MEASURED_CENTERLINE" || legacyOperationalBaseline), "ScopeVersion geometry authority must be MeasuredCenterline.");
+  requireValue((geometryAuthorityDiagnostics.geometryAuthority === "PASS" && geometryAuthorityDiagnostics.status === "PASS") || legacyOperationalBaseline, "Geometry Authority must be PASS before ScopeVersion authority.");
+  requireValue(truth.measuredCenterlineId || scopeVersion.measuredCenterlineId || legacyOperationalBaseline, "Measured Centerline reference is required before ScopeVersion authority.");
+  requireValue(truth.projectedObjectManifestId || scopeVersion.projectedObjectManifestId || legacyOperationalBaseline, "Projected Object Manifest reference is required before ScopeVersion authority.");
+  requireValue(truth.stationGraphId || scopeVersion.stationGraphId || legacyOperationalBaseline, "Station Graph reference is required before ScopeVersion authority.");
+  requireValue(asArray(truth.stationAuthorityIds ?? scopeVersion.stationAuthorityIds).length > 0 || legacyOperationalBaseline, "Station Authority references are required before ScopeVersion authority.");
+  requireValue(truth.closureLedgerId || scopeVersion.closureLedgerId || legacyOperationalBaseline, "Closure Ledger reference is required before ScopeVersion authority.");
+  requireValue(truth.iofPackageTwinId || scopeVersion.iofPackageTwinId || legacyOperationalBaseline, "IOF Package Twin reference is required before ScopeVersion authority.");
+  requireValue(truth.executionGraphId || scopeVersion.executionGraphId || legacyOperationalBaseline, "Execution Graph reference is required before ScopeVersion authority.");
+  requireValue(truth.lifecycleGraphId || scopeVersion.lifecycleGraphId || legacyOperationalBaseline, "Lifecycle Graph reference is required before ScopeVersion authority.");
+  requireValue((truth.commercialAuditStatus === "PASS" || scopeVersion.commercialAuditStatus === "PASS" || legacyOperationalBaseline), "Commercial Audit must be PASS before ScopeVersion authority.");
+  requireValue((truth.constitutionalStateValidationStatus === "PASS" || scopeVersion.constitutionalStateValidationStatus === "PASS" || legacyOperationalBaseline), "Constitutional State Authority validation must be PASS before ScopeVersion authority.");
   requireValue(coordinatesFrom(truth.routeGeometry ?? truth.geometry ?? scopeVersion.geometry).length > 1, "Certified geometry is required.");
   requireValue(asRecord(truth.spine ?? truth.certifiedSpine).spineId, "Certified spine is required.");
   requireValue(asArray(truth.stations ?? truth.certifiedStations).length > 0, "Certified stations are required.");

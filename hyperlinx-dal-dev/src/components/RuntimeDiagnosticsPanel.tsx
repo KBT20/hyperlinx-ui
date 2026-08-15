@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getRuntimeDiagnosticsSnapshot, type RuntimeDiagnosticsSnapshot } from "../runtime/RuntimeDiagnostics";
+import KernelReasoningStatusPanel from "./KernelReasoningStatusPanel";
 
 function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
@@ -51,6 +52,7 @@ export default function RuntimeDiagnosticsPanel() {
           ))}
         </div>
       ) : null}
+      <KernelReasoningStatusPanel />
     </details>
   );
 }

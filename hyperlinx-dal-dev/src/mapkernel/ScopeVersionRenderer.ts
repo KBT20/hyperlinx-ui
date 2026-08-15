@@ -356,11 +356,18 @@ export function renderScopeVersion(scopeVersion: ScopeVersion): MapKernelRenderS
     });
   });
 
+  // Existing certified records can contain repeated references to the same
+  // governed object after materialization/closure merging. They are aliases,
+  // not additional render authorities. Preserve the first canonical record,
+  // matching the renderer's prior deterministic first-wins behavior.
+  const renderedObjectAuthority = new Set<string>();
   asArray(truth.objects).forEach((objectValue, index) => {
     const object = asRecord(objectValue);
     const coordinate = firstCoordinate(object, object.coordinate, object.geometry);
     if (!coordinate) return;
     const objectId = String(object.objectId ?? object.id ?? `${scopeVersionId}:object:${index}`);
+    if (renderedObjectAuthority.has(objectId)) return;
+    renderedObjectAuthority.add(objectId);
     primitives.push({
       id: objectId,
       layerId: "object",

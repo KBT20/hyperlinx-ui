@@ -195,6 +195,7 @@ export default function StationAwareObjectReviewPanel({
             stationDensityFeet={mapMode === "ROUTE_VIEW" ? 5280 : 1000}
             showStationLabels={mapMode !== "FIELD_PREVIEW_VIEW"}
             initialMode="geographic"
+            presentationContext={mapMode === "FIELD_PREVIEW_VIEW" ? "FIELD" : "ENGINEERING_REVIEW"}
             onSelectionChange={(selection) => {
               const stationId = selection?.featureRef.stationId;
               if (selection?.kind === "Station" && stationId) setSelectedStationRef(stationId);

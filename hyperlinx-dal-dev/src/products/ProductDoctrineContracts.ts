@@ -1,9 +1,35 @@
 import type { DALCoordinate } from "../types/dal";
+import type { DuctDarkFiberProjectConfiguration } from "./DuctDarkFiberProjectConfiguration";
 
 export type ProductNetworkClass = "LONG_HAUL" | "METRO" | "CAMPUS" | "LATERAL";
 export type ProductTopology = "LINEAR" | "RING" | "MESH" | "HUB_AND_SPOKE";
 export type ProductLayer = 1 | 2 | 3;
 export type ProductValidationStatus = "PASS" | "WARNING" | "FAIL";
+export type ProductDoctrineAuthorityRole =
+  | "COMMERCIAL"
+  | "ENGINEERING"
+  | "SURVEY"
+  | "PERMITTING"
+  | "CONSTRUCTION"
+  | "INSPECTION"
+  | "FIELD"
+  | "CONTROL"
+  | "MARKETPLACE"
+  | "RUNTIME"
+  | "TWIN";
+export type ProductDoctrineAppliesTo = "SERVICE" | "ASSET" | "ENGINEERING_OBJECT";
+export type ProductDoctrineEngineeringObjectType =
+  | "SPINE"
+  | "ROUTE_SEGMENT"
+  | "STATION"
+  | "CONDUIT_SEGMENT"
+  | "FIBER_SEGMENT"
+  | "STRUCTURE"
+  | "CROSSING"
+  | "SPLICE_CASE"
+  | "ILA_REGENERATION_SITE"
+  | "TERMINATION_POINT"
+  | "EVIDENCE_OBJECT";
 
 export interface ProductDoctrineRules {
   networkClass: ProductNetworkClass;
@@ -16,6 +42,109 @@ export interface ProductDoctrineRules {
   engineeringCertificationRequired: boolean;
 }
 
+export interface ProductDoctrineRegistryEntry {
+  alias: string;
+  canonicalDoctrineId: string;
+  productId: string;
+  businessProductName: string;
+  technicalDoctrineName: string;
+  doctrineVersion: string;
+  active: true;
+}
+
+export interface ProductDoctrineLifecycleDefinition {
+  lifecycleStates: string[];
+  prerequisiteDependencies: string[];
+  releaseGates: string[];
+  blockedReasons: string[];
+  requiredEvidence: string[];
+  acceptanceCriteria: string[];
+  responsibleRole: ProductDoctrineAuthorityRole;
+  billableTrigger: string;
+  paymentTrigger: string;
+  capitalCashFlowTrigger?: string;
+  twinStateTransition: string;
+}
+
+export interface ProductDoctrineRequiredService extends ProductDoctrineLifecycleDefinition {
+  serviceId: string;
+  serviceName: string;
+  serviceType: string;
+  serviceVsAssetRule: "SERVICE_NOT_ASSET";
+  consumes: Array<"LABOR" | "EQUIPMENT" | "SUBCONTRACTOR" | "PROFESSIONAL_EFFORT">;
+  stationLevelProjection: true;
+}
+
+export interface ProductDoctrineRequiredAsset extends ProductDoctrineLifecycleDefinition {
+  assetId: string;
+  assetName: string;
+  assetType: string;
+  tangibleInfrastructure: true;
+  representedInTwin: true;
+  requiredWhen?: string;
+}
+
+export interface ProductDoctrineEngineeringObjectDefinition extends ProductDoctrineLifecycleDefinition {
+  engineeringObjectType: ProductDoctrineEngineeringObjectType;
+  label: string;
+  stationLevelProjection: boolean;
+  requiredServiceIds: string[];
+  requiredAssetIds: string[];
+}
+
+export interface ProductDoctrineExecutionSequence extends ProductDoctrineLifecycleDefinition {
+  sequenceId: string;
+  appliesTo: ProductDoctrineAppliesTo;
+  appliesToId: string;
+}
+
+export interface ProductDoctrineCloseSequence extends ProductDoctrineLifecycleDefinition {
+  closeSequenceId: string;
+  appliesTo: ProductDoctrineAppliesTo;
+  appliesToId: string;
+  closeStates: string[];
+  closeEligibility: string[];
+  paymentEligibility: string[];
+}
+
+export interface ProductDoctrineEvidenceRequirement {
+  evidenceRequirementId: string;
+  evidenceType: string;
+  label: string;
+  requiredFor: string[];
+  requiredAtState: string;
+  acceptanceCriteria: string[];
+  responsibleRole: ProductDoctrineAuthorityRole;
+  blocksRelease: boolean;
+  blocksClose: boolean;
+}
+
+export interface ProductDoctrineCertificationRules {
+  certificationAuthority: "ENGINEERING";
+  engineeringCertifies: string[];
+  engineeringDoesNotCertify: string[];
+  mustContain: string[];
+  failureConditions: string[];
+  noScopeVersionCreationBeforeSignedServiceOrder: true;
+}
+
+export interface ProductDoctrineStationLifecycleProjection {
+  projectionId: string;
+  derivesFor: string[];
+  projectedFields: string[];
+  releaseBlockedWhen: string[];
+  closeBlockedWhen: string[];
+  paymentEligibleWhen: string[];
+  twinStateTransitions: string[];
+}
+
+export interface ProductDoctrineScopeVersionReadinessRequirement {
+  requirementId: string;
+  label: string;
+  sourceArtifact: string;
+  required: true;
+}
+
 export interface ProductDoctrine {
   doctrineId: string;
   productId: string;
@@ -26,6 +155,24 @@ export interface ProductDoctrine {
   requiredInputs: string[];
   assembledArtifacts: string[];
   readinessChecks: string[];
+  registry: ProductDoctrineRegistryEntry;
+  requiredServices: ProductDoctrineRequiredService[];
+  requiredAssets: ProductDoctrineRequiredAsset[];
+  engineeringObjects: ProductDoctrineEngineeringObjectDefinition[];
+  executionSequences: ProductDoctrineExecutionSequence[];
+  closeSequences: ProductDoctrineCloseSequence[];
+  evidenceRequirements: ProductDoctrineEvidenceRequirement[];
+  certificationRules: ProductDoctrineCertificationRules;
+  stationLevelLifecycleProjection: ProductDoctrineStationLifecycleProjection;
+  scopeVersionReadinessRequirements: ProductDoctrineScopeVersionReadinessRequirement[];
+  requirementPolicies?: Array<{
+    requirementId: string;
+    requirement: "REQUIRED" | "CONDITIONAL";
+    quantityAuthority: "PROJECT_CONFIGURATION" | "SOURCE_EVIDENCE" | "ENGINEERING_DESIGN" | "OPTICAL_ENGINEERING_DEFINED" | "UNKNOWN";
+    resolutionRequired: boolean;
+  }>;
+  previousDoctrineVersion?: string;
+  changeReason?: string;
 }
 
 export interface ProductDoctrineSite {
@@ -38,12 +185,19 @@ export interface ProductDoctrineSite {
 
 export interface ProductDoctrineOsrmRoute {
   routeId: string;
-  source: "OSRM";
+  source: "OSRM" | "CUSTOMER_KMZ" | "CUSTOMER_KML" | "GIS" | "ENGINEERED_GEOMETRY" | "COMMERCIAL_DRAWN_ROUTE" | "APPROVED_ROUTE_REVISION" | "OSRM_ASSISTED_ROUTE" | "COMMERCIAL_ROUTE_REPOSITORY" | "OTHER_GOVERNED_SOURCE";
   routeMiles: number;
   routeFeet: number;
   distanceMeters: number;
   geometry: DALCoordinate[];
+  routeAuthority?: string;
+  routeRevision?: string;
+  routeHash?: string;
+  measurementAuthority?: string;
 }
+
+/** Canonical route contract. The OSRM-named type remains as a compatibility alias for persisted callers. */
+export type ProductDoctrineAuthoritativeRoute = ProductDoctrineOsrmRoute;
 
 export interface ProductDoctrineSpine {
   spineId: string;
@@ -54,6 +208,12 @@ export interface ProductDoctrineSpine {
   centerlineId: string;
   routeMiles: number;
   routeFeet: number;
+  stationAuthorityMode?: "CONTINUOUS";
+  routeSource?: string;
+  routeAuthority?: string;
+  routeRevision?: string;
+  routeHash?: string;
+  measurementAuthority?: string;
   noScopeVersionCreation: true;
 }
 
@@ -64,6 +224,8 @@ export interface ProductDoctrineStation {
   stationFeet: number;
   milepost: number;
   coordinate: DALCoordinate;
+  stationRole?: "DISPLAY_INDEX";
+  constitutionalResolution?: false;
 }
 
 export interface ProductDoctrineRouteSegment {
@@ -79,7 +241,7 @@ export interface ProductDoctrineRouteSegment {
 
 export interface ProductDoctrineObject {
   objectId: string;
-  objectType: "SPINE" | "ROUTE_SEGMENT" | "CONDUIT" | "FIBER" | "STRUCTURE" | "CROSSING";
+  objectType: "SPINE" | "ROUTE_SEGMENT" | "CONDUIT" | "FIBER" | "STRUCTURE" | "CROSSING" | ProductDoctrineEngineeringObjectType;
   label: string;
   parentId?: string;
   quantity?: number;
@@ -136,6 +298,8 @@ export interface ProductDoctrinePricingSummary {
   grossMarginDollars: number;
   grossMarginPercent: number;
   pricingInputs: Record<string, unknown>;
+  priceStatus?: "AUTHORIZED" | "UNRESOLVED" | "COMMERCIAL_PLANNING_ASSUMPTION";
+  authorityLayer?: "COMMERCIAL_POLICY" | "ESTIMATING_DOCTRINE" | "UNKNOWN";
 }
 
 export interface ProductDoctrineValidationCheck {
@@ -158,6 +322,11 @@ export interface ProductDoctrineEngineeringManifest {
   objectIds: string[];
   stationIds: string[];
   quantityKeys: string[];
+  serviceIds: string[];
+  assetIds: string[];
+  evidenceRequirementIds: string[];
+  closeSequenceIds: string[];
+  scopeVersionReadinessRequirementIds: string[];
 }
 
 export interface ProductDoctrineAssembly {
@@ -165,8 +334,11 @@ export interface ProductDoctrineAssembly {
   doctrineId: string;
   productId: string;
   productDoctrineVersion: string;
+  projectConfiguration?: Partial<DuctDarkFiberProjectConfiguration>;
   aSite: ProductDoctrineSite | null;
   zSite: ProductDoctrineSite | null;
+  authoritativeRoute: ProductDoctrineAuthoritativeRoute | null;
+  /** @deprecated Compatibility projection; Product Doctrine does not require OSRM. */
   osrmRoute: ProductDoctrineOsrmRoute | null;
   centerline: DALCoordinate[];
   centerlineId: string;
@@ -183,5 +355,17 @@ export interface ProductDoctrineAssembly {
   validationSummary: ProductDoctrineValidationSummary;
   engineeringManifest: ProductDoctrineEngineeringManifest;
   rules: ProductDoctrineRules;
+  registry: ProductDoctrineRegistryEntry;
+  requiredServices: ProductDoctrineRequiredService[];
+  requiredAssets: ProductDoctrineRequiredAsset[];
+  engineeringObjects: ProductDoctrineEngineeringObjectDefinition[];
+  executionSequences: ProductDoctrineExecutionSequence[];
+  closeSequences: ProductDoctrineCloseSequence[];
+  evidenceRequirements: ProductDoctrineEvidenceRequirement[];
+  certificationRules: ProductDoctrineCertificationRules;
+  stationLevelLifecycleProjection: ProductDoctrineStationLifecycleProjection;
+  scopeVersionReadinessRequirements: ProductDoctrineScopeVersionReadinessRequirement[];
+  requirementGaps?: Array<{ requirementId: string; objectClass: string; status: "ENGINEERING_REVIEW_REQUIRED" | "UNKNOWN"; authority: string; reason: string }>;
+  doctrineMigration?: { previousDoctrineVersion: string; newDoctrineVersion: string; changeReason: string };
   noScopeVersionCreation: true;
 }

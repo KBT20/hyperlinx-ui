@@ -4,6 +4,7 @@ import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibb
 import { useDALState } from "../dal/DALState";
 import { buildFieldExecutionViewModel } from "../field/FieldExecutionViewModel";
 import { LeafletMap, type GISBuildPath, type GISPoint, type GISRoute } from "../gis";
+import { MapKernel, renderScopeVersion } from "../mapkernel";
 import { calculateScopeVersionProgress } from "../scopeversion/ClosureAuthorityEngine";
 import { canControlActivateWork, canControlCreateWork, isScopeVersionApprovedForControl, withScopeVersionExecutionState } from "../scopeversion/LifecycleAuthorityEngine";
 import { getAuthoritativeLifecycleState, transitionScopeVersionLifecycle } from "../scopeversion/ScopeVersionLifecycleGuard";
@@ -148,6 +149,7 @@ export default function ControlWorkspace() {
 
   const defaultScope = useMemo(() => defaultControlScope(scopeVersions, selectedScopeVersion), [scopeVersions, selectedScopeVersion]);
   const activeScope = scopeVersions.find((scope) => scope.scopeVersionId === selectedScopeId) ?? defaultScope;
+  const controlMapSpec = useMemo(() => activeScope ? renderScopeVersion(activeScope) : null, [activeScope]);
   const selectedScopeWorkItems = useMemo(() => workItems.filter((item) => item.scopeVersionId === activeScope?.scopeVersionId), [activeScope?.scopeVersionId, workItems]);
   const filteredWorkItems = scopeOnly ? selectedScopeWorkItems : workItems;
   const selectedWorkItem = selectedScopeWorkItems.find((item) => item.workItemId === selectedWorkId) ?? selectedScopeWorkItems[0] ?? null;
@@ -367,17 +369,7 @@ export default function ControlWorkspace() {
           <h3>Control Release Map - planned work authority</h3>
           <span className="dal-status">Read-only map context for the selected ScopeVersion.</span>
         </div>
-        <LeafletMap
-          autoFocusKey={`${activeScope?.scopeVersionId ?? "none"}:control`}
-          candidates={fieldMapCandidates}
-          attachments={fieldMapAttachments}
-          routes={fieldMapRoutes}
-          buildPaths={fieldMapBuildPaths}
-          stations={fieldMapStations}
-          focusCoordinates={focusCoordinates}
-          height={560}
-          enableLevelOfDetail
-        />
+        {controlMapSpec ? <MapKernel specs={[controlMapSpec]} initialMode="geographic" initialBaseLayer="hybrid" height={560} presentationContext="CONTROL" focusFeatureId={selectedWorkItem?.stationId ?? ""} /> : <div className="dal-status">Select an authorized ScopeVersion to open the governed spine.</div>}
       </div>
 
       <div className="dal-panel">

@@ -6,21 +6,29 @@ import { handleAccounts } from "./routes/accounts.js";
 import { handleActivity } from "./routes/activity.js";
 import { handleAuth } from "./routes/auth.js";
 import { handleCandidateSites } from "./routes/candidate-sites.js";
+import { handleCertificationLedger } from "./routes/certification-ledger.js";
 import { handleCertifiedRoutes } from "./routes/certified-routes.js";
 import { handleCloseEvents } from "./routes/close-events.js";
 import { handleCommercialIofPackages } from "./routes/commercial-iof-packages.js";
 import { handleCommercialOpportunities } from "./routes/commercial-opportunities.js";
+import { handleCommercialChangeSets } from "./routes/commercial-change-sets.js";
+import { handleCommercialRevisionAuthority } from "./routes/commercial-revisions.js";
 import { COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY, handleCommercialRoutes } from "./routes/commercial-routes.js";
 import { handleControlWorkItems } from "./routes/control-work-items.js";
 import { handleCustomerDesignImports } from "./routes/customer-design-imports.js";
+import { handleCustomerExports } from "./routes/customer-exports.js";
+import { handleEngineeringBaselines } from "./routes/engineering-baselines.js";
+import { handleEngineeringChangeSets } from "./routes/engineering-change-sets.js";
 import { handleEngineeringDrafts } from "./routes/engineering-drafts.js";
 import { handleEngineeringPackages } from "./routes/engineering-packages.js";
+import { handleEngineeringApprovals } from "./routes/engineering-approvals.js";
 import { handleEngineeringCertification } from "./routes/engineering-certification.js";
 import { handleFieldClosures } from "./routes/field-closures.js";
 import { handleGeocode } from "./routes/geocode.js";
 import { handleInventoryGraphs } from "./routes/inventory-graphs.js";
 import { handleIofPackages } from "./routes/iof-packages.js";
 import { handleMarketplaceQuotes } from "./routes/marketplace-quotes.js";
+import { handleMarketplaceFulfillment } from "./routes/marketplace-fulfillment.js";
 import { handleOpportunitySeeds } from "./routes/opportunity-seeds.js";
 import { handleProposalDrafts } from "./routes/proposal-drafts.js";
 import { handleProductFulfillment } from "./routes/product-fulfillment.js";
@@ -42,6 +50,7 @@ export const REGISTERED_API_ROUTES = [
   { basePath: "/api/certified-routes", handler: "handleCertifiedRoutes" },
   { basePath: "/api/scopeversions", handler: "handleScopeVersions" },
   { basePath: "/api/customer-design-imports", handler: "handleCustomerDesignImports" },
+  { basePath: "/api/exports", handler: "handleCustomerExports" },
   { basePath: "/api/commercial/opportunities", handler: "handleCommercialOpportunities" },
   {
     basePath: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY.endpoint,
@@ -49,9 +58,16 @@ export const REGISTERED_API_ROUTES = [
     canonical: true,
     authority: COMMERCIAL_ROUTE_REPOSITORY_AUTHORITY,
   },
+  { basePath: "/api/commercial/revisions", handler: "handleCommercialRevisionAuthority" },
+  { basePath: "/api/commercial/change-sets", handler: "handleCommercialChangeSets" },
+  { basePath: "/api/commercial/release-packages", handler: "handleCommercialRevisionAuthority" },
   { basePath: "/api/commercial/iof-packages", handler: "handleCommercialIofPackages" },
   { basePath: "/api/engineering/drafts", handler: "handleEngineeringDrafts" },
+  { basePath: "/api/engineering/baselines", handler: "handleEngineeringBaselines" },
+  { basePath: "/api/engineering/change-sets", handler: "handleEngineeringChangeSets" },
   { basePath: "/api/engineering/packages", handler: "handleEngineeringPackages" },
+  { basePath: "/api/engineering/approvals", handler: "handleEngineeringApprovals" },
+  { basePath: "/api/engineering/certification-ledger", handler: "handleCertificationLedger" },
   { basePath: "/api/engineering/certification", handler: "handleEngineeringCertification" },
   { basePath: "/api/proposals", handler: "handleProposalDrafts" },
   { basePath: "/api/service-orders", handler: "handleServiceOrders" },
@@ -79,6 +95,7 @@ export const REGISTERED_API_ROUTES = [
   { basePath: "/api/inventory-graphs", handler: "handleInventoryGraphs" },
   { basePath: "/api/baseline-graphs", handler: "handleInventoryGraphs" },
   { basePath: "/api/marketplace/quotes", handler: "handleMarketplaceQuotes" },
+  { basePath: "/api/marketplace/fulfillment", handler: "handleMarketplaceFulfillment" },
   { basePath: "/api/iof-packages", handler: "handleIofPackages" },
   { basePath: "/api/close-events", handler: "handleCloseEvents" },
   { basePath: "/api/control/work-items", handler: "handleControlWorkItems" },
@@ -99,11 +116,18 @@ const routes = [
   handleCertifiedRoutes,
   handleScopeVersions,
   handleCustomerDesignImports,
+  handleCustomerExports,
   handleCommercialOpportunities,
   handleCommercialRoutes,
+  handleCommercialRevisionAuthority,
+  handleCommercialChangeSets,
   handleCommercialIofPackages,
   handleEngineeringDrafts,
+  handleEngineeringBaselines,
+  handleEngineeringChangeSets,
   handleEngineeringPackages,
+  handleEngineeringApprovals,
+  handleCertificationLedger,
   handleEngineeringCertification,
   handleProposalDrafts,
   handleServiceOrders,
@@ -115,6 +139,7 @@ const routes = [
   handleOpportunitySeeds,
   handleInventoryGraphs,
   handleMarketplaceQuotes,
+  handleMarketplaceFulfillment,
   handleIofPackages,
   handleCloseEvents,
   handleControlWorkItems,
@@ -222,8 +247,14 @@ const server = http.createServer(async (req, res) => {
           customerDesignImports: true,
           commercialOpportunities: true,
           commercialRoutes: true,
+          commercialRevisions: true,
+          commercialChangeSets: true,
+          commercialReleasePackages: true,
           engineeringDrafts: true,
+          engineeringBaselines: true,
+          engineeringChangeSets: true,
           engineeringPackages: true,
+          certificationLedger: true,
           engineeringCertification: true,
           proposalDrafts: true,
           serviceOrders: true,

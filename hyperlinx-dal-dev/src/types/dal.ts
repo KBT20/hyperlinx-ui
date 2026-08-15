@@ -1039,6 +1039,11 @@ export type TwinGraphContext = {
 
 export type TwinState = {
   twinStateId: string;
+  projectionType?: "CERTIFIED_IOF_TWIN" | "SCOPEVERSION_TWIN";
+  certifiedTwin?: Record<string, unknown>;
+  certifiedIofPackage?: Record<string, unknown>;
+  sharedOpportunityMapProjection?: Record<string, unknown>;
+  sourceDraftPackageId?: string;
   projectionSource?: "SERVER" | "LOCAL_FALLBACK" | "DEVELOPMENT_FALLBACK";
   inventoryId?: string;
   scopeVersionId?: string;

@@ -1,7 +1,10 @@
 import type { DALCoordinate } from "../types/dal";
 import type { IlaRegenLineItem } from "./IlaRegenPricing";
 
-export type IlaPlacementMethod = "MAX_SPAN" | "MAX_OPTICAL_LOSS" | "MAX_ATTENUATION" | "INTERMEDIATE_COUNT";
+export type IlaMode = "OFF" | "INTERMEDIATE_ONLY" | "BOOKENDED";
+export type IlaPlanningAuthority = "ENGINEERING_DEFINED" | "LOSS_BUDGET" | "MAX_SPAN_DISTANCE" | "SOURCE_DEFINED";
+export type IlaPlanningState = "NOT_SELECTED" | "COMMERCIAL_SCENARIO" | "SOURCE_PROVIDED" | "ENGINEERING_REQUIRED" | "ENGINEERING_VALIDATED" | "ENGINEERING_CERTIFIED";
+export type IlaPlacementMethod = "MAX_SPAN" | "MAX_SPAN_DISTANCE" | "MAX_OPTICAL_LOSS" | "MAX_ATTENUATION" | "INTERMEDIATE_COUNT";
 export type IlaFacilityProfileId =
   | "ILA_18_RACK"
   | "ILA_27_RACK"
@@ -15,6 +18,11 @@ export interface IlaStationOverride {
 }
 
 export interface IlaPlanningControls {
+  ilaMode: IlaMode;
+  intermediateIlaEnabled: boolean;
+  bookendIlaEnabled: boolean;
+  planningAuthority: IlaPlanningAuthority;
+  configurationRevision: number;
   useBookendIlas: boolean;
   placementMethod: IlaPlacementMethod;
   maxSpanMiles: number;
@@ -73,6 +81,13 @@ export interface IlaStationObject {
   stationId: string;
   graphNodeId: string;
   stationType: "START_BOOKEND" | "INTERMEDIATE" | "END_BOOKEND";
+  role: "A_BOOKEND" | "INTERMEDIATE" | "Z_BOOKEND";
+  planningAuthority: IlaPlanningAuthority;
+  planningState: IlaPlanningState;
+  engineeringState: "ENGINEERING_REQUIRED" | "ENGINEERING_VALIDATED" | "ENGINEERING_CERTIFIED";
+  powerState: "NOT_REQUIRED" | "EVIDENCE_REQUIRED" | "SOURCE_PROVIDED" | "ENGINEERING_VALIDATED";
+  evidenceState: "REQUIRED" | "SOURCE_PROVIDED" | "ENGINEERING_VALIDATED";
+  scheduleImpactDays: number;
   label: string;
   station: string;
   ordinal: number;
@@ -136,6 +151,8 @@ export interface IlaPlanningResult {
   routeFeet: number;
   method: IlaPlacementMethod;
   controls: IlaPlanningControls;
+  ilaMode: IlaMode;
+  planningState: IlaPlanningState;
   stationObjects: IlaStationObject[];
   spans: IlaOpticalSpan[];
   availableProfiles: IlaFacilityCostProfile[];
@@ -147,6 +164,13 @@ export interface IlaPlanningResult {
   maxSpanLossDb: number;
   remainingBudgetDb: number;
   graphObjectCount: number;
+  equipmentCost: number;
+  laborCost: number;
+  lifecycleCost: number;
+  scheduleImpactDays: number;
+  dependencies: string[];
+  cacheRevision: number;
+  artifactScope: { organizationId: string; tenantId: string; customerId: string; opportunityId: string };
 }
 
 const EARTH_RADIUS_MILES = 3958.7613;
@@ -202,8 +226,13 @@ export const ILA_FACILITY_PROFILE_CATALOG: IlaFacilityProfileCatalogEntry[] = [
 ];
 
 export const DEFAULT_ILA_PLANNING_CONTROLS: IlaPlanningControls = {
-  useBookendIlas: true,
-  placementMethod: "MAX_SPAN",
+  ilaMode: "OFF",
+  intermediateIlaEnabled: false,
+  bookendIlaEnabled: false,
+  planningAuthority: "MAX_SPAN_DISTANCE",
+  configurationRevision: 1,
+  useBookendIlas: false,
+  placementMethod: "MAX_SPAN_DISTANCE",
   maxSpanMiles: 45,
   maxOpticalLossDb: 13.5,
   maxAttenuationDb: 11.25,
@@ -242,9 +271,23 @@ export function normalizeIlaPlanningControls(controls?: Partial<IlaPlanningContr
       },
     ]),
   );
+  const legacyMode = controls?.ilaMode;
+  const intermediateIlaEnabled = controls?.intermediateIlaEnabled
+    ?? (legacyMode ? legacyMode !== "OFF" : false);
+  const bookendIlaEnabled = controls?.bookendIlaEnabled
+    ?? (legacyMode ? legacyMode === "BOOKENDED" : controls?.useBookendIlas === true);
+  const ilaMode: IlaMode = !intermediateIlaEnabled && !bookendIlaEnabled
+    ? "OFF"
+    : bookendIlaEnabled ? "BOOKENDED" : "INTERMEDIATE_ONLY";
   return {
     ...DEFAULT_ILA_PLANNING_CONTROLS,
     ...(controls ?? {}),
+    ilaMode,
+    intermediateIlaEnabled,
+    bookendIlaEnabled,
+    planningAuthority: controls?.planningAuthority ?? DEFAULT_ILA_PLANNING_CONTROLS.planningAuthority,
+    configurationRevision: Math.max(1, Math.round(controls?.configurationRevision ?? DEFAULT_ILA_PLANNING_CONTROLS.configurationRevision)),
+    useBookendIlas: bookendIlaEnabled,
     defaultFacilityProfileId: normalizeIlaFacilityProfileId(controls?.defaultFacilityProfileId),
     desiredIntermediateIlas: Math.max(0, Math.round(controls?.desiredIntermediateIlas ?? DEFAULT_ILA_PLANNING_CONTROLS.desiredIntermediateIlas)),
     maxSpanMiles: Math.max(1, controls?.maxSpanMiles ?? DEFAULT_ILA_PLANNING_CONTROLS.maxSpanMiles),
@@ -454,6 +497,10 @@ export function buildIlaPlanningResult(args: {
   geometry: DALCoordinate[];
   routeMiles: number;
   controls?: Partial<IlaPlanningControls>;
+  organizationId?: string;
+  tenantId?: string;
+  customerId?: string;
+  opportunityId?: string;
 }): IlaPlanningResult {
   const controls = normalizeIlaPlanningControls(args.controls);
   const routeId = args.routeId ?? `${args.estimateId}:COMMERCIAL-CORRIDOR`;
@@ -466,17 +513,20 @@ export function buildIlaPlanningResult(args: {
   const stationRouteMiles = measuredRouteMiles > 0 ? measuredRouteMiles : routeMiles;
   const availableProfiles = buildIlaFacilityProfiles(controls);
   const profileById = new Map(availableProfiles.map((profile) => [profile.profileId, profile]));
-  const recommendedIntermediateIlas = recommendedIntermediateCount(routeMiles, controls);
-  const intermediateCount = controls.placementMethod === "INTERMEDIATE_COUNT"
-    ? controls.desiredIntermediateIlas
-    : recommendedIntermediateIlas;
+  const planningEnabled = controls.intermediateIlaEnabled || controls.bookendIlaEnabled;
+  const recommendedIntermediateIlas = controls.intermediateIlaEnabled ? recommendedIntermediateCount(routeMiles, controls) : 0;
+  const intermediateCount = !controls.intermediateIlaEnabled
+    ? 0
+    : controls.placementMethod === "INTERMEDIATE_COUNT"
+      ? controls.desiredIntermediateIlas
+      : recommendedIntermediateIlas;
   const seeds = [
-    ...(controls.useBookendIlas ? [stationSeed("ILA-BOOKEND-START", "START_BOOKEND" as const, 0)] : []),
+    ...(controls.bookendIlaEnabled ? [stationSeed("ILA-BOOKEND-START", "START_BOOKEND" as const, 0)] : []),
     ...Array.from({ length: intermediateCount }, (_, index) => {
       const ratio = (index + 1) / (intermediateCount + 1);
       return stationSeed(`ILA-INT-${String(index + 1).padStart(3, "0")}`, "INTERMEDIATE" as const, round(routeMiles * ratio, 2));
     }),
-    ...(controls.useBookendIlas ? [stationSeed("ILA-BOOKEND-END", "END_BOOKEND" as const, routeMiles)] : []),
+    ...(controls.bookendIlaEnabled ? [stationSeed("ILA-BOOKEND-END", "END_BOOKEND" as const, routeMiles)] : []),
   ];
   const sortedSeeds = seeds
     .map((seed) => {
@@ -509,6 +559,13 @@ export function buildIlaPlanningResult(args: {
       stationId: seed.id,
       graphNodeId: `${routeId}:${seed.id}`,
       stationType: seed.stationType,
+      role: seed.stationType === "START_BOOKEND" ? "A_BOOKEND" as const : seed.stationType === "END_BOOKEND" ? "Z_BOOKEND" as const : "INTERMEDIATE" as const,
+      planningAuthority: controls.planningAuthority,
+      planningState: controls.planningAuthority === "SOURCE_DEFINED" ? "SOURCE_PROVIDED" as const : "COMMERCIAL_SCENARIO" as const,
+      engineeringState: "ENGINEERING_REQUIRED" as const,
+      powerState: "EVIDENCE_REQUIRED" as const,
+      evidenceState: controls.planningAuthority === "SOURCE_DEFINED" ? "SOURCE_PROVIDED" as const : "REQUIRED" as const,
+      scheduleImpactDays: 0,
       label,
       station: stationNumber,
       ordinal: index + 1,
@@ -560,7 +617,7 @@ export function buildIlaPlanningResult(args: {
   ];
   const totalCost = stations.reduce((total, station) => total + station.totalCost, 0);
   const currentIntermediateCount = stations.filter((station) => station.stationType === "INTERMEDIATE").length;
-  const recommendedStationCount = recommendedIntermediateIlas + (controls.useBookendIlas ? 2 : 0);
+  const recommendedStationCount = recommendedIntermediateIlas + (controls.bookendIlaEnabled ? 2 : 0);
   const recommendedTotalCost = recommendedStationCount * (profileById.get(controls.defaultFacilityProfileId) ?? availableProfiles[0]).totalCost;
   const currentMaxSpanLoss = Math.max(0, ...spans.map((span) => span.spanLossDb));
   const recommendedSpanLoss = spanLoss(routeMiles / Math.max(1, recommendedIntermediateIlas + 1), controls).spanLossDb;
@@ -587,6 +644,8 @@ export function buildIlaPlanningResult(args: {
     routeFeet,
     method: controls.placementMethod,
     controls,
+    ilaMode: controls.ilaMode,
+    planningState: !planningEnabled ? "NOT_SELECTED" : controls.planningAuthority === "SOURCE_DEFINED" ? "SOURCE_PROVIDED" : "COMMERCIAL_SCENARIO",
     stationObjects: stations,
     spans,
     availableProfiles,
@@ -598,5 +657,120 @@ export function buildIlaPlanningResult(args: {
     maxSpanLossDb: currentMaxSpanLoss,
     remainingBudgetDb: Math.min(...spans.map((span) => span.remainingBudgetDb)),
     graphObjectCount: stations.length,
+    equipmentCost: !planningEnabled ? 0 : stations.reduce((total, station) => total + station.facilityProfile.equipmentCost, 0),
+    laborCost: !planningEnabled ? 0 : stations.reduce((total, station) => total + station.facilityProfile.laborCost, 0),
+    lifecycleCost: 0,
+    scheduleImpactDays: 0,
+    dependencies: !planningEnabled ? [] : ["ENGINEERING_OPTICAL_VALIDATION", "POWER_EVIDENCE", "FACILITY_EVIDENCE"],
+    cacheRevision: controls.configurationRevision,
+    artifactScope: {
+      organizationId: args.organizationId ?? "UNSCOPED_ORGANIZATION",
+      tenantId: args.tenantId ?? args.organizationId ?? "UNSCOPED_TENANT",
+      customerId: args.customerId ?? "UNSCOPED_CUSTOMER",
+      opportunityId: args.opportunityId ?? "UNSCOPED_OPPORTUNITY",
+    },
   };
+}
+
+const ilaPlanningMemo = new Map<string, IlaPlanningResult>();
+
+function geometryMemoKey(geometry: DALCoordinate[]) {
+  if (!geometry.length) return "NO_GEOMETRY";
+  const first = geometry[0];
+  const last = geometry.at(-1);
+  return `${geometry.length}:${first?.[0]?.toFixed(5)},${first?.[1]?.toFixed(5)}:${last?.[0]?.toFixed(5)},${last?.[1]?.toFixed(5)}`;
+}
+
+function ilaControlsMemoKey(controls?: Partial<IlaPlanningControls>) {
+  const normalized = normalizeIlaPlanningControls(controls);
+  return JSON.stringify({
+    useBookendIlas: normalized.useBookendIlas,
+    intermediateIlaEnabled: normalized.intermediateIlaEnabled,
+    bookendIlaEnabled: normalized.bookendIlaEnabled,
+    ilaMode: normalized.ilaMode,
+    planningAuthority: normalized.planningAuthority,
+    configurationRevision: normalized.configurationRevision,
+    placementMethod: normalized.placementMethod,
+    maxSpanMiles: normalized.maxSpanMiles,
+    maxOpticalLossDb: normalized.maxOpticalLossDb,
+    maxAttenuationDb: normalized.maxAttenuationDb,
+    desiredIntermediateIlas: normalized.desiredIntermediateIlas,
+    defaultFacilityProfileId: normalized.defaultFacilityProfileId,
+    attenuationDbPerKm: normalized.attenuationDbPerKm,
+    connectorLossDb: normalized.connectorLossDb,
+    spliceLossDb: normalized.spliceLossDb,
+    opticalBudgetDb: normalized.opticalBudgetDb,
+    customFacilityCost: normalized.customFacilityCost,
+    stationOverrides: normalized.stationOverrides ?? {},
+  });
+}
+
+export type IlaPlanningPresentationStation = Omit<IlaStationObject, "role" | "planningAuthority" | "engineeringState" | "powerState"> & {
+  role: string;
+  planningAuthority: string;
+  engineeringState: string;
+  powerState: string;
+};
+
+export function normalizeIlaPlanningResultForPresentation(plan: IlaPlanningResult) {
+  const controls = normalizeIlaPlanningControls(plan.controls);
+  return {
+    ...plan,
+    controls,
+    ilaMode: controls.ilaMode,
+    stationObjects: plan.stationObjects.map((station) => ({
+      ...station,
+      role: typeof station.role === "string" && station.role ? station.role : station.stationType === "START_BOOKEND" ? "A_BOOKEND" : station.stationType === "END_BOOKEND" ? "Z_BOOKEND" : station.stationType === "INTERMEDIATE" ? "INTERMEDIATE" : "UNRESOLVED",
+      planningAuthority: typeof station.planningAuthority === "string" && station.planningAuthority ? station.planningAuthority : "UNRESOLVED",
+      engineeringState: typeof station.engineeringState === "string" && station.engineeringState ? station.engineeringState : "UNRESOLVED",
+      powerState: typeof station.powerState === "string" && station.powerState ? station.powerState : "MISSING_EVIDENCE",
+    })) as IlaPlanningPresentationStation[],
+  };
+}
+
+export function memoizedIlaPlanningKey(args: {
+  estimateId: string;
+  routeId?: string;
+  geometry: DALCoordinate[];
+  routeMiles: number;
+  controls?: Partial<IlaPlanningControls>;
+  organizationId?: string;
+  tenantId?: string;
+  customerId?: string;
+  opportunityId?: string;
+}) {
+  return [
+    args.organizationId ?? "UNSCOPED_ORGANIZATION",
+    args.tenantId ?? args.organizationId ?? "UNSCOPED_TENANT",
+    args.customerId ?? "UNSCOPED_CUSTOMER",
+    args.opportunityId ?? "UNSCOPED_OPPORTUNITY",
+    args.estimateId,
+    args.routeId ?? "NO_ROUTE",
+    Number(args.routeMiles).toFixed(4),
+    geometryMemoKey(args.geometry),
+    ilaControlsMemoKey(args.controls),
+  ].join("::");
+}
+
+export function buildMemoizedIlaPlanningResult(args: Parameters<typeof buildIlaPlanningResult>[0]): IlaPlanningResult {
+  const key = memoizedIlaPlanningKey(args);
+  const cached = ilaPlanningMemo.get(key);
+  if (cached) return cached;
+  const result = buildIlaPlanningResult(args);
+  ilaPlanningMemo.set(key, result);
+  if (ilaPlanningMemo.size > 100) {
+    const firstKey = ilaPlanningMemo.keys().next().value;
+    if (firstKey) ilaPlanningMemo.delete(firstKey);
+  }
+  return result;
+}
+
+export function invalidateIlaPlanningCache(estimateId: string) {
+  let invalidated = 0;
+  for (const key of ilaPlanningMemo.keys()) {
+    if (!key.includes(`::${estimateId}::`)) continue;
+    ilaPlanningMemo.delete(key);
+    invalidated += 1;
+  }
+  return { estimateId, invalidated, cacheInvalidated: true as const };
 }

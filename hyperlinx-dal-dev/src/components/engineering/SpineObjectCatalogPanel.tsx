@@ -18,13 +18,27 @@ function list(value: unknown) {
 }
 
 export function SpineObjectCatalogPanel({ draftPackage }: SpineObjectCatalogPanelProps) {
+  const looseDraft = draftPackage as Record<string, unknown>;
+  const doctrineObjectManifest = record(looseDraft.doctrineObjectManifest ?? looseDraft.engineeringObjectManifest);
+  const doctrineObjectSources = [
+    ...list(looseDraft.doctrineInstantiatedObjects),
+    ...list(doctrineObjectManifest.instantiatedObjects),
+    ...list(record(looseDraft.engineeringObjectManifest).instantiatedObjects),
+  ];
+  const seenDoctrineObjectIds = new Set<string>();
+  const doctrineInstantiatedObjects = doctrineObjectSources.filter((object, index) => {
+    const objectId = text(object.objectId ?? object.spineObjectId, `DOCTRINE-OBJECT-${index}`);
+    if (seenDoctrineObjectIds.has(objectId)) return false;
+    seenDoctrineObjectIds.add(objectId);
+    return true;
+  });
   const catalogSummary = record(draftPackage.spineObjectCatalogSummary);
   const manifestSummary = record(draftPackage.auditObjectManifestSummary);
   const catalogEntries = list(draftPackage.spineObjectCatalogEntries).slice(0, 8);
-  const manifestEntries = list(draftPackage.auditObjectManifestEntries).slice(0, 8);
+  const manifestEntries = doctrineInstantiatedObjects.length ? [] : list(draftPackage.auditObjectManifestEntries).slice(0, 8);
   const reviewObjects = list(draftPackage.auditManifestReviewObjects);
   const objectProductionProfiles = list(draftPackage.objectProductionProfiles);
-  const instantiatedObjects = list(draftPackage.instantiatedSpineObjects);
+  const instantiatedObjects = doctrineInstantiatedObjects.length ? doctrineInstantiatedObjects : list(draftPackage.instantiatedSpineObjects);
   const instantiationSummary = record(draftPackage.instantiationSummary);
   const instantiationHealth = record(draftPackage.instantiationHealth);
   const hierarchySummary = record(draftPackage.hierarchySummary);
@@ -50,24 +64,45 @@ export function SpineObjectCatalogPanel({ draftPackage }: SpineObjectCatalogPane
 
       {instantiatedObjects.length ? (
         <details open>
-          <summary>Instantiated Spine Objects</summary>
+          <summary>Instantiated Doctrine Objects</summary>
           <div className="engineering-certification-list">
             {instantiatedObjects.slice(0, 12).map((object) => {
               const stationAddress = record(object.stationAddress);
+              const doctrineAddress = record(object.address);
               const fromAddress = record(object.fromStationAddress);
               const toAddress = record(object.toStationAddress);
+              const objectId = text(object.objectId ?? object.spineObjectId);
+              const objectType = text(object.doctrineObjectType ?? object.objectType, "Doctrine Object");
+              const evidence = list(object.evidenceRequirements).map((item) => {
+                const evidenceRecord = record(item);
+                return text(evidenceRecord.label ?? evidenceRecord.evidenceType ?? item);
+              });
+              const dependencies = list(object.dependencyList ?? object.dependencyIds).map((item) => text(item));
               return (
-                <div key={text(object.spineObjectId)}>
-                  <b>{text(object.objectType, "Spine Object")} / {text(object.spineObjectId)}</b>
-                  <span className={`dal-badge ${object.reviewStatus === "READY_FOR_ENGINEERING_REVIEW" ? "pass" : "warning"}`}>{text(object.reviewStatus, "Review Status").replaceAll("_", " ")}</span>
+                <div key={objectId}>
+                  <b>{objectType} / {objectId}</b>
+                  <span className={`dal-badge ${object.currentLifecycleState === "PLANNED" || object.reviewStatus === "READY_FOR_ENGINEERING_REVIEW" ? "pass" : "warning"}`}>{text(object.currentLifecycleState ?? object.currentState ?? object.reviewStatus, "Review Status").replaceAll("_", " ")}</span>
                   <small>Hierarchy: Parent {text(object.parentObjectId, "root")} / Children {list(object.childObjectIds).length.toLocaleString()} / Valid {text(hierarchySummary.hierarchyValid, "pending")}</small>
                   <small>Production Profile: {list(object.productionProfileIds).map((item) => text(item)).join(", ") || text(object.productionProfileId)}</small>
+                  <small>Quantity: {text(object.quantity)} {text(object.quantityUnit ?? object.unit, "")}</small>
                   <small>Construction Method: {text(object.constructionMethod)}</small>
-                  <small>Dependencies: {list(record(object.dependencyTemplate).templates).length.toLocaleString()} template(s)</small>
-                  <small>Execution Sequence: {list(record(object.executionSequenceTemplate).templates).map((item) => text(item.label)).join(" > ") || "n/a"}</small>
-                  <small>Evidence: {list(record(object.evidenceTemplate).requiredEvidence).map((item) => text(item)).join(", ") || "n/a"}</small>
-                  <small>Current State: {text(object.currentState, "PLANNED")}</small>
-                  <small>Address: {text(stationAddress.stationLabel ?? fromAddress.stationLabel, "pending")} {toAddress.stationLabel ? `to ${text(toAddress.stationLabel)}` : ""}</small>
+                  <small>Product Doctrine: {text(object.productDoctrine ?? object.doctrineId ?? object.productDoctrineId)}</small>
+                  <small>Object Doctrine: {text(object.objectDoctrine ?? object.objectDoctrineId ?? object.doctrineObjectType)}</small>
+                  <small>Dependencies: {dependencies.join(", ") || `${list(record(object.dependencyTemplate).templates).length.toLocaleString()} template(s)`}</small>
+                  <small>Execution Sequence: {text(object.executionSequenceId ?? record(object.executionSequence).sequenceId) || list(record(object.executionSequenceTemplate).templates).map((item) => text(item.label)).join(" > ") || "n/a"}</small>
+                  <small>Close Sequence: {list(object.closeSequence).map((item) => text(item)).join(" > ") || text(object.closeSequenceId ?? record(object.closeSequence).closeSequenceId)}</small>
+                  <small>Next Legal States: {list(object.nextLegalStates).map((item) => text(item)).join(", ") || text(record(object.nextExpectedClose).expectedClose)}</small>
+                  <small>Payment Eligibility: {text(object.paymentEligibility ?? object.paymentEligibilityRule ?? object.paymentSequenceId ?? record(object.paymentSequence).paymentSequenceId)}</small>
+                  <small>Evidence: {evidence.join(", ") || list(record(object.evidenceTemplate).requiredEvidence).map((item) => text(item)).join(", ") || "n/a"}</small>
+                  <small>Authority: {text(object.engineeringAuthority ?? object.authority, "DOCTRINE_OBJECT_INSTANTIATION_ENGINE")}</small>
+                  <small>Source Evidence: {list(object.sourceEvidence ?? object.sourceEvidenceReferences).map((item) => text(item)).join(", ") || "n/a"}</small>
+                  <small>Engineering Notes: {list(object.engineeringNotes).map((item) => text(item)).join(", ") || "None"}</small>
+                  <small>Constraint Links: {list(object.constraintLinks).map((item) => text(item)).join(", ") || "None"}</small>
+                  <small>Audit State: {text(object.auditState ?? object.reviewStatus ?? record(object.constitutionalStateAudit).status)}</small>
+                  <small>Parent Span: {text(object.parentSpanId ?? object.parentSegmentId)} / Parent Route: {text(object.parentRouteId)}</small>
+                  <small>Coordinate: {text((object.geographicCoordinate as unknown[] | undefined)?.join?.(", "))}</small>
+                  <small>Current State: {text(object.currentLifecycleState ?? object.currentState, "PLANNED")}</small>
+                  <small>Address: {text(object.stationAddress ?? doctrineAddress.addressLabel ?? doctrineAddress.stationRange ?? stationAddress.stationLabel ?? fromAddress.stationLabel, "pending")} {toAddress.stationLabel ? `to ${text(toAddress.stationLabel)}` : ""}</small>
                 </div>
               );
             })}

@@ -1,12 +1,15 @@
 import { useEffect, useState } from "react";
-import { listControlWorkItems, listFieldClosures, loadTwinState } from "../api/dalClient";
+import { listControlWorkItems, listFieldClosures, loadCertifiedIofTwinState, loadTwinState } from "../api/dalClient";
+import { countersignServiceOrder, downloadRuntimeArtifact, generateServiceOrder, issueServiceOrder, listServiceOrders, recordServiceOrderCustomerSignature, type ServiceOrderRuntime } from "../api/teralinxRuntime";
 import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
 import { useDALState } from "../dal/DALState";
+import { MapKernel, renderSharedOpportunityMapProjection, type SharedOpportunityMapProjection } from "../mapkernel";
 import { LeafletMap, type GISBuildPath, type GISPoint, type GISRoute } from "../gis";
 import { deriveLifecycleViolations } from "../scopeversion/LifecycleAuthorityEngine";
 import { getAuthoritativeLifecycleState } from "../scopeversion/ScopeVersionLifecycleGuard";
 import { buildScopeVersionTwinProjection } from "../scopeversion/ScopeVersionTwinProjection";
 import type { ClosureRecord, ControlWorkItem, DALCoordinate, FieldClosure, InventoryRoute, TwinState } from "../types/dal";
+import { useTeralinxAuth } from "../identity/TeralinxAuth";
 
 function fmt(n: number | undefined) {
   return Number(n || 0).toLocaleString();
@@ -38,6 +41,7 @@ function routeSegmentForAttachment(route: InventoryRoute | undefined, attachment
 }
 
 export default function TwinWorkspace() {
+  const { session } = useTeralinxAuth();
   const { selectedGraph, selectedScopeVersion } = useDALState();
   const selectedScopeVersionId = selectedScopeVersion?.scopeVersionId ?? "";
   const [twinState, setTwinState] = useState<TwinState | null>(null);
@@ -52,6 +56,10 @@ export default function TwinWorkspace() {
     Constructability: true,
   });
   const [status, setStatus] = useState("Twin ready.");
+  const [serviceOrder, setServiceOrder] = useState<ServiceOrderRuntime | null>(null);
+  const [authorizationPending, setAuthorizationPending] = useState(false);
+  const [customerAcknowledged, setCustomerAcknowledged] = useState(false);
+  const [teralinxAcknowledged, setTeralinxAcknowledged] = useState(false);
 
   useEffect(() => {
     void refresh();
@@ -59,6 +67,20 @@ export default function TwinWorkspace() {
 
   async function refresh() {
     try {
+      if (!selectedScopeVersionId) {
+        try {
+          const certifiedState = await loadCertifiedIofTwinState();
+          setTwinState(certifiedState);
+          const certified = certifiedState?.certifiedTwin as Record<string, unknown> | undefined;
+          const orders = await listServiceOrders(session);
+          setServiceOrder(orders.find((item) => item.certifiedPackageId === certified?.certifiedIofPackageId) ?? null);
+          setWorkItems([]);
+          setClosures([]);
+          setStatus("Certified IOF Twin loaded from governed repositories.");
+          return;
+        } catch {
+        }
+      }
       const [state, work, field] = await Promise.all([
         loadTwinState(selectedScopeVersionId),
         listControlWorkItems(),
@@ -71,6 +93,132 @@ export default function TwinWorkspace() {
     } catch (err: any) {
       setStatus(`Twin load failed: ${err?.message ?? String(err)}`);
     }
+  }
+
+  const certifiedTwin = twinState?.projectionType === "CERTIFIED_IOF_TWIN" ? twinState.certifiedTwin : null;
+  const certifiedMapProjection = twinState?.sharedOpportunityMapProjection as SharedOpportunityMapProjection | undefined;
+  if (certifiedTwin) {
+    const lensAuthority = certifiedTwin.lensAuthority as { reasoningAuthority?: string; lenses?: Array<Record<string, unknown>> } | undefined;
+    const constraintSummary = certifiedTwin.constraintSummary as Record<string, unknown> | undefined;
+    const certifiedMapSpecs = certifiedMapProjection ? [renderSharedOpportunityMapProjection(certifiedMapProjection)] : [];
+    const pricing = (serviceOrder?.pricingSummary ?? {}) as Record<string, unknown>;
+    const terms = (serviceOrder?.commercialTerms ?? {}) as Record<string, unknown>;
+    const customerSignerAuthorized = Array.isArray(serviceOrder?.authorizedCustomerSignerUserIds) && serviceOrder.authorizedCustomerSignerUserIds.includes(session?.user?.userId);
+    const authorizationAction = async (action: "create" | "issue" | "customer" | "countersign") => {
+      setAuthorizationPending(true);
+      try {
+        if (action === "create") {
+          const next = await generateServiceOrder({ proposalId: String(certifiedTwin.proposalId), certifiedPackageId: String(certifiedTwin.certifiedIofPackageId) }, session);
+          setServiceOrder(next); setStatus("Service Order draft created from the exact Certified IOF.");
+        } else if (action === "issue" && serviceOrder) {
+          setServiceOrder(await issueServiceOrder(serviceOrder.serviceOrderId, session)); setStatus("Service Order revision issued and locked for signature.");
+        } else if (action === "customer" && serviceOrder) {
+          const next = await recordServiceOrderCustomerSignature(serviceOrder.serviceOrderId, { documentHash: String(serviceOrder.documentHash), typedName: String(session?.user?.name ?? ""), authorityAcknowledged: customerAcknowledged }, session);
+          setServiceOrder(next); setStatus("Customer acceptance recorded. Execution remains unauthorized pending Teralinx countersignature.");
+        } else if (action === "countersign" && serviceOrder) {
+          await countersignServiceOrder(serviceOrder.serviceOrderId, { documentHash: String(serviceOrder.documentHash), authorizationAcknowledged: teralinxAcknowledged }, session);
+          setStatus("Teralinx countersignature committed atomically with ScopeVersion authorization."); await refresh();
+        }
+      } catch (error: any) { setStatus(`Authorization action failed: ${error?.message ?? String(error)}`); }
+      finally { setAuthorizationPending(false); }
+    };
+    return (
+      <section className="dal-workspace engineering-certification-shell">
+        <div className="dal-workspace-header">
+          <div>
+            <span className="engineering-review-eyebrow">Certified IOF Twin</span>
+            <h2>IOF Twin · {String(certifiedTwin.productName || certifiedTwin.productId || "Certified IOF Package").replaceAll("_", " ")}</h2>
+            <strong>{String(certifiedTwin.opportunityId ?? "Certified opportunity")}</strong>
+            <p>A reference-only representation of the exact certified IOF. Commercial authorization changes its lifecycle state without changing its certified technical basis.</p>
+          </div>
+          <button type="button" onClick={() => void refresh()}>Refresh governed state</button>
+        </div>
+
+        <div className="engineering-final-review-grid" aria-label="Certified Twin state">
+          <span>Twin State<b>{String(certifiedTwin.twinState ?? "CERTIFIED")}</b></span>
+          <span>Certification State<b>{String(certifiedTwin.certificationState ?? "CERTIFIED")}</b></span>
+          <span>Execution State<b>{String(certifiedTwin.executionState ?? "NOT_AUTHORIZED").replaceAll("_", " ")}</b></span>
+          <span>Service Order<b>{String(certifiedTwin.serviceOrderState ?? "NOT_CREATED").replaceAll("_", " ")}</b></span>
+          <span>ScopeVersion<b>{String(certifiedTwin.scopeVersionState ?? "NOT_CREATED").replaceAll("_", " ")}</b></span>
+          <span>Route Revision<b>{String(certifiedTwin.routeRevision ?? "—")}</b></span>
+          <span>Route<b>{Number(certifiedMapProjection?.routeMiles ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} miles</b></span>
+        </div>
+
+        <section className="dal-panel" aria-label="Commercial Authorization">
+          <div className="dal-panel-title-row"><div><h3>Commercial Authorization</h3><small>Certified IOF → Service Order → Customer acceptance → Teralinx countersignature + ScopeVersion</small></div><span className={`dal-badge ${certifiedTwin.twinState === "AUTHORIZED" ? "pass" : "warning"}`}>{String(certifiedTwin.executionState ?? "NOT_AUTHORIZED").replaceAll("_", " ")}</span></div>
+          {!serviceOrder ? <button type="button" disabled={authorizationPending} onClick={() => void authorizationAction("create")}>Create Service Order</button> : <>
+            <div className="dal-metrics">
+              <span>Service Order: {serviceOrder.serviceOrderId}</span><span>Revision: {String(serviceOrder.documentRevision ?? 1)}</span>
+              <span>Status: {serviceOrder.status}</span><span>Customer: {String((serviceOrder.customer as Record<string, unknown>)?.name ?? "Customer")}</span>
+              <span>Non-recurring: {money(Number(pricing.nonRecurringCharge ?? 0))}</span><span>Monthly: {money(Number(pricing.monthlyRecurringCharge ?? 0))}</span><span>Term: {String(pricing.termMonths ?? terms.serviceTermMonths ?? "—")} months</span>
+            </div>
+            <p>{String((serviceOrder.serviceDescription as Record<string, unknown>)?.productName ?? "Network infrastructure service")} over {Number((serviceOrder.routeSummary as Record<string, unknown>)?.routeMiles ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} route miles.</p>
+            <details><summary>Read full Service Order terms and exact governed references</summary><div className="dal-metrics"><span>Payment: {String(terms.paymentTerms ?? "—")}</span><span>Change control: {String(terms.changeControl ?? "—")}</span><span>Governing terms: {String(terms.governingTerms ?? "—")}</span><span>Document hash: {String(serviceOrder.documentHash ?? "—")}</span><span>Certified IOF: {String(serviceOrder.certifiedPackageId ?? "—")}</span></div></details>
+            {serviceOrder.status === "DRAFT" && <button type="button" disabled={authorizationPending} onClick={() => void authorizationAction("issue")}>Issue Service Order Revision</button>}
+            {serviceOrder.status === "ISSUED" && <div>{!customerSignerAuthorized && <p className="dal-status warning">Sign in as the customer participant assigned to this Proposal to accept this revision.</p>}<label><input type="checkbox" disabled={!customerSignerAuthorized} checked={customerAcknowledged} onChange={(event) => setCustomerAcknowledged(event.target.checked)} /> I am authorized to sign for the customer and accept this exact revision.</label><button type="button" disabled={authorizationPending || !customerAcknowledged || !customerSignerAuthorized} onClick={() => void authorizationAction("customer")}>Sign as Customer · {String(session?.user?.name ?? "authenticated user")}</button></div>}
+            {serviceOrder.status === "CUSTOMER_ACCEPTED" && <div><p>Customer accepted. This has not created execution authority.</p><label><input type="checkbox" checked={teralinxAcknowledged} onChange={(event) => setTeralinxAcknowledged(event.target.checked)} /> I am authorized by Teralinx to countersign and create the ScopeVersion Order for Execution.</label><button type="button" disabled={authorizationPending || !teralinxAcknowledged} onClick={() => void authorizationAction("countersign")}>Countersign & Authorize ScopeVersion</button></div>}
+            {serviceOrder.status === "COUNTERSIGNED" && <div className="dal-status pass">Fully authorized · ScopeVersion {String(serviceOrder.scopeVersionId ?? certifiedTwin.scopeVersionId ?? "created")}</div>}
+            <div className="dal-actions"><button type="button" onClick={() => void downloadRuntimeArtifact(`/api/exports/service-orders/${encodeURIComponent(serviceOrder.serviceOrderId)}/pdf`, session).then((artifact) => setStatus(`Downloaded ${artifact.filename}.`)).catch((error) => setStatus(`Service Order PDF failed: ${error.message}`))}>Download Service Order PDF</button></div>
+          </>}
+          <div className="dal-actions">
+            <button type="button" onClick={() => void downloadRuntimeArtifact(`/api/exports/certified-iof/${encodeURIComponent(String(certifiedTwin.certifiedIofPackageId))}/route.kmz`, session).then((artifact) => setStatus(`Downloaded ${artifact.filename}.`)).catch((error) => setStatus(`Certified KMZ failed: ${error.message}`))}>Download Certified Route KMZ</button>
+            {Boolean(certifiedTwin.scopeVersionId) && <button type="button" onClick={() => void downloadRuntimeArtifact(`/api/exports/scopeversions/${encodeURIComponent(String(certifiedTwin.scopeVersionId))}/route.kmz`, session).then((artifact) => setStatus(`Downloaded ${artifact.filename}.`)).catch((error) => setStatus(`Authorized KMZ failed: ${error.message}`))}>Download Authorized Route KMZ</button>}
+          </div>
+        </section>
+
+        <section className="dal-panel">
+          <div className="dal-panel-title-row"><div><h3>Shared Opportunity Map</h3><small>{String(certifiedTwin.routeRepositoryId ?? "Governed route unavailable")} · geometry {String(certifiedTwin.geometryHash ?? "unavailable")}</small></div><span className="dal-badge pass">CERTIFIED ROUTE</span></div>
+          {certifiedMapSpecs.length ? <MapKernel specs={certifiedMapSpecs} initialMode="geographic" initialBaseLayer="hybrid" stationDensityFeet={0} showStationLabels height={620} presentationContext="TWIN" /> : <div className="dal-status warning">The governed source package could not be projected onto the shared Opportunity Map.</div>}
+        </section>
+
+        <div className="dal-grid">
+          <section className="dal-panel">
+            <h3>Certification & Lineage</h3>
+            <div className="dal-metrics">
+              <span>Certified IOF: {String(certifiedTwin.certifiedIofPackageId ?? "—")}</span>
+              <span>Certified by: {String(certifiedTwin.certifiedBy ?? "—")}</span>
+              <span>Certified at: {String(certifiedTwin.certifiedAt ?? "—")}</span>
+              <span>Certification Ledger: {String(certifiedTwin.certificationLedgerId ?? "—")}</span>
+              <span>Engineering Revision: {String(certifiedTwin.engineeringRevisionId ?? "—")}</span>
+              <span>Engineering Approval: {String(certifiedTwin.engineeringApprovalId ?? "—")}</span>
+              <span>Commercial Revision: {String(certifiedTwin.commercialRevisionId ?? "—")}</span>
+              <span>Proposal Revision: {String(certifiedTwin.proposalRevisionId ?? "—")}</span>
+            </div>
+          </section>
+          <section className="dal-panel">
+            <h3>Certified Basis</h3>
+            <div className="dal-metrics">
+              <span>Stations: {fmt(Number(certifiedTwin.stationAuthorityCount ?? 0))}</span>
+              <span>Governed objects: {fmt(Number(certifiedTwin.objectCount ?? 0))}</span>
+              <span>Projected route objects: {fmt(Number(certifiedTwin.projectedObjectCount ?? 0))}</span>
+              <span>Governed spans: {fmt(Number(certifiedTwin.spanCount ?? 0))}</span>
+              <span>Work segments: {fmt(Number(certifiedTwin.workSegmentCount ?? 0))}</span>
+              <span>Conditions: {fmt(Number(constraintSummary?.total ?? 0))}</span>
+              <span>Resolved / accepted: {fmt(Number(constraintSummary?.resolved ?? 0) + Number(constraintSummary?.accepted ?? 0))}</span>
+              <span>Open: {fmt(Number(constraintSummary?.open ?? 0))}</span>
+              <span>Product Doctrine: {String(certifiedTwin.productDoctrineId ?? "—")}</span>
+              <span>Project Configuration: {String(certifiedTwin.projectConfigurationId ?? "—")}</span>
+              <span>Quantity Reconciliation: {String(certifiedTwin.quantityReconciliationId ?? "—")}</span>
+            </div>
+          </section>
+        </div>
+
+        <details className="dal-panel">
+          <summary>Lens Authority & Package Integrity</summary>
+          <div className="dal-metrics">
+            <span>Twin identity: {String(certifiedTwin.twinId ?? "—")}</span>
+            <span>Twin state identity: {String(certifiedTwin.twinStateId ?? "—")}</span>
+            <span>Certification hash: {String(certifiedTwin.certificationHash ?? "—")}</span>
+            <span>Revision hash: {String(certifiedTwin.engineeringRevisionHash ?? "—")}</span>
+            <span>Approval hash: {String(certifiedTwin.engineeringApprovalHash ?? "—")}</span>
+            <span>Lens reasoning: {String(lensAuthority?.reasoningAuthority ?? "ADVISORY_ONLY").replaceAll("_", " ")}</span>
+            <span>Available lenses: {(lensAuthority?.lenses ?? []).map((lens) => String(lens.label ?? lens.lensId)).join(", ") || "—"}</span>
+            <span>Mutation authority: none; certified state is immutable</span>
+          </div>
+        </details>
+        <div className="dal-status pass">{status}</div>
+      </section>
+    );
   }
 
   const projectionScopeVersion = twinState?.scopeVersion ?? selectedScopeVersion;
@@ -148,44 +296,6 @@ export default function TwinWorkspace() {
   const graphContextMatched =
     !selectedGraph ||
     ((!expectedInventoryId || selectedGraph.inventoryId === expectedInventoryId) && (!expectedGraphId || selectedGraph.graphId === expectedGraphId));
-  useEffect(() => {
-    console.log("[TWIN_RECONCILIATION]", {
-      scopeVersionId: projectionScopeVersion?.scopeVersionId ?? "none",
-      workItemsLoaded: workItems.length,
-      workItemsForScope: selectedScopeWorkItems.length,
-      activeWorkItemsForScope: activeSelectedScopeWorkItems.length,
-      fieldClosuresLoaded: closures.length,
-      selectedClosures: completedClosures.length,
-      timelineCount: projectionTimeline.length,
-      completedFeet: projectionMetrics.completedFeet,
-      projectionSource,
-      lifecycleViolationCount: lifecycleViolations.length,
-    });
-  }, [
-    projectionScopeVersion?.scopeVersionId,
-    workItems.length,
-    selectedScopeWorkItems.length,
-    activeSelectedScopeWorkItems.length,
-    closures.length,
-    selectedScopeClosureRecords.length,
-    completedClosures.length,
-    projectionTimeline.length,
-    projectionMetrics.completedFeet,
-    projectionSource,
-    lifecycleViolations.length,
-  ]);
-  useEffect(() => {
-    if (!graphContextMatched) {
-      console.warn("[TWIN_GRAPH_CONTEXT_MISMATCH]", {
-        scopeVersionId: projectionScopeVersion?.scopeVersionId ?? "none",
-        expectedInventoryId,
-        selectedInventoryId: selectedGraph?.inventoryId,
-        expectedGraphId,
-        selectedGraphId: selectedGraph?.graphId,
-        projectionSource,
-      });
-    }
-  }, [expectedGraphId, expectedInventoryId, graphContextMatched, projectionScopeVersion?.scopeVersionId, projectionSource, selectedGraph?.graphId, selectedGraph?.inventoryId]);
   const twinStationStateCounts = twinProjection.stationStateCounts as Record<string, number>;
   const twinObjectStateCounts = twinProjection.objectStateCounts as Record<string, number>;
   const attachmentPoint = networkBasis?.attachmentCoordinates as DALCoordinate | undefined;

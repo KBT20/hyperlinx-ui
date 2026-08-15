@@ -1,5 +1,237 @@
-import { DIRS, errorResponse, handleOptions, jsonResponse, listRecords, loadRecord } from "./_shared.js";
+import { createHash } from "node:crypto";
+import { DIRS, errorResponse, handleOptions, jsonResponse, listRecords, loadRecord, nowIso, persistRecord } from "./_shared.js";
 import { calculateCompletionProjection } from "../kernel/completion-engine.js";
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function asRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function stableIdPart(value, fallback = "UNKNOWN") {
+  return String(value ?? fallback).replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120) || fallback;
+}
+
+function hashReference(value) {
+  return createHash("sha256").update(JSON.stringify(value ?? null)).digest("hex");
+}
+
+const CERTIFIED_TWIN_LENS_AUTHORITY = Object.freeze({
+  contractVersion: "1",
+  sourceAuthority: "CERTIFIED_IOF_TWIN",
+  sharedStateIdentityRequired: true,
+  mutationAuthority: "NONE",
+  reasoningAuthority: "ADVISORY_ONLY",
+  lenses: [
+    { lensId: "COMMERCIAL", label: "Commercial", mayProject: true, mayFilter: true, mayAnnotate: false, mayMutateCertifiedState: false },
+    { lensId: "ENGINEERING", label: "Engineering", mayProject: true, mayFilter: true, mayAnnotate: false, mayMutateCertifiedState: false },
+    { lensId: "SUPPLY_CHAIN", label: "Supply Chain", mayProject: true, mayFilter: true, mayAnnotate: false, mayMutateCertifiedState: false },
+    { lensId: "CONTROL", label: "Control", mayProject: true, mayFilter: true, mayAnnotate: false, mayMutateCertifiedState: false },
+    { lensId: "FIELD", label: "Field", mayProject: true, mayFilter: true, mayAnnotate: false, mayMutateCertifiedState: false },
+  ],
+});
+
+export async function materializeCertifiedIofTwin({ draft = {}, certifiedPackage = {}, certificationLedgerEntry = {}, stationPlan = {}, timestamp } = {}) {
+  const sourceDraft = asRecord(draft);
+  const certified = asRecord(certifiedPackage);
+  const ledger = asRecord(certificationLedgerEntry);
+  const certifiedAt = firstText(timestamp, ledger.certificationTimestamp, certified.certifiedAt, nowIso());
+  const logicalTwinId = firstText(ledger.iofPackageTwinId, certified.iofPackageTwinId, sourceDraft.iofPackageTwinId);
+  if (!logicalTwinId) {
+    const error = new Error("Certified IOF Twin materialization requires the governed IOF Package Twin identity.");
+    error.status = 409;
+    throw error;
+  }
+  const certificationHash = firstText(ledger.certificationHash, certified.certificationHash);
+  if (!certificationHash) {
+    const error = new Error("Certified IOF Twin materialization requires the Certification Ledger hash.");
+    error.status = 409;
+    throw error;
+  }
+  const twinStateId = `${logicalTwinId}:CERTIFIED:${stableIdPart(certificationHash.slice(0, 16))}:V4`;
+  const baseTwin = await loadRecord(DIRS.iofPackageTwins, logicalTwinId).catch(() => null);
+  const priorCertifiedStates = (await listRecords(DIRS.iofPackageTwins))
+    .filter((item) => item?.logicalTwinId === logicalTwinId && item?.certificationHash === certificationHash && item?.twinStateId !== twinStateId)
+    .sort((a, b) => Number(b.stateRevision ?? 0) - Number(a.stateRevision ?? 0));
+  const previousState = priorCertifiedStates[0] ?? baseTwin;
+  const artifactReferences = asRecord(sourceDraft.iofArtifactRepositoryReferences);
+  const constraints = asArray(sourceDraft.engineeringConstraints);
+  const record = {
+    twinStateId,
+    twinId: logicalTwinId,
+    logicalTwinId,
+    previousTwinStateId: firstText(previousState?.twinStateId, previousState?.artifactId, logicalTwinId),
+    stateTransition: priorCertifiedStates.length ? "REFERENCE_NORMALIZATION" : "INITIAL_CERTIFICATION",
+    stateRevision: Number(previousState?.stateRevision ?? 0) + 1,
+    twinContractVersion: "4",
+    twinState: "CERTIFIED",
+    executionState: "NOT_AUTHORIZED",
+    certificationState: "CERTIFIED",
+    serviceOrderState: "NOT_CREATED",
+    scopeVersionState: "NOT_CREATED",
+    authority: "CERTIFIED_IOF_TWIN",
+    repositoryType: "IOF_PACKAGE_TWIN",
+    sourceAuthority: "CERTIFICATION_LEDGER",
+    stateAuthority: "CERTIFICATION_LEDGER",
+    referenceOnly: true,
+    immutable: true,
+    appendOnly: true,
+    projectionOnly: true,
+    organizationId: firstText(sourceDraft.organizationId),
+    tenantId: firstText(sourceDraft.tenantId, sourceDraft.organizationId),
+    customerId: firstText(sourceDraft.customerId),
+    accountId: firstText(sourceDraft.accountId),
+    opportunityId: firstText(sourceDraft.opportunityId),
+    productId: firstText(sourceDraft.productId, asRecord(sourceDraft.projectConfiguration).productId, asRecord(sourceDraft.productDoctrineAssembly).productId),
+    productName: firstText(sourceDraft.productName, asRecord(sourceDraft.projectConfiguration).productName, asRecord(sourceDraft.productDoctrineAssembly).productName),
+    productDoctrineId: firstText(ledger.productDoctrineId, sourceDraft.productDoctrineId, sourceDraft.doctrineId),
+    productDoctrineVersion: firstText(sourceDraft.productDoctrineVersion, sourceDraft.doctrineVersion),
+    projectConfigurationId: firstText(sourceDraft.configurationId, asRecord(sourceDraft.projectConfigurationRef).artifactId, asRecord(artifactReferences.projectConfiguration).artifactId),
+    proposalId: firstText(sourceDraft.proposalId, ledger.proposalId),
+    proposalRevisionId: firstText(sourceDraft.proposalRevisionId),
+    proposalHash: firstText(sourceDraft.proposalHash),
+    commercialReleasePackageId: firstText(ledger.commercialReleasePackageId, sourceDraft.commercialReleasePackageId),
+    commercialReleaseHash: firstText(sourceDraft.commercialReleaseHash),
+    commercialRevisionId: firstText(ledger.commercialRevisionId, sourceDraft.commercialRevisionId),
+    commercialRevisionHash: firstText(ledger.commercialRevisionHash, sourceDraft.commercialRevisionHash),
+    draftIofPackageId: firstText(certified.sourceDraftPackageId, certified.certifiedDraftIofPackageId, sourceDraft.packageId),
+    certifiedIofPackageId: firstText(certified.certifiedPackageId, ledger.certifiedPackageId),
+    certifiedPackageHash: firstText(ledger.certifiedPackageHash, certified.certifiedPackageHash),
+    engineeringPackageId: firstText(sourceDraft.engineeringPackageId),
+    engineeringBaselineId: firstText(ledger.engineeringBaselineId, certified.engineeringBaselineId),
+    engineeringRevisionId: firstText(ledger.engineeringRevisionId, certified.engineeringRevisionId),
+    engineeringRevisionHash: firstText(ledger.engineeringRevisionHash, certified.engineeringRevisionHash),
+    engineeringApprovalId: firstText(ledger.engineeringApprovalId, certified.engineeringApprovalId),
+    engineeringApprovalHash: firstText(ledger.engineeringApprovalHash, certified.engineeringApprovalHash),
+    certificationLedgerId: firstText(ledger.certificationLedgerId, certified.certificationLedgerId),
+    certificationId: firstText(ledger.certificationId, certified.certificationId),
+    certificationHash,
+    certificationEvidenceManifestId: firstText(ledger.certificationEvidenceManifestId, certified.certificationEvidenceManifestId),
+    certifiedAt,
+    certifiedBy: firstText(ledger.certifiedBy, certified.certifiedBy),
+    certifiedById: firstText(ledger.certifiedById, certified.certifiedById),
+    routeRepositoryId: firstText(ledger.routeRepositoryId, sourceDraft.routeRepositoryId),
+    routeRevision: Number(sourceDraft.routeRevision ?? 1),
+    routeGeometryId: firstText(sourceDraft.routeGeometryId),
+    geometryHash: firstText(sourceDraft.geometryHash),
+    measuredCenterlineId: firstText(ledger.measuredCenterlineId, sourceDraft.measuredCenterlineId),
+    stationProjectionId: firstText(ledger.stationProjectionId, sourceDraft.stationProjectionId),
+    stationGraphId: firstText(ledger.stationGraphId, sourceDraft.stationGraphId),
+    stationAuthorityCount: Number(asRecord(stationPlan).stationCount ?? asArray(sourceDraft.stations).length ?? 0) || asArray(ledger.stationAuthorityIds).length || asArray(sourceDraft.stationAuthorityIds).length,
+    objectCount: Number(asRecord(sourceDraft.constitutionalStateValidation).objectCount ?? asRecord(asRecord(sourceDraft.projectedObjectManifest).constitutionalStateValidation).objectCount ?? baseTwin?.objectCount ?? 0),
+    projectedObjectCount: asArray(asRecord(sourceDraft.projectedObjectManifest).projectedObjects).length,
+    spanCount: Number(asRecord(sourceDraft.constitutionalStateValidation).spanCount ?? asRecord(asRecord(sourceDraft.projectedObjectManifest).constitutionalStateValidation).spanCount ?? baseTwin?.spanCount ?? 0),
+    projectedSpanCount: asArray(asRecord(sourceDraft.projectedObjectManifest).projectedSpans).length,
+    workSegmentCount: Number(asRecord(sourceDraft.closureLedger).workSegmentCount ?? baseTwin?.workSegmentCount ?? 0),
+    stationObjectManifestId: firstText(ledger.stationObjectManifestId, sourceDraft.stationObjectManifestId),
+    engineeringObjectManifestId: firstText(ledger.engineeringObjectManifestId, sourceDraft.engineeringObjectManifestId),
+    projectedObjectManifestId: firstText(ledger.projectedObjectManifestId, sourceDraft.projectedObjectManifestId),
+    closureLedgerId: firstText(ledger.closureLedgerId, sourceDraft.closureLedgerId),
+    executionGraphId: firstText(ledger.executionGraphId, sourceDraft.executionGraphId),
+    lifecycleGraphId: firstText(ledger.lifecycleGraphId, sourceDraft.lifecycleGraphId),
+    quantityReconciliationId: firstText(asRecord(certified.quantityReconciliation).reconciliationId, asRecord(sourceDraft.quantityReconciliationRef).artifactId, asRecord(artifactReferences.quantityReconciliation).artifactId),
+    quantityReconciliationHash: firstText(certified.quantityReconciliationHash, asRecord(sourceDraft.quantityReconciliationRef).hash, asRecord(artifactReferences.quantityReconciliation).hash),
+    constraintSummary: {
+      total: constraints.length,
+      resolved: constraints.filter((item) => String(item?.status ?? "").toUpperCase() === "RESOLVED").length,
+      accepted: constraints.filter((item) => String(item?.status ?? "").toUpperCase() === "ACCEPTED").length,
+      open: constraints.filter((item) => !["RESOLVED", "ACCEPTED"].includes(String(item?.status ?? "").toUpperCase())).length,
+    },
+    lensAuthority: CERTIFIED_TWIN_LENS_AUTHORITY,
+    sharedOpportunityMap: {
+      authority: "COMMERCIAL_ROUTE_REPOSITORY",
+      routeRepositoryId: firstText(ledger.routeRepositoryId, sourceDraft.routeRepositoryId),
+      routeRevision: Number(sourceDraft.routeRevision ?? 1),
+      geometryHash: firstText(sourceDraft.geometryHash),
+      sourceDraftPackageId: firstText(sourceDraft.packageId),
+    },
+    noServiceOrderCreation: true,
+    noScopeVersionCreation: true,
+    noExecutionAuthorization: true,
+    noCertifiedStateMutation: true,
+    createdAt: certifiedAt,
+    updatedAt: certifiedAt,
+  };
+  record.twinStateHash = hashReference(record);
+  const existing = await loadRecord(DIRS.iofPackageTwins, twinStateId).catch(() => null);
+  if (existing && existing.twinStateHash !== record.twinStateHash) {
+    const error = new Error(`Certified IOF Twin state ${twinStateId} is immutable and already exists with a different hash.`);
+    error.status = 409;
+    throw error;
+  }
+  return existing ?? persistRecord(DIRS.iofPackageTwins, twinStateId, record);
+}
+
+export async function materializeAuthorizedIofTwin({ certifiedTwin = {}, serviceOrder = {}, customerSignature = {}, countersignature = {}, scopeVersion = {}, transaction = {}, timestamp } = {}) {
+  const prior = asRecord(certifiedTwin);
+  const logicalTwinId = firstText(prior.logicalTwinId, prior.twinId);
+  const scopeVersionId = firstText(scopeVersion.scopeVersionId);
+  if (!logicalTwinId || prior.twinState !== "CERTIFIED" || prior.certificationState !== "CERTIFIED") {
+    const error = new Error("Commercial authorization requires the exact Certified IOF Twin.");
+    error.status = 409;
+    throw error;
+  }
+  if (!scopeVersionId || !serviceOrder.documentHash || !customerSignature.customerSignatureId || !countersignature.countersignatureId) {
+    const error = new Error("Commercial authorization requires complete Service Order, customer signature, countersignature, and ScopeVersion evidence.");
+    error.status = 409;
+    throw error;
+  }
+  const authorizedAt = firstText(timestamp, countersignature.countersignedAt, nowIso());
+  const twinStateId = `${logicalTwinId}:AUTHORIZED:${stableIdPart(scopeVersionId)}:V1`;
+  const record = {
+    ...prior,
+    twinStateId,
+    previousTwinStateId: prior.twinStateId,
+    stateTransition: "COMMERCIAL_AUTHORIZATION",
+    stateRevision: Number(prior.stateRevision ?? 0) + 1,
+    twinState: "AUTHORIZED",
+    executionState: "AUTHORIZED",
+    certificationState: "CERTIFIED",
+    serviceOrderState: "COUNTERSIGNED",
+    customerAcceptanceState: "ACCEPTED",
+    scopeVersionState: "CREATED",
+    authority: "CERTIFIED_IOF_TWIN",
+    stateAuthority: "TERALINX_COUNTERSIGNATURE_ATOMIC_SCOPEVERSION_AUTHORIZATION",
+    serviceOrderId: serviceOrder.serviceOrderId,
+    serviceOrderRevision: serviceOrder.documentRevision,
+    serviceOrderDocumentHash: serviceOrder.documentHash,
+    commercialTermsHash: serviceOrder.commercialTermsHash,
+    customerSignatureId: customerSignature.customerSignatureId,
+    customerSignatureHash: customerSignature.signatureHash,
+    countersignatureId: countersignature.countersignatureId,
+    countersignatureHash: countersignature.countersignatureHash,
+    commercialAuthorizationTransactionId: transaction.transactionId,
+    scopeVersionId,
+    authorizedAt,
+    authorizedBy: countersignature.countersignedBy,
+    authorizedById: countersignature.countersignedById,
+    noServiceOrderCreation: false,
+    noScopeVersionCreation: false,
+    noExecutionAuthorization: false,
+    noCertifiedStateMutation: true,
+    createdAt: authorizedAt,
+    updatedAt: authorizedAt,
+  };
+  delete record.twinStateHash;
+  record.twinStateHash = hashReference(record);
+  const existing = await loadRecord(DIRS.iofPackageTwins, twinStateId).catch(() => null);
+  if (existing && existing.twinStateHash !== record.twinStateHash) {
+    const error = new Error(`Authorized IOF Twin state ${twinStateId} already exists with different authority evidence.`);
+    error.status = 409;
+    throw error;
+  }
+  return existing ?? persistRecord(DIRS.iofPackageTwins, twinStateId, record);
+}
 
 function isRouteStation(value) {
   return Boolean(value) && typeof value === "object" && typeof value.stationId === "string" && typeof value.stationState === "string";
@@ -342,6 +574,101 @@ async function buildProjection(scopeVersionId) {
   };
 }
 
+async function buildCertifiedTwinProjection(twinStateId = "") {
+  const records = (await listRecords(DIRS.iofPackageTwins))
+    .filter((record) => record?.authority === "CERTIFIED_IOF_TWIN" && ["CERTIFIED", "AUTHORIZED"].includes(record?.twinState))
+    .sort((a, b) => Number(b.stateRevision ?? 0) - Number(a.stateRevision ?? 0) || String(b.updatedAt ?? b.certifiedAt ?? "").localeCompare(String(a.updatedAt ?? a.certifiedAt ?? "")));
+  const certifiedTwin = twinStateId
+    ? records.find((record) => record.twinStateId === twinStateId || record.twinId === twinStateId || record.logicalTwinId === twinStateId)
+    : records[0];
+  if (!certifiedTwin) return null;
+  const certifiedIofPackage = certifiedTwin.certifiedIofPackageId
+    ? await loadRecord(DIRS.certifiedIofPackages, certifiedTwin.certifiedIofPackageId).catch(() => null)
+    : null;
+  const routeRepository = certifiedTwin.routeRepositoryId
+    ? await loadRecord(DIRS.commercialRoutes, certifiedTwin.routeRepositoryId).catch(() => null)
+    : null;
+  const routeCoordinates = asArray(routeRepository?.commercialGeometry)
+    .map((item) => asArray(item).slice(0, 2).map(Number))
+    .filter((item) => item.length === 2 && item.every(Number.isFinite));
+  const endpointAuthority = asRecord(routeRepository?.endpointAuthority);
+  const endpointProjection = (value, fallback, role) => {
+    const source = asRecord(value);
+    const site = asRecord(source.site);
+    const coordinate = asArray(source.coordinate).length >= 2 ? asArray(source.coordinate).slice(0, 2).map(Number) : fallback;
+    return coordinate?.length === 2 ? {
+      role,
+      label: firstText(source.label, source.siteName, site.name, `${role} endpoint`),
+      coordinate,
+      coordinateSource: firstText(source.coordinateSource, site.coordinateSource, "COMMERCIAL_ROUTE_REPOSITORY"),
+    } : null;
+  };
+  const sharedOpportunityMapProjection = routeRepository && routeCoordinates.length > 1 ? {
+    authority: "COMMERCIAL_ROUTE_REPOSITORY",
+    projectionPurpose: "SHARED_OPPORTUNITY_MAP",
+    opportunityId: firstText(routeRepository.opportunityId, certifiedTwin.opportunityId),
+    routeRepositoryId: certifiedTwin.routeRepositoryId,
+    routeRevision: Number(routeRepository.routeRevision ?? certifiedTwin.routeRevision ?? 1),
+    routeGeometryId: firstText(routeRepository.routeGeometryId, certifiedTwin.routeGeometryId),
+    geometryHash: firstText(routeRepository.geometryHash, certifiedTwin.geometryHash),
+    routeMiles: Number(routeRepository.routeMiles ?? 0),
+    routeFeet: Number(routeRepository.routeFeet ?? 0),
+    orientation: firstText(endpointAuthority.orientation, endpointAuthority.commercialOrientation, "A_TO_Z"),
+    coordinates: routeCoordinates,
+    endpoints: [
+      endpointProjection(endpointAuthority.aSite ?? routeRepository.aLocation, routeCoordinates[0], "A"),
+      endpointProjection(endpointAuthority.zSite ?? routeRepository.zLocation, routeCoordinates.at(-1), "Z"),
+    ].filter(Boolean),
+    responseProjectionOnly: true,
+  } : null;
+  return {
+    projectionSource: "SERVER",
+    projectionType: "CERTIFIED_IOF_TWIN",
+    twinStateId: certifiedTwin.twinStateId,
+    certifiedTwin,
+    certifiedIofPackage,
+    sharedOpportunityMapProjection,
+    sourceDraftPackageId: certifiedTwin.draftIofPackageId,
+    scopeVersionId: firstText(certifiedTwin.scopeVersionId),
+    scopeVersion: certifiedTwin.scopeVersionId ? await loadRecord(DIRS.scopeVersions, certifiedTwin.scopeVersionId).catch(() => null) : null,
+    workItems: [],
+    closures: [],
+    timeline: [{
+      eventId: certifiedTwin.certificationId,
+      type: "iof_twin.certified",
+      entityId: certifiedTwin.twinStateId,
+      entityType: "CertifiedIofTwin",
+      payload: {
+        certificationLedgerId: certifiedTwin.certificationLedgerId,
+        certificationHash: certifiedTwin.certificationHash,
+        engineeringApprovalId: certifiedTwin.engineeringApprovalId,
+      },
+      createdAt: certifiedTwin.certifiedAt,
+    }],
+    metrics: {
+      openWorkItems: 0,
+      completedWorkItems: 0,
+      activeWorkItems: 0,
+      pendingWorkItems: 0,
+      cancelledWorkItems: 0,
+      closureCount: 0,
+      completedFeet: 0,
+      completionAuthority: "CERTIFICATION_LEDGER",
+    },
+    lifecycleViolations: [],
+    graphContext: {
+      routeId: certifiedTwin.routeRepositoryId,
+      matched: null,
+    },
+    totals: {
+      certifiedTwinStatesLoaded: records.length,
+      workItemsLoaded: 0,
+      closuresLoaded: 0,
+    },
+    updatedAt: certifiedTwin.updatedAt,
+  };
+}
+
 export async function handleTwinState(req, res, pathname) {
   if (pathname !== "/api/twin/state" && pathname !== "/api/twin/state/") return false;
   if (handleOptions(req, res)) return true;
@@ -352,12 +679,15 @@ export async function handleTwinState(req, res, pathname) {
 
   const url = new URL(req.url ?? "/", `https://${req.headers.host ?? "runtime.invalid"}`);
   const scopeVersionId = url.searchParams.get("scopeVersionId") ?? "";
-  console.log("[TWIN_PROJECTION_REQUEST]", { scopeVersionId: scopeVersionId || "none" });
-  const projection = await buildProjection(scopeVersionId);
+  const twinStateId = url.searchParams.get("twinStateId") ?? url.searchParams.get("twinId") ?? "";
+  const certified = url.searchParams.get("certified") === "true" || Boolean(twinStateId);
+  console.log("[TWIN_PROJECTION_REQUEST]", { scopeVersionId: scopeVersionId || "none", twinStateId: twinStateId || "none", certified });
+  const projection = certified ? await buildCertifiedTwinProjection(twinStateId) : await buildProjection(scopeVersionId);
   if (!projection) {
     jsonResponse(res, 404, {
-      error: "SCOPEVERSION_NOT_FOUND",
+      error: certified ? "CERTIFIED_IOF_TWIN_NOT_FOUND" : "SCOPEVERSION_NOT_FOUND",
       scopeVersionId,
+      twinStateId,
     });
     return true;
   }

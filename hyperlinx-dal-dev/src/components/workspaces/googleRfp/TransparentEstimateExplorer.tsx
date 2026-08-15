@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { Component, useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type {
   TransparentCorridorEstimate,
   TransparentEstimateControls,
   TransparentEstimateFinancialControls,
   TransparentEstimateLineItem,
   TransparentEstimateProductionControls,
+  TransparentProjectConfigurationControls,
   TransparentEstimateSection,
 } from "../../../commercial/TransparentEstimatingEngine";
 import type {
@@ -13,13 +14,15 @@ import type {
   IlaPlacementMethod,
   IlaPlanningControls,
 } from "../../../commercial/IlaPlanningEngine";
-import { normalizeIlaFacilityProfileId } from "../../../commercial/IlaPlanningEngine";
+import { normalizeIlaFacilityProfileId, normalizeIlaPlanningResultForPresentation } from "../../../commercial/IlaPlanningEngine";
 import {
   authorityModeConfidence,
   authorityModeCostIncluded,
   type ConstraintAuthorityMode,
   type ConstraintValue,
 } from "../../../commercial/ConstraintAuthority";
+import { resolveConstructionCapability, teralinxBoreRate } from "../../../commercial/CommercialPricingArchitecture";
+import { formatEstimateLabel } from "./EstimatePresentation";
 
 type ProductionKey = keyof TransparentEstimateProductionControls;
 type FinancialKey = keyof TransparentEstimateFinancialControls;
@@ -144,7 +147,7 @@ const ILA_PROFILE_IDS: IlaFacilityProfileId[] = [
   "ILA_CUSTOM",
 ];
 const ILA_PLACEMENT_METHODS: Array<{ value: IlaPlacementMethod; label: string }> = [
-  { value: "MAX_SPAN", label: "Maximum span" },
+  { value: "MAX_SPAN_DISTANCE", label: "Maximum span distance" },
   { value: "MAX_OPTICAL_LOSS", label: "Maximum optical loss" },
   { value: "MAX_ATTENUATION", label: "Maximum attenuation" },
   { value: "INTERMEDIATE_COUNT", label: "Desired intermediate ILAs" },
@@ -192,8 +195,35 @@ function isCivilMixConstraint(key: string) {
   return CIVIL_MIX_KEYS.has(key);
 }
 
-function authorityLabel(mode: ConstraintAuthorityMode) {
-  return mode.replaceAll("_", " ");
+function authorityLabel(mode: unknown) {
+  return formatEstimateLabel(mode);
+}
+
+export function optionalPlanningDisplay(value: unknown, fallback = "UNRESOLVED") {
+  return formatEstimateLabel(value, fallback);
+}
+
+class SecondaryEstimatePanelBoundary extends Component<{ panel: string; children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: { componentStack?: string | null }) {
+    console.error(`[CommercialPlanning:${this.props.panel}] Secondary panel failure contained.`, { error, componentStack: info.componentStack });
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <section className="dal-status fail" role="alert" data-contained-panel-error={this.props.panel}>
+        <b>{this.props.panel} unavailable</b>
+        <span>The rest of Commercial Planning remains operational.</span>
+        <small>{this.state.error.message}</small>
+      </section>
+    );
+  }
 }
 
 function constraintInputValue(constraint: ConstraintValue) {
@@ -301,7 +331,7 @@ function roundTwo(value: number) {
   return Math.round(value * 100) / 100;
 }
 
-function facilityClassMixLabel(stations: TransparentCorridorEstimate["ilaPlan"]["stationObjects"]) {
+function facilityClassMixLabel(stations: ReadonlyArray<Pick<TransparentCorridorEstimate["ilaPlan"]["stationObjects"][number], "facilityProfile">>) {
   if (!stations.length) return "None";
   const counts = new Map<string, number>();
   stations.forEach((station) => {
@@ -311,7 +341,7 @@ function facilityClassMixLabel(stations: TransparentCorridorEstimate["ilaPlan"][
   return Array.from(counts.entries()).map(([label, count]) => `${count} ${label}`).join(" / ");
 }
 
-function opticalRecommendation(plan: TransparentCorridorEstimate["ilaPlan"]) {
+function opticalRecommendation(plan: Pick<TransparentCorridorEstimate["ilaPlan"], "spans" | "recommendation">) {
   if (plan.spans.some((span) => span.recommendedRegen)) return "Additional regeneration recommended";
   if (plan.recommendation.requiresApproval) return plan.recommendation.reason;
   return "Current station plan clears optical budget";
@@ -336,7 +366,7 @@ function AuthorityControls({
 }) {
   return (
     <div className="transparent-authority-controls">
-      {AUTHORITY_CONTROL_GROUPS.map((group) => (
+      {AUTHORITY_CONTROL_GROUPS.filter((group) => group.label !== "Civil Mix").map((group) => (
         <details className="transparent-authority-group" key={group.label} open={group.label !== "O&M / Crossings"}>
           <summary>
             <span>{group.label}</span>
@@ -546,9 +576,11 @@ function CommercialReadinessPanel({ estimate }: { estimate: TransparentCorridorE
 function CivilMixStatusPanel({
   estimate,
   onCivilMixModeChange,
+  onConstraintChange,
 }: {
   estimate: TransparentCorridorEstimate;
   onCivilMixModeChange: (mode: TransparentEstimateControls["civilMixMode"]) => void;
+  onConstraintChange?: (value: ConstraintValue) => void;
 }) {
   const balanced = Math.abs(estimate.civilMix.totalPercent - 100) <= 0.01;
   return (
@@ -567,13 +599,21 @@ function CivilMixStatusPanel({
           <option value="MANUAL">Manual (Engineer Controlled)</option>
         </select>
       </div>
+      <div className="transparent-estimate-controls">
+        {([
+          ["civil.plowPercent", "Plow", estimate.civilMix.plowPercent],
+          ["civil.directionalBoreDirtPercent", "Dirt Bore", estimate.civilMix.directionalBoreDirtPercent],
+          ["civil.directionalBoreRockPercent", "Rock Bore", estimate.civilMix.directionalBoreRockPercent],
+          ["civil.openTrenchPercent", "Open Trench", estimate.civilMix.openTrenchPercent],
+        ] as const).map(([key, label, value]) => {
+          const constraint = estimate.constraintValues[key];
+          return <label key={key}><span>{label}</span><input type="number" min="0" max="100" step="1" value={Math.round(value)} disabled={!constraint || !onConstraintChange} onChange={(event) => constraint && updateConstraint(constraint, { value: Math.round(Number(event.currentTarget.value) || 0) }, onConstraintChange)} /><small>%</small></label>;
+        })}
+      </div>
       <div className="transparent-estimate-metrics">
-        <div><span>Plow</span><b>{estimate.civilMix.plowPercent}%</b></div>
-        <div><span>Dirt Bore</span><b>{estimate.civilMix.directionalBoreDirtPercent}%</b></div>
-        <div><span>Rock Bore</span><b>{estimate.civilMix.directionalBoreRockPercent}%</b></div>
-        <div><span>Open Trench</span><b>{estimate.civilMix.openTrenchPercent}%</b></div>
         <div><span>Total</span><b className={`transparent-civil-total ${balanced ? "pass" : "warning"}`}>{estimate.civilMix.totalPercent}%</b></div>
         <div><span>Mode</span><b>{estimate.civilMix.mode === "AUTOMATIC" ? "Automatic" : "Manual"}</b></div>
+        <div><span>Standard</span><b>82% / 12% / 0% / 6%</b></div>
       </div>
       {estimate.civilMix.warning ? <div className="dal-status">{estimate.civilMix.warning}</div> : null}
     </div>
@@ -600,7 +640,7 @@ function CalibrationPanel({
           <b>Estimate Calibration</b>
           <span>Production, rates, civil mix, contingencies, O&M, and authority changes recalculate immediately</span>
         </div>
-        <span className="dal-badge pass">{estimate.estimateStatus.replaceAll("_", " ")}</span>
+        <span className="dal-badge pass">{formatEstimateLabel(estimate.estimateStatus)}</span>
       </div>
       <div className="transparent-estimate-metrics">
         <div><span>Duration</span><b>{calculatedDurationDays(estimate).toLocaleString()} days</b></div>
@@ -626,6 +666,97 @@ function CalibrationPanel({
         </div>
       )}
     </div>
+  );
+}
+
+type SavedEstimateRevision = {
+  estimateRevisionId: string;
+  revisionNumber: number;
+  savedAt: string;
+  totalCost: number;
+  controls: TransparentEstimateControls;
+};
+
+function ActiveEstimateCalibration({
+  estimate,
+  onConstraintChange,
+}: {
+  estimate: TransparentCorridorEstimate;
+  onConstraintChange?: (value: ConstraintValue) => void;
+}) {
+  const [savedRevisions, setSavedRevisions] = useState<SavedEstimateRevision[]>([]);
+  const lines = useMemo(() => [
+    ...estimate.laborLineItems,
+    ...estimate.materialLineItems,
+    ...estimate.equipmentLineItems,
+  ], [estimate.equipmentLineItems, estimate.laborLineItems, estimate.materialLineItems]);
+  const resettable = (line: TransparentEstimateLineItem) => estimate.controls.algorithmConstraints?.[line.authority.key];
+  const resetLine = (line: TransparentEstimateLineItem) => {
+    const baseline = resettable(line);
+    if (baseline && onConstraintChange) onConstraintChange({ ...baseline });
+  };
+  const resetAll = () => {
+    if (!onConstraintChange) return;
+    lines.forEach((line) => {
+      const baseline = resettable(line);
+      if (baseline) onConstraintChange({ ...baseline });
+    });
+  };
+  const saveRevision = () => {
+    const revisionNumber = savedRevisions.length + 1;
+    setSavedRevisions((current) => [...current, {
+      estimateRevisionId: `${estimate.estimateId}-estimate-revision-${revisionNumber}`,
+      revisionNumber,
+      savedAt: new Date().toISOString(),
+      totalCost: estimate.totalKnownCost,
+      controls: structuredClone(estimate.controls),
+    }]);
+  };
+  return (
+    <section className="transparent-calibration-panel" aria-label="Active estimate calibration">
+      <div className="transparent-calibration-heading">
+        <div>
+          <b>3. Estimate Calibration</b>
+          <span>One active estimate drives displayed cost, commercial price, and the next saved Proposal Revision.</span>
+        </div>
+        <span className="dal-badge pass">ACTIVE · {estimate.estimateId}</span>
+      </div>
+      <div className="dal-actions">
+        <button type="button" onClick={saveRevision}>Save Estimate Revision</button>
+        <button type="button" className="secondary" onClick={resetAll} disabled={!onConstraintChange}>Reset All Rates</button>
+        <span className="dal-status">Working calibration stays in memory until a revision is saved. Proposal save freezes the exact active estimate.</span>
+      </div>
+      <div className="dal-table-wrap transparent-estimate-table">
+        <table className="dal-table">
+          <thead><tr><th>Category</th><th>Line</th><th>Baseline Qty</th><th>Calibrated Qty</th><th>Baseline Rate</th><th>Calibrated Rate</th><th>Baseline Cost</th><th>Calibrated Cost</th><th>Delta</th><th>Provenance</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody>
+            {lines.map((line) => {
+              const baseline = resettable(line);
+              const baselineRate = typeof baseline?.value === "number" ? baseline.value : line.unitCost.value;
+              const quantity = line.quantity.value ?? 0;
+              const baselineCost = typeof baselineRate === "number" ? quantity * baselineRate : line.extendedCost.value ?? 0;
+              const calibratedCost = line.extendedCost.value ?? 0;
+              const calibrated = Boolean(baseline && (!Object.is(baseline.value, line.authority.value) || baseline.authorityMode !== line.authority.authorityMode));
+              return (
+                <tr key={`calibration-${line.lineItemId}`}>
+                  <td>{formatEstimateLabel(line.category)}</td><td>{line.description}</td>
+                  <td>{line.quantity.display}</td><td>{line.quantity.display}</td>
+                  <td>{typeof baselineRate === "number" ? moneyPrecise(baselineRate) : "UNRESOLVED"}</td><td>{line.unitCost.display}</td>
+                  <td>{money(baselineCost)}</td><td>{line.extendedCost.display}</td><td>{moneyDelta(calibratedCost - baselineCost)}</td>
+                  <td>{line.authority.source}</td><td><span className={`dal-badge ${calibrated ? "warning" : "pass"}`}>{calibrated ? "CALIBRATED" : "BASELINE"}</span></td>
+                  <td><button type="button" className="secondary" onClick={() => resetLine(line)} disabled={!baseline || !onConstraintChange}>Reset</button></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="transparent-estimate-summary">
+        <div><span>Active Calibrated Cost</span><b>{money(estimate.totalKnownCost)}</b></div>
+        <div><span>Saved Estimate Revisions</span><b>{savedRevisions.length.toLocaleString()}</b></div>
+        <div><span>Revenue Included</span><b>No</b></div>
+      </div>
+    </section>
   );
 }
 
@@ -690,7 +821,7 @@ function IlaPlanningPanel({
   onIlaPlanningChange: (next: IlaPlanningControls) => void;
   onEditStart?: (label: string, affectedSections: string[]) => void;
 }) {
-  const plan = estimate.ilaPlan;
+  const plan = normalizeIlaPlanningResultForPresentation(estimate.ilaPlan);
   const controls = plan.controls;
   const graphRef = useRef<SVGSVGElement | null>(null);
   const [draggingStationId, setDraggingStationId] = useState<string | null>(null);
@@ -712,10 +843,17 @@ function IlaPlanningPanel({
   const customProfileActive = controls.defaultFacilityProfileId === "ILA_CUSTOM" || selectedStation?.facilityProfileId === "ILA_CUSTOM";
 
   function updatePlanning(patch: Partial<IlaPlanningControls>, label: string) {
+    const intermediateIlaEnabled = patch.intermediateIlaEnabled ?? controls.intermediateIlaEnabled;
+    const bookendIlaEnabled = patch.bookendIlaEnabled ?? controls.bookendIlaEnabled;
     onEditStart?.(label, ["ILA facilities", "Optical placement", "Proposal pricing", "Financial model", "Margin"]);
     onIlaPlanningChange({
       ...controls,
       ...patch,
+      intermediateIlaEnabled,
+      bookendIlaEnabled,
+      ilaMode: !intermediateIlaEnabled && !bookendIlaEnabled ? "OFF" : bookendIlaEnabled ? "BOOKENDED" : "INTERMEDIATE_ONLY",
+      configurationRevision: controls.configurationRevision + 1,
+      useBookendIlas: bookendIlaEnabled,
       stationOverrides: patch.stationOverrides ? { ...patch.stationOverrides } : { ...(controls.stationOverrides ?? {}) },
     });
   }
@@ -820,15 +958,28 @@ function IlaPlanningPanel({
       </div>
 
       <div className="ila-planning-controls">
-        <label className="ila-toggle-control">
-          <span>Use Bookend ILAs</span>
-          <button
-            type="button"
-            className={controls.useBookendIlas ? "active" : ""}
-            onClick={() => updatePlanning({ useBookendIlas: !controls.useBookendIlas }, "Bookend ILA control")}
-          >
-            {controls.useBookendIlas ? "ON" : "OFF"}
-          </button>
+        <label>
+          <span>Intermediate ILAs</span>
+          <select value={controls.intermediateIlaEnabled ? "ON" : "OFF"} onChange={(event) => updatePlanning({ intermediateIlaEnabled: event.currentTarget.value === "ON" }, "Intermediate ILA mode") }>
+            <option value="OFF">OFF</option>
+            <option value="ON">ON</option>
+          </select>
+        </label>
+        <label>
+          <span>Bookend ILAs</span>
+          <select value={controls.bookendIlaEnabled ? "ON" : "OFF"} onChange={(event) => updatePlanning({ bookendIlaEnabled: event.currentTarget.value === "ON" }, "Bookend ILA mode") }>
+            <option value="OFF">OFF</option>
+            <option value="ON">ON</option>
+          </select>
+        </label>
+        <label>
+          <span>Planning Authority</span>
+          <select value={controls.planningAuthority} onChange={(event) => updatePlanning({ planningAuthority: event.currentTarget.value as IlaPlanningControls["planningAuthority"] }, "ILA planning authority") }>
+            <option value="MAX_SPAN_DISTANCE">MAX SPAN DISTANCE</option>
+            <option value="LOSS_BUDGET">LOSS BUDGET</option>
+            <option value="SOURCE_DEFINED">SOURCE DEFINED</option>
+            <option value="ENGINEERING_DEFINED">ENGINEERING DEFINED</option>
+          </select>
         </label>
         <label>
           <span>Placement</span>
@@ -1033,6 +1184,7 @@ function IlaPlanningPanel({
             <thead>
               <tr>
                 <th>Station Object</th>
+                <th>Role / Authority</th>
                 <th>Station</th>
                 <th>GPS</th>
                 <th>Milepost</th>
@@ -1053,6 +1205,7 @@ function IlaPlanningPanel({
                     <small>{station.graphNodeId}</small>
                     <small>{station.scopeVersionLineage}</small>
                   </td>
+                  <td><b>{optionalPlanningDisplay(station.role)}</b><small>{optionalPlanningDisplay(station.planningAuthority)}</small><small>{optionalPlanningDisplay(station.engineeringState)}</small><small>Power: {optionalPlanningDisplay(station.powerState, "MISSING EVIDENCE")}</small></td>
                   <td>{station.station}</td>
                   <td>{station.gps}</td>
                   <td>
@@ -1108,6 +1261,10 @@ function IlaPlanningPanel({
             {selectedStation ? (
               <div className="ila-selected-detail">
                 <span>Station</span><b>{selectedStation.station}</b>
+                <span>Role</span><b>{optionalPlanningDisplay(selectedStation.role)}</b>
+                <span>Planning Authority</span><b>{optionalPlanningDisplay(selectedStation.planningAuthority)}</b>
+                <span>Engineering State</span><b>{optionalPlanningDisplay(selectedStation.engineeringState)}</b>
+                <span>Power State</span><b>{optionalPlanningDisplay(selectedStation.powerState, "MISSING EVIDENCE")}</b>
                 <span>Milepost</span><b>{selectedStation.milepost.toLocaleString()} mi</b>
                 <span>GPS</span><b>{selectedStation.gps}</b>
                 <span>Facility Class</span><b>{selectedStation.facilityProfile.displayName}</b>
@@ -1308,9 +1465,11 @@ function SectionDetails({
                   <th>Value</th>
                   <th>Unit</th>
                   <th>Authority Mode</th>
+                  <th>Authority Layer</th>
                   <th>Source</th>
                   <th>Confidence</th>
                   <th>Cost Impact</th>
+                  <th>Cost Lineage</th>
                   <th>Schedule Impact</th>
                   <th>Formula</th>
                   <th>Approved By</th>
@@ -1324,12 +1483,14 @@ function SectionDetails({
                     <td>{entry.value}</td>
                     <td>{entry.unit}</td>
                     <td><span className={`dal-badge ${authorityBadgeClass(entry.authorityMode)}`}>{authorityLabel(entry.authorityMode)}</span></td>
+                    <td>{formatEstimateLabel(entry.authorityLayer)}</td>
                     <td>
                       <span>{entry.source}</span>
                       {entry.workbook ? <small>{entry.workbook}</small> : null}
                     </td>
                     <td>{entry.confidence}%</td>
                     <td>{entry.costImpact}</td>
+                    <td><b>{formatEstimateLabel(entry.costContributionMode)}</b><small>{entry.costLedgerId ?? "UNRESOLVED"}</small></td>
                     <td>{entry.scheduleImpact}</td>
                     <td>{entry.formula}</td>
                     <td>{entry.approvedBy ?? "None"}</td>
@@ -1367,6 +1528,7 @@ export default function TransparentEstimateExplorer({
   onConstraintChange,
   onCivilMixModeChange,
   onIlaPlanningChange,
+  onProjectConfigurationChange,
 }: {
   estimate: TransparentCorridorEstimate;
   controls: TransparentEstimateControls;
@@ -1378,6 +1540,7 @@ export default function TransparentEstimateExplorer({
   onConstraintChange?: (value: ConstraintValue) => void;
   onCivilMixModeChange: (mode: TransparentEstimateControls["civilMixMode"]) => void;
   onIlaPlanningChange: (next: IlaPlanningControls) => void;
+  onProjectConfigurationChange: (next: TransparentProjectConfigurationControls) => void;
 }) {
   const storageKey = `hyperlinx:transparent-estimate:sections:${estimate.estimateId}`;
   const versionStorageKey = `hyperlinx:transparent-estimate:versions:${estimate.estimateId}`;
@@ -1410,6 +1573,18 @@ export default function TransparentEstimateExplorer({
   const costPerFoot = estimate.totalKnownCost / routeFeet;
   const revenuePerMile = estimate.nrc / routeMiles;
   const marginPerMile = marginDollars / routeMiles;
+  const boreCapability = useMemo(() => {
+    try {
+      return resolveConstructionCapability({
+        ductCount: controls.projectConfiguration.ductCount,
+        ductDiameterInches: controls.projectConfiguration.ductDiameter,
+        materialSpec: controls.projectConfiguration.ductMaterialSpec,
+      }, "DIRECTIONAL_BORE");
+    } catch {
+      return null;
+    }
+  }, [controls.projectConfiguration.ductCount, controls.projectConfiguration.ductDiameter, controls.projectConfiguration.ductMaterialSpec]);
+  const standardBorePricing = boreCapability ? teralinxBoreRate(boreCapability) : null;
   useEffect(() => {
     const current = {
       budget: estimate.sellPrice,
@@ -1529,6 +1704,30 @@ export default function TransparentEstimateExplorer({
         <div><span>Last Recalculated</span><b>{shortTimestamp(lastRecalculatedAt)}</b></div>
       </div>
 
+      <section className="constitutional-review-section" aria-label="Duct and Dark Fiber project configuration">
+        <div className="dal-panel-title-row"><div><h4>Project Configuration</h4><span>Physical selections are proposal facts, not Product Doctrine defaults.</span></div><span className="dal-badge warning">REV {controls.projectConfiguration.configurationRevision}</span></div>
+        <div className="transparent-estimate-controls">
+          <label><span>Duct Count</span><input type="number" min="0" value={controls.projectConfiguration.ductCount} onChange={(event) => onProjectConfigurationChange({ ...controls.projectConfiguration, ductCount: Math.max(0, Number(event.currentTarget.value) || 0) })} /></label>
+          <label><span>Duct Diameter</span><input type="number" min="0" step="0.25" value={controls.projectConfiguration.ductDiameter} onChange={(event) => onProjectConfigurationChange({ ...controls.projectConfiguration, ductDiameter: Math.max(0, Number(event.currentTarget.value) || 0) })} /><small>in</small></label>
+          <label><span>Duct Spec</span><input value={controls.projectConfiguration.ductMaterialSpec} onChange={(event) => onProjectConfigurationChange({ ...controls.projectConfiguration, ductMaterialSpec: event.currentTarget.value })} /></label>
+          <label><span>Fiber Count</span><input type="number" min="0" value={controls.projectConfiguration.fiberCount} onChange={(event) => onProjectConfigurationChange({ ...controls.projectConfiguration, fiberCount: Math.max(0, Math.round(Number(event.currentTarget.value) || 0)) })} /></label>
+          <label><span>Cable Type</span><input value={controls.projectConfiguration.fiberCableType} onChange={(event) => onProjectConfigurationChange({ ...controls.projectConfiguration, fiberCableType: event.currentTarget.value })} /></label>
+          <label><span>Placement Policy</span><select value={controls.projectConfiguration.fiberPlacementPolicy} onChange={(event) => onProjectConfigurationChange({ ...controls.projectConfiguration, fiberPlacementPolicy: event.currentTarget.value as TransparentProjectConfigurationControls["fiberPlacementPolicy"] })}><option value="BLOWN">BLOWN</option><option value="PULLED">PULLED</option><option value="JETTED">JETTED</option><option value="SOURCE_DEFINED">SOURCE DEFINED</option><option value="ENGINEERING_DEFINED">ENGINEERING DEFINED</option><option value="UNKNOWN">UNKNOWN</option></select></label>
+          <label><span>Slack Policy</span><select value={controls.projectConfiguration.slackPolicyMode} onChange={(event) => onProjectConfigurationChange({ ...controls.projectConfiguration, slackPolicyMode: event.currentTarget.value as TransparentProjectConfigurationControls["slackPolicyMode"] })}><option value="NONE">NONE</option><option value="PERCENTAGE">PERCENTAGE</option><option value="SOURCE_DEFINED">SOURCE DEFINED</option><option value="ENGINEERING_DEFINED">ENGINEERING DEFINED</option></select></label>
+          {controls.projectConfiguration.slackPolicyMode === "PERCENTAGE" ? <label><span>Slack Percent</span><input type="number" min="0" step="0.1" value={controls.projectConfiguration.slackPercent} onChange={(event) => onProjectConfigurationChange({ ...controls.projectConfiguration, slackPercent: Math.max(0, Number(event.currentTarget.value) || 0) })} /><small>%</small></label> : null}
+          <label><span>Structure Plan</span><select value={controls.projectConfiguration.structurePlanAuthority} onChange={(event) => onProjectConfigurationChange({ ...controls.projectConfiguration, structurePlanAuthority: event.currentTarget.value as TransparentProjectConfigurationControls["structurePlanAuthority"] })}><option value="SOURCE_DEFINED">SOURCE DEFINED</option><option value="COMMERCIAL_ASSUMPTION">COMMERCIAL ASSUMPTION</option><option value="ENGINEERING_DEFINED">ENGINEERING DEFINED</option><option value="UNKNOWN">UNKNOWN</option></select></label>
+          <label><span>Splice Architecture</span><select value={controls.projectConfiguration.spliceArchitectureAuthority} onChange={(event) => onProjectConfigurationChange({ ...controls.projectConfiguration, spliceArchitectureAuthority: event.currentTarget.value as TransparentProjectConfigurationControls["spliceArchitectureAuthority"] })}><option value="SOURCE_DEFINED">SOURCE DEFINED</option><option value="COMMERCIAL_ASSUMPTION">COMMERCIAL ASSUMPTION</option><option value="ENGINEERING_DEFINED">ENGINEERING DEFINED</option><option value="UNKNOWN">UNKNOWN</option></select></label>
+        </div>
+        <div className="transparent-estimate-summary" aria-label="Construction capability and catalog pricing summary">
+          <div><span>Product</span><b>Point-to-Point Duct &amp; Dark Fiber</b></div>
+          <div><span>Duct Package</span><b>{controls.projectConfiguration.ductCount} x {controls.projectConfiguration.ductDiameter}&quot;</b></div>
+          <div><span>Bore Capability</span><b>{boreCapability?.capabilityClass ?? "Engineering review"}</b></div>
+          <div><span>Required Ream</span><b>{boreCapability?.requiredReamClassInches ? `${boreCapability.requiredReamClassInches}-inch class` : "Unresolved"}</b></div>
+          <div><span>Standard Bore Profile</span><b>{standardBorePricing ? `$${standardBorePricing.totalRate.toFixed(2)}/ft` : "Unresolved"}</b></div>
+          <div><span>Price Authority</span><b>Rate Catalog</b></div>
+        </div>
+      </section>
+
       <div className="transparent-estimate-controls">
         <label>
           <span>Customer Duration</span>
@@ -1592,15 +1791,23 @@ export default function TransparentEstimateExplorer({
       </div>
 
       <CalibrationPanel estimate={estimate} impact={lastImpact} />
+      <ActiveEstimateCalibration estimate={estimate} onConstraintChange={onConstraintChange} />
       <CommercialReadinessPanel estimate={estimate} />
-      <CivilMixStatusPanel estimate={estimate} onCivilMixModeChange={(mode) => {
+      <CivilMixStatusPanel estimate={estimate} onConstraintChange={onConstraintChange} onCivilMixModeChange={(mode) => {
         noteLocalEdit("Civil Mix Mode", ["Civil mix", "Labor", "Schedule", "Margin"]);
         onCivilMixModeChange(mode);
       }} />
-      <IlaPlanningPanel estimate={estimate} onIlaPlanningChange={onIlaPlanningChange} onEditStart={noteLocalEdit} />
-      <AuthorityTransparencySummary estimate={estimate} />
-      <AuthorityControls estimate={estimate} onConstraintChange={onConstraintChange} onEditStart={noteLocalEdit} />
+      <SecondaryEstimatePanelBoundary panel="ILA Planning">
+        <IlaPlanningPanel estimate={estimate} onIlaPlanningChange={onIlaPlanningChange} onEditStart={noteLocalEdit} />
+      </SecondaryEstimatePanelBoundary>
+      <details className="transparent-estimate-section commercial-advanced-diagnostics">
+        <summary><span>Advanced / Diagnostics</span><b>Collapsed by default</b></summary>
+        <AuthorityTransparencySummary estimate={estimate} />
+        <AuthorityControls estimate={estimate} onConstraintChange={onConstraintChange} onEditStart={noteLocalEdit} />
+      </details>
 
+      <details className="transparent-estimate-section commercial-secondary-detail">
+        <summary><span>Estimate revisions, audit, and provenance</span><b>Expand</b></summary>
       <div className="transparent-estimate-versions">
         {versionComparisons.map((version) => (
           <details
@@ -1627,13 +1834,14 @@ export default function TransparentEstimateExplorer({
 
       <div className="transparent-estimate-sections">
         {estimate.sections.map((section) => (
-          <SectionDetails
-            key={section.sectionId}
-            section={section}
-            estimate={estimate}
-            open={Boolean(openSections[section.sectionId])}
-            onToggle={(open) => setSectionOpen(section.sectionId, open)}
-          />
+          <SecondaryEstimatePanelBoundary key={section.sectionId} panel={`Estimate section: ${section.label}`}>
+            <SectionDetails
+              section={section}
+              estimate={estimate}
+              open={Boolean(openSections[section.sectionId])}
+              onToggle={(open) => setSectionOpen(section.sectionId, open)}
+            />
+          </SecondaryEstimatePanelBoundary>
         ))}
         {vendorPreview?.length ? (
           <details
@@ -1646,8 +1854,8 @@ export default function TransparentEstimateExplorer({
               <b>{vendorPreview.length.toLocaleString()} lines</b>
             </summary>
             <div className="transparent-confidence-list">
-              {vendorPreview.map((line) => (
-                <div key={line}>
+              {vendorPreview.map((line, lineIndex) => (
+                <div key={`vendor-preview:${line}:${vendorPreview.slice(0, lineIndex).filter((candidate) => candidate === line).length}`}>
                   <b>{line}</b>
                   <span>Commercial Draft output</span>
                 </div>
@@ -1656,6 +1864,7 @@ export default function TransparentEstimateExplorer({
           </details>
         ) : null}
       </div>
+      </details>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
 import { ConstitutionalRuntimeKernel } from "../runtime/ConstitutionalRuntimeKernel";
 import { constitutionalInputHash } from "../runtime/ProjectionCache";
 import { markRuntimeDiagnostic, measureRuntime } from "../runtime/RuntimeDiagnostics";
+import { recordCommercialMutationOperation } from "../performance/CommercialMutationRuntime";
 import { shouldProjectMapLayer } from "./MapLayerRegistry";
 
 export type MapKernelRenderOptions = {
@@ -217,6 +218,7 @@ function summarizeMapKernelMetricsUncached(specs: MapKernelRenderSpec[], primiti
 
 function mapProjectionInput(specs: MapKernelRenderSpec[], options: MapKernelRenderOptions = {}) {
   return {
+    rendererContract: "SPINE_RENDER_IDENTITY_V3",
     specs: specs.map((spec) => ({
       specId: spec.specId,
       sourceType: spec.sourceType,
@@ -247,6 +249,7 @@ function mapProjectionArtifactId(specs: MapKernelRenderSpec[], options: MapKerne
     spec.metadata?.sourceRevision ?? spec.metadata?.revision ?? spec.metadata?.updatedAt ?? spec.metadata?.packageRevision ?? spec.specId,
   ].join(":"));
   return `MAP-LAYER-PROJECTION-${constitutionalInputHash({
+    rendererContract: "SPINE_RENDER_IDENTITY_V3",
     sources: sourceKey,
     layers: options.layerVisibility ?? {},
     showStationLabels: options.showStationLabels ?? true,
@@ -268,9 +271,11 @@ export function buildCachedMapRenderProjection(specs: MapKernelRenderSpec[], opt
     })),
     dependencies: specs.map((spec) => `${spec.sourceType}:${spec.sourceId}:${spec.specId}`),
     producer: "MapKernel.buildCachedMapRenderProjection",
+    dependencyClass: "MAP",
     create: () => {
       markRuntimeDiagnostic("projectionExecutions");
       return measureRuntime("MapLayerProjection", "mapRebuilds", () => {
+        recordCommercialMutationOperation("mapRebuilds");
         const primitives = renderMapKernelPrimitivesUncached(specs, options);
         const audit = auditMapKernelRenderAuthorityUncached(specs, options);
         return {
