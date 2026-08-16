@@ -1044,6 +1044,12 @@ function stationProjectionForDraftPackage(draftPackage, routeRepository, timesta
     orientation: object.orientation ?? 0,
   }));
   const governedProjectedSpans = governedProjection.projectedSpans;
+  const governedObjectStationAttachments = [
+    ...governedProjection.objectStationAttachments,
+    ...doctrineObjectStationAttachments,
+  ].filter((attachment, index, attachments) => (
+    attachments.findIndex((candidate) => candidate.objectId === attachment.objectId) === index
+  ));
   const governedStationObjectManifest = {
     ...stationObjectManifest,
     objects: governedProjectedObjects,
@@ -1181,7 +1187,7 @@ function stationProjectionForDraftPackage(draftPackage, routeRepository, timesta
     projectedObjects: governedProjectedObjects,
     projectedSpans: governedProjectedSpans,
     objectAddresses: governedProjection.objectAddresses,
-    objectStationAttachments: governedProjection.objectStationAttachments,
+    objectStationAttachments: governedObjectStationAttachments,
     stationObjectManifest: governedStationObjectManifest,
     projectedObjectManifest: governedProjectedObjectManifest,
     commercialAuditReconciliation: governedProjection.commercialAuditReconciliation,
