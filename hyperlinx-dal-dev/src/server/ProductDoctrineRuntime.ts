@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { instantiateDoctrineObjects } from "../products/DoctrineObjectInstantiationEngine";
+import { projectDoctrineToStationSpine } from "../products/DoctrineProjectionEngine";
 import {
   POINT_TO_POINT_LONG_HAUL_DOCTRINE,
   POINT_TO_POINT_LONG_HAUL_DOCTRINE_ID,
@@ -152,4 +153,27 @@ export function assembleProductDoctrineArtifacts(input: {
     doctrineObjectInstantiation: instantiation,
     engineeringObjectManifest: instantiation.engineeringObjectManifest,
   };
+}
+
+export function projectProductDoctrineToStationSpine(input: {
+  packageId: string;
+  doctrineObjectManifest: JsonRecord;
+  measuredSpine: JsonRecord;
+  stationAuthority: JsonRecord;
+  stationIndexedGraph: JsonRecord;
+  routeRepositoryId: string;
+  routeGeometryId?: string;
+  commercialReleasePackageId?: string;
+}) {
+  return projectDoctrineToStationSpine({
+    packageId: input.packageId,
+    productDoctrine: POINT_TO_POINT_LONG_HAUL_DOCTRINE,
+    doctrineObjectManifest: input.doctrineObjectManifest as never,
+    measuredSpine: input.measuredSpine as never,
+    stationAuthority: input.stationAuthority as never,
+    stationIndexedGraph: input.stationIndexedGraph as never,
+    routeRepositoryId: input.routeRepositoryId,
+    routeGeometryId: input.routeGeometryId,
+    commercialReleasePackageId: input.commercialReleasePackageId,
+  });
 }

@@ -35,6 +35,7 @@ import {
   buildEngineeringBaselineFromDraftPackage,
   persistEngineeringBaseline,
 } from "./engineering-baselines.js";
+import { projectProductDoctrineToStationSpine } from "../generated/product-doctrine-runtime.js";
 
 function stableIdPart(value, fallback = "UNKNOWN") {
   return String(value ?? fallback)
@@ -965,6 +966,105 @@ function stationProjectionForDraftPackage(draftPackage, routeRepository, timesta
     createdAt: timestamp,
     updatedAt: timestamp,
   };
+  // The constitutional state artifacts are produced by the canonical Product
+  // Doctrine projection engine. They are planning authority at Commercial
+  // handoff, not executable authority: certification materializes the
+  // Certified IOF Twin and ScopeVersion later authorizes execution.
+  const governedProjection = projectProductDoctrineToStationSpine({
+    packageId,
+    doctrineObjectManifest: doctrineMaterialization.manifest,
+    measuredSpine: {
+      spineId: measuredCenterlineId,
+      packageId,
+      routeId: routeRepositoryId,
+      geometryHash,
+      sourceGeometryRef: firstText(routeRepository.routeGeometryId, routeRepositoryId),
+      originSiteId: firstText(draftPackage.aSiteId, draftPackage.originSiteId, `${packageId}:A`),
+      terminalSiteId: firstText(draftPackage.zSiteId, draftPackage.terminalSiteId, `${packageId}:Z`),
+      routeLengthFeet: routeFeet,
+      routeLengthMiles: routeMiles,
+      coordinateCount: routeGeometry.length,
+      segments: measuredCenterlineSegments,
+      cumulativeMeasureIndex: measuredCenterlineSegments.map((segment) => ({
+        segmentId: segment.segmentId,
+        geometryIndexStart: segment.geometryIndexStart,
+        geometryIndexEnd: segment.geometryIndexEnd,
+        cumulativeStartFeet: segment.cumulativeStartFeet,
+        cumulativeEndFeet: segment.cumulativeEndFeet,
+      })),
+      authority: "MEASURED_SPINE_AUTHORITY",
+    },
+    stationAuthority: {
+      authorityId: stationAuthorityId,
+      packageId,
+      spineId: measuredCenterlineId,
+      routeId: routeRepositoryId,
+      geometryHash,
+      intervalFeet: stationIntervalFeet,
+      stationClass: "ENGINEERING",
+      stationCount: stations.length,
+      stations: stations.map((station) => ({
+        ...station,
+        spineId: measuredCenterlineId,
+        routeId: routeRepositoryId,
+        packageId,
+        lat: station.coordinate[1],
+        lng: station.coordinate[0],
+        cumulativeMeasureFeet: station.measureFeet,
+        stationClass: "ENGINEERING",
+        authority: "STATION_AUTHORITY",
+        geometryHash,
+      })),
+      stationIndex: {},
+      stationToCoordinateMap: {},
+      authority: "STATION_AUTHORITY",
+    },
+    stationIndexedGraph: {
+      graphId: stationGraphId,
+      packageId,
+      spineId: measuredCenterlineId,
+      routeId: routeRepositoryId,
+      geometryHash,
+      stationCount: stations.length,
+      edgeCount: stationEdges.length,
+      edges: stationEdges,
+      authority: "STATION_INDEXED_GRAPH_AUTHORITY",
+    },
+    routeRepositoryId,
+    routeGeometryId: routeRepository.routeGeometryId,
+    commercialReleasePackageId: draftPackage.commercialReleasePackageId,
+  });
+  const governedProjectedObjects = governedProjection.projectedObjects.map((object) => ({
+    ...object,
+    stationValue: object.stationValue ?? object.stationFeet ?? object.measure,
+    projectedCoordinate: object.projectedCoordinate ?? object.coordinate,
+    projectionStatus: object.projectionStatus ?? "PROJECTED",
+    offset: object.offset ?? 0,
+    side: object.side ?? "CENTER",
+    orientation: object.orientation ?? 0,
+  }));
+  const governedProjectedSpans = governedProjection.projectedSpans;
+  const governedStationObjectManifest = {
+    ...stationObjectManifest,
+    objects: governedProjectedObjects,
+    objectAddresses: governedProjection.objectAddresses,
+  };
+  const governedProjectedObjectManifest = {
+    ...projectedObjectManifest,
+    projectedObjects: governedProjectedObjects,
+    objectAddresses: governedProjection.objectAddresses,
+    projectedSpans: governedProjectedSpans,
+    linearAssetSpanAttachments: governedProjection.projectedObjectManifest.linearAssetSpanAttachments,
+    commercialAuditReconciliation: governedProjection.commercialAuditReconciliation,
+    constitutionalStateValidation: governedProjection.constitutionalStateValidation,
+    executionGraphId: governedProjection.executionGraphId,
+    lifecycleGraphId: governedProjection.lifecycleGraphId,
+    closureLedgerId: governedProjection.closureLedgerId,
+    iofPackageTwinId: governedProjection.iofPackageTwinId,
+    closureLedger: governedProjection.closureLedger,
+    iofPackageTwin: governedProjection.iofPackageTwin,
+    workSegments: governedProjection.workSegments,
+  };
   decisionTrace.push({ step: "Station Object Manifest persisted", status: "PASS", stationObjectManifestId, projectedObjectManifestId });
   return {
     routeRepositoryId,
@@ -1078,12 +1178,21 @@ function stationProjectionForDraftPackage(draftPackage, routeRepository, timesta
       authorityHash: deterministicHash({ stationGraphId, edges: stationEdges.map((edge) => edge.authorityHash) }, "sgh"),
       createdAt: timestamp,
     },
-    projectedObjects,
-    projectedSpans,
-    objectAddresses,
-    objectStationAttachments,
-    stationObjectManifest,
-    projectedObjectManifest,
+    projectedObjects: governedProjectedObjects,
+    projectedSpans: governedProjectedSpans,
+    objectAddresses: governedProjection.objectAddresses,
+    objectStationAttachments: governedProjection.objectStationAttachments,
+    stationObjectManifest: governedStationObjectManifest,
+    projectedObjectManifest: governedProjectedObjectManifest,
+    commercialAuditReconciliation: governedProjection.commercialAuditReconciliation,
+    constitutionalStateValidation: governedProjection.constitutionalStateValidation,
+    executionGraphId: governedProjection.executionGraphId,
+    lifecycleGraphId: governedProjection.lifecycleGraphId,
+    closureLedgerId: governedProjection.closureLedgerId,
+    iofPackageTwinId: governedProjection.iofPackageTwinId,
+    closureLedger: governedProjection.closureLedger,
+    iofPackageTwin: governedProjection.iofPackageTwin,
+    workSegments: governedProjection.workSegments,
     doctrineProjectionDiagnostics,
     geometryAuthorityDiagnostics,
     stationProjectionDecisionTrace: decisionTrace,
@@ -1420,17 +1529,18 @@ async function hydrateStationAwareDraftPackageForSubmit(draftPackage, opportunit
     stationObjectManifestId: stationProjection.stationObjectManifestId,
     projectedObjectManifestId: stationProjection.projectedObjectManifestId,
     stationObjectManifest: stationProjection.stationObjectManifest,
-    projectedObjectManifest: {
-      ...stationProjection.projectedObjectManifest,
-      commercialAuditReconciliation: asRecord(draftPackage.commercialAuditReconciliation).reconciliationId
-        ? draftPackage.commercialAuditReconciliation
-        : asRecord(draftPackage.projectedObjectManifest).commercialAuditReconciliation,
-      constitutionalStateValidation: asRecord(draftPackage.constitutionalStateValidation).validationId
-        ? draftPackage.constitutionalStateValidation
-        : asRecord(draftPackage.projectedObjectManifest).constitutionalStateValidation,
-    },
+    projectedObjectManifest: stationProjection.projectedObjectManifest,
     projectedObjects: stationProjection.projectedObjects.map(({ sourceObject, ...object }) => object),
     projectedSpans: stationProjection.projectedSpans,
+    commercialAuditReconciliation: stationProjection.commercialAuditReconciliation,
+    constitutionalStateValidation: stationProjection.constitutionalStateValidation,
+    executionGraphId: stationProjection.executionGraphId,
+    lifecycleGraphId: stationProjection.lifecycleGraphId,
+    closureLedgerId: stationProjection.closureLedgerId,
+    iofPackageTwinId: stationProjection.iofPackageTwinId,
+    closureLedger: stationProjection.closureLedger,
+    iofPackageTwin: stationProjection.iofPackageTwin,
+    workSegments: stationProjection.workSegments,
     doctrineProjectionDiagnostics: stationProjection.doctrineProjectionDiagnostics,
     objectStationAttachments: stationProjection.objectStationAttachments,
     spineAuditProjection: {
