@@ -295,7 +295,8 @@ const server = http.createServer(async (req, res) => {
     if (await serveStaticApp(req, res, url.pathname)) return;
     errorResponse(res, 404, "Not found");
   } catch (err) {
-    errorResponse(res, 500, err instanceof Error ? err.message : String(err));
+    const status = Number(err?.status);
+    errorResponse(res, Number.isInteger(status) && status >= 400 && status <= 599 ? status : 500, err instanceof Error ? err.message : String(err));
   }
 });
 
