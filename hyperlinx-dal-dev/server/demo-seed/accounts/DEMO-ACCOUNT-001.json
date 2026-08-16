@@ -1,7 +1,7 @@
 {
-  "accountId": "DEMO-ACCOUNT-001",
+  "accountId": "demo-account-001",
   "accountNumber": 1,
-  "customerId": "DEMO-CUSTOMER-001",
+  "customerId": "demo-customer-001",
   "name": "Demo Customer",
   "status": "ACTIVE",
   "environment": "DEMO",
