@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { DIRS, loadRecord, withRepositoryAuthority } from "../server/routes/_shared.js";
 
 const baseUrl = process.env.CIP063_BASE_URL ?? "http://127.0.0.1:3001";
 const password = (await readFile(process.env.CIP063_DEMO_CREDENTIAL_FILE ?? "/home/ubuntu/.hyperlinx-demo-credential", "utf8")).trim();
@@ -65,7 +66,16 @@ assert.equal(scopeVersion.canonicalTruth?.lifecycleGraphId, engineeringPackage.l
 assert.equal(customerProject.status, "AUTHORIZED");
 assert.equal(customerProject.scopeVersion.scopeVersionId, scopeVersionId);
 assert.equal(twin.scopeVersionId, scopeVersionId);
-for (const record of [engineeringPackage, approvalStatus.currentEngineeringApproval, certified, serviceOrder, scopeVersion]) {
+const persistedRecords = await withRepositoryAuthority({
+  principalId: "demo-principal", organizationId: "org-demo", authorityClass: "DEMO", permissions: ["demo.tenant"],
+}, async () => Promise.all([
+  loadRecord(DIRS.engineeringPackages, engineeringPackageId),
+  loadRecord(DIRS.engineeringApprovals, approvalStatus.currentEngineeringApproval.approvalId),
+  loadRecord(DIRS.certifiedIofPackages, certifiedPackageId),
+  loadRecord(DIRS.serviceOrders, serviceOrderId),
+  loadRecord(DIRS.scopeVersions, scopeVersionId),
+]));
+for (const record of persistedRecords) {
   assert.equal(record.environment, "DEMO");
   assert.equal(record.organizationId, "org-demo");
   assert.equal(record.productionEligible, false);
@@ -93,7 +103,7 @@ console.log(JSON.stringify({
     commercialAuditStatus: scopeVersion.canonicalTruth.commercialAuditStatus,
     constitutionalStateValidationStatus: scopeVersion.canonicalTruth.constitutionalStateValidationStatus,
   },
-  environment: scopeVersion.environment,
-  organizationId: scopeVersion.organizationId,
-  productionEligible: scopeVersion.productionEligible,
+  environment: persistedRecords.at(-1).environment,
+  organizationId: persistedRecords.at(-1).organizationId,
+  productionEligible: persistedRecords.at(-1).productionEligible,
 }, null, 2));
