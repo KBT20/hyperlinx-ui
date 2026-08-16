@@ -3,7 +3,8 @@ import {
   DIRS, deleteRecord, errorResponse, handleOptions, hydrateIofProjectionArtifacts, jsonResponse,
   listRecords, loadRecord, nowIso, persistRecord, readRequestJson, routeMatch, sortedByUpdated, unwrapBody,
 } from "./_shared.js";
-import { requireAnyPermission } from "./authority.js";
+import { requireRuntimeUser } from "./authority.js";
+import { DUTY_PERMISSIONS, hasExactPermission } from "./duty-authority.js";
 import { createScopeVersionFromCertifiedPackage } from "../scopeversion-authority-engine.js";
 import { persistScopeVersion } from "./scopeversions.js";
 import { materializeAuthorizedIofTwin } from "./twin-state.js";
@@ -19,6 +20,16 @@ const idPart = (value) => String(value ?? "UNKNOWN").replace(/[^A-Za-z0-9_-]+/g,
 const sorted = (value) => Array.isArray(value) ? value.map(sorted) : value && typeof value === "object"
   ? Object.keys(value).sort().reduce((out, key) => ({ ...out, [key]: sorted(value[key]) }), {}) : value;
 const hash = (value) => createHash("sha256").update(JSON.stringify(sorted(value))).digest("hex");
+
+function canReadAllServiceOrders(user) {
+  return [DUTY_PERMISSIONS.commercial, DUTY_PERMISSIONS.engineering, DUTY_PERMISSIONS.teralinxCountersignature]
+    .some((permission) => hasExactPermission(user, permission));
+}
+
+function canReadCustomerOrder(user, order) {
+  return hasExactPermission(user, DUTY_PERMISSIONS.customerSignature) &&
+    Boolean(user.customerId) && String(user.customerId) === String(order.customerId);
+}
 
 function proposalId(value = {}) { return text(value.proposalId ?? value.proposalRecordId ?? value.acceptedProposalId); }
 function certifiedId(value = {}) { return text(value.certifiedPackageId ?? value.certifiedIofPackageId ?? value.packageId); }
@@ -219,9 +230,8 @@ async function promotionPackage(certified) {
 }
 
 async function countersign(req, res, user, id) {
-  const permissions = array(user.permissions).map(String);
-  if (!permissions.some((permission) => ["platform.admin", "scopeversion.authority"].includes(permission)) || String(user.participantType ?? "").toUpperCase() === "CUSTOMER") {
-    return errorResponse(res, 403, "Only an authenticated Teralinx ScopeVersion authority may countersign and authorize execution.");
+  if (!hasExactPermission(user, DUTY_PERMISSIONS.teralinxCountersignature) || String(user.participantType ?? "").toUpperCase() === "CUSTOMER") {
+    return errorResponse(res, 403, "Only the designated Teralinx CEO countersignature authority may countersign and authorize execution.");
   }
   const order = await loadRecord(DIRS.serviceOrders, id).catch(() => null);
   if (!order) return errorResponse(res, 404, `Service Order not found: ${id}`);
@@ -277,10 +287,18 @@ async function countersign(req, res, user, id) {
 export async function handleServiceOrders(req, res, pathname) {
   const match = routeMatch(pathname, BASE_PATH); if (!match) return false;
   if (handleOptions(req, res)) return true;
-  const user = requireAnyPermission(req, res, req.method === "GET" ? ["workspace.commercial", "workspace.proposal", "proposal.read", "proposal.manage"] : ["workspace.commercial", "workspace.proposal", "proposal.manage"], "Commercial authority is required for Service Orders.");
+  const user = requireRuntimeUser(req, res);
   if (!user) return true;
-  if (match.base && req.method === "GET") { jsonResponse(res, 200, { serviceOrders: sortedByUpdated(await listRecords(DIRS.serviceOrders)) }); return true; }
-  if (!match.base && req.method === "GET") { const serviceOrder = await loadRecord(DIRS.serviceOrders, match.id).catch(() => null); serviceOrder ? jsonResponse(res, 200, { serviceOrder }) : errorResponse(res, 404, `Service Order not found: ${match.id}`); return true; }
+  if (match.base && req.method === "GET") {
+    if (!canReadAllServiceOrders(user)) { errorResponse(res, 403, "Service Order directory authority is required."); return true; }
+    jsonResponse(res, 200, { serviceOrders: sortedByUpdated(await listRecords(DIRS.serviceOrders)) }); return true;
+  }
+  if (!match.base && req.method === "GET") {
+    const serviceOrder = await loadRecord(DIRS.serviceOrders, match.id).catch(() => null);
+    if (!serviceOrder) { errorResponse(res, 404, `Service Order not found: ${match.id}`); return true; }
+    if (!canReadAllServiceOrders(user) && !canReadCustomerOrder(user, serviceOrder)) { errorResponse(res, 403, "You do not have authority to read this Service Order."); return true; }
+    jsonResponse(res, 200, { serviceOrder }); return true;
+  }
   if (match.base && req.method === "POST") { await generate(req, res, user); return true; }
   if (!match.base && req.method === "POST" && ["issue", "mark-ready-signature"].includes(match.action)) { await issue(req, res, user, match.id); return true; }
   if (!match.base && req.method === "POST" && match.action === "record-signature") { await signAsCustomer(req, res, user, match.id); return true; }

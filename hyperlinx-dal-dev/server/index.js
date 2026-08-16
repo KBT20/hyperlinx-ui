@@ -44,6 +44,7 @@ import { handleRuntimeWorkspaceSession } from "./routes/runtime-workspace-sessio
 import { handleScopeVersions } from "./routes/scopeversions.js";
 import { handleServiceOrders } from "./routes/service-orders.js";
 import { handleTwinState } from "./routes/twin-state.js";
+import { enforceLifecycleSeparationOfDuties } from "./routes/duty-authority.js";
 
 export const REGISTERED_API_ROUTES = [
   { basePath: "/api/auth", handler: "handleAuth" },
@@ -199,6 +200,7 @@ const server = http.createServer(async (req, res) => {
     if (handleOptions(req, res)) return;
     await authenticateRuntimeRequest(req);
     if (enforceAuthenticationBoundary(req, res, url.pathname)) return;
+    if (enforceLifecycleSeparationOfDuties(req, res, url.pathname)) return;
     for (const route of routes) {
       if (await route(req, res, url.pathname)) return;
     }
