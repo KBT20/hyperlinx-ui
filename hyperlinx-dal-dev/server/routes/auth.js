@@ -253,7 +253,7 @@ async function loginAttemptCount(loginIdentifierHash, networkAddressHash) {
 }
 
 async function identityForLogin(username) {
-  const rows = await directoryRows("WHERE lower(p.username) = lower($1)", [username]);
+  const rows = await directoryRows("WHERE lower(p.username) = lower($1) OR lower(p.email) = lower($1)", [username]);
   if (rows.length !== 1) return null;
   const credential = await authQuery({
     text: "SELECT password_digest, digest_scheme, credential_version, password_change_required FROM hyperlinx.principal_credentials WHERE principal_id = $1",
