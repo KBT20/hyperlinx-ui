@@ -33,31 +33,28 @@ assert.ok(r1 && r2);
 assert.equal(r1.snapshot.productDoctrineVersion, r2.snapshot.productDoctrineVersion);
 assert.equal(r1.snapshot.productDoctrineHash, r2.snapshot.productDoctrineHash);
 
-const draft = (await call("Reload reference-oriented Draft B", `/api/engineering/certification/draft-packages/${packageId}`)).draftPackage;
-assert.equal(draft.proposalRevisionId, r2.proposalRevisionId);
-assert.equal(draft.proposalHash, r2.proposalHash);
-assert.equal(draft.productDoctrineId, r2.snapshot.productDoctrineId);
-assert.equal(draft.productDoctrineVersion, r2.snapshot.productDoctrineVersion);
-assert.equal(draft.productDoctrineHash, r2.snapshot.productDoctrineHash);
-const manifestReference = draft.iofArtifactRepositoryReferences?.engineeringObjectManifest;
+const retryDraft = (await call("Deterministic Draft IOF retry", "/api/engineering/certification/draft-packages/from-proposal", "POST", { proposalId })).draftPackage;
+const manifestReference = retryDraft.iofArtifactRepositoryReferences?.engineeringObjectManifest;
 assert.ok(manifestReference?.artifactId);
+assert.equal(retryDraft.iofArtifactRepositoryReferences.engineeringObjectManifest.artifactId, manifestReference.artifactId);
+assert.equal(retryDraft.iofArtifactRepositoryReferences.engineeringObjectManifest.hash, manifestReference.hash);
 
-const rawDraft = JSON.parse(await readFile(`server/data-demo/iof-packages/${packageId}.json`, "utf8"));
+const rawDraftText = await readFile(`server/data-demo/iof-packages/${packageId}.json`, "utf8");
+const rawDraft = JSON.parse(rawDraftText);
 assert.equal(rawDraft.noEmbeddedManifests, true);
 assert.equal(rawDraft.referenceOnly, true);
 assert.equal(rawDraft.engineeringObjectManifest, undefined);
 assert.equal(rawDraft.doctrineObjectManifest, undefined);
+assert.equal(rawDraft.doctrineObjectInstantiation, undefined);
+assert.equal(rawDraft.productDoctrineAssembly, undefined);
+assert.equal(rawDraft.productDoctrine, undefined);
 assert.equal(rawDraft.iofArtifactRepositoryReferences.engineeringObjectManifest.artifactId, manifestReference.artifactId);
-const rawManifest = JSON.parse(await readFile(`server/data-demo/engineering-object-manifests/${manifestReference.artifactId}.json`, "utf8"));
+const rawManifest = JSON.parse(await readFile(`server/data-demo/engineering-object-manifests/${encodeURIComponent(manifestReference.artifactId)}.json`, "utf8"));
 assert.equal(rawManifest.payload.authority, "DOCTRINE_OBJECT_INSTANTIATION_ENGINE");
 assert.equal(rawManifest.payload.productId, proposal.productId);
 assert.equal(rawManifest.payload.doctrineId, proposal.productDoctrineId);
 assert.equal(rawManifest.payload.doctrineVersion, proposal.productDoctrineVersion);
 assert.ok(rawManifest.payload.objectCount > 0);
-
-const retryDraft = (await call("Deterministic Draft IOF retry", "/api/engineering/certification/draft-packages/from-proposal", "POST", { proposalId })).draftPackage;
-assert.equal(retryDraft.iofArtifactRepositoryReferences.engineeringObjectManifest.artifactId, manifestReference.artifactId);
-assert.equal(retryDraft.iofArtifactRepositoryReferences.engineeringObjectManifest.hash, manifestReference.hash);
 
 const handoff = await call("Commercial to Engineering submission", `/api/commercial/iof-packages/${packageId}/submit-engineering`, "POST", {});
 const engineeringPackage = handoff.engineeringPackage;
@@ -65,6 +62,13 @@ assert.ok(engineeringPackage?.engineeringPackageId);
 assert.equal(engineeringPackage.proposalRevisionId, r2.proposalRevisionId);
 assert.equal(engineeringPackage.proposalHash, r2.proposalHash);
 assert.equal(engineeringPackage.engineeringObjectManifestId, manifestReference.artifactId);
+
+const draft = (await call("Engineering dereferences Draft B", `/api/engineering/certification/draft-packages/${packageId}`)).draftPackage;
+assert.equal(draft.proposalRevisionId, r2.proposalRevisionId);
+assert.equal(draft.proposalHash, r2.proposalHash);
+assert.equal(draft.productDoctrineId, r2.snapshot.productDoctrineId);
+assert.equal(draft.productDoctrineVersion, r2.snapshot.productDoctrineVersion);
+assert.equal(draft.productDoctrineHash, r2.snapshot.productDoctrineHash);
 
 console.log(JSON.stringify({
   result: "PASS_TO_ENGINEERING",
@@ -79,6 +83,7 @@ console.log(JSON.stringify({
   manifestObjectCount: rawManifest.payload.objectCount,
   manifestAuthority: rawManifest.payload.authority,
   referenceOnlyDraft: true,
+  referenceOnlyDraftBytes: Buffer.byteLength(rawDraftText),
   deterministicRetry: true,
   engineeringPackageId: engineeringPackage.engineeringPackageId,
   engineeringBaselineId: handoff.engineeringBaseline?.engineeringBaselineId,

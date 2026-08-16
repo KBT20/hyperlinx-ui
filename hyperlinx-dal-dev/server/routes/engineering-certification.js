@@ -1222,11 +1222,11 @@ async function persistDraftPackage(record, user, eventType = "runtime.iof_packag
 async function persistDraftPackageMetadataPatch(record, user, eventType, details, metadata = {}) {
   const timestamp = nowIso();
   const history = await appendHistory(record, user, eventType, details, metadata);
-  const saved = await persistRecord(DIRS.iofPackages, record.packageId, {
+  const saved = await persistRecord(DIRS.iofPackages, record.packageId, stripIofProjectionArtifacts({
     ...record,
     historyIds: unique([...asArray(record.historyIds), history.historyId]),
     updatedAt: timestamp,
-  });
+  }));
   await persistRuntimeMirror(saved, user, "DRAFT-IOF", saved.packageId, { status: saved.status, workflowStatus: saved.workflowStatus, metadataPatchOnly: true });
   return saved;
 }

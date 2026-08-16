@@ -384,6 +384,11 @@ export function stripIofProjectionArtifacts(record = {}, artifactReferences = un
     for (const alias of spec.aliases) delete next[alias];
   }
   delete next.doctrineObjectInstantiation;
+  // Product Doctrine is immutable source authority resolved by the exact
+  // id/version/hash bound to the Proposal Revision. The assembled doctrine is
+  // persisted in the Product Doctrine Assembly repository and must not be
+  // embedded in the reference-only Draft IOF envelope.
+  delete next.productDoctrine;
   delete next.doctrineProjection;
   delete next.projectedObjects;
   delete next.projectedSpans;

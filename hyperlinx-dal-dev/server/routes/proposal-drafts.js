@@ -12,6 +12,7 @@ import {
   readRequestJson,
   routeMatch,
   sortedByUpdated,
+  stripIofProjectionArtifacts,
   unwrapBody,
 } from "./_shared.js";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
@@ -584,7 +585,14 @@ async function enrichDraftPackageWithProposalAuthorityReferences(draftPackage, p
   const stationAware = routeRepository
     ? stationAwareDraftPackageFromRepositories(enriched, routeRepository, proposal)
     : enriched;
-  await persistRecord(DIRS.iofPackages, stationAware.packageId, stationAware);
+  // `draftPackage` is a hydrated response projection. Persisting it directly
+  // would copy repository-backed doctrine/object/geometry payloads back into
+  // the Draft IOF and defeat the reference-only handoff contract.
+  await persistRecord(
+    DIRS.iofPackages,
+    stationAware.packageId,
+    stripIofProjectionArtifacts(stationAware),
+  );
   logProposalRepositoryState("Draft IOF package reference enrichment", proposal, {
     draftIOFPackageId: stationAware.packageId,
     routeRepositoryId,
