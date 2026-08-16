@@ -187,8 +187,10 @@ async function serveStaticApp(req, res, pathname) {
   for (const candidate of candidates) {
     try {
       const body = await readFile(candidate);
+      const isHtml = path.extname(candidate) === ".html";
       res.writeHead(200, {
         "Content-Type": CONTENT_TYPES[path.extname(candidate)] ?? "application/octet-stream",
+        "Cache-Control": isHtml ? "no-cache, no-store, must-revalidate" : "public, max-age=31536000, immutable",
       });
       if (req.method !== "HEAD") res.end(body);
       else res.end();

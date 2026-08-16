@@ -43,6 +43,7 @@ export async function handleRuntime(req, res, pathname) {
     const buildDate = process.env.BUILD_DATE ?? process.env.VITE_BUILD_DATE ?? serverStartedAt;
     const application = "Teralinx Infrastructure Operating Platform";
     const environment = process.env.DAL_ENV ?? "Alpha";
+    res.setHeader("Cache-Control", "no-store, max-age=0");
     jsonResponse(res, 200, {
       application,
       applicationName: application,

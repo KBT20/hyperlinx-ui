@@ -2040,7 +2040,7 @@ export async function listDemoScenarios() {
 }
 
 export async function loadTeralinxRuntimeInfo() {
-  return requestJson<TeralinxRuntimeInfo>("/api/runtime");
+  return requestJson<TeralinxRuntimeInfo>("/api/runtime", { cache: "no-store" });
 }
 
 export async function loadRuntimeRehydration(session?: TeralinxAuthSession | null) {

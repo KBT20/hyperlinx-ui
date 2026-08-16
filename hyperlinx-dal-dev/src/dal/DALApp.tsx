@@ -315,6 +315,19 @@ function DALShell() {
   function chooseCustomerOrganization(value: string) {
     setDemoCustomerOrganization(value); updateDemoCustomerOrganization(value);
   }
+  const demoPerspectiveSelector = (
+    <label className="demo-perspective-selector">
+      <span>Demo perspective</span>
+      <select aria-label="Demo perspective" value={demoPersona} onChange={(event) => choosePersona(event.currentTarget.value as DemoPersona)}>
+        <option value="SALES">Sales</option>
+        <option value="ENGINEERING">Engineering</option>
+        <option value="CUSTOMER_VIEWER">Customer Viewer</option>
+        <option value="CUSTOMER_COMMERCIAL_REVIEWER">Customer Commercial Reviewer</option>
+        <option value="CUSTOMER_AUTHORIZED_SIGNER">Customer Authorized Signer</option>
+        <option value="EXECUTIVE">Executive</option>
+      </select>
+    </label>
+  );
   async function resetDemo() {
     if (!isDemo || !window.confirm("Reset only the isolated Demo tenant to its approved seed state? The current Demo run will be archived.")) return;
     setDemoResetStatus("Resetting Demo...");
@@ -329,16 +342,11 @@ function DALShell() {
   if (customerView) return (
     <div className="demo-experience-shell">
       {isDemo ? <div className="demo-persona-bar">
-        <strong>Demo Persona</strong>
-        <select value={demoPersona} onChange={(event) => choosePersona(event.currentTarget.value as DemoPersona)}>
-          <option value="SALES">Sales</option><option value="ENGINEERING">Engineering</option>
-          <option value="CUSTOMER_VIEWER">Customer · Viewer</option><option value="CUSTOMER_COMMERCIAL_REVIEWER">Customer · Commercial Reviewer</option>
-          <option value="CUSTOMER_AUTHORIZED_SIGNER">Customer · Authorized Signer</option><option value="EXECUTIVE">Executive</option>
-        </select>
+        {demoPerspectiveSelector}
         <select value={demoCustomerOrganization} onChange={(event) => chooseCustomerOrganization(event.currentTarget.value)}>
           <option value="org-demo-customer-a">Northstar Cloud Infrastructure</option><option value="org-demo-customer-b">Blue Mesa Digital Systems</option>
         </select>
-        <span>Actor remains demo-principal · simulated capability only</span>
+        <span>Customer Portal · actor remains demo-principal · simulated capability only</span>
       </div> : null}
       <Suspense fallback={<div className="dal-status">Opening customer portal...</div>}><CustomerPortalWorkspace key={`${demoPersona}:${demoCustomerOrganization}`} /></Suspense>
     </div>
@@ -352,7 +360,6 @@ function DALShell() {
           <button className="dal-navigation-trigger" type="button" aria-expanded={navigationOpen} aria-controls="dal-workspace-navigation" onClick={() => setNavigationOpen((open) => !open)}>☰ Workspaces</button>
         </div>
         <div className="dal-targets">
-          {isDemo ? <label className="demo-persona-control">Persona<select value={demoPersona} onChange={(event) => choosePersona(event.currentTarget.value as DemoPersona)}><option value="SALES">Sales</option><option value="ENGINEERING">Engineering</option><option value="CUSTOMER_VIEWER">Customer · Viewer</option><option value="CUSTOMER_COMMERCIAL_REVIEWER">Customer · Commercial Reviewer</option><option value="CUSTOMER_AUTHORIZED_SIGNER">Customer · Authorized Signer</option><option value="EXECUTIVE">Executive</option></select></label> : null}
           <span>User: {session?.user.name} / {session?.user.title} / {session?.user.role}</span>
           <span>Workspace: {session?.user.workspaceId ?? session?.workspace?.workspaceId ?? "unassigned"} / Principal: {session?.user.principalId ?? "anonymous"}</span>
           <span>Organization: {session?.user.organization ?? runtimeInfo?.organization ?? "Teralinx"} / Membership: {session?.user.membershipId ?? "unassigned"}</span>
@@ -369,6 +376,10 @@ function DALShell() {
           <button className="dal-header-signout" type="button" onClick={() => void logout()}>Sign Out</button>
         </div>
       </header>
+      {isDemo ? <nav className="demo-primary-perspective" aria-label="Demo perspective navigation">
+        {demoPerspectiveSelector}
+        <span>Switch workflow perspective without changing the authenticated demo-principal actor.</span>
+      </nav> : null}
       <div className="dal-layout">
         {navigationOpen ? <button type="button" className="dal-nav-backdrop" aria-label="Close workspace navigation" onClick={() => setNavigationOpen(false)} /> : null}
         <div id="dal-workspace-navigation"><DALNavigation open={navigationOpen} onClose={() => setNavigationOpen(false)} /></div>
