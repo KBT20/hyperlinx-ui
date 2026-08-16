@@ -133,40 +133,57 @@ const checklist = Object.fromEntries([
   "engineeringStandardsMet", "riskAccepted", "packageComplete",
 ].map((key) => [key, true]));
 checklist.certificationConfidence = 100;
-const certificationAttempt = await call("Kyle certifies exact approved Engineering Revision", `/api/engineering/certification/draft-packages/${packageId}/certify`, {
-  method: "POST", cookie, persona: "ENGINEERING", expected: [200, 409], body: {
-    checklist,
-    engineeringApprovalId: approval.approvalId,
-    engineeringApprovedObjectBudget: {
-      budgetId: `ENG-BUDGET-${packageId}`,
-      allObjectsConfirmed: true,
-      totalApprovedBudget: Number(proposal.pricingSummary?.budgetCost ?? 0),
-      objectBudgets: [],
+const certifiedList = (await call("Resolve existing certification for exact R3 Draft", "/api/engineering/certification/certified-packages", {
+  cookie, persona: "ENGINEERING",
+})).value.certifiedIofPackages ?? [];
+let certified = certifiedList.find((item) => (
+  item.sourcePackageId === packageId || item.sourceDraftPackageId === packageId || item.draftIOFPackageId === packageId
+));
+let certificationAttempt = null;
+if (!certified) {
+  certificationAttempt = await call("Kyle certifies exact approved Engineering Revision", `/api/engineering/certification/draft-packages/${packageId}/certify`, {
+    method: "POST", cookie, persona: "ENGINEERING", expected: [200, 409], body: {
+      checklist,
+      engineeringApprovalId: approval.approvalId,
+      engineeringApprovedObjectBudget: {
+        budgetId: `ENG-BUDGET-${packageId}`,
+        allObjectsConfirmed: true,
+        totalApprovedBudget: Number(proposal.pricingSummary?.budgetCost ?? 0),
+        objectBudgets: [],
+      },
     },
-  },
-});
-if (!certificationAttempt.value.certifiedIofPackage) {
+  });
+  certified = certificationAttempt.value.certifiedIofPackage;
+}
+if (!certified) {
   console.log(JSON.stringify({
     result: "STOPPED_AT_GENUINE_CERTIFICATION_PREDICATE",
     packageId, proposalRevisionId: expectedRevisionId, proposalHash: expectedProposalHash,
     engineeringPackageId: engineeringPackage.engineeringPackageId,
     engineeringApprovalId: approval.approvalId,
-    predicate: certificationAttempt.value,
+    predicate: certificationAttempt?.value,
     productionEligible: false, resetPerformed: false, trace,
   }, null, 2));
   process.exit(0);
 }
-const certified = certificationAttempt.value.certifiedIofPackage;
-const createdServiceOrder = (await call("Commercial creates exact Service Order", "/api/service-orders", {
-  method: "POST", cookie, persona: "SALES", body: { proposalId, certifiedPackageId: certified.certifiedPackageId },
-})).value.serviceOrder;
-const issuedServiceOrder = (await call("Commercial issues exact Service Order", `/api/service-orders/${createdServiceOrder.serviceOrderId}/issue`, {
-  method: "POST", cookie, persona: "SALES", body: {},
-})).value.serviceOrder;
+const serviceOrderList = (await call("Resolve existing exact Service Order", "/api/service-orders", {
+  cookie, persona: "SALES",
+})).value.serviceOrders ?? [];
+let issuedServiceOrder = serviceOrderList.find((item) => item.certifiedPackageId === certified.certifiedPackageId || item.certifiedIofPackageId === certified.certifiedPackageId);
+if (!issuedServiceOrder) {
+  issuedServiceOrder = (await call("Commercial creates exact Service Order", "/api/service-orders", {
+    method: "POST", cookie, persona: "SALES", body: { proposalId, certifiedPackageId: certified.certifiedPackageId },
+  })).value.serviceOrder;
+}
+if (!issuedServiceOrder.issuedAt) {
+  issuedServiceOrder = (await call("Commercial issues exact Service Order", `/api/service-orders/${issuedServiceOrder.serviceOrderId}/issue`, {
+    method: "POST", cookie, persona: "SALES", body: {},
+  })).value.serviceOrder;
+}
 
 const customerView = (await call("Customer View loads issued Service Order", "/api/customer-portal/projects", {
   cookie, persona: "CUSTOMER_AUTHORIZED_SIGNER",
-})).value.projects.find((project) => project.opportunityId === opportunityId);
+})).value.projects.find((project) => project.projectId === opportunityId);
 assert.equal(customerView.serviceOrder.serviceOrderId, issuedServiceOrder.serviceOrderId);
 assert.equal(customerView.serviceOrder.documentHash, issuedServiceOrder.documentHash);
 
