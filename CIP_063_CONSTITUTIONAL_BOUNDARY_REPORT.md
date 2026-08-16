@@ -38,3 +38,44 @@ Commercial projection may define identities and planning state, but it cannot au
 ## Fixture rule
 
 The accepted R3 fixture remains the lifecycle source. Resumption reassembles the Draft IOF through the legitimate current Commercial handoff from the same immutable Proposal Revision 3; it does not reset Demo, clone another Proposal, alter R3, or touch production records.
+
+## DAL1 acceptance result
+
+Result: `PASS_TO_SCOPEVERSION` and `PASS_AFTER_RESTART`
+
+- Proposal Revision: `PROPOSAL-DEMO-CIP062-NORTHSTAR-revision-3`
+- Proposal hash: `0b6ad2866098cc520cc1c92d34c5fd089a79735c17a58cef4a0ff5a34b7eaf5f`
+- Engineering Package: `ENG-PKG-DRAFT-IOF-PROPOSAL-DEMO-CIP062-NORTHSTAR`
+- Engineering Approval: `ENG-APPROVAL-ENG-PKG-DRAFT-IOF-PROPOSAL-DEMO-CIP062-NORTHSTAR-d2ee594bd84318a2-c46cedf86a2f`
+- Certified IOF: `CERT-IOF-DRAFT-IOF-PROPOSAL-DEMO-CIP062-NORTHSTAR`
+- Service Order: `SO-PROPOSAL-DEMO-CIP062-NORTHSTAR-R001`
+- ScopeVersion: `ScopeVersion-0001-CERT-IOF-DRAFT-IOF-PROPOSAL-DEMO-CIP062-NORTHSTAR`
+- Authorized Twin: `DRAFT-IOF-PROPOSAL-DEMO-CIP062-NORTHSTAR:IOF-PACKAGE-TWIN:AUTHORIZED:ScopeVersion-0001-CERT-IOF-DRAFT-IOF-PROPOSAL-DEMO-CIP062-NORTHSTAR:V1`
+
+The exact R3 passed Commercial handoff, Engineering review, Engineering budget approval through an Engineering Change Set, exact Human Approval, certification, Customer View Service Order loading, customer signature, Executive countersignature, atomic ScopeVersion creation, and Authorized Twin materialization.
+
+Negative predicates proved:
+
+- stale Engineering Revision hash: rejected with HTTP 409 `STALE_APPROVAL_ELIGIBILITY`
+- wrong Service Order document hash: rejected with HTTP 409
+- customer signature without the authenticated signer's exact name: rejected with HTTP 409
+- no direct ScopeVersion mutation was invoked
+
+Persistence and isolation:
+
+- Restart reload: PASS
+- Customer Portal status after restart: `AUTHORIZED`
+- Twin projection after restart: PASS, server source
+- Persisted classification: `environment=DEMO`, `organizationId=org-demo`, `productionEligible=false`
+- Demo reset: not performed
+- Production repository: all 2,461 pre-deployment files remained byte-identical
+- Demo repository: grew from 66 to 90 files only through the authorized R3 lifecycle
+- Chicago access: none
+
+Validation:
+
+- `npm run typecheck`: PASS
+- `npm run build`: PASS
+- `node scripts/cip063-constitutional-boundary-validation.mjs`: PASS
+- `node scripts/cip063-dal1-resume.mjs`: PASS to ScopeVersion
+- `node scripts/cip063-restart-verification.mjs`: PASS after restart
