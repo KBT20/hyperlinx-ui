@@ -194,7 +194,7 @@ await call("Customer signature with wrong document hash rejected", `/api/custome
 });
 const customerSignature = (await call("Independent Demo customer authority signs exact Service Order", `/api/customer-portal/projects/${opportunityId}/service-order/sign`, {
   method: "POST", cookie, persona: "CUSTOMER_AUTHORIZED_SIGNER", body: {
-    serviceOrderId: issuedServiceOrder.serviceOrderId, documentHash: issuedServiceOrder.documentHash, typedName: "Demo Customer Signer", authorityAcknowledged: true,
+    serviceOrderId: issuedServiceOrder.serviceOrderId, documentHash: issuedServiceOrder.documentHash, typedName: login.value.user.name, authorityAcknowledged: true,
   },
 })).value;
 
