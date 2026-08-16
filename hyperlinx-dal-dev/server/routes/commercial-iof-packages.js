@@ -1606,6 +1606,11 @@ function normalizeCommercialDraftPackage(raw, user) {
   return {
     ...raw,
     packageId,
+    proposalId,
+    proposalRevisionId: String(raw.proposalRevisionId ?? "").trim(),
+    proposalRevisionNumber: Number(raw.proposalRevisionNumber ?? raw.sourceProposalVersion ?? 0),
+    proposalHash: String(raw.proposalHash ?? "").trim(),
+    sourceProposalVersion: Number(raw.sourceProposalVersion ?? raw.proposalRevisionNumber ?? 0),
     draftPackageId: String(raw.draftPackageId ?? packageId),
     packageType: "ENGINEERING",
     status: raw.status ?? "DRAFT",
@@ -1662,10 +1667,21 @@ export function exactProposalRevisionEligibility(proposal = {}, draftPackage = {
   const proposalHash = firstText(draftPackage.proposalHash);
   if (!proposalRevisionId && !proposalHash) return { eligible: false, legacy: true, reason: "A saved Proposal Revision ID and hash are required for release." };
   if (!proposalRevisionId || !proposalHash) return { eligible: false, legacy: false, reason: "Both proposalRevisionId and proposalHash are required." };
+  if (firstText(draftPackage.proposalId) !== firstText(proposal.proposalId, proposal.proposalRecordId)) return { eligible: false, legacy: false, reason: "Draft IOF Proposal identity does not match the Proposal Repository record." };
+  if (firstText(draftPackage.organizationId) !== firstText(proposal.organizationId)) return { eligible: false, legacy: false, reason: "Draft IOF organization scope does not match the selected Proposal Revision." };
+  if (firstText(draftPackage.customerId) !== firstText(proposal.customerId)) return { eligible: false, legacy: false, reason: "Draft IOF customer scope does not match the selected Proposal Revision." };
+  if (firstText(draftPackage.opportunityId) !== firstText(proposal.opportunityId)) return { eligible: false, legacy: false, reason: "Draft IOF opportunity scope does not match the selected Proposal Revision." };
+  if (proposalRevisionId !== firstText(proposal.proposalRevisionId) || proposalHash !== firstText(proposal.proposalHash)) return { eligible: false, legacy: false, reason: "Draft IOF does not reference the Proposal's selected immutable Revision ID/hash." };
   const revision = asArray(proposal.proposalRevisions).find((item) =>
     item?.proposalRevisionId === proposalRevisionId && item?.proposalHash === proposalHash
   );
   if (!revision) return { eligible: false, legacy: false, reason: "The exact saved Proposal Revision/hash was not found." };
+  if (firstText(revision.proposalId) && firstText(revision.proposalId) !== firstText(proposal.proposalId, proposal.proposalRecordId)) return { eligible: false, legacy: false, reason: "The selected Proposal Revision belongs to a different Proposal." };
+  const revisionSnapshot = asRecord(revision.snapshot);
+  if (firstText(revisionSnapshot.proposalId) && firstText(revisionSnapshot.proposalId) !== firstText(proposal.proposalId, proposal.proposalRecordId)) return { eligible: false, legacy: false, reason: "The selected Proposal Revision snapshot belongs to a different Proposal." };
+  if (firstText(revisionSnapshot.customerId) && firstText(revisionSnapshot.customerId) !== firstText(draftPackage.customerId)) return { eligible: false, legacy: false, reason: "The selected Proposal Revision customer scope does not match Draft IOF." };
+  if (firstText(revisionSnapshot.opportunityId) && firstText(revisionSnapshot.opportunityId) !== firstText(draftPackage.opportunityId)) return { eligible: false, legacy: false, reason: "The selected Proposal Revision opportunity scope does not match Draft IOF." };
+  if (Number(draftPackage.proposalRevisionNumber ?? 0) !== Number(revision.revisionNumber ?? 0)) return { eligible: false, legacy: false, reason: "Draft IOF Proposal Revision number does not match the selected immutable Proposal Revision." };
   if (revision.revisionStatus !== "SAVED") return { eligible: false, legacy: false, reason: `Proposal Revision is ${revision.revisionStatus ?? "WORKING"}, not SAVED.` };
   const approval = asArray(proposal.approvals).find((item) =>
     item?.decision === "APPROVED" && item?.proposalRevisionId === proposalRevisionId && item?.proposalHash === proposalHash

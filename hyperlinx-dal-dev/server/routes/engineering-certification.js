@@ -248,6 +248,10 @@ function normalizeDraftPackage(raw = {}) {
     validation,
     packageDifferences,
     proposalId: String(raw.proposalId ?? raw.sourceProposalId ?? ""),
+    proposalRevisionId: String(raw.proposalRevisionId ?? ""),
+    proposalRevisionNumber: numeric(raw.proposalRevisionNumber, numeric(raw.sourceProposalVersion, 0)),
+    proposalHash: String(raw.proposalHash ?? ""),
+    sourceProposalVersion: numeric(raw.sourceProposalVersion, numeric(raw.proposalRevisionNumber, 0)),
     customerId: String(raw.customerId ?? raw.accountId ?? ""),
     accountId: String(raw.accountId ?? raw.proposalSummary?.accountId ?? raw.customerSummary?.accountId ?? (raw.customerId === "customer-google" ? "google" : raw.customerId ?? "")),
     opportunityId: String(raw.opportunityId ?? ""),
@@ -1376,6 +1380,43 @@ function runtimeError(status, message) {
   return error;
 }
 
+export function selectedSavedProposalRevisionLineage(proposal = {}) {
+  const proposalId = firstText(proposal.proposalId, proposal.proposalRecordId);
+  const proposalRevisionId = firstText(proposal.proposalRevisionId);
+  const proposalHash = firstText(proposal.proposalHash);
+  if (!proposalRevisionId || !proposalHash) {
+    throw runtimeError(409, "Draft IOF Package assembly requires the selected saved Proposal Revision ID and hash.");
+  }
+  const revision = asArray(proposal.proposalRevisions).find((candidate) => (
+    firstText(asRecord(candidate).proposalRevisionId) === proposalRevisionId
+    && firstText(asRecord(candidate).proposalHash) === proposalHash
+  ));
+  if (!revision) {
+    throw runtimeError(409, "Draft IOF Package assembly could not resolve the selected Proposal Revision ID/hash exactly.");
+  }
+  if (firstText(revision.revisionStatus).toUpperCase() !== "SAVED") {
+    throw runtimeError(409, `Draft IOF Package assembly requires a SAVED Proposal Revision; received ${firstText(revision.revisionStatus, "UNKNOWN")}.`);
+  }
+  if (firstText(revision.proposalId) && firstText(revision.proposalId) !== proposalId) {
+    throw runtimeError(409, "Draft IOF Package assembly rejected a Proposal Revision owned by a different Proposal.");
+  }
+  const snapshot = asRecord(revision.snapshot);
+  if (firstText(snapshot.proposalId) && firstText(snapshot.proposalId) !== proposalId) {
+    throw runtimeError(409, "Draft IOF Package assembly rejected a Proposal Revision snapshot owned by a different Proposal.");
+  }
+  const proposalRevisionNumber = numeric(revision.revisionNumber, numeric(proposal.revisionNumber, 0));
+  if (!proposalRevisionNumber) {
+    throw runtimeError(409, "Draft IOF Package assembly requires the selected saved Proposal Revision number.");
+  }
+  return {
+    proposalId,
+    proposalRevisionId: firstText(revision.proposalRevisionId),
+    proposalRevisionNumber,
+    proposalHash: firstText(revision.proposalHash),
+    sourceProposalVersion: proposalRevisionNumber,
+  };
+}
+
 export async function assembleDraftIofPackageFromProposal(input = {}, user, options = {}) {
   const body = input ?? {};
   const proposalId = String(body.proposalId ?? body.proposal?.proposalId ?? "");
@@ -1389,6 +1430,7 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
   if (!(proposal.approvalState === "APPROVED" || ["CUSTOMER_APPROVED", "READY_FOR_IOF_PACKAGE"].includes(proposal.status))) {
     throw runtimeError(409, "Draft IOF Package assembly requires a customer-approved Proposal.");
   }
+  const proposalRevisionLineage = selectedSavedProposalRevisionLineage(proposal);
   const commercialRevision = await ensureCommercialRevisionForProposal(proposal, user, {
     timestamp: nowIso(),
   });
@@ -1396,12 +1438,22 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
   const existing = await loadRecord(DIRS.iofPackages, packageId).catch(() => null)
     ?? (await listRecords(DIRS.iofPackages)).find((record) => record?.proposalId === proposalId && !["ARCHIVED", "CLOSED"].includes(String(record?.status ?? "")));
   if (existing && options.idempotent !== false) {
-    const { revision, releasePackage } = await ensureCommercialReleasePackageForDraft(existing, proposal, user, {
+    const lineageRepairedExisting = normalizeDraftPackage({
+      ...existing,
+      ...proposalRevisionLineage,
+      proposalSummary: {
+        ...asRecord(existing.proposalSummary),
+        proposalRevisionId: proposalRevisionLineage.proposalRevisionId,
+        proposalRevisionNumber: proposalRevisionLineage.proposalRevisionNumber,
+        proposalHash: proposalRevisionLineage.proposalHash,
+      },
+    });
+    const { revision, releasePackage } = await ensureCommercialReleasePackageForDraft(lineageRepairedExisting, proposal, user, {
       revision: commercialRevision,
       timestamp: nowIso(),
     });
     const existingWithCommercialAuthority = normalizeDraftPackage({
-      ...existing,
+      ...lineageRepairedExisting,
       commercialRevisionId: revision.commercialRevisionId,
       revisionId: revision.revisionId,
       commercialRevisionHash: revision.revisionHash,
@@ -1480,6 +1532,9 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
       noScopeVersionCreation: true,
     },
     proposalId,
+    proposalRevisionId: proposalRevisionLineage.proposalRevisionId,
+    proposalRevisionNumber: proposalRevisionLineage.proposalRevisionNumber,
+    proposalHash: proposalRevisionLineage.proposalHash,
     customerId: proposal.customerId,
     accountId: proposal.accountId ?? (proposal.customerId === "customer-google" ? "google" : proposal.customerId),
     opportunityId: proposal.opportunityId,
@@ -1500,6 +1555,9 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
       title: proposal.title,
       proposalNumber: proposal.proposalNumber,
       version: proposal.version,
+      proposalRevisionId: proposalRevisionLineage.proposalRevisionId,
+      proposalRevisionNumber: proposalRevisionLineage.proposalRevisionNumber,
+      proposalHash: proposalRevisionLineage.proposalHash,
       status: proposal.status,
       accountId: proposal.accountId,
       productId: proposal.productId,
@@ -1609,7 +1667,7 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
     route: proposal.route ?? (routeGeometry ? [{ routeId, routeMiles, geometry: routeGeometry }] : undefined),
     routeSegments: proposal.routeSegments,
     proposalDocumentReferences: proposal.proposalDocumentReferences,
-    sourceProposalVersion: proposal.version,
+    sourceProposalVersion: proposalRevisionLineage.sourceProposalVersion,
   }, user, "runtime.iof_package.assembled_from_proposal", "Draft IOF Package assembled from approved Proposal references.");
   await appendHistory(draft, user, "runtime.authority_transfer.commercial_to_engineering", "Authority transferred from Commercial Proposal to Engineering Review.", {
     proposalId,
