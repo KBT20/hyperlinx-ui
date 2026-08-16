@@ -61,8 +61,8 @@ function exactRevisionMatches(reviewPackage, proposal, body = {}) {
 }
 
 function safeStatus(proposal = {}, serviceOrder = {}, scopeVersion = {}) {
-  if (scopeVersion.scopeVersionId) return "AUTHORIZED";
-  if (serviceOrder.status) return text(serviceOrder.status);
+  if (scopeVersion?.scopeVersionId) return "AUTHORIZED";
+  if (serviceOrder?.status) return text(serviceOrder.status);
   return text(proposal.status, "CUSTOMER_REVIEW");
 }
 
