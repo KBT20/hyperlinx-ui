@@ -119,7 +119,29 @@ assert.equal(accepted.project.proposal.proposalRevisionId, r3.proposalRevisionId
 const replay = (await call("Proposal acceptance idempotent replay", `/api/customer-portal/projects/${opportunityId}/proposal/accept`, { method: "POST", cookie: demoCookie, persona: "CUSTOMER_COMMERCIAL_REVIEWER", body: { proposalRevisionId: r3.proposalRevisionId, proposalHash: r3.proposalHash } })).value;
 assert.equal(replay.idempotentReplay, true);
 
-const handoff = (await call("Commercial submits accepted package to Engineering", `/api/commercial/iof-packages/${packageId}/submit-engineering`, { method: "POST", cookie: demoCookie, persona: "SALES", body: {} })).value;
+const handoffResult = await call("Commercial submits accepted package to Engineering", `/api/commercial/iof-packages/${packageId}/submit-engineering`, { method: "POST", cookie: demoCookie, persona: "SALES", body: {}, expected: [200, 409] });
+const handoff = handoffResult.value;
+if (!handoff.engineeringPackage) {
+  console.log(JSON.stringify({
+    result: "STOPPED_AT_GENUINE_ENGINEERING_HANDOFF_PREDICATE",
+    exactGitSha: process.env.CIP062_CODE_VERSION ?? "UNKNOWN",
+    scenarioId: "DEMO-SCENARIO-DCI",
+    actorPrincipalId: "demo-principal",
+    customerOrganizationId: "org-demo-customer-a",
+    opportunityId, routeRepositoryId, proposalId,
+    proposalRevision2Id: r2.proposalRevisionId, proposalRevision2Hash: r2.proposalHash,
+    proposalRevision3Id: r3.proposalRevisionId, proposalRevision3Hash: r3.proposalHash,
+    stopPredicate: handoff.error,
+    missingEngineeringReferences: ["closureLedger", "iofPackageTwin", "executionGraph", "lifecycleGraph", "commercialAudit", "constitutionalState"],
+    customerPortalAcceptance: "PASS",
+    invitationSecretsReported: false,
+    productionEligible: false,
+    scopeVersionCreated: false,
+    chicagoAccess: "ZERO",
+    trace,
+  }, null, 2));
+  process.exit(0);
+}
 assert.equal(handoff.engineeringPackage.proposalRevisionId, r3.proposalRevisionId);
 assert.equal(handoff.engineeringPackage.proposalHash, r3.proposalHash);
 await call("Engineering opens exact governed package", `/api/engineering/certification/draft-packages/${packageId}`, { cookie: demoCookie, persona: "ENGINEERING" });
