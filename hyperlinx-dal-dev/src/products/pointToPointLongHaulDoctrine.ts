@@ -36,6 +36,8 @@ export const POINT_TO_POINT_LONG_HAUL_PRODUCT_ID = "POINT_TO_POINT_LONG_HAUL_CON
 export const POINT_TO_POINT_LONG_HAUL_DOCTRINE_ID = "DOCTRINE-L1-POINT-TO-POINT-LONG-HAUL-CONDUIT-FIBER";
 export const POINT_TO_POINT_LONG_HAUL_PREVIOUS_DOCTRINE_VERSION = "19B.1.0";
 export const POINT_TO_POINT_LONG_HAUL_DOCTRINE_VERSION = "20C.1.0";
+/** SHA-256 of the canonical Product Doctrine object for version 20C.1.0. */
+export const POINT_TO_POINT_LONG_HAUL_DOCTRINE_HASH = "81c488a6d4bd35183e35eabf1a1c533e53a7c700d38db5d5bf67e8c2b3883bdd";
 export const POINT_TO_POINT_LONG_HAUL_DOCTRINE_CHANGE_REASON = "Separate Product Doctrine requirements from Project Configuration, source evidence, estimating assumptions, Commercial Policy, and Engineering authority; remove mileage-generated infrastructure.";
 export const POINT_TO_POINT_LONG_HAUL_BUSINESS_PRODUCT_NAME = "Point-to-Point Duct & Dark Fiber";
 export const POINT_TO_POINT_LONG_HAUL_TECHNICAL_DOCTRINE_NAME = "Point-to-Point Long-Haul Conduit & Fiber";

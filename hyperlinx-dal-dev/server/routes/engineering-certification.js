@@ -45,6 +45,10 @@ import {
 import { persistScopeVersion } from "./scopeversions.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 import {
+  assembleProductDoctrineArtifacts,
+  resolveProductDoctrineAuthority,
+} from "../generated/product-doctrine-runtime.js";
+import {
   createScopeVersionFromCertifiedPackage as createScopeVersionAuthority,
   markCertifiedPackagePromoted,
 } from "../scopeversion-authority-engine.js";
@@ -1206,7 +1210,13 @@ async function persistDraftPackage(record, user, eventType = "runtime.iof_packag
   }));
   await persistRecord(DIRS.iofPackages, repositoryRecord.packageId, repositoryRecord);
   await persistRuntimeMirror(repositoryRecord, user, "DRAFT-IOF", repositoryRecord.packageId, { status: repositoryRecord.status, workflowStatus: repositoryRecord.workflowStatus });
-  return next;
+  return normalizeDraftPackage({
+    ...next,
+    iofArtifactRepositoryReferences: {
+      ...(next.iofArtifactRepositoryReferences ?? {}),
+      ...artifactReferences,
+    },
+  });
 }
 
 async function persistDraftPackageMetadataPatch(record, user, eventType, details, metadata = {}) {
@@ -1374,10 +1384,45 @@ function unitsFromProposal(proposal, packageId) {
   }, packageId, index));
 }
 
-function runtimeError(status, message) {
+function runtimeError(status, message, code = undefined, details = undefined) {
   const error = new Error(message);
   error.status = status;
+  if (code) error.code = code;
+  if (details !== undefined) error.details = details;
   return error;
+}
+
+export function selectedProposalRevisionDoctrineAuthority(proposal = {}) {
+  const lineage = selectedSavedProposalRevisionLineage(proposal);
+  const revision = asArray(proposal.proposalRevisions).find((candidate) => (
+    firstText(asRecord(candidate).proposalRevisionId) === lineage.proposalRevisionId
+    && firstText(asRecord(candidate).proposalHash) === lineage.proposalHash
+  ));
+  const snapshot = asRecord(revision?.snapshot);
+  const candidate = {
+    productId: firstText(snapshot.productId),
+    productDoctrineId: firstText(snapshot.productDoctrineId),
+    productDoctrineVersion: firstText(snapshot.productDoctrineVersion),
+    productDoctrineHash: firstText(snapshot.productDoctrineHash),
+  };
+  if (!candidate.productId || !candidate.productDoctrineId || !candidate.productDoctrineVersion || !candidate.productDoctrineHash) {
+    throw runtimeError(
+      409,
+      "Product Doctrine authority is required on the exact saved Proposal Revision before Draft IOF assembly.",
+      "PRODUCT_DOCTRINE_AUTHORITY_REQUIRED",
+      candidate,
+    );
+  }
+  const resolved = resolveProductDoctrineAuthority(candidate);
+  if (!resolved) {
+    throw runtimeError(
+      409,
+      "The exact Product Doctrine identity/version/hash on the saved Proposal Revision could not be resolved.",
+      "PRODUCT_DOCTRINE_AUTHORITY_MISMATCH",
+      candidate,
+    );
+  }
+  return resolved;
 }
 
 export function selectedSavedProposalRevisionLineage(proposal = {}) {
@@ -1431,15 +1476,47 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
     throw runtimeError(409, "Draft IOF Package assembly requires a customer-approved Proposal.");
   }
   const proposalRevisionLineage = selectedSavedProposalRevisionLineage(proposal);
+  const productDoctrineAuthority = selectedProposalRevisionDoctrineAuthority(proposal);
   const commercialRevision = await ensureCommercialRevisionForProposal(proposal, user, {
     timestamp: nowIso(),
   });
   const packageId = String(body.packageId ?? `DRAFT-IOF-${proposalId}`);
+  const routeRepositoryId = firstText(proposal.routeRepositoryId, asRecord(proposal.routeSnapshot).routeRepositoryId);
+  const routeRepository = routeRepositoryId
+    ? await loadRecord(DIRS.commercialRoutes, routeRepositoryId).catch(() => null)
+    : null;
+  const doctrineArtifacts = assembleProductDoctrineArtifacts({
+    packageId,
+    proposal,
+    route: routeRepository ?? undefined,
+  });
+  const doctrineAssemblyFields = {
+    productId: productDoctrineAuthority.productId,
+    productName: productDoctrineAuthority.productName,
+    productDoctrineId: productDoctrineAuthority.productDoctrineId,
+    doctrineId: productDoctrineAuthority.productDoctrineId,
+    productDoctrineVersion: productDoctrineAuthority.productDoctrineVersion,
+    productDoctrineHash: productDoctrineAuthority.productDoctrineHash,
+    productDoctrine: doctrineArtifacts.productDoctrine,
+    productDoctrineAssembly: doctrineArtifacts.productDoctrineAssembly,
+    productDoctrineAssemblyId: doctrineArtifacts.productDoctrineAssembly.assemblyId,
+    doctrineObjectInstantiation: doctrineArtifacts.doctrineObjectInstantiation,
+    doctrineObjectManifest: doctrineArtifacts.engineeringObjectManifest,
+    engineeringObjectManifest: doctrineArtifacts.engineeringObjectManifest,
+    doctrineObjectManifestId: doctrineArtifacts.engineeringObjectManifest.manifestId,
+    engineeringObjectManifestId: doctrineArtifacts.engineeringObjectManifest.manifestId,
+    objectManifestId: doctrineArtifacts.engineeringObjectManifest.manifestId,
+    doctrineObjectInstantiationValidation: doctrineArtifacts.doctrineObjectInstantiation.validation,
+    doctrineObjectInstantiationSummary: doctrineArtifacts.doctrineObjectInstantiation.summary,
+    doctrineInstantiatedObjects: doctrineArtifacts.doctrineObjectInstantiation.instantiatedObjects,
+    objects: doctrineArtifacts.doctrineObjectInstantiation.instantiatedObjects,
+  };
   const existing = await loadRecord(DIRS.iofPackages, packageId).catch(() => null)
     ?? (await listRecords(DIRS.iofPackages)).find((record) => record?.proposalId === proposalId && !["ARCHIVED", "CLOSED"].includes(String(record?.status ?? "")));
   if (existing && options.idempotent !== false) {
     const lineageRepairedExisting = normalizeDraftPackage({
       ...existing,
+      ...doctrineAssemblyFields,
       ...proposalRevisionLineage,
       proposalSummary: {
         ...asRecord(existing.proposalSummary),
@@ -1479,11 +1556,16 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
         draftPackage: existing,
       }),
     });
-    await persistRecord(DIRS.iofPackages, existingWithCommercialAuthority.packageId, existingWithCommercialAuthority);
+    const savedExisting = await persistDraftPackage(
+      existingWithCommercialAuthority,
+      user,
+      "runtime.iof_package.doctrine_authority_reconciled",
+      "Exact Proposal Product Doctrine authority was resolved and canonical doctrine artifacts were persisted.",
+    );
     return {
       created: false,
-      iofPackage: await decorateDraftPackageForResponse(existingWithCommercialAuthority),
-      draftPackage: await decorateDraftPackageForResponse(existingWithCommercialAuthority),
+      iofPackage: await decorateDraftPackageForResponse(savedExisting),
+      draftPackage: await decorateDraftPackageForResponse(savedExisting),
       proposal,
       commercialRevision: revision,
       commercialReleasePackage: releasePackage,
@@ -1535,6 +1617,7 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
     proposalRevisionId: proposalRevisionLineage.proposalRevisionId,
     proposalRevisionNumber: proposalRevisionLineage.proposalRevisionNumber,
     proposalHash: proposalRevisionLineage.proposalHash,
+    ...doctrineAssemblyFields,
     customerId: proposal.customerId,
     accountId: proposal.accountId ?? (proposal.customerId === "customer-google" ? "google" : proposal.customerId),
     opportunityId: proposal.opportunityId,
@@ -1558,6 +1641,9 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
       proposalRevisionId: proposalRevisionLineage.proposalRevisionId,
       proposalRevisionNumber: proposalRevisionLineage.proposalRevisionNumber,
       proposalHash: proposalRevisionLineage.proposalHash,
+      productDoctrineId: productDoctrineAuthority.productDoctrineId,
+      productDoctrineVersion: productDoctrineAuthority.productDoctrineVersion,
+      productDoctrineHash: productDoctrineAuthority.productDoctrineHash,
       status: proposal.status,
       accountId: proposal.accountId,
       productId: proposal.productId,
@@ -1727,8 +1813,14 @@ export async function assembleDraftIofPackageFromProposal(input = {}, user, opti
       draftPackage: draftWithHistory,
     }),
   });
-  await persistRecord(DIRS.iofPackages, finalDraft.packageId, finalDraft);
-  return { created: true, iofPackage: finalDraft, draftPackage: finalDraft, proposal, commercialRevision: revision, commercialReleasePackage: releasePackage };
+  const persistedFinalDraft = await persistDraftPackage(
+    finalDraft,
+    user,
+    "runtime.iof_package.commercial_release_bound",
+    "Draft IOF Package bound to the exact Commercial Release and Product Doctrine artifacts.",
+    { reuseArtifactReferences: true },
+  );
+  return { created: true, iofPackage: persistedFinalDraft, draftPackage: persistedFinalDraft, proposal, commercialRevision: revision, commercialReleasePackage: releasePackage };
 }
 
 async function handleAssembleFromProposal(req, res, user) {
@@ -1737,7 +1829,11 @@ async function handleAssembleFromProposal(req, res, user) {
     const result = await assembleDraftIofPackageFromProposal(body, user, { idempotent: true });
     jsonResponse(res, result.created ? 201 : 200, result);
   } catch (error) {
-    errorResponse(res, error.status ?? 500, error.message ?? "Draft IOF Package assembly failed.");
+    jsonResponse(res, error.status ?? 500, {
+      error: error.message ?? "Draft IOF Package assembly failed.",
+      predicate: error.code,
+      details: error.details ?? error.failures,
+    });
   }
 }
 

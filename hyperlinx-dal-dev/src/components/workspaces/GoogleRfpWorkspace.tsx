@@ -194,6 +194,7 @@ import type { DALCoordinate } from "../../types/dal";
 import { sharedOpportunityMapProjectionFromRouteRepository } from "../../mapkernel";
 import { hashRouteGeometry } from "../../routing/ConstraintAnalysisEngine";
 import {
+  POINT_TO_POINT_LONG_HAUL_DOCTRINE_HASH,
   POINT_TO_POINT_LONG_HAUL_PRODUCT_ID,
   type PointToPointLongHaulDoctrineInput,
 } from "../../products/pointToPointLongHaulDoctrine";
@@ -478,7 +479,9 @@ interface CommercialOpportunityRecord {
   status: CommercialOpportunityStatus;
   productId?: string;
   productName?: string;
+  productDoctrineId?: string;
   productDoctrineVersion?: string;
+  productDoctrineHash?: string;
   doctrineVersion?: string;
   customerSnapshot?: Record<string, unknown>;
   customerTwinReference?: string;
@@ -4519,6 +4522,11 @@ export default function GoogleRfpWorkspace() {
         opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId || routePlan.routeRequirement.routeRequirementId,
         organizationId: currentOrganizationId,
         workspaceId: currentWorkspaceId,
+        productId: selectedProductOption.productId,
+        productName: selectedProductOption.productName,
+        productDoctrineId: selectedProductDoctrine?.doctrineId,
+        productDoctrineVersion: selectedProductDoctrine?.doctrineVersion,
+        productDoctrineHash: selectedProductDoctrine ? POINT_TO_POINT_LONG_HAUL_DOCTRINE_HASH : undefined,
         commercialOwnerId: activeProposalRuntime?.commercialOwnerId ?? currentUserId,
         ownerId: activeProposalRuntime?.ownerId ?? currentUserId,
         createdById: activeProposalRuntime?.createdById ?? currentUserId,
@@ -6714,7 +6722,9 @@ export default function GoogleRfpWorkspace() {
       status,
       productId: selectedProductOption.productId,
       productName: selectedProductOption.productName,
+      productDoctrineId: selectedProductDoctrine?.doctrineId,
       productDoctrineVersion: selectedProductDoctrine?.doctrineVersion,
+      productDoctrineHash: selectedProductDoctrine ? POINT_TO_POINT_LONG_HAUL_DOCTRINE_HASH : undefined,
       doctrineVersion: selectedProductDoctrine?.doctrineVersion,
       customerSnapshot: {
         accountId: selectedAccount.accountId,
@@ -6765,6 +6775,9 @@ export default function GoogleRfpWorkspace() {
         customerTwinReference: accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
         productId: selectedProductOption.productId,
         productName: selectedProductOption.productName,
+        productDoctrineId: selectedProductDoctrine?.doctrineId,
+        productDoctrineVersion: selectedProductDoctrine?.doctrineVersion,
+        productDoctrineHash: selectedProductDoctrine ? POINT_TO_POINT_LONG_HAUL_DOCTRINE_HASH : undefined,
         doctrineVersion: selectedProductDoctrine?.doctrineVersion,
         estimate: estimateSnapshot,
         workbook: workbookSnapshot,

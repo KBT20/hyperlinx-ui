@@ -651,6 +651,7 @@ function normalizeVersionEntry(record, user, reason = "Initial commercial propos
 const PROPOSAL_REVISION_SNAPSHOT_FIELDS = Object.freeze([
   "proposalId", "proposalNumber", "customerId", "accountId", "opportunityId",
   "productId", "productName", "productConfigurator", "productConfiguratorVersion",
+  "productDoctrineId", "productDoctrineVersion", "productDoctrineHash",
   "configuratorVersion", "configuratorLifecycle", "productInvocationAuthority",
   "engineeringObjectDoctrine", "productConfiguration", "commercialDesign",
   "routeSnapshot", "routeId", "routeRepositoryId", "routeRevision", "routeGeometryId", "routeGeometryHash", "aSite", "zSite", "geometryReferences", "existingInventoryReferences",
@@ -891,6 +892,9 @@ export function normalizeProposalRecord(record = {}, user, existing = null, opti
     opportunityId: String(record.opportunityId ?? existing?.opportunityId ?? record.routeRequirementId ?? existing?.routeRequirementId ?? ""),
     productId: String(record.productId ?? existing?.productId ?? record.productDefinitionId ?? existing?.productDefinitionId ?? ""),
     productName: String(record.productName ?? existing?.productName ?? record.product?.productName ?? existing?.product?.productName ?? ""),
+    productDoctrineId: String(record.productDoctrineId ?? existing?.productDoctrineId ?? record.doctrineId ?? existing?.doctrineId ?? ""),
+    productDoctrineVersion: String(record.productDoctrineVersion ?? existing?.productDoctrineVersion ?? record.doctrineVersion ?? existing?.doctrineVersion ?? ""),
+    productDoctrineHash: String(record.productDoctrineHash ?? existing?.productDoctrineHash ?? record.doctrineHash ?? existing?.doctrineHash ?? ""),
     fulfillmentPlanId: String(record.fulfillmentPlanId ?? existing?.fulfillmentPlanId ?? record.fulfillmentPlan?.fulfillmentPlanId ?? existing?.fulfillmentPlan?.fulfillmentPlanId ?? ""),
     fulfillmentStrategy: String(record.fulfillmentStrategy ?? existing?.fulfillmentStrategy ?? record.fulfillmentPlan?.fulfillmentStrategy ?? existing?.fulfillmentPlan?.fulfillmentStrategy ?? ""),
     fulfillmentPlan: record.fulfillmentPlan ?? existing?.fulfillmentPlan ?? null,
@@ -1690,6 +1694,7 @@ async function handleApprove(req, res, id, user) {
   await persistRecord(DIRS.runtimeHistory, lifecycleApproval.historyId, lifecycleApproval);
   let draftPackage = null;
   let draftIofAssemblyError = "";
+  let draftIofAssemblyPredicate = "";
   try {
     draftPackage = await loadCommercialDraftIofPackageForProposal(saved.proposalId);
     if (!draftPackage) {
@@ -1700,6 +1705,7 @@ async function handleApprove(req, res, id, user) {
     if (!draftPackage) draftIofAssemblyError = "Draft IOF Package has not been assembled for this Proposal.";
   } catch (error) {
     draftIofAssemblyError = error instanceof Error ? error.message : String(error);
+    draftIofAssemblyPredicate = String(error?.code ?? "");
   }
   const workspaceSession = await updateRuntimeWorkspaceSession({
     accountId: saved.accountId,
@@ -1723,7 +1729,7 @@ async function handleApprove(req, res, id, user) {
     sessionState: "ACTIVE",
     lastActivity: "CUSTOMER_APPROVED",
   }, user, "AUTHORITY_TRANSFER_CUSTOMER_TO_ENGINEERING", "Customer approval persisted WorkspaceSession authority transfer.");
-  jsonResponse(res, 200, { proposal: saved, draftPackage, iofPackage: draftPackage, draftIofAssemblyError, workspaceSession });
+  jsonResponse(res, 200, { proposal: saved, draftPackage, iofPackage: draftPackage, draftIofAssemblyError, draftIofAssemblyPredicate, workspaceSession });
 }
 
 async function handleReject(req, res, id, user) {

@@ -9,7 +9,8 @@
     "server": "node server/index.js",
     "start": "node server/index.js",
     "start:prod": "node server/index.js",
-    "build": "vite build --config vite.config.ts",
+    "build": "vite build --config vite.config.ts && vite build --config vite.product-doctrine-runtime.config.ts",
+    "build:product-doctrine-runtime": "vite build --config vite.product-doctrine-runtime.config.ts",
     "preview": "vite preview --config vite.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

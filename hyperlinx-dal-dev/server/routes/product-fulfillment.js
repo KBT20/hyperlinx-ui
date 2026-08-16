@@ -14,6 +14,7 @@ import {
   unwrapBody,
 } from "./_shared.js";
 import { userFromBearerToken, userHasPermission } from "./auth.js";
+import { PRODUCT_DOCTRINE_AUTHORITY } from "../generated/product-doctrine-runtime.js";
 
 export const INVENTORY_OWNERSHIP_CLASSES = {
   TERALINX_OWNED: {
@@ -154,6 +155,9 @@ function defaultProductDefinition([productId, productName, productFamily, produc
 function normalizeProduct(record = {}) {
   const timestamp = record.updatedAt ?? record.createdAt ?? nowIso();
   const productId = String(record.productId ?? createId("product")).toUpperCase();
+  const productDoctrineAuthority = productId === PRODUCT_DOCTRINE_AUTHORITY.productId
+    ? PRODUCT_DOCTRINE_AUTHORITY
+    : null;
   return {
     ...record,
     productId,
@@ -164,6 +168,12 @@ function normalizeProduct(record = {}) {
     productVersion: String(record.productVersion ?? record.version ?? "1.0.0"),
     lifecycleStatus: String(record.lifecycleStatus ?? record.status ?? "ACTIVE"),
     supportedOsiLayer: Number(record.supportedOsiLayer ?? record.osiLayer ?? 1),
+    ...(productDoctrineAuthority ? {
+      productDoctrineId: productDoctrineAuthority.productDoctrineId,
+      productDoctrineVersion: productDoctrineAuthority.productDoctrineVersion,
+      productDoctrineHash: productDoctrineAuthority.productDoctrineHash,
+      productDoctrineAuthority: productDoctrineAuthority.authority,
+    } : {}),
     commercial: record.commercial ?? {},
     engineering: record.engineering ?? {},
     construction: record.construction ?? {},
