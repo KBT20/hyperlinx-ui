@@ -318,6 +318,17 @@ async function seedProducts() {
   }
 }
 
+function sharedCanonicalProductProjection() {
+  return {
+    ...normalizeProduct(defaultProductDefinition(LAYER_1_PRODUCTS[0])),
+    repositoryType: "SHARED_PRODUCT_DOCTRINE_REGISTRY",
+    authority: "PRODUCT_DOCTRINE_REGISTRY",
+    referenceOnly: true,
+    immutable: true,
+    noTenantDataAuthority: true,
+  };
+}
+
 function assetRef(reference, ownershipClass, source) {
   return {
     referenceId: String(reference),
@@ -501,12 +512,17 @@ async function handleProducts(req, res, pathname, user) {
   if (!match) return false;
   await seedProducts();
   if (match.base && req.method === "GET") {
-    const products = sortedByUpdated((await listRecords(DIRS.products)).map(normalizeProduct));
+    const tenantProducts = (await listRecords(DIRS.products)).map(normalizeProduct);
+    const products = sortedByUpdated(tenantProducts.some((item) => item.productId === PRODUCT_DOCTRINE_AUTHORITY.productId)
+      ? tenantProducts
+      : [...tenantProducts, sharedCanonicalProductProjection()]);
     jsonResponse(res, 200, { products, items: products, ownershipClasses: INVENTORY_OWNERSHIP_CLASSES });
     return true;
   }
   if (!match.base && req.method === "GET") {
-    const product = await loadRecord(DIRS.products, match.id).catch(() => null);
+    const product = await loadRecord(DIRS.products, match.id).catch(() => (
+      match.id === PRODUCT_DOCTRINE_AUTHORITY.productId ? sharedCanonicalProductProjection() : null
+    ));
     if (!product) errorResponse(res, 404, `Product not found: ${match.id}`);
     else jsonResponse(res, 200, { product: normalizeProduct(product) });
     return true;
