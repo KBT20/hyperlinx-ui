@@ -29,7 +29,24 @@ function serviceOrderAction(pathname) {
 }
 
 export function enforceLifecycleSeparationOfDuties(req, res, pathname) {
+  const demoTenant = req.authUser?.organizationId === "org-demo";
+  const demoPermission = hasExactPermission(req.authUser, "demo.tenant");
+  if (demoTenant !== demoPermission) {
+    return deny(res, "Tenant authority configuration is invalid; access is denied closed.");
+  }
   if (!MUTATION_METHODS.has(String(req.method ?? "").toUpperCase())) return false;
+
+  if (demoTenant) {
+    const demoExecutionDuty = [
+      ["/api/marketplace/", "marketplace.lifecycle.manage"],
+      ["/api/control/", "control.lifecycle.manage"],
+      ["/api/field/", "field.lifecycle.manage"],
+      ["/api/close-events", "close.lifecycle.manage"],
+    ].find(([prefix]) => pathname === prefix.replace(/\/$/, "") || pathname.startsWith(prefix));
+    if (demoExecutionDuty) {
+      return requireDuty(req, res, demoExecutionDuty[1], `Demo capability ${demoExecutionDuty[1]} is required.`);
+    }
+  }
 
   if ((pathname === "/api/scopeversions" && req.method === "POST") ||
       (pathname.startsWith("/api/scopeversions/") && req.method === "PUT")) {

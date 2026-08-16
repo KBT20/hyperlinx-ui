@@ -1,4 +1,5 @@
-import { mkdir, open, readdir, readFile, rename, rm } from "node:fs/promises";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { cp, mkdir, open, readdir, readFile, rename, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +20,92 @@ export const PORT = Number(process.env.DAL_PORT ?? process.env.PORT ?? 3001);
 export const DATA_ROOT = process.env.DAL_DATA_ROOT
   ? path.resolve(process.env.DAL_DATA_ROOT)
   : path.join(SERVER_ROOT, "data");
+export const DEMO_DATA_ROOT = process.env.DAL_DEMO_DATA_ROOT
+  ? path.resolve(process.env.DAL_DEMO_DATA_ROOT)
+  : path.join(SERVER_ROOT, "data-demo");
+export const DEMO_SEED_ROOT = process.env.DAL_DEMO_SEED_ROOT
+  ? path.resolve(process.env.DAL_DEMO_SEED_ROOT)
+  : path.join(SERVER_ROOT, "demo-seed");
+export const DEMO_ARCHIVE_ROOT = process.env.DAL_DEMO_ARCHIVE_ROOT
+  ? path.resolve(process.env.DAL_DEMO_ARCHIVE_ROOT)
+  : path.join(SERVER_ROOT, "demo-reset-archive");
+
+const repositoryAuthority = new AsyncLocalStorage();
+const DEMO_ORGANIZATION_ID = "org-demo";
+
+function inside(parent, child) {
+  const relative = path.relative(parent, child);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function assertRepositoryRoots() {
+  if (DATA_ROOT === DEMO_DATA_ROOT || inside(DATA_ROOT, DEMO_DATA_ROOT) || inside(DEMO_DATA_ROOT, DATA_ROOT)) {
+    throw new Error("DEMO_REPOSITORY_BOUNDARY_INVALID: production and demo repository roots must be disjoint.");
+  }
+}
+
+assertRepositoryRoots();
+
+export function repositoryAuthorityForUser(user) {
+  const demo = user?.organizationId === DEMO_ORGANIZATION_ID &&
+    Array.isArray(user?.permissions) && user.permissions.includes("demo.tenant");
+  return {
+    organizationId: demo ? DEMO_ORGANIZATION_ID : String(user?.organizationId ?? ""),
+    authorityClass: demo ? "DEMO" : "PRODUCTION",
+    dataRoot: demo ? DEMO_DATA_ROOT : DATA_ROOT,
+    principalId: String(user?.principalId ?? ""),
+  };
+}
+
+export function withRepositoryAuthority(user, operation) {
+  return repositoryAuthority.run(repositoryAuthorityForUser(user), operation);
+}
+
+export function currentRepositoryAuthority() {
+  return repositoryAuthority.getStore() ?? {
+    organizationId: "",
+    authorityClass: "PRODUCTION",
+    dataRoot: DATA_ROOT,
+    principalId: "",
+  };
+}
+
+function resolveRepositoryDir(dir) {
+  const resolved = path.resolve(dir);
+  if (!inside(DATA_ROOT, resolved)) throw new Error(`REPOSITORY_PATH_OUTSIDE_AUTHORITY_ROOT: ${resolved}`);
+  const relative = path.relative(DATA_ROOT, resolved);
+  const authority = currentRepositoryAuthority();
+  const scoped = path.resolve(authority.dataRoot, relative);
+  if (!inside(authority.dataRoot, scoped)) throw new Error("REPOSITORY_TENANT_ESCAPE_REJECTED");
+  return scoped;
+}
+
+function governedRecordForAuthority(id, record) {
+  const authority = currentRepositoryAuthority();
+  if (authority.authorityClass === "DEMO") {
+    if (!/(^|[-_:])DEMO(?:[-_:]|$)/i.test(String(id))) {
+      const error = new Error(`DEMO_ID_NAMESPACE_REQUIRED: ${id}`);
+      error.status = 409;
+      throw error;
+    }
+    return {
+      ...record,
+      environment: "DEMO",
+      organizationId: DEMO_ORGANIZATION_ID,
+      tenantId: DEMO_ORGANIZATION_ID,
+      authorityClass: "DEMO",
+      actorPrincipalId: authority.principalId,
+      authorityActorPrincipalId: authority.principalId,
+      productionEligible: false,
+    };
+  }
+  if (record?.organizationId === DEMO_ORGANIZATION_ID || record?.tenantId === DEMO_ORGANIZATION_ID || record?.authorityClass === "DEMO") {
+    const error = new Error("DEMO_RECORD_PRODUCTION_WRITE_REJECTED");
+    error.status = 403;
+    throw error;
+  }
+  return record;
+}
 
 export const DIRS = {
   scopeVersions: path.join(DATA_ROOT, "scopeversions"),
@@ -83,6 +170,7 @@ export const DIRS = {
   runtimeWorkspaceSessions: path.join(DATA_ROOT, "runtime-workspace-sessions"),
   translationCommits: path.join(DATA_ROOT, "translation-commits"),
   transactionManifests: path.join(DATA_ROOT, "transaction-manifests"),
+  demoScenarios: path.join(DATA_ROOT, "demo-scenarios"),
 };
 
 export function corsHeaders() {
@@ -138,7 +226,10 @@ export function nowIso() {
 }
 
 export function createId(prefix) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const authorityPrefix = currentRepositoryAuthority().authorityClass === "DEMO" && !String(prefix).toUpperCase().includes("DEMO")
+    ? `DEMO-${prefix}`
+    : prefix;
+  return `${authorityPrefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 export async function ensureDir(dir) {
@@ -541,18 +632,20 @@ export async function hydrateIofProjectionArtifacts(record = {}, options = {}) {
 }
 
 export function recordPath(dir, id) {
-  return path.join(dir, `${encodeURIComponent(String(id))}.json`);
+  return path.join(resolveRepositoryDir(dir), `${encodeURIComponent(String(id))}.json`);
 }
 
 export async function listRecords(dir) {
-  if (postgresReadsEnabled()) return listPostgresRecords(dir);
-  await ensureDir(dir);
-  const files = await readdir(dir).catch(() => []);
+  const authority = currentRepositoryAuthority();
+  if (authority.authorityClass !== "DEMO" && postgresReadsEnabled()) return listPostgresRecords(dir);
+  const scopedDir = resolveRepositoryDir(dir);
+  await ensureDir(scopedDir);
+  const files = await readdir(scopedDir).catch(() => []);
   const records = [];
   for (const file of files) {
     if (!file.endsWith(".json")) continue;
     try {
-      records.push(JSON.parse(await readFile(path.join(dir, file), "utf8")));
+      records.push(JSON.parse(await readFile(path.join(scopedDir, file), "utf8")));
     } catch {
       // Skip corrupt records; endpoint health should survive one bad file.
     }
@@ -561,18 +654,22 @@ export async function listRecords(dir) {
 }
 
 export async function loadRecord(dir, id) {
-  if (postgresReadsEnabled()) return loadPostgresRecord(dir, id);
+  const authority = currentRepositoryAuthority();
+  if (authority.authorityClass !== "DEMO" && postgresReadsEnabled()) return loadPostgresRecord(dir, id);
   return JSON.parse(await readFile(recordPath(dir, id), "utf8"));
 }
 
 export async function persistRecord(dir, id, record) {
-  if (postgresReadsEnabled()) return mirrorRecord(dir, id, record);
-  await ensureDir(dir);
+  const authority = currentRepositoryAuthority();
+  const governedRecord = governedRecordForAuthority(id, record);
+  if (authority.authorityClass !== "DEMO" && postgresReadsEnabled()) return mirrorRecord(dir, id, governedRecord);
+  const scopedDir = resolveRepositoryDir(dir);
+  await ensureDir(scopedDir);
   const destination = recordPath(dir, id);
   const temporary = `${destination}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
   const handle = await open(temporary, "wx");
   try {
-    await handle.writeFile(JSON.stringify(record, null, 2), "utf8");
+    await handle.writeFile(JSON.stringify(governedRecord, null, 2), "utf8");
     await handle.sync();
   } finally {
     await handle.close();
@@ -583,8 +680,36 @@ export async function persistRecord(dir, id, record) {
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
   }
-  if (postgresShadowEnabled()) await mirrorRecordBestEffort(dir, id, record);
-  return record;
+  if (authority.authorityClass !== "DEMO" && postgresShadowEnabled()) await mirrorRecordBestEffort(dir, id, governedRecord);
+  return governedRecord;
+}
+
+export async function resetDemoRepositories() {
+  const authority = currentRepositoryAuthority();
+  if (authority.authorityClass !== "DEMO" || authority.organizationId !== DEMO_ORGANIZATION_ID) {
+    const error = new Error("DEMO_RESET_AUTHORITY_REQUIRED");
+    error.status = 403;
+    throw error;
+  }
+  assertRepositoryRoots();
+  await ensureDir(DEMO_ARCHIVE_ROOT);
+  await ensureDir(DEMO_SEED_ROOT);
+  const archive = path.join(DEMO_ARCHIVE_ROOT, `data-demo-${new Date().toISOString().replace(/[:.]/g, "-")}`);
+  let archived = false;
+  try {
+    await rename(DEMO_DATA_ROOT, archive);
+    archived = true;
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  try {
+    await cp(DEMO_SEED_ROOT, DEMO_DATA_ROOT, { recursive: true, force: false, errorOnExist: true });
+  } catch (error) {
+    await rm(DEMO_DATA_ROOT, { recursive: true, force: true }).catch(() => undefined);
+    if (archived) await rename(archive, DEMO_DATA_ROOT).catch(() => undefined);
+    throw error;
+  }
+  return { dataRoot: DEMO_DATA_ROOT, archivedAt: archived ? archive : null, resetAt: nowIso() };
 }
 
 export async function updateTransactionManifest(args) {
@@ -619,7 +744,8 @@ export async function updateTransactionManifest(args) {
 }
 
 export async function deleteRecord(dir, id) {
-  if (postgresReadsEnabled()) {
+  const authority = currentRepositoryAuthority();
+  if (authority.authorityClass !== "DEMO" && postgresReadsEnabled()) {
     const error = new Error("POSTGRES_DELETE_REQUIRES_GOVERNED_COMMAND");
     error.code = "POSTGRES_DELETE_REQUIRES_GOVERNED_COMMAND";
     error.status = 409;

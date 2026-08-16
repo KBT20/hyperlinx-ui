@@ -13,6 +13,7 @@ import {
 import DALNavigation from "./DALNavigation";
 import { DALStateProvider, useDALState } from "./DALState";
 import { TeralinxAuthProvider, useTeralinxAuth } from "../identity/TeralinxAuth";
+import { resetDemoTenant } from "../api/teralinxRuntime";
 
 const CandidateSitesWorkspace = lazy(() => import("../workspaces/CandidateSitesWorkspace"));
 const DALInventoryWorkspace = lazy(() => import("../workspaces/DALInventoryWorkspace"));
@@ -284,6 +285,7 @@ function DALShell() {
   const [reasoningHealth, setReasoningHealth] = useState<ReasoningFabricHealth>(() => getReasoningServiceSnapshot());
   const [navigationOpen, setNavigationOpen] = useState(false);
   const { session, runtimeInfo, logout } = useTeralinxAuth();
+  const [demoResetStatus, setDemoResetStatus] = useState("");
   const { workspace } = useDALState();
   useEffect(() => {
     const unsubscribe = subscribeReasoningService(setReasoningHealth);
@@ -297,6 +299,18 @@ function DALShell() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [navigationOpen]);
   const reasoningEndpoint = reasoningHealth.activeEndpoint ?? reasoningHealth.endpoints[0];
+  const isDemo = session?.user.authorityClass === "DEMO" && session.user.organizationId === "org-demo";
+  async function resetDemo() {
+    if (!isDemo || !window.confirm("Reset only the isolated Demo tenant to its approved seed state? The current Demo run will be archived.")) return;
+    setDemoResetStatus("Resetting Demo...");
+    try {
+      await resetDemoTenant();
+      setDemoResetStatus("Demo reset complete. Reloading...");
+      window.location.reload();
+    } catch (error) {
+      setDemoResetStatus(error instanceof Error ? error.message : String(error));
+    }
+  }
   return (
     <div className="dal-shell">
       <header className="dal-header">
@@ -309,12 +323,15 @@ function DALShell() {
           <span>User: {session?.user.name} / {session?.user.title} / {session?.user.role}</span>
           <span>Workspace: {session?.user.workspaceId ?? session?.workspace?.workspaceId ?? "unassigned"} / Principal: {session?.user.principalId ?? "anonymous"}</span>
           <span>Organization: {session?.user.organization ?? runtimeInfo?.organization ?? "Teralinx"} / Membership: {session?.user.membershipId ?? "unassigned"}</span>
+          <span>Authority: {isDemo ? "DEMO — NOT PRODUCTION ELIGIBLE" : "PRODUCTION"}</span>
           <span>Runtime Version: {runtimeInfo?.runtimeVersion ?? "loading"} / Commit: {runtimeInfo?.gitCommit ?? "loading"}</span>
           <span>Build Date: {runtimeInfo?.buildDate ?? "loading"} / Environment: {runtimeInfo?.environment ?? "alpha"}</span>
           <span>DAL API: {DAL_API}</span>
           <span>Baseline Graph API: {DAL_BASELINE_GRAPH_API}</span>
           <span>Inventory API: {DAL_INVENTORY_GRAPH_API}</span>
           {workspace !== "routeEngineering" ? <span>Reasoning: {reasoningHealth.reasoningEnabled ? reasoningHealth.serviceStatus : "DISABLED"} / {reasoningEndpoint ? endpointBaseUrl(reasoningEndpoint) : "not configured"} / Circuit: {reasoningHealth.circuitBreakerState}</span> : null}
+          {isDemo ? <button className="dal-header-signout" type="button" onClick={() => void resetDemo()}>Reset Demo</button> : null}
+          {demoResetStatus ? <span>{demoResetStatus}</span> : null}
           <button className="dal-header-signout" type="button" onClick={() => void logout()}>Sign Out</button>
         </div>
       </header>

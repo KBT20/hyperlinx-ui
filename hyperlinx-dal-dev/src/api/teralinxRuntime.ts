@@ -2,7 +2,7 @@ import { DAL_API } from "../config/dalApi";
 import { runtimeDiagnosticsLog } from "../performance/RuntimeDiagnostics";
 import { withStoredAuthHeaders } from "./authHeaders";
 
-export type TeralinxUserRole = "ADMINISTRATOR_COO" | "CRO" | "CEO" | "CUSTOMER_PARTICIPANT";
+export type TeralinxUserRole = "ADMINISTRATOR_COO" | "CRO" | "CEO" | "CUSTOMER_PARTICIPANT" | "DEMO_SUPERUSER";
 
 export type TeralinxPermission =
   | "platform.admin"
@@ -22,7 +22,18 @@ export type TeralinxPermission =
   | "opportunity.manage"
   | "proposal.read"
   | "proposal.review"
-  | "proposal.manage";
+  | "proposal.manage"
+  | "commercial.lifecycle.manage"
+  | "engineering.lifecycle.manage"
+  | "service_order.sign_customer"
+  | "service_order.countersign"
+  | "demo.tenant"
+  | "demo.reset"
+  | "marketplace.lifecycle.manage"
+  | "control.lifecycle.manage"
+  | "field.lifecycle.manage"
+  | "close.lifecycle.manage"
+  | "twin.read";
 
 export type TeralinxUser = {
   userId: string;
@@ -34,7 +45,10 @@ export type TeralinxUser = {
   name: string;
   title: string;
   role: TeralinxUserRole;
-  organization: "Teralinx";
+  organization: string;
+  authorityClass?: "PRODUCTION" | "DEMO";
+  environment?: "PRODUCTION" | "DEMO";
+  productionEligible?: boolean;
   permissions: TeralinxPermission[];
   preferences: Record<string, unknown>;
   dashboard: {
@@ -1988,6 +2002,10 @@ export async function changeTeralinxPassword(currentPassword: string, newPasswor
   });
 }
 
+export async function resetDemoTenant() {
+  return requestJson<{ reset: true; resetAt: string; archivedPreviousState: boolean }>("/api/demo/reset", { method: "POST" });
+}
+
 export async function loadTeralinxRuntimeInfo() {
   return requestJson<TeralinxRuntimeInfo>("/api/runtime");
 }
@@ -2016,7 +2034,7 @@ export async function appendTeralinxActivity(session: TeralinxAuthSession, input
   const timestamp = input.timestamp ?? new Date().toISOString();
   const event = {
     ...input,
-    activityId: `activity-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    activityId: `${session.user.authorityClass === "DEMO" ? "DEMO-" : ""}activity-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     userId: session.user.userId,
     userName: session.user.name,
     userRole: session.user.role,

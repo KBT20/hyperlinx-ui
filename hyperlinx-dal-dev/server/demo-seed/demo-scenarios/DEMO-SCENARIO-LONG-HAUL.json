@@ -1,0 +1,11 @@
+{
+  "scenarioId": "DEMO-SCENARIO-LONG-HAUL",
+  "name": "Long-Haul Fiber",
+  "scenarioType": "LONG_HAUL_FIBER",
+  "status": "SEED_READY",
+  "environment": "DEMO",
+  "organizationId": "org-demo",
+  "authorityClass": "DEMO",
+  "productionEligible": false,
+  "seedAuthority": "APPROVED_DEMO_BASELINE"
+}

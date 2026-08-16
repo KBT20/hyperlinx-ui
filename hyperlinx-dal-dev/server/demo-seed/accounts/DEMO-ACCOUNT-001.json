@@ -1,0 +1,13 @@
+{
+  "accountId": "DEMO-ACCOUNT-001",
+  "accountNumber": 1,
+  "customerId": "DEMO-CUSTOMER-001",
+  "name": "Demo Customer",
+  "status": "ACTIVE",
+  "environment": "DEMO",
+  "organizationId": "org-demo",
+  "tenantId": "org-demo",
+  "authorityClass": "DEMO",
+  "productionEligible": false,
+  "seedAuthority": "APPROVED_DEMO_BASELINE"
+}

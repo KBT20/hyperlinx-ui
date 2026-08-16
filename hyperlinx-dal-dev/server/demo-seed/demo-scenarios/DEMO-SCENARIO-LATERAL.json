@@ -1,0 +1,11 @@
+{
+  "scenarioId": "DEMO-SCENARIO-LATERAL",
+  "name": "Network Lateral",
+  "scenarioType": "LATERAL",
+  "status": "SEED_READY",
+  "environment": "DEMO",
+  "organizationId": "org-demo",
+  "authorityClass": "DEMO",
+  "productionEligible": false,
+  "seedAuthority": "APPROVED_DEMO_BASELINE"
+}

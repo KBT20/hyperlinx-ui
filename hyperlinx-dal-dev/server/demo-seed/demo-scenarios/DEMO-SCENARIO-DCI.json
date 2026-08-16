@@ -1,0 +1,11 @@
+{
+  "scenarioId": "DEMO-SCENARIO-DCI",
+  "name": "Data Center Interconnect",
+  "scenarioType": "DATA_CENTER_INTERCONNECT",
+  "status": "SEED_READY",
+  "environment": "DEMO",
+  "organizationId": "org-demo",
+  "authorityClass": "DEMO",
+  "productionEligible": false,
+  "seedAuthority": "APPROVED_DEMO_BASELINE"
+}

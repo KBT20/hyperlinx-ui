@@ -1,7 +1,7 @@
 import http from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { DATA_ROOT, DIRS, PORT, PROJECT_ROOT, errorResponse, handleOptions, jsonResponse } from "./routes/_shared.js";
+import { DATA_ROOT, DIRS, PORT, PROJECT_ROOT, errorResponse, handleOptions, jsonResponse, withRepositoryAuthority } from "./routes/_shared.js";
 import { handleAccounts } from "./routes/accounts.js";
 import { handleActivity } from "./routes/activity.js";
 import {
@@ -45,9 +45,11 @@ import { handleScopeVersions } from "./routes/scopeversions.js";
 import { handleServiceOrders } from "./routes/service-orders.js";
 import { handleTwinState } from "./routes/twin-state.js";
 import { enforceLifecycleSeparationOfDuties } from "./routes/duty-authority.js";
+import { handleDemo } from "./routes/demo.js";
 
 export const REGISTERED_API_ROUTES = [
   { basePath: "/api/auth", handler: "handleAuth" },
+  { basePath: "/api/demo", handler: "handleDemo" },
   { basePath: "/api/runtime", handler: "handleRuntime" },
   { basePath: "/api/accounts", handler: "handleAccounts" },
   { basePath: "/api/accounts/contacts", handler: "handleAccounts" },
@@ -115,6 +117,7 @@ function registeredApiRouteMap() {
 
 const routes = [
   handleAuth,
+  handleDemo,
   handleRuntime,
   handleAccounts,
   handleActivity,
@@ -200,10 +203,14 @@ const server = http.createServer(async (req, res) => {
     if (handleOptions(req, res)) return;
     await authenticateRuntimeRequest(req);
     if (enforceAuthenticationBoundary(req, res, url.pathname)) return;
-    if (enforceLifecycleSeparationOfDuties(req, res, url.pathname)) return;
-    for (const route of routes) {
-      if (await route(req, res, url.pathname)) return;
-    }
+    const routed = await withRepositoryAuthority(req.authUser, async () => {
+      if (enforceLifecycleSeparationOfDuties(req, res, url.pathname)) return true;
+      for (const route of routes) {
+        if (await route(req, res, url.pathname)) return true;
+      }
+      return false;
+    });
+    if (routed) return;
     if (url.pathname === "/api/routes" && req.method === "GET") {
       jsonResponse(res, 200, {
         startupModel: "node:http createServer route handler array",

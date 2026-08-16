@@ -1,0 +1,12 @@
+{
+  "productId": "DEMO-PRODUCT-P2P-FIBER",
+  "name": "Demo Point-to-Point Fiber",
+  "productType": "POINT_TO_POINT_FIBER",
+  "status": "ACTIVE",
+  "environment": "DEMO",
+  "organizationId": "org-demo",
+  "tenantId": "org-demo",
+  "authorityClass": "DEMO",
+  "productionEligible": false,
+  "seedAuthority": "APPROVED_DEMO_BASELINE"
+}

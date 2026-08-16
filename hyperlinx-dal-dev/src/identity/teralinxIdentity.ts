@@ -7,6 +7,7 @@ export function userHasPermission(user: TeralinxUser | null | undefined, permiss
 
 export function canAccessWorkspace(user: TeralinxUser | null | undefined, workspace: DALWorkspace) {
   if (!user) return false;
+  if (user.authorityClass === "DEMO" && user.organizationId === "org-demo" && user.permissions.includes("demo.tenant")) return true;
   if (userHasPermission(user, "platform.admin")) return true;
   if (workspace === "googleRfp" || workspace === "design" || workspace === "serviceOrder") {
     return userHasPermission(user, "workspace.commercial") || userHasPermission(user, "workspace.proposal");
