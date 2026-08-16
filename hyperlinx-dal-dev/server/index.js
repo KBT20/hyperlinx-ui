@@ -46,10 +46,12 @@ import { handleServiceOrders } from "./routes/service-orders.js";
 import { handleTwinState } from "./routes/twin-state.js";
 import { enforceLifecycleSeparationOfDuties } from "./routes/duty-authority.js";
 import { handleDemo } from "./routes/demo.js";
+import { handleCustomerPortal } from "./routes/customer-portal.js";
 
 export const REGISTERED_API_ROUTES = [
   { basePath: "/api/auth", handler: "handleAuth" },
   { basePath: "/api/demo", handler: "handleDemo" },
+  { basePath: "/api/customer-portal", handler: "handleCustomerPortal" },
   { basePath: "/api/runtime", handler: "handleRuntime" },
   { basePath: "/api/accounts", handler: "handleAccounts" },
   { basePath: "/api/accounts/contacts", handler: "handleAccounts" },
@@ -118,6 +120,7 @@ function registeredApiRouteMap() {
 const routes = [
   handleAuth,
   handleDemo,
+  handleCustomerPortal,
   handleRuntime,
   handleAccounts,
   handleActivity,

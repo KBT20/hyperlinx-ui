@@ -13,7 +13,8 @@ import {
 import DALNavigation from "./DALNavigation";
 import { DALStateProvider, useDALState } from "./DALState";
 import { TeralinxAuthProvider, useTeralinxAuth } from "../identity/TeralinxAuth";
-import { resetDemoTenant } from "../api/teralinxRuntime";
+import { listDemoScenarios, resetDemoTenant } from "../api/teralinxRuntime";
+import { getDemoCustomerOrganization, getDemoPersona, setDemoCustomerOrganization, setDemoPersona, type DemoPersona } from "../api/authHeaders";
 
 const CandidateSitesWorkspace = lazy(() => import("../workspaces/CandidateSitesWorkspace"));
 const DALInventoryWorkspace = lazy(() => import("../workspaces/DALInventoryWorkspace"));
@@ -38,6 +39,7 @@ const ServiceOrderWorkspace = lazy(() => import("../workspaces/ServiceOrderWorks
 const TeralinxRouteWorkspace = lazy(() => import("../components/workspaces/TeralinxRouteWorkspace"));
 const TranslateWorkspace = lazy(() => import("../workspaces/TranslateWorkspace"));
 const TwinWorkspace = lazy(() => import("../workspaces/TwinWorkspace"));
+const CustomerPortalWorkspace = lazy(() => import("../workspaces/CustomerPortalWorkspace"));
 
 function DALWorkspaceOutlet() {
   const { workspace } = useDALState();
@@ -286,6 +288,10 @@ function DALShell() {
   const [navigationOpen, setNavigationOpen] = useState(false);
   const { session, runtimeInfo, logout } = useTeralinxAuth();
   const [demoResetStatus, setDemoResetStatus] = useState("");
+  const [demoScenarios, setDemoScenarios] = useState<Array<{ scenarioId: string; name: string }>>([]);
+  const [demoScenarioId, setDemoScenarioId] = useState("DEMO-SCENARIO-DCI");
+  const [demoPersona, updateDemoPersona] = useState<DemoPersona>(() => getDemoPersona());
+  const [demoCustomerOrganization, updateDemoCustomerOrganization] = useState(() => getDemoCustomerOrganization());
   const { workspace } = useDALState();
   useEffect(() => {
     const unsubscribe = subscribeReasoningService(setReasoningHealth);
@@ -300,17 +306,43 @@ function DALShell() {
   }, [navigationOpen]);
   const reasoningEndpoint = reasoningHealth.activeEndpoint ?? reasoningHealth.endpoints[0];
   const isDemo = session?.user.authorityClass === "DEMO" && session.user.organizationId === "org-demo";
+  const externalCustomer = session?.user.authorityClass === "DEMO" && session.user.organizationId.startsWith("org-demo-customer-");
+  const customerView = externalCustomer || (isDemo && demoPersona.startsWith("CUSTOMER_"));
+  useEffect(() => { if (isDemo) void listDemoScenarios().then(setDemoScenarios).catch(() => setDemoScenarios([])); }, [isDemo]);
+  function choosePersona(value: DemoPersona) {
+    setDemoPersona(value); updateDemoPersona(value);
+  }
+  function chooseCustomerOrganization(value: string) {
+    setDemoCustomerOrganization(value); updateDemoCustomerOrganization(value);
+  }
   async function resetDemo() {
     if (!isDemo || !window.confirm("Reset only the isolated Demo tenant to its approved seed state? The current Demo run will be archived.")) return;
     setDemoResetStatus("Resetting Demo...");
     try {
-      await resetDemoTenant();
+      await resetDemoTenant(demoScenarioId);
       setDemoResetStatus("Demo reset complete. Reloading...");
       window.location.reload();
     } catch (error) {
       setDemoResetStatus(error instanceof Error ? error.message : String(error));
     }
   }
+  if (customerView) return (
+    <div className="demo-experience-shell">
+      {isDemo ? <div className="demo-persona-bar">
+        <strong>Demo Persona</strong>
+        <select value={demoPersona} onChange={(event) => choosePersona(event.currentTarget.value as DemoPersona)}>
+          <option value="SALES">Sales</option><option value="ENGINEERING">Engineering</option>
+          <option value="CUSTOMER_VIEWER">Customer · Viewer</option><option value="CUSTOMER_COMMERCIAL_REVIEWER">Customer · Commercial Reviewer</option>
+          <option value="CUSTOMER_AUTHORIZED_SIGNER">Customer · Authorized Signer</option><option value="EXECUTIVE">Executive</option>
+        </select>
+        <select value={demoCustomerOrganization} onChange={(event) => chooseCustomerOrganization(event.currentTarget.value)}>
+          <option value="org-demo-customer-a">Northstar Cloud Infrastructure</option><option value="org-demo-customer-b">Blue Mesa Digital Systems</option>
+        </select>
+        <span>Actor remains demo-principal · simulated capability only</span>
+      </div> : null}
+      <Suspense fallback={<div className="dal-status">Opening customer portal...</div>}><CustomerPortalWorkspace key={`${demoPersona}:${demoCustomerOrganization}`} /></Suspense>
+    </div>
+  );
   return (
     <div className="dal-shell">
       <header className="dal-header">
@@ -320,6 +352,7 @@ function DALShell() {
           <button className="dal-navigation-trigger" type="button" aria-expanded={navigationOpen} aria-controls="dal-workspace-navigation" onClick={() => setNavigationOpen((open) => !open)}>☰ Workspaces</button>
         </div>
         <div className="dal-targets">
+          {isDemo ? <label className="demo-persona-control">Persona<select value={demoPersona} onChange={(event) => choosePersona(event.currentTarget.value as DemoPersona)}><option value="SALES">Sales</option><option value="ENGINEERING">Engineering</option><option value="CUSTOMER_VIEWER">Customer · Viewer</option><option value="CUSTOMER_COMMERCIAL_REVIEWER">Customer · Commercial Reviewer</option><option value="CUSTOMER_AUTHORIZED_SIGNER">Customer · Authorized Signer</option><option value="EXECUTIVE">Executive</option></select></label> : null}
           <span>User: {session?.user.name} / {session?.user.title} / {session?.user.role}</span>
           <span>Workspace: {session?.user.workspaceId ?? session?.workspace?.workspaceId ?? "unassigned"} / Principal: {session?.user.principalId ?? "anonymous"}</span>
           <span>Organization: {session?.user.organization ?? runtimeInfo?.organization ?? "Teralinx"} / Membership: {session?.user.membershipId ?? "unassigned"}</span>
@@ -331,6 +364,7 @@ function DALShell() {
           <span>Inventory API: {DAL_INVENTORY_GRAPH_API}</span>
           {workspace !== "routeEngineering" ? <span>Reasoning: {reasoningHealth.reasoningEnabled ? reasoningHealth.serviceStatus : "DISABLED"} / {reasoningEndpoint ? endpointBaseUrl(reasoningEndpoint) : "not configured"} / Circuit: {reasoningHealth.circuitBreakerState}</span> : null}
           {isDemo ? <button className="dal-header-signout" type="button" onClick={() => void resetDemo()}>Reset Demo</button> : null}
+          {isDemo ? <select value={demoScenarioId} onChange={(event) => setDemoScenarioId(event.currentTarget.value)}>{demoScenarios.map((scenario) => <option key={scenario.scenarioId} value={scenario.scenarioId}>{scenario.name}</option>)}</select> : null}
           {demoResetStatus ? <span>{demoResetStatus}</span> : null}
           <button className="dal-header-signout" type="button" onClick={() => void logout()}>Sign Out</button>
         </div>

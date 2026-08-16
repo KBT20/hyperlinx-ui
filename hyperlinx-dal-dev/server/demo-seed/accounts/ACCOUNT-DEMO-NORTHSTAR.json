@@ -1,0 +1,14 @@
+{
+  "accountId": "ACCOUNT-DEMO-NORTHSTAR",
+  "accountNumber": 1,
+  "customerId": "customer-demo-a",
+  "customerOrganizationId": "org-demo-customer-a",
+  "name": "Northstar Cloud Infrastructure",
+  "status": "ACTIVE",
+  "environment": "DEMO",
+  "organizationId": "org-demo",
+  "tenantId": "org-demo",
+  "authorityClass": "DEMO",
+  "productionEligible": false,
+  "seedAuthority": "APPROVED_DEMO_BASELINE"
+}

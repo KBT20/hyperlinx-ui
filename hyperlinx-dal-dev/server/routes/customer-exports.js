@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import JSZip from "jszip";
 import { DIRS, corsHeaders, errorResponse, handleOptions, hydrateIofProjectionArtifacts, listRecords, loadRecord } from "./_shared.js";
 import { requireRuntimeUser } from "./authority.js";
+import { CUSTOMER_ORGANIZATIONS, customerProjectAccessRecords } from "./customer-portal-authority.js";
 
 const BASE = "/api/exports";
 const rec = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
@@ -16,9 +17,16 @@ const xml = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").
 const ascii = (v) => String(v ?? "").normalize("NFKD").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
 
 function hasPermission(user, permission) { return arr(user?.permissions).includes(permission); }
-function canExport(authority, user) {
-  if (!authority || !user || (authority.organizationId && authority.organizationId !== user.organizationId)) return false;
-  if (hasPermission(user, "platform.admin") || hasPermission(user, "proposal.manage")) return true;
+async function canExport(authority, user) {
+  if (!authority || !user) return false;
+  if ((!authority.organizationId || authority.organizationId === user.organizationId) && (hasPermission(user, "platform.admin") || hasPermission(user, "proposal.manage"))) return true;
+  const customerOrganizationId = user.principalId === "demo-principal" ? user.demoCustomerOrganizationId : user.organizationId;
+  const customerOrganization = CUSTOMER_ORGANIZATIONS[customerOrganizationId];
+  if (!customerOrganization || customerOrganization.customerId !== authority.customerId) return false;
+  if (user.principalId === "demo-principal" && String(user.demoPersona ?? "").startsWith("CUSTOMER_")) return true;
+  const access = await customerProjectAccessRecords();
+  if (!access.some((item) => item.status === "ACTIVE" && item.principalId === user.principalId && item.customerOrganizationId === customerOrganizationId &&
+    (item.opportunityId === authority.opportunityId || item.proposalId === authority.proposalId))) return false;
   const assigned = arr(authority.assignedCustomerUsers ?? authority.authorizedCustomerSignerUserIds).map(String);
   return assigned.includes(String(user.userId)) || Boolean(user.customerId && String(user.customerId) === String(authority.customerId));
 }
@@ -213,14 +221,14 @@ export async function handleCustomerExports(req, res, pathname) {
     if (parts[0] === "proposals" && parts[1] && ["pdf","route.kmz"].includes(parts[2])) {
       const proposal = await loadRecord(DIRS.proposalDrafts,parts[1]).catch(()=>null);
       if (!proposal) { errorResponse(res,404,"Proposal not found."); return true; }
-      if (!canExport(proposal,user)) { errorResponse(res,403,"Proposal export is outside your organization/customer/opportunity scope."); return true; }
+      if (!await canExport(proposal,user)) { errorResponse(res,403,"Proposal export is outside your organization/customer/opportunity scope."); return true; }
       const context = await contextFrom({proposal}); const label=safe(context.route.routeName ?? proposal.opportunityId,"Route");
       if (parts[2] === "pdf") { const buffer=proposalPdf(context); send(res,buffer,"application/pdf",`Teralinx_${label}_Proposal_R${num(proposal.version,1)}.pdf`,txt(proposal.proposalHash),{"X-Teralinx-Route-Revision":String(context.route.routeRevision),"X-Teralinx-Geometry-Hash":txt(context.route.geometryHash)}); return true; }
       const artifact=await kmz(context,context.scopeVersion?"AUTHORIZED":"CERTIFIED"); send(res,artifact.buffer,"application/vnd.google-earth.kmz",`Teralinx_${label}_Route_R${context.route.routeRevision}.kmz`,txt(proposal.proposalHash),{"X-Teralinx-Geometry-Hash":txt(context.route.geometryHash)}); return true;
     }
     if (parts[0] === "service-orders" && parts[1] && parts[2] === "pdf") {
       const serviceOrder=await loadRecord(DIRS.serviceOrders,parts[1]).catch(()=>null); if(!serviceOrder){errorResponse(res,404,"Service Order not found.");return true;}
-      if(!canExport(serviceOrder,user)){errorResponse(res,403,"Service Order export is outside your organization/customer/opportunity scope.");return true;}
+      if(!await canExport(serviceOrder,user)){errorResponse(res,403,"Service Order export is outside your organization/customer/opportunity scope.");return true;}
       const context=await contextFrom({serviceOrder}); const signature=serviceOrder.customerSignatureId?await loadRecord(DIRS.customerSignatures,serviceOrder.customerSignatureId).catch(()=>null):null; const countersignature=serviceOrder.countersignatureId?await loadRecord(DIRS.teralinxCountersignatures,serviceOrder.countersignatureId).catch(()=>null):null;
       const buffer=serviceOrderPdf(context,signature,countersignature); send(res,buffer,"application/pdf",`Teralinx_${safe(context.route.routeName ?? serviceOrder.opportunityId,"Route")}_Service_Order_R${serviceOrder.documentRevision}.pdf`,serviceOrder.documentHash,{"X-Teralinx-Geometry-Hash":txt(context.route.geometryHash)}); return true;
     }
@@ -228,7 +236,7 @@ export async function handleCustomerExports(req, res, pathname) {
       const scopeVersion=parts[0] === "scopeversions"?await loadRecord(DIRS.scopeVersions,parts[1]).catch(()=>null):null;
       const certifiedId=parts[0] === "certified-iof"?parts[1]:txt(scopeVersion?.certifiedIofPackageId); const certified=certifiedId?await loadRecord(DIRS.certifiedIofPackages,certifiedId).catch(()=>null):null;
       if(!certified){errorResponse(res,404,"Certified IOF authority not found.");return true;} const proposal=await loadRecord(DIRS.proposalDrafts,certified.proposalId).catch(()=>null);
-      if(!canExport(proposal,user)){errorResponse(res,403,"Route export is outside your organization/customer/opportunity scope.");return true;}
+      if(!await canExport(proposal,user)){errorResponse(res,403,"Route export is outside your organization/customer/opportunity scope.");return true;}
       const context=await contextFrom({proposal,certified,scopeVersion}); const lifecycle=scopeVersion?"AUTHORIZED":"CERTIFIED"; const artifact=await kmz(context,lifecycle); const suffix=scopeVersion?`${safe(scopeVersion.scopeVersionId,"SV")}_Authorized_Route`:`Certified_Route`;
       send(res,artifact.buffer,"application/vnd.google-earth.kmz",`Teralinx_${safe(context.route.routeName ?? proposal.opportunityId,"Route")}_${suffix}.kmz`,scopeVersion?.executionAuthorizationCertificateId??certified.certificationHash,{"X-Teralinx-Geometry-Hash":txt(context.route.geometryHash),"X-Teralinx-Execution-State":scopeVersion?"AUTHORIZED":"NOT_AUTHORIZED"}); return true;
     }

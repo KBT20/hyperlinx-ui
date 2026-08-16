@@ -35,6 +35,31 @@ export type TeralinxPermission =
   | "close.lifecycle.manage"
   | "twin.read";
 
+export type CustomerPortalProject = {
+  projectId: string;
+  customerReviewPackageId: string;
+  customerOrganizationId: string;
+  title: string;
+  summary?: string;
+  status: string;
+  proposal: {
+    proposalId: string; proposalRevisionId: string; proposalRevisionNumber: number; proposalHash: string;
+    title?: string; summary?: string; product?: Record<string, unknown>;
+    commercialTerms?: { currency?: string; nrc?: number; mrc?: number; termMonths?: number; tcv?: number };
+    schedule?: Record<string, unknown>; majorQuantities?: Record<string, number>;
+    expiration?: string; decision?: string; status?: string;
+  };
+  engineering: { status: string; certifiedAt?: string | null; customerSafeSummary: string };
+  map: {
+    routeRepositoryId: string; routeRevision: number; routeGeometryId: string; geometryHash: string;
+    routeMiles?: number; coordinates: [number, number][]; endpointA?: unknown; endpointZ?: unknown;
+  };
+  documents: Array<Record<string, unknown>>;
+  serviceOrder?: null | { serviceOrderId: string; documentRevision: number; documentHash: string; status: string; signatureStatus: string; pricingSummary?: Record<string, unknown>; serviceDescription?: Record<string, unknown> };
+  scopeVersion?: null | { scopeVersionId: string; status?: string; createdAt?: string };
+  activity: Array<{ customerPortalActionId: string; action: string; message?: string; actorDisplayName?: string; createdAt: string }>;
+};
+
 export type TeralinxUser = {
   userId: string;
   principalId: string;
@@ -1551,6 +1576,7 @@ export type ProposalCustomerRecipientInput = {
   approvalAuthorityContactIds?: string[];
   sofRecipientContactIds?: string[];
   customerContactEmails?: string[];
+  customerOrganizationId?: string;
 };
 
 export type CertifiedIofPackageRuntime = DraftIofPackageRuntime & {
@@ -2002,8 +2028,15 @@ export async function changeTeralinxPassword(currentPassword: string, newPasswor
   });
 }
 
-export async function resetDemoTenant() {
-  return requestJson<{ reset: true; resetAt: string; archivedPreviousState: boolean }>("/api/demo/reset", { method: "POST" });
+export async function resetDemoTenant(scenarioId = "DEMO-SCENARIO-DCI") {
+  return requestJson<{ reset: true; resetAt: string; archivedPreviousState: boolean; selectedScenarioId: string }>("/api/demo/reset", {
+    method: "POST", headers: authHeaders(null, { "Content-Type": "application/json" }), body: JSON.stringify({ scenarioId }),
+  });
+}
+
+export async function listDemoScenarios() {
+  const data = await requestJson<{ scenarios: Array<{ scenarioId: string; name: string; scenarioType: string; status: string }> }>("/api/demo/scenarios", { headers: authHeaders() });
+  return data.scenarios.filter((item) => item.scenarioId !== "DEMO-ACTIVE-SCENARIO");
 }
 
 export async function loadTeralinxRuntimeInfo() {
@@ -2393,6 +2426,16 @@ export async function submitProposalToCustomer<T extends ProposalRuntimeObject =
   session?: TeralinxAuthSession | null,
 ) {
   return proposalAction<T>(proposalId, "submit-customer", input, session);
+}
+
+export async function submitProposalToCustomerPortal<T extends ProposalRuntimeObject = ProposalRuntimeObject>(
+  proposalId: string,
+  input: ProposalCustomerRecipientInput,
+  session?: TeralinxAuthSession | null,
+) {
+  return requestJson<{ proposal: T; customerReviewPackage?: Record<string, unknown>; invitations: Array<{ customerInvitationId: string; principalId: string; expiresAt: string; enrollmentPath: string }> }>(`/api/proposals/${encodeURIComponent(proposalId)}/submit-customer`, {
+    method: "POST", headers: authHeaders(session, { "Content-Type": "application/json" }), body: JSON.stringify(input),
+  });
 }
 
 export async function withdrawProposalRuntimeObject<T extends ProposalRuntimeObject = ProposalRuntimeObject>(proposalId: string, session?: TeralinxAuthSession | null) {
@@ -3094,5 +3137,32 @@ export async function generateScopeVersionFromCertifiedIofPackage(
     method: "POST",
     headers: authHeaders(session, { "Content-Type": "application/json" }),
     body: JSON.stringify(input),
+  });
+}
+
+export async function enrollCustomerPortalInvitation(input: { token: string; username?: string; email?: string; password: string }) {
+  return requestJson<{ enrolled: boolean; username: string; customerOrganizationId: string }>("/api/customer-portal/invitations/enroll", {
+    method: "POST", headers: authHeaders(null, { "Content-Type": "application/json" }), body: JSON.stringify(input),
+  });
+}
+
+export async function loadCustomerPortalContext() {
+  return requestJson<{ customerOrganization: { customerOrganizationId: string; name: string }; role: string; actorPrincipalId: string; demoPersona?: string | null }>("/api/customer-portal/context", {
+    headers: authHeaders(),
+  });
+}
+
+export async function listCustomerPortalProjects() {
+  const data = await requestJson<{ projects: CustomerPortalProject[] }>("/api/customer-portal/projects", { headers: authHeaders() });
+  return data.projects;
+}
+
+export async function customerPortalProjectAction(
+  projectId: string,
+  action: "comments" | "questions" | "change-requests" | "proposal/accept" | "proposal/decline" | "service-order/sign",
+  input: Record<string, unknown>,
+) {
+  return requestJson<{ project?: CustomerPortalProject; action: Record<string, unknown> }>(`/api/customer-portal/projects/${encodeURIComponent(projectId)}/${action}`, {
+    method: "POST", headers: authHeaders(null, { "Content-Type": "application/json" }), body: JSON.stringify(input),
   });
 }

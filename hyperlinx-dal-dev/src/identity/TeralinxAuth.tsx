@@ -7,6 +7,7 @@ import {
   loadTeralinxRuntimeInfo,
   loginTeralinxUser,
   logoutTeralinxUser,
+  enrollCustomerPortalInvitation,
   type TeralinxActivityEvent,
   type TeralinxActivityInput,
   type TeralinxAuthSession,
@@ -32,6 +33,35 @@ type TeralinxAuthContextValue = {
 
 const TeralinxAuthContext = createContext<TeralinxAuthContextValue | null>(null);
 const LEGACY_AUTH_STORAGE_KEY = "teralinx:auth-session:v1";
+
+function CustomerEnrollmentScreen() {
+  const token = new URLSearchParams(window.location.search).get("token") ?? "";
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [status, setStatus] = useState("");
+  const [complete, setComplete] = useState(false);
+  async function enroll(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (password !== confirm) { setStatus("Passwords do not match."); return; }
+    setStatus("Securing your customer account...");
+    try {
+      const result = await enrollCustomerPortalInvitation({ token, username, password });
+      setComplete(true); setStatus(`Account ready for ${result.username}. You may now sign in.`);
+      window.history.replaceState({}, "", "/");
+    } catch (error) { setStatus(error instanceof Error ? error.message : String(error)); }
+  }
+  return <main className="teralinx-login-shell"><section className="teralinx-login-panel" aria-label="Customer account enrollment">
+    <div><div className="dal-kicker">TERALINX CUSTOMER</div><h1>Activate your project portal</h1><p>Confirm the invited identity and create a private password. Invitation links are single-use and do not grant authority by themselves.</p></div>
+    {!complete ? <form className="teralinx-login-form" onSubmit={enroll}>
+      <label>Invited username or email<input value={username} onChange={(event) => setUsername(event.currentTarget.value)} autoComplete="username" /></label>
+      <label>New password<input type="password" minLength={14} value={password} onChange={(event) => setPassword(event.currentTarget.value)} autoComplete="new-password" /></label>
+      <label>Confirm password<input type="password" minLength={14} value={confirm} onChange={(event) => setConfirm(event.currentTarget.value)} autoComplete="new-password" /></label>
+      <button className="primary" disabled={!token || !username || password.length < 14 || !confirm}>Activate account</button>
+    </form> : <button className="primary" onClick={() => window.location.assign("/")}>Continue to sign in</button>}
+    {status ? <div className={`dal-status ${complete ? "" : "error"}`}>{status}</div> : null}
+  </section></main>;
+}
 
 function removeLegacyClientIdentity() {
   try {
@@ -247,6 +277,7 @@ export function TeralinxAuthProvider({ children }: { children: ReactNode }) {
   }
 
   if (!session) {
+    if (window.location.pathname === "/customer/enroll") return <TeralinxAuthContext.Provider value={value}><CustomerEnrollmentScreen /></TeralinxAuthContext.Provider>;
     return <TeralinxAuthContext.Provider value={value}><TeralinxLoginScreen login={login} loginError={loginError} runtimeInfo={runtimeInfo} runtimeStatus={runtimeStatus} /></TeralinxAuthContext.Provider>;
   }
 

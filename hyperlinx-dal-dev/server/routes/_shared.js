@@ -47,8 +47,11 @@ function assertRepositoryRoots() {
 assertRepositoryRoots();
 
 export function repositoryAuthorityForUser(user) {
-  const demo = user?.organizationId === DEMO_ORGANIZATION_ID &&
-    Array.isArray(user?.permissions) && user.permissions.includes("demo.tenant");
+  const organizationId = String(user?.organizationId ?? "");
+  const demo = user?.authorityClass === "DEMO" && (
+    (organizationId === DEMO_ORGANIZATION_ID && Array.isArray(user?.permissions) && user.permissions.includes("demo.tenant")) ||
+    organizationId.startsWith("org-demo-customer-")
+  );
   return {
     organizationId: demo ? DEMO_ORGANIZATION_ID : String(user?.organizationId ?? ""),
     authorityClass: demo ? "DEMO" : "PRODUCTION",
@@ -171,12 +174,17 @@ export const DIRS = {
   translationCommits: path.join(DATA_ROOT, "translation-commits"),
   transactionManifests: path.join(DATA_ROOT, "transaction-manifests"),
   demoScenarios: path.join(DATA_ROOT, "demo-scenarios"),
+  customerReviewPackages: path.join(DATA_ROOT, "customer-review-packages"),
+  customerPortalInvitations: path.join(DATA_ROOT, "customer-portal-invitations"),
+  customerProjectAccess: path.join(DATA_ROOT, "customer-project-access"),
+  customerPortalActions: path.join(DATA_ROOT, "customer-portal-actions"),
+  customerPortalDocuments: path.join(DATA_ROOT, "customer-portal-documents"),
 };
 
 export function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, X-Requested-With, X-Teralinx-Runtime",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, X-Requested-With, X-Teralinx-Runtime, X-Hyperlinx-Demo-Persona, X-Hyperlinx-Demo-Customer-Organization",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Expose-Headers": "Content-Type, Content-Disposition, Content-Length, Authorization, X-Teralinx-Export-Hash, X-Teralinx-Authority-Hash, X-Teralinx-Geometry-Hash, X-Teralinx-Route-Revision, X-Teralinx-Execution-State",
     "Access-Control-Max-Age": "86400",

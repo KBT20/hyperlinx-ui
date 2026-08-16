@@ -4,6 +4,10 @@ import {
   handleOptions,
   jsonResponse,
   listRecords,
+  loadRecord,
+  nowIso,
+  persistRecord,
+  readRequestJson,
   resetDemoRepositories,
   routeMatch,
   sortedByUpdated,
@@ -45,7 +49,18 @@ export async function handleDemo(req, res, pathname) {
   }
   if (!match.base && match.id === "reset" && req.method === "POST") {
     if (!requireDemo(user, res, "demo.reset")) return true;
+    const body = await readRequestJson(req);
+    const scenarioId = String(body.scenarioId ?? "DEMO-SCENARIO-DCI");
+    const selectedScenario = await loadRecord(DIRS.demoScenarios, scenarioId).catch(() => null);
+    if (!selectedScenario || selectedScenario.environment !== "DEMO") {
+      errorResponse(res, 404, "Approved Demo scenario not found."); return true;
+    }
     const result = await resetDemoRepositories();
+    await persistRecord(DIRS.demoScenarios, "DEMO-ACTIVE-SCENARIO", {
+      scenarioId: "DEMO-ACTIVE-SCENARIO", selectedScenarioId: scenarioId, name: selectedScenario.name,
+      scenarioType: selectedScenario.scenarioType, status: "ACTIVE", activatedByPrincipalId: user.principalId,
+      activatedAt: nowIso(), environment: "DEMO", authorityClass: "DEMO", productionEligible: false,
+    });
     jsonResponse(res, 200, {
       reset: true,
       environment: "DEMO",
@@ -55,6 +70,7 @@ export async function handleDemo(req, res, pathname) {
       resetAt: result.resetAt,
       archivedPreviousState: Boolean(result.archivedAt),
       scenarios: sortedByUpdated(await listRecords(DIRS.demoScenarios)),
+      selectedScenarioId: scenarioId,
     });
     return true;
   }

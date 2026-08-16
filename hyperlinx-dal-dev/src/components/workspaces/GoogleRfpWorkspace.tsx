@@ -76,6 +76,7 @@ import {
   saveCommercialDraftIofPackage,
   submitDraftIofPackageToEngineering,
   submitProposalToCustomer,
+  submitProposalToCustomerPortal,
   uploadProposalEvidence,
   type DraftIofPackageRuntime,
   type CommercialReleasePackageRuntime,
@@ -3189,6 +3190,7 @@ export default function GoogleRfpWorkspace() {
   const [proposalSnapshots, setProposalSnapshots] = useState<LiveProposalSnapshot[]>([]);
   const [proposalRuntimeRecords, setProposalRuntimeRecords] = useState<ProposalRuntimeObject[]>([]);
   const [proposalRuntimeNotice, setProposalRuntimeNotice] = useState("Proposal Runtime Library is waiting for a governed proposal object.");
+  const [customerEnrollmentLinks, setCustomerEnrollmentLinks] = useState<Array<{ principalId: string; expiresAt: string; enrollmentPath: string }>>([]);
   const [proposalRuntimeActionPending, setProposalRuntimeActionPending] = useState(false);
   const [releaseProposalRevisionId, setReleaseProposalRevisionId] = useState("");
   const releaseCoordinatorPendingRef = useRef(false);
@@ -4653,15 +4655,29 @@ export default function GoogleRfpWorkspace() {
     if (!proposal) return;
     setProposalRuntimeActionPending(true);
     try {
-      const saved = await submitProposalToCustomer(proposal.proposalId, {
-        assignedCustomerUsers: ["google-participant-001"],
+      const demoSubmission = session?.user.authorityClass === "DEMO" && session.user.organizationId === "org-demo";
+      const customerOrganizationId = selectedGovernedAccount?.customerId === "customer-demo-b" ? "org-demo-customer-b" : "org-demo-customer-a";
+      const assignedCustomerUsers = customerOrganizationId === "org-demo-customer-b"
+        ? ["demo-customer-b-viewer", "demo-customer-b-reviewer", "demo-customer-b-signer"]
+        : ["demo-customer-a-viewer", "demo-customer-a-reviewer", "demo-customer-a-signer"];
+      const input = {
+        assignedCustomerUsers: demoSubmission ? assignedCustomerUsers : ["google-participant-001"],
+        customerOrganizationId: demoSubmission ? customerOrganizationId : undefined,
         proposalRecipientContactIds,
         customerReviewContactIds,
         approvalAuthorityContactIds,
         customerContactEmails,
-      }, session);
+      };
+      const portalResult = demoSubmission
+        ? await submitProposalToCustomerPortal(proposal.proposalId, input, session)
+        : { proposal: await submitProposalToCustomer(proposal.proposalId, input, session), invitations: [] };
+      const saved = portalResult.proposal;
       upsertProposalRuntimeRecord(saved);
-      setProposalRuntimeNotice(`${saved.proposalNumber} submitted to customer review.`);
+      setCustomerEnrollmentLinks(portalResult.invitations);
+      const invitationSummary = portalResult.invitations.length
+        ? ` Enrollment links issued once for ${portalResult.invitations.map((item) => item.principalId).join(", ")}.`
+        : "";
+      setProposalRuntimeNotice(`${saved.proposalNumber} submitted to Customer View.${invitationSummary}`);
     } catch (error) {
       setProposalRuntimeNotice(`Customer review submit failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
@@ -11533,12 +11549,7 @@ export default function GoogleRfpWorkspace() {
                   </>
                 ) : null}
                 {canReviewProposalRuntime ? (
-                  <>
-                    <button type="button" onClick={handleCustomerRuntimeProposalComment} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Comment</button>
-                    <button type="button" onClick={handleCustomerRuntimeProposalEvidence} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Upload Evidence</button>
-                    <button type="button" onClick={handleCustomerRuntimeProposalChanges} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Request Changes</button>
-                    <button type="button" onClick={handleCustomerRuntimeProposalApproval} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Approve</button>
-                  </>
+                  <span className="dal-status">Customer comments, change requests, and acceptance are recorded only in Customer View.</span>
                 ) : null}
                 {commercialDeveloperMode ? (
                   <button type="button" className="secondary" onClick={() => void refreshProposalRuntimeLibrary("Proposal Library refreshed.")} disabled={proposalRuntimeActionPending}>Refresh Proposals</button>
@@ -11549,6 +11560,14 @@ export default function GoogleRfpWorkspace() {
               ) : (
                 <div className="dal-status">{proposalRuntimeNotice}</div>
               )}
+              {customerEnrollmentLinks.length ? <div className="dal-panel">
+                <strong>Single-use customer enrollment links</strong>
+                <small>Copy these now. Only token hashes are stored and the links are not shown again after this page is left.</small>
+                {customerEnrollmentLinks.map((invitation) => {
+                  const enrollmentUrl = `${window.location.origin}${invitation.enrollmentPath}`;
+                  return <div className="dal-list-row" key={invitation.principalId}><b>{invitation.principalId}</b><code>{enrollmentUrl}</code><small>Expires {new Date(invitation.expiresAt).toLocaleString()}</small><button type="button" onClick={() => void navigator.clipboard.writeText(enrollmentUrl)}>Copy link</button></div>;
+                })}
+              </div> : null}
               <details>
                 <summary>Visible Commercial Proposals - {accountProposalRuntimeRecords.length.toLocaleString()}</summary>
                 <div className="dal-list">
@@ -13201,7 +13220,7 @@ export default function GoogleRfpWorkspace() {
               <b>Customer Review</b>
               <span>{accountCustomerReviewStatus.replaceAll("_", " ")}</span>
               <button type="button" onClick={handleStartSharedReview}>Start Customer Review</button>
-              <button type="button" onClick={handleAcceptProposal} disabled={!activeCommercialDraftNetworks.length}>Accept Proposal</button>
+              <small>Acceptance is completed by an authorized customer in Customer View.</small>
             </div>
           ) : null}
           {accountAcceptedProposal ? (

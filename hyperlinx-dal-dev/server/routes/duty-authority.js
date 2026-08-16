@@ -7,10 +7,28 @@ export const DUTY_PERMISSIONS = Object.freeze({
   teralinxCountersignature: "service_order.countersign",
 });
 
+export const DEMO_PERSONA_PERMISSIONS = Object.freeze({
+  SALES: new Set(["commercial.lifecycle.manage"]),
+  ENGINEERING: new Set(["engineering.lifecycle.manage"]),
+  CUSTOMER_VIEWER: new Set([]),
+  CUSTOMER_COMMERCIAL_REVIEWER: new Set([]),
+  CUSTOMER_AUTHORIZED_SIGNER: new Set(["service_order.sign_customer"]),
+  EXECUTIVE: new Set(["service_order.countersign"]),
+});
+
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export function hasExactPermission(user, permission) {
-  return Array.isArray(user?.permissions) && user.permissions.includes(permission);
+  if (!Array.isArray(user?.permissions) || !user.permissions.includes(permission)) return false;
+  if (user?.organizationId === "org-demo" && user?.principalId === "demo-principal" && user?.demoPersona) {
+    if (["demo.tenant", "demo.reset"].includes(permission)) return true;
+    const personaPermissions = DEMO_PERSONA_PERMISSIONS[user.demoPersona];
+    if (!personaPermissions) return false;
+    if (["commercial.lifecycle.manage", "engineering.lifecycle.manage", "service_order.sign_customer", "service_order.countersign"].includes(permission)) {
+      return personaPermissions.has(permission);
+    }
+  }
+  return true;
 }
 
 function deny(res, message) {
@@ -34,7 +52,22 @@ export function enforceLifecycleSeparationOfDuties(req, res, pathname) {
   if (demoTenant !== demoPermission) {
     return deny(res, "Tenant authority configuration is invalid; access is denied closed.");
   }
+  const externalCustomer = String(req.authUser?.organizationId ?? "").startsWith("org-demo-customer-");
+  const demoCustomerLens = demoTenant && String(req.authUser?.demoPersona ?? "").startsWith("CUSTOMER_");
+  if (externalCustomer || demoCustomerLens) {
+    const allowed = pathname === "/api/runtime" || pathname.startsWith("/api/auth/") ||
+      pathname === "/api/customer-portal" || pathname.startsWith("/api/customer-portal/") ||
+      pathname === "/api/exports" || pathname.startsWith("/api/exports/");
+    if (!allowed) return deny(res, "This resource is outside the bounded Customer lens.");
+  }
   if (!MUTATION_METHODS.has(String(req.method ?? "").toUpperCase())) return false;
+
+  if (/^\/api\/proposals\/[^/]+\/(approve|reject|request-changes)\/?$/.test(pathname)) {
+    return deny(res, "Customer Proposal decisions are accepted only through the authenticated Customer Portal lens.");
+  }
+  if (/^\/api\/service-orders\/[^/]+\/record-signature\/?$/.test(pathname)) {
+    return deny(res, "Customer Service Order signatures are accepted only through the authenticated Customer Portal lens.");
+  }
 
   if (demoTenant) {
     const demoExecutionDuty = [

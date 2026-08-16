@@ -24,6 +24,14 @@ const PERSONAL_STATE_KEYS = new Set([
 ]);
 
 const durableDirectory = new Map();
+const DEMO_PERSONAS = new Set([
+  "SALES",
+  "ENGINEERING",
+  "CUSTOMER_VIEWER",
+  "CUSTOMER_COMMERCIAL_REVIEWER",
+  "CUSTOMER_AUTHORIZED_SIGNER",
+  "EXECUTIVE",
+]);
 
 function digest(value) {
   return createHash("sha256").update(String(value ?? "")).digest("hex");
@@ -347,6 +355,14 @@ export async function authenticateRuntimeRequest(req) {
       actorDisplayNameAtAction: resolved.user.displayName,
     };
     req.authUser = resolved.user;
+    if (resolved.user.principalId === "demo-principal" && resolved.user.organizationId === "org-demo" && resolved.user.authorityClass === "DEMO") {
+      const requestedPersona = String(req.headers["x-hyperlinx-demo-persona"] ?? "SALES").trim().toUpperCase();
+      resolved.user.demoPersona = DEMO_PERSONAS.has(requestedPersona) ? requestedPersona : "SALES";
+      const requestedCustomerOrganization = String(req.headers["x-hyperlinx-demo-customer-organization"] ?? "org-demo-customer-a").trim();
+      resolved.user.demoCustomerOrganizationId = ["org-demo-customer-a", "org-demo-customer-b"].includes(requestedCustomerOrganization)
+        ? requestedCustomerOrganization
+        : "org-demo-customer-a";
+    }
     req.authSession = resolved.session;
     req.authMechanism = credential.mechanism;
     durableDirectory.set(resolved.user.userId, resolved.user);
@@ -361,7 +377,8 @@ export async function authenticateRuntimeRequest(req) {
 function isPublicApi(req, pathname) {
   return (pathname === "/api/runtime" && req.method === "GET")
     || (pathname === "/api/routes" && req.method === "GET")
-    || (pathname === "/api/auth/login" && req.method === "POST");
+    || (pathname === "/api/auth/login" && req.method === "POST")
+    || (pathname === "/api/customer-portal/invitations/enroll" && req.method === "POST");
 }
 
 function cookieOriginAllowed(req) {

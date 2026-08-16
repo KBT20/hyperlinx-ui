@@ -137,6 +137,7 @@ function createServiceOrder(proposal, certified, commercialTerms, user, revision
     referenceOnly: true, immutableWhenIssued: true, documentBasis: basis,
     documentHash: hash(basis), commercialTermsHash: hash(basis.terms),
     customer: basis.parties.customer, customerId: basis.parties.customer.customerId, accountId: basis.parties.customer.accountId,
+    customerOrganizationId: text(proposal.customerOrganizationId),
     authorizedCustomerSignerUserIds: array(proposal.assignedCustomerUsers),
     opportunityId: basis.serviceDescription.opportunityId, proposalId: proposalId(proposal), customerAcceptance: basis.acceptedCommercialBasis.customerAcceptance,
     customerAcceptanceId: basis.acceptedCommercialBasis.customerAcceptance.customerAcceptanceId,
@@ -189,7 +190,7 @@ async function issue(req, res, user, id) {
   return jsonResponse(res, 200, { serviceOrder: await persistRecord(DIRS.serviceOrders, id, next) });
 }
 
-async function signAsCustomer(req, res, user, id) {
+export async function signAsCustomer(req, res, user, id) {
   const order = await loadRecord(DIRS.serviceOrders, id).catch(() => null);
   if (!order) return errorResponse(res, 404, `Service Order not found: ${id}`);
   verifyDocument(order);
@@ -198,15 +199,17 @@ async function signAsCustomer(req, res, user, id) {
     return jsonResponse(res, 200, { serviceOrder: order, customerSignature: evidence, idempotentReplay: true });
   }
   if (order.status !== "ISSUED") return errorResponse(res, 409, "Only an issued Service Order may be signed by the customer.");
-  const body = await readRequestJson(req);
+  const body = req.customerPortalBody ?? await readRequestJson(req);
   const authorizedSignerIds = array(order.authorizedCustomerSignerUserIds).map(String);
-  const demoSimulation = user.authorityClass === "DEMO" && order.authorityClass === "DEMO" && order.organizationId === "org-demo" && hasExactPermission(user, DUTY_PERMISSIONS.customerSignature);
+  const customerOrganizationId = text(user.demoCustomerOrganizationId ?? user.organizationId);
+  const demoSimulation = user.authorityClass === "DEMO" && order.authorityClass === "DEMO" && order.organizationId === "org-demo" &&
+    order.customerOrganizationId === customerOrganizationId && hasExactPermission(user, DUTY_PERMISSIONS.customerSignature);
   const customerAffiliated = demoSimulation || authorizedSignerIds.includes(String(user.userId)) || (user.customerId && String(user.customerId) === String(order.customerId));
   if (!customerAffiliated) return errorResponse(res, 403, "The authenticated user is not an authorized customer signer assigned to this Proposal.");
   if (body.documentHash && body.documentHash !== order.documentHash) return errorResponse(res, 409, "Customer signature references a different Service Order document hash.");
   if (body.authorityAcknowledged !== true || text(body.typedName) !== text(user.name)) return errorResponse(res, 409, "Explicit signer-authority acknowledgment and the authenticated signer's exact name are required.");
   const timestamp = nowIso();
-  const evidenceBasis = { serviceOrderId: id, documentRevision: order.documentRevision, documentHash: order.documentHash, commercialTermsHash: order.commercialTermsHash, signerUserId: user.userId, signedByPrincipalId: user.principalId ?? user.userId, signedByMembershipId: user.membershipId, signedBySessionId: user.sessionId, signerName: user.name, actorDisplayNameAtAction: user.displayName ?? user.name, signerRole: user.role, organizationId: user.organizationId, authorityClass: demoSimulation ? "DEMO" : "PRODUCTION", simulatedAuthorityRole: demoSimulation ? "CUSTOMER_SIGNER" : undefined, productionEligible: !demoSimulation, authorityAcknowledged: true, signedAt: timestamp };
+  const evidenceBasis = { serviceOrderId: id, documentRevision: order.documentRevision, documentHash: order.documentHash, commercialTermsHash: order.commercialTermsHash, signerUserId: user.userId, signedByPrincipalId: user.principalId ?? user.userId, signedByMembershipId: user.membershipId, signedBySessionId: user.sessionId, signerName: user.name, actorDisplayNameAtAction: user.displayName ?? user.name, signerRole: user.role, organizationId: order.organizationId, customerOrganizationId, demoPersona: user.demoPersona, authorityClass: demoSimulation ? "DEMO" : "PRODUCTION", simulatedAuthorityRole: demoSimulation ? "CUSTOMER_AUTHORIZED_SIGNER" : undefined, productionEligible: !demoSimulation, authorityAcknowledged: true, signedAt: timestamp };
   const signatureHash = hash(evidenceBasis);
   const customerSignatureId = `CUSTOMER-SIGNATURE-${id}-${signatureHash.slice(0, 16)}`;
   const evidence = { customerSignatureId, objectType: "CUSTOMER_DIGITAL_SIGNATURE_EVIDENCE", status: "ACCEPTED", immutable: true, ...evidenceBasis, signatureHash, authenticatedIdentity: true, createdAt: timestamp };

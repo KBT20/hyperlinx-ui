@@ -23,6 +23,7 @@ import {
 } from "./commercial-revisions.js";
 import { assembleDraftIofPackageFromProposal } from "./engineering-certification.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
+import { createCustomerReviewAuthority } from "./customer-portal-authority.js";
 
 const ROLE_KEYS = ["contributors", "reviewers", "approvers", "executives", "customerReviewers", "salesEngineering"];
 const CUSTOMER_USER_BY_CUSTOMER = {
@@ -1346,6 +1347,7 @@ async function handleSubmitCustomer(req, res, id, user) {
   }
   const submitted = normalizeProposalRecord({
     ...existing,
+    customerOrganizationId: body.customerOrganizationId ?? existing.customerOrganizationId,
     status: PROPOSAL_REPOSITORY_WAITING_CUSTOMER_REVIEW_STATUS,
     approvalState: "CUSTOMER_REVIEW",
     visibility: "SHARED",
@@ -1369,7 +1371,18 @@ async function handleSubmitCustomer(req, res, id, user) {
       })),
     ],
   }, user, existing, { assignDefaultCustomerUser: true });
-  jsonResponse(res, 200, { proposal: await saveProposal(submitted, user, "runtime.proposal.submitted.customer", "Proposal submitted for customer review.", { assignedCustomerUsers: customerUsers }) });
+  let customerPortal = null;
+  if (user.authorityClass === "DEMO") {
+    customerPortal = await createCustomerReviewAuthority(submitted, {
+      ...body,
+      recipientPrincipalIds: explicitCustomerUsers.length ? explicitCustomerUsers : customerUsers,
+    }, user);
+  }
+  const saved = await saveProposal(submitted, user, "runtime.proposal.submitted.customer", "Exact Proposal Revision submitted to the bounded Customer Portal.", {
+    assignedCustomerUsers: customerUsers,
+    customerReviewPackageId: customerPortal?.reviewPackage?.customerReviewPackageId,
+  });
+  jsonResponse(res, 200, { proposal: saved, customerReviewPackage: customerPortal?.reviewPackage, invitations: customerPortal?.invitations ?? [] });
 }
 
 async function handleWithdraw(res, id, user) {
@@ -1598,7 +1611,7 @@ async function handleUploadEvidence(req, res, id, user) {
   jsonResponse(res, 200, { proposal: await saveProposal(withEvidence, user, "runtime.proposal.evidence.uploaded", "Proposal evidence uploaded and registered in the Runtime Evidence Registry.", { evidenceId, attachmentId: attachment.attachmentId }), evidence });
 }
 
-async function handleRequestChanges(req, res, id, user) {
+export async function handleRequestChanges(req, res, id, user) {
   const existing = await readProposal(id).catch(() => null);
   if (!existing) {
     errorResponse(res, 404, `Proposal not found: ${id}`);
@@ -1609,7 +1622,7 @@ async function handleRequestChanges(req, res, id, user) {
     errorResponse(res, 403, "Only an assigned customer reviewer can request proposal changes.");
     return;
   }
-  const body = await readRequestJson(req);
+  const body = req.customerPortalBody ?? await readRequestJson(req);
   const text = String(body.comment ?? body.reason ?? body.text ?? "Customer requested proposal changes.").trim();
   const timestamp = nowIso();
   const comment = {
@@ -1634,7 +1647,7 @@ async function handleRequestChanges(req, res, id, user) {
   jsonResponse(res, 200, { proposal: await saveProposal(requested, user, "runtime.proposal.customer.requested_changes", "Customer requested proposal changes.", { commentId: comment.commentId }) });
 }
 
-async function handleApprove(req, res, id, user) {
+export async function handleApprove(req, res, id, user) {
   const existing = await readProposal(id).catch(() => null);
   if (!existing) {
     const trace = buildProposalApprovalDecisionTrace({
@@ -1667,7 +1680,7 @@ async function handleApprove(req, res, id, user) {
     return;
   }
   logProposalApprovalDecisionTrace(decisionTrace);
-  const body = await readRequestJson(req);
+  const body = req.customerPortalBody ?? await readRequestJson(req);
   const timestamp = nowIso();
   const approval = {
     approvalId: createId("proposal-approval"),
@@ -1740,7 +1753,7 @@ async function handleApprove(req, res, id, user) {
   jsonResponse(res, 200, { proposal: saved, draftPackage, iofPackage: draftPackage, draftIofAssemblyError, draftIofAssemblyPredicate, workspaceSession });
 }
 
-async function handleReject(req, res, id, user) {
+export async function handleReject(req, res, id, user) {
   const existing = await readProposal(id).catch(() => null);
   if (!existing) {
     errorResponse(res, 404, `Proposal not found: ${id}`);
@@ -1751,7 +1764,7 @@ async function handleReject(req, res, id, user) {
     errorResponse(res, 403, "Only an assigned customer reviewer can reject this proposal.");
     return;
   }
-  const body = await readRequestJson(req);
+  const body = req.customerPortalBody ?? await readRequestJson(req);
   const timestamp = nowIso();
   const rejection = {
     approvalId: createId("proposal-approval"),

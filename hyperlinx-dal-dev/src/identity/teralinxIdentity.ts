@@ -1,5 +1,6 @@
 import type { DALWorkspace } from "../dal/DALState";
 import type { TeralinxPermission, TeralinxUser } from "../api/teralinxRuntime";
+import { getDemoPersona } from "../api/authHeaders";
 
 export function userHasPermission(user: TeralinxUser | null | undefined, permission: TeralinxPermission) {
   return Boolean(user?.permissions.includes(permission) || user?.permissions.includes("platform.admin"));
@@ -7,7 +8,13 @@ export function userHasPermission(user: TeralinxUser | null | undefined, permiss
 
 export function canAccessWorkspace(user: TeralinxUser | null | undefined, workspace: DALWorkspace) {
   if (!user) return false;
-  if (user.authorityClass === "DEMO" && user.organizationId === "org-demo" && user.permissions.includes("demo.tenant")) return true;
+  if (user.authorityClass === "DEMO" && user.organizationId === "org-demo" && user.permissions.includes("demo.tenant")) {
+    const persona = getDemoPersona();
+    if (persona === "SALES") return ["translate", "teralinxRoute", "googleRfp", "design", "preliminaryProposal", "proposedNetwork", "serviceOrder"].includes(workspace);
+    if (persona === "ENGINEERING") return ["routeEngineering", "scopeVersion"].includes(workspace);
+    if (persona === "EXECUTIVE") return ["serviceOrder", "scopeVersion", "twin"].includes(workspace);
+    return false;
+  }
   if (userHasPermission(user, "platform.admin")) return true;
   if (workspace === "googleRfp" || workspace === "design" || workspace === "serviceOrder") {
     return userHasPermission(user, "workspace.commercial") || userHasPermission(user, "workspace.proposal");

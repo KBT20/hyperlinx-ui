@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { listControlWorkItems, listFieldClosures, loadCertifiedIofTwinState, loadTwinState } from "../api/dalClient";
-import { countersignServiceOrder, downloadRuntimeArtifact, generateServiceOrder, issueServiceOrder, listServiceOrders, recordServiceOrderCustomerSignature, type ServiceOrderRuntime } from "../api/teralinxRuntime";
+import { countersignServiceOrder, downloadRuntimeArtifact, generateServiceOrder, issueServiceOrder, listServiceOrders, type ServiceOrderRuntime } from "../api/teralinxRuntime";
 import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
 import { useDALState } from "../dal/DALState";
 import { MapKernel, renderSharedOpportunityMapProjection, type SharedOpportunityMapProjection } from "../mapkernel";
@@ -58,7 +58,6 @@ export default function TwinWorkspace() {
   const [status, setStatus] = useState("Twin ready.");
   const [serviceOrder, setServiceOrder] = useState<ServiceOrderRuntime | null>(null);
   const [authorizationPending, setAuthorizationPending] = useState(false);
-  const [customerAcknowledged, setCustomerAcknowledged] = useState(false);
   const [teralinxAcknowledged, setTeralinxAcknowledged] = useState(false);
 
   useEffect(() => {
@@ -103,8 +102,7 @@ export default function TwinWorkspace() {
     const certifiedMapSpecs = certifiedMapProjection ? [renderSharedOpportunityMapProjection(certifiedMapProjection)] : [];
     const pricing = (serviceOrder?.pricingSummary ?? {}) as Record<string, unknown>;
     const terms = (serviceOrder?.commercialTerms ?? {}) as Record<string, unknown>;
-    const customerSignerAuthorized = Array.isArray(serviceOrder?.authorizedCustomerSignerUserIds) && serviceOrder.authorizedCustomerSignerUserIds.includes(session?.user?.userId);
-    const authorizationAction = async (action: "create" | "issue" | "customer" | "countersign") => {
+    const authorizationAction = async (action: "create" | "issue" | "countersign") => {
       setAuthorizationPending(true);
       try {
         if (action === "create") {
@@ -112,9 +110,6 @@ export default function TwinWorkspace() {
           setServiceOrder(next); setStatus("Service Order draft created from the exact Certified IOF.");
         } else if (action === "issue" && serviceOrder) {
           setServiceOrder(await issueServiceOrder(serviceOrder.serviceOrderId, session)); setStatus("Service Order revision issued and locked for signature.");
-        } else if (action === "customer" && serviceOrder) {
-          const next = await recordServiceOrderCustomerSignature(serviceOrder.serviceOrderId, { documentHash: String(serviceOrder.documentHash), typedName: String(session?.user?.name ?? ""), authorityAcknowledged: customerAcknowledged }, session);
-          setServiceOrder(next); setStatus("Customer acceptance recorded. Execution remains unauthorized pending Teralinx countersignature.");
         } else if (action === "countersign" && serviceOrder) {
           await countersignServiceOrder(serviceOrder.serviceOrderId, { documentHash: String(serviceOrder.documentHash), authorizationAcknowledged: teralinxAcknowledged }, session);
           setStatus("Teralinx countersignature committed atomically with ScopeVersion authorization."); await refresh();
@@ -155,7 +150,7 @@ export default function TwinWorkspace() {
             <p>{String((serviceOrder.serviceDescription as Record<string, unknown>)?.productName ?? "Network infrastructure service")} over {Number((serviceOrder.routeSummary as Record<string, unknown>)?.routeMiles ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} route miles.</p>
             <details><summary>Read full Service Order terms and exact governed references</summary><div className="dal-metrics"><span>Payment: {String(terms.paymentTerms ?? "—")}</span><span>Change control: {String(terms.changeControl ?? "—")}</span><span>Governing terms: {String(terms.governingTerms ?? "—")}</span><span>Document hash: {String(serviceOrder.documentHash ?? "—")}</span><span>Certified IOF: {String(serviceOrder.certifiedPackageId ?? "—")}</span></div></details>
             {serviceOrder.status === "DRAFT" && <button type="button" disabled={authorizationPending} onClick={() => void authorizationAction("issue")}>Issue Service Order Revision</button>}
-            {serviceOrder.status === "ISSUED" && <div>{!customerSignerAuthorized && <p className="dal-status warning">Sign in as the customer participant assigned to this Proposal to accept this revision.</p>}<label><input type="checkbox" disabled={!customerSignerAuthorized} checked={customerAcknowledged} onChange={(event) => setCustomerAcknowledged(event.target.checked)} /> I am authorized to sign for the customer and accept this exact revision.</label><button type="button" disabled={authorizationPending || !customerAcknowledged || !customerSignerAuthorized} onClick={() => void authorizationAction("customer")}>Sign as Customer · {String(session?.user?.name ?? "authenticated user")}</button></div>}
+            {serviceOrder.status === "ISSUED" && <div className="dal-status">Awaiting signature from the independent Customer Portal Authorized Signer.</div>}
             {serviceOrder.status === "CUSTOMER_ACCEPTED" && <div><p>Customer accepted. This has not created execution authority.</p><label><input type="checkbox" checked={teralinxAcknowledged} onChange={(event) => setTeralinxAcknowledged(event.target.checked)} /> I am authorized by Teralinx to countersign and create the ScopeVersion Order for Execution.</label><button type="button" disabled={authorizationPending || !teralinxAcknowledged} onClick={() => void authorizationAction("countersign")}>Countersign & Authorize ScopeVersion</button></div>}
             {serviceOrder.status === "COUNTERSIGNED" && <div className="dal-status pass">Fully authorized · ScopeVersion {String(serviceOrder.scopeVersionId ?? certifiedTwin.scopeVersionId ?? "created")}</div>}
             <div className="dal-actions"><button type="button" onClick={() => void downloadRuntimeArtifact(`/api/exports/service-orders/${encodeURIComponent(serviceOrder.serviceOrderId)}/pdf`, session).then((artifact) => setStatus(`Downloaded ${artifact.filename}.`)).catch((error) => setStatus(`Service Order PDF failed: ${error.message}`))}>Download Service Order PDF</button></div>

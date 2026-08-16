@@ -1,0 +1,14 @@
+{
+  "accountId": "ACCOUNT-DEMO-BLUE-MESA",
+  "accountNumber": 2,
+  "customerId": "customer-demo-b",
+  "customerOrganizationId": "org-demo-customer-b",
+  "name": "Blue Mesa Digital Systems",
+  "status": "ACTIVE",
+  "environment": "DEMO",
+  "organizationId": "org-demo",
+  "tenantId": "org-demo",
+  "authorityClass": "DEMO",
+  "productionEligible": false,
+  "seedAuthority": "APPROVED_DEMO_BASELINE"
+}
