@@ -199,24 +199,33 @@ assert.equal(serviceOrder.opportunityId, opportunityId);
 
 const customerView = (await call("Customer View resolves issued Service Order", "/api/customer-portal/projects", { cookie, persona: "CUSTOMER_AUTHORIZED_SIGNER" })).value.projects.find((project) => project.projectId === opportunityId);
 assert.equal(customerView.serviceOrder.serviceOrderId, serviceOrder.serviceOrderId);
-await call("Wrong Service Order document hash rejected", `/api/customer-portal/projects/${opportunityId}/service-order/sign`, {
-  method: "POST", cookie, persona: "CUSTOMER_AUTHORIZED_SIGNER", expected: [409], body: {
-    serviceOrderId: serviceOrder.serviceOrderId, documentHash: "WRONG", typedName: "Demo Customer Signer", authorityAcknowledged: true,
-  },
-});
-await call("Wrong customer signer name rejected", `/api/customer-portal/projects/${opportunityId}/service-order/sign`, {
-  method: "POST", cookie, persona: "CUSTOMER_AUTHORIZED_SIGNER", expected: [409], body: {
-    serviceOrderId: serviceOrder.serviceOrderId, documentHash: serviceOrder.documentHash, typedName: "Demo Customer Signer", authorityAcknowledged: true,
-  },
-});
-const customerSignature = (await call("Independent Demo customer authority signs exact Service Order", `/api/customer-portal/projects/${opportunityId}/service-order/sign`, {
-  method: "POST", cookie, persona: "CUSTOMER_AUTHORIZED_SIGNER", body: {
-    serviceOrderId: serviceOrder.serviceOrderId, documentHash: serviceOrder.documentHash, typedName: login.value.user.name, authorityAcknowledged: true,
-  },
-})).value;
-const countersigned = (await call("Demo Executive countersigns and system creates ScopeVersion atomically", `/api/service-orders/${serviceOrder.serviceOrderId}/countersign`, {
-  method: "POST", cookie, persona: "EXECUTIVE", body: { documentHash: serviceOrder.documentHash, authorizationAcknowledged: true },
-})).value;
+let customerSignature = {};
+let countersigned;
+if (serviceOrder.status === "COUNTERSIGNED" && serviceOrder.scopeVersionId) {
+  countersigned = await call("Reload existing atomic ScopeVersion", `/api/scopeversions/${encodeURIComponent(serviceOrder.scopeVersionId)}`, { cookie, persona: "EXECUTIVE" });
+  countersigned = { scopeVersion: countersigned.value.scopeVersion };
+} else {
+  if (!serviceOrder.customerSignatureId && !serviceOrder.customerSignedAt) {
+    await call("Wrong Service Order document hash rejected", `/api/customer-portal/projects/${opportunityId}/service-order/sign`, {
+      method: "POST", cookie, persona: "CUSTOMER_AUTHORIZED_SIGNER", expected: [409], body: {
+        serviceOrderId: serviceOrder.serviceOrderId, documentHash: "WRONG", typedName: "Demo Customer Signer", authorityAcknowledged: true,
+      },
+    });
+    await call("Wrong customer signer name rejected", `/api/customer-portal/projects/${opportunityId}/service-order/sign`, {
+      method: "POST", cookie, persona: "CUSTOMER_AUTHORIZED_SIGNER", expected: [409], body: {
+        serviceOrderId: serviceOrder.serviceOrderId, documentHash: serviceOrder.documentHash, typedName: "Demo Customer Signer", authorityAcknowledged: true,
+      },
+    });
+    customerSignature = (await call("Independent Demo customer authority signs exact Service Order", `/api/customer-portal/projects/${opportunityId}/service-order/sign`, {
+      method: "POST", cookie, persona: "CUSTOMER_AUTHORIZED_SIGNER", body: {
+        serviceOrderId: serviceOrder.serviceOrderId, documentHash: serviceOrder.documentHash, typedName: login.value.user.name, authorityAcknowledged: true,
+      },
+    })).value;
+  }
+  countersigned = (await call("Demo Executive countersigns and system creates ScopeVersion atomically", `/api/service-orders/${serviceOrder.serviceOrderId}/countersign`, {
+    method: "POST", cookie, persona: "EXECUTIVE", body: { documentHash: serviceOrder.documentHash, authorizationAcknowledged: true },
+  })).value;
+}
 assert.ok(countersigned.scopeVersion?.scopeVersionId);
 assert.equal(countersigned.scopeVersion.opportunityId, opportunityId);
 
