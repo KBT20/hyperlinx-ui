@@ -78,7 +78,7 @@ async function exactLinkedRecord(dir, predicate, code, label) {
 
 function routeAuthority(scope, sourceDraft) {
   const truth = rec(scope.canonicalTruth);
-  const diagnostics = rec(truth.geometryAuthorityDiagnostics);
+  const diagnostics = rec(scope.geometryAuthorityDiagnostics ?? truth.geometryAuthorityDiagnostics);
   const network = rec(truth.networkBasis);
   return {
     routeId: txt(network.routeId, diagnostics.routeRepositoryId, sourceDraft.routeRepositoryId),
@@ -203,7 +203,9 @@ export async function resolveOperationalBaseline(scopeVersionId) {
 
   const sourceRoute = routeAuthority(scope, sourceDraft);
   same(sourceRoute.routeRevision, txt(route.routeRevision, route.revision, "1"), "ROUTE_REVISION_MISMATCH", "Route revision");
-  same(sourceRoute.geometryId, txt(route.routeGeometryId, route.geometryId), "GEOMETRY_ID_MISMATCH", "Geometry identity");
+  const resolvedGeometryId = txt(sourceRoute.geometryId, route.routeGeometryId, route.geometryId);
+  required(resolvedGeometryId, "GEOMETRY_ID_MISSING", "Exact Commercial Route geometry identity is required.");
+  same(resolvedGeometryId, txt(route.routeGeometryId, route.geometryId), "GEOMETRY_ID_MISMATCH", "Geometry identity");
   same(sourceRoute.geometryHash, txt(route.geometryHash, route.routeGeometryHash), "GEOMETRY_HASH_MISMATCH", "Geometry hash");
 
   const stationProjection = rec(sourceDraft.stationProjection);
@@ -231,6 +233,7 @@ export async function resolveOperationalBaseline(scopeVersionId) {
   same(scope.iofPackageTwinId ?? truth.iofPackageTwinId, txt(authorizedTwin.logicalTwinId, authorizedTwin.twinId), "AUTHORIZED_TWIN_MISMATCH", "Authorized Twin identity");
 
   const exactReferences = operationalReferences({ scope, certified, serviceOrder, sourceDraft, authorizedTwin });
+  exactReferences.route.geometryId = resolvedGeometryId;
   const identitySet = {
     stationIds: idList(stations, ["stationId", "id"]),
     objectIds: idList(objects, ["objectId", "id"]),
