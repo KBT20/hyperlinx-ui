@@ -237,7 +237,7 @@ export async function resolveOperationalBaseline(scopeVersionId) {
   const identitySet = {
     stationIds: idList(stations, ["stationId", "id"]),
     objectIds: idList(objects, ["objectId", "id"]),
-    relationshipIds: idList(relationships, ["relationshipId", "spanId", "objectAddressId", "attachmentId", "id"]),
+    relationshipIds: idList(relationships, ["relationshipId", "spanId", "objectAddressId", "addressId", "attachmentId", "id"]),
     workSegmentIds: idList(workSegments, ["workSegmentId", "closureSegmentId", "segmentId", "id"]),
   };
   if (identitySet.stationIds.length !== stations.length) fail("STATION_IDENTITY_INCOMPLETE", "Every governed station must have an immutable identity.");
