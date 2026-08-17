@@ -227,7 +227,7 @@ assert.deepEqual(opportunityAfter.commercialWorkingState.civilMixCalibration, { 
 const twin = (await call("Reload Account Customer Twin after authorization", `/api/accounts/${accountId}/customer-twin`, { cookie, persona: "SALES" })).value.customerTwin;
 const deal = twin.deals.find((item) => item.opportunityId === opportunityId);
 assert.equal(deal.currentState, "AUTHORIZED");
-assert.equal(deal.scopeVersion.scopeVersionId, countersigned.scopeVersion.scopeVersionId);
+assert.equal(deal.contractual.scopeVersionId, countersigned.scopeVersion.scopeVersionId);
 
 console.log(JSON.stringify({
   result: "PASS_TO_SCOPEVERSION",
