@@ -97,6 +97,7 @@ export type AccountCustomerTwin = {
     spatial: { routeRepositoryId?: string | null; routeRevision?: number | null; geometryHash?: string | null };
     engineering: { engineeringPackageId?: string | null; certifiedPackageId?: string | null; certificationHash?: string | null };
     contractual: { serviceOrderId?: string | null; serviceOrderStatus?: string | null; documentHash?: string | null; scopeVersionId?: string | null };
+    activity: Array<{ evidenceId: string; eventType: string; title: string; detail?: string; actor: string; timestamp: string; customerSafe: boolean }>;
     customerSafe: {
       product: { productId?: string | null; name: string; description?: string | null };
       route: { routeRepositoryId?: string | null; routeRevision?: number | null; routeRevisionId?: string | null; routeGeometryId?: string | null; geometryHash?: string | null; routeMiles?: number | null; routeFeet?: number | null; endpointA?: unknown; endpointZ?: unknown; coordinates: [number, number][] };

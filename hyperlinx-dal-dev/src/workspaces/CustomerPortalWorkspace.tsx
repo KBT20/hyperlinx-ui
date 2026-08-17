@@ -43,6 +43,14 @@ function textList(values: string[], empty = "Not provided in the governed commer
   return values.length ? <ul>{values.map((value, index) => <li key={`${value}-${index}`}>{value}</li>)}</ul> : <p className="customer-unavailable">{empty}</p>;
 }
 
+function humanizeCustomerError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/stale|exact assigned Proposal Revision|proposalHash/i.test(message)) return "This Proposal is no longer the exact revision assigned for review. Return to the current Proposal before acting.";
+  if (/Viewer authority|cannot make Proposal decisions/i.test(message)) return "Customer Viewer is read-only. Switch to Customer Commercial Reviewer to make a Proposal decision.";
+  if (/outside the bounded Customer lens/i.test(message)) return "This action belongs to the internal Teralinx workflow and is not available in Customer View.";
+  return message;
+}
+
 export default function CustomerPortalWorkspace() {
   const { session, logout } = useTeralinxAuth();
   const [section, setSection] = useState<PortalSection>("Projects");
@@ -65,7 +73,7 @@ export default function CustomerPortalWorkspace() {
       setContext(nextContext); setProjects(nextProjects); setAccountTwin(nextTwin);
       setSelectedId((current) => nextProjects.some((item) => item.projectId === current) ? current : nextProjects[0]?.projectId ?? "");
       setStatus(nextProjects.length ? "" : "No customer projects have been assigned yet.");
-    } catch (error) { setStatus(error instanceof Error ? error.message : String(error)); }
+    } catch (error) { setStatus(humanizeCustomerError(error)); }
   }
 
   function selectProject(projectId: string) {
@@ -76,14 +84,17 @@ export default function CustomerPortalWorkspace() {
   }
 
   useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    if (selectedDeal?.currentState === "CUSTOMER_REVIEW") setTab("Proposal");
+  }, [selectedDeal?.opportunityId, selectedDeal?.currentState]);
 
   async function act(action: Parameters<typeof customerPortalProjectAction>[1], input: Record<string, unknown>) {
     if (!selected) return;
     setStatus("Recording governed customer action...");
     try {
       await customerPortalProjectAction(selected.projectId, action, input);
-      setMessage(""); await refresh(); setStatus("Action recorded.");
-    } catch (error) { setStatus(error instanceof Error ? error.message : String(error)); }
+      setMessage(""); await refresh(); setStatus("Your governed action was recorded and the deal state was refreshed.");
+    } catch (error) { setStatus(humanizeCustomerError(error)); }
   }
 
   const exactProposal = selected ? {
@@ -112,6 +123,14 @@ export default function CustomerPortalWorkspace() {
         <section className="customer-project">
           {selected ? <>
             <div className="customer-project-heading"><div><small>{accountTwin?.account.name} · GOVERNED DEAL</small><h2>{selected.title}</h2><p>{selected.summary}</p></div><span>{selectedDeal?.currentState.replaceAll("_", " ") ?? selected.status.replaceAll("_", " ")}</span></div>
+            {selectedDeal ? <section className="customer-authority-header" aria-label="Deal authority summary">
+              <span><small>DEAL STATE</small><strong>{selectedDeal.currentState.replaceAll("_", " ")}</strong></span>
+              <span><small>PROPOSAL</small><strong>R{selected.proposal.proposalRevisionNumber} · {selected.artifactStates.proposal.state.replaceAll("_", " ")}</strong></span>
+              <span><small>CUSTOMER</small><strong>{selected.artifactStates.customerAcceptance.state === "COMPLETE" ? "ACCEPTED" : selected.artifactStates.customerAcceptance.state.replaceAll("_", " ")}</strong></span>
+              <span><small>ENGINEERING</small><strong>{selected.artifactStates.engineering.eligibility.replaceAll("_", " ")}</strong></span>
+              <span><small>SERVICE ORDER</small><strong>{selected.artifactStates.serviceOrder.state.replaceAll("_", " ")}</strong></span>
+              <span><small>SCOPEVERSION</small><strong>{selected.artifactStates.scopeVersion.state.replaceAll("_", " ")}</strong></span>
+            </section> : null}
             {selectedDeal ? <section className="customer-deal-lifecycle" aria-label="Governed deal lifecycle">
               <div className="customer-deal-lifecycle-heading"><div><small>CURRENT GOVERNED STATE</small><strong>{selectedDeal.currentState.replaceAll("_", " ")}</strong></div><span>{accountTwin?.customerTwinId}</span></div>
               <ol>{selectedDeal.lifecycle.map((step) => <li className={step.status.toLowerCase()} key={step.name}><i aria-hidden="true" /><span>{step.name.replaceAll("_", " ")}</span></li>)}</ol>
@@ -126,6 +145,7 @@ export default function CustomerPortalWorkspace() {
                 <span>Economics<strong>{money(selectedDeal.customerSafe.economics.tcv, selectedDeal.customerSafe.economics.currency)}</strong><small>{selectedDeal.customerSafe.economics.nrc != null ? `${money(selectedDeal.customerSafe.economics.nrc, selectedDeal.customerSafe.economics.currency)} NRC` : "TCV not provided"}</small></span>
                 <span>Delivery<strong>{selectedDeal.customerSafe.delivery.durationMonths != null ? `${selectedDeal.customerSafe.delivery.durationMonths} months` : selectedDeal.customerSafe.delivery.targetDate ?? "Not provided"}</strong><small>{selectedDeal.customerSafe.delivery.facilityCount != null ? `${selectedDeal.customerSafe.delivery.facilityCount} facilities` : ""}</small></span>
               </div>
+              <details className="customer-technical-details"><summary>Technical Details / Lineage</summary><div className="customer-document-grid"><span>Proposal revision<strong>{selected.proposal.proposalRevisionId}</strong><code>{selected.proposal.proposalHash}</code></span><span>Route repository<strong>{selected.map.routeRepositoryId}</strong><code>Revision {selected.map.routeRevision}</code></span><span>Geometry<strong>{selected.map.routeGeometryId}</strong><code>{selected.map.geometryHash}</code></span><span>Projection<strong>{accountTwin?.projectionAuthority}</strong></span></div></details>
             </section> : null}
             <div className="customer-project-tabs">{(["Overview", "Proposal", "Service Order", "Specifications", "Documents", "Activity"] as ProjectTab[]).map((item) => <button className={tab === item ? "active" : ""} onClick={() => setTab(item)} key={item}>{item}</button>)}</div>
             {tab === "Overview" ? <div className="customer-overview-grid">
@@ -160,7 +180,7 @@ export default function CustomerPortalWorkspace() {
             </article> : <div className="customer-proposal-card"><h3>Service Order</h3><p>The governed Service Order is not yet available. It will appear only after the existing lifecycle makes it legitimate.</p></div> : null}
             {tab === "Specifications" && selectedDeal ? <div className="customer-proposal-card"><h3>Customer-Facing Specifications</h3><p>These values are disclosed from the selected Proposal configuration; internal Product Doctrine remains protected.</p><div className="customer-document-grid">{Object.entries(selectedDeal.customerSafe.specifications).map(([key, value]) => <span key={key}>{key.replaceAll(/([A-Z])/g, " $1").replaceAll("_", " ")}<strong>{Array.isArray(value) ? value.join(", ") || "Not provided" : value == null || value === "" ? "Not provided" : String(value)}</strong></span>)}</div></div> : null}
             {tab === "Documents" && selectedDeal ? <div className="customer-proposal-card"><h3>Governed Document History</h3>{selectedDeal.documentHistory.map((document) => <article className="customer-history-document" key={document.documentId}><div><b>{document.documentType.replaceAll("_", " ")} · Revision {document.revision ?? "—"}</b><span>{document.status.replaceAll("_", " ")}</span><code>{document.documentId}</code></div>{document.documentType === "PROPOSAL" ? <button onClick={() => void downloadRuntimeArtifact(`/api/exports/proposals/${encodeURIComponent(selected.proposal.proposalId)}/revisions/${encodeURIComponent(document.documentId)}/pdf`)}>Download PDF</button> : selected.serviceOrder ? <button onClick={() => void downloadRuntimeArtifact(`/api/exports/service-orders/${encodeURIComponent(selected.serviceOrder!.serviceOrderId)}/pdf`)}>Download PDF</button> : null}</article>)}</div> : null}
-            {tab === "Activity" ? <div className="customer-activity">{selected.activity.length ? selected.activity.map((item) => <article key={item.customerPortalActionId}><span>{item.action.replaceAll("_", " ")}</span><p>{item.message}</p><small>{item.actorDisplayName} · {new Date(item.createdAt).toLocaleString()}</small></article>) : <p>No customer activity yet.</p>}</div> : null}
+            {tab === "Activity" ? <div className="customer-activity"><h3>Project Activity</h3>{selectedDeal?.activity.length ? selectedDeal.activity.map((item) => <article key={item.evidenceId}><span>{item.title}</span>{item.detail ? <p>{item.detail}</p> : null}<small>{item.actor} · {new Date(item.timestamp).toLocaleString()}</small></article>) : <p>No customer-safe activity evidence is available yet.</p>}</div> : null}
           </> : <div className="customer-empty"><h2>Welcome to your project portal</h2><p>{status}</p></div>}
           {status && selected ? <div className="customer-toast">{status}</div> : null}
         </section>

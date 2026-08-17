@@ -143,6 +143,105 @@ function dealTimestamp(...records) {
   return records.filter(Boolean).map((item) => item.updatedAt ?? item.createdAt ?? item.submittedAt ?? "").sort().at(-1) ?? null;
 }
 
+export function governedActivity({ opportunity, proposal, reviewPackage, portalActions, engineeringPackage, certifiedPackage, serviceOrder, customerSignature, countersignature, scopeVersion, lens }) {
+  const events = [];
+  const add = ({ evidenceId, eventType, title, detail = "", actor = "System", timestamp, customerSafe = false }) => {
+    if (!evidenceId || !timestamp || (lens === "CUSTOMER" && !customerSafe)) return;
+    events.push({ evidenceId: text(evidenceId), eventType, title, detail, actor: text(actor, "System"), timestamp, customerSafe });
+  };
+  add({
+    evidenceId: opportunity?.opportunityId,
+    eventType: "OPPORTUNITY_CREATED",
+    title: "Opportunity created",
+    actor: opportunity?.createdBy ?? opportunity?.owner,
+    timestamp: opportunity?.createdAt,
+  });
+  for (const revision of array(proposal?.proposalRevisions)) add({
+    evidenceId: revision.proposalRevisionId,
+    eventType: "PROPOSAL_REVISION_SAVED",
+    title: `Proposal Revision ${revision.revisionNumber ?? ""} saved`.trim(),
+    actor: revision.savedBy ?? revision.createdBy ?? proposal?.modifiedBy,
+    timestamp: revision.createdAt ?? revision.savedAt,
+  });
+  const approval = record(proposal?.internalCommercialApproval);
+  add({
+    evidenceId: approval.internalCommercialApprovalId,
+    eventType: "INTERNAL_COMMERCIAL_APPROVED",
+    title: "Internal Commercial Review approved",
+    actor: approval.approvedByDisplayName ?? approval.approvedByPrincipalId ?? approval.actorPrincipalId,
+    timestamp: approval.approvedAt ?? approval.createdAt,
+  });
+  add({
+    evidenceId: reviewPackage?.customerReviewPackageId,
+    eventType: "PROPOSAL_SUBMITTED_TO_CUSTOMER",
+    title: `Proposal Revision ${reviewPackage?.proposalRevisionNumber ?? ""} submitted for customer review`.trim(),
+    actor: reviewPackage?.submittedByDisplayName ?? reviewPackage?.submittedByPrincipalId ?? reviewPackage?.actorPrincipalId,
+    timestamp: reviewPackage?.submittedAt ?? reviewPackage?.createdAt,
+    customerSafe: true,
+  });
+  for (const action of array(portalActions)) {
+    const labels = { ACCEPT: "Proposal accepted", REQUEST_CHANGE: "Proposal change requested", DECLINE: "Proposal declined", QUESTION: "Customer question recorded" };
+    add({
+      evidenceId: action.customerPortalActionId,
+      eventType: `CUSTOMER_${text(action.action, "ACTION")}`,
+      title: labels[action.action] ?? "Customer action recorded",
+      detail: text(action.comment ?? action.message),
+      actor: action.actorDisplayName ?? action.actorPrincipalId,
+      timestamp: action.createdAt,
+      customerSafe: true,
+    });
+  }
+  add({
+    evidenceId: engineeringPackage?.engineeringPackageId,
+    eventType: "ENGINEERING_SUBMITTED",
+    title: "Engineering review initiated",
+    actor: engineeringPackage?.submittedByDisplayName ?? engineeringPackage?.submittedByPrincipalId ?? engineeringPackage?.createdBy,
+    timestamp: engineeringPackage?.submittedAt ?? engineeringPackage?.createdAt,
+    customerSafe: true,
+  });
+  add({
+    evidenceId: certifiedPackage?.certifiedPackageId,
+    eventType: "ENGINEERING_CERTIFIED",
+    title: "Engineering certified",
+    actor: certifiedPackage?.certifiedByDisplayName ?? certifiedPackage?.certifiedByPrincipalId,
+    timestamp: certifiedPackage?.certifiedAt ?? certifiedPackage?.createdAt,
+    customerSafe: true,
+  });
+  add({
+    evidenceId: serviceOrder?.serviceOrderId,
+    eventType: "SERVICE_ORDER_AVAILABLE",
+    title: "Service Order available",
+    actor: serviceOrder?.createdByDisplayName ?? serviceOrder?.createdByPrincipalId,
+    timestamp: serviceOrder?.issuedAt ?? serviceOrder?.createdAt,
+    customerSafe: true,
+  });
+  add({
+    evidenceId: customerSignature?.customerSignatureId,
+    eventType: "SERVICE_ORDER_CUSTOMER_SIGNED",
+    title: "Service Order signed by customer",
+    actor: customerSignature?.actorDisplayName ?? customerSignature?.actorPrincipalId,
+    timestamp: customerSignature?.signedAt ?? customerSignature?.createdAt,
+    customerSafe: true,
+  });
+  add({
+    evidenceId: countersignature?.countersignatureId,
+    eventType: "SERVICE_ORDER_COUNTERSIGNED",
+    title: "Service Order countersigned by Teralinx",
+    actor: countersignature?.actorDisplayName ?? countersignature?.actorPrincipalId,
+    timestamp: countersignature?.countersignedAt ?? countersignature?.createdAt,
+    customerSafe: true,
+  });
+  add({
+    evidenceId: scopeVersion?.scopeVersionId,
+    eventType: "PROJECT_AUTHORIZED",
+    title: "Project authorized",
+    actor: "Hyperlinx governed lifecycle",
+    timestamp: scopeVersion?.createdAt,
+    customerSafe: true,
+  });
+  return events.sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
+}
+
 function customerSafeProjection({ opportunity, proposal, reviewPackage, route, serviceOrder }) {
   const opportunityWorkingState = record(opportunity?.commercialWorkingState);
   const opportunityProduct = record(opportunityWorkingState.product);
@@ -356,6 +455,7 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
         documentHash: serviceOrder?.documentHash ?? null,
         scopeVersionId: scopeVersion?.scopeVersionId ?? serviceOrder?.scopeVersionId ?? null,
       },
+      activity: governedActivity({ opportunity, proposal, reviewPackage, portalActions: opportunityPortalActions, engineeringPackage, certifiedPackage, serviceOrder, customerSignature, countersignature, scopeVersion, lens }),
       customerSafe: customerSafeProjection({ opportunity, proposal: governedProposal, reviewPackage, route, serviceOrder }),
       documentHistory: [
         ...array(proposal?.proposalRevisions).map((revision) => {
