@@ -96,7 +96,8 @@ try {
   await screenshot("07-draft-before-commercial.png");
 
   await clickText("Continue Commercial");
-  text = await waitText(new RegExp(opportunityId));
+  text = await waitText(/Account Manager/);
+  assert.match(text, new RegExp(opportunityId));
   assert.match(text, /Account Manager/);
   if (!(await controlState("Save Proposal Revision")).exists) await clickText("Open Proposal Builder");
   await eventually(async () => {

@@ -3321,7 +3321,7 @@ export default function GoogleRfpWorkspace() {
   const accountOptions = useMemo<CommercialAccountFixture[]>(() => {
     const byId = new Map<string, CommercialAccountFixture>();
     COMMERCIAL_ACCOUNTS.forEach((account) => byId.set(account.accountId, account));
-    governedAccounts.filter((account) => !RETIRED_DEMO_ACCOUNT_IDS.has(account.accountId)).forEach((account) => {
+    governedAccounts.filter((account) => !RETIRED_DEMO_ACCOUNT_IDS.has(account.accountId) || account.accountId === deepLinkedAccountId).forEach((account) => {
       const fallback = byId.get(account.accountId);
       const contacts = governedContacts.filter((contact) => contact.accountId === account.accountId && contact.lifecycleState !== "ARCHIVED");
       byId.set(account.accountId, commercialAccountFromGoverned(account, contacts, fallback));
@@ -3337,7 +3337,7 @@ export default function GoogleRfpWorkspace() {
         return { ...account, accountNumber: nextNumber++ };
       });
     return numbered.sort((a, b) => a.accountNumber - b.accountNumber);
-  }, [governedAccounts, governedContacts]);
+  }, [deepLinkedAccountId, governedAccounts, governedContacts]);
   const selectedAccount =
     accountOptions.find((account) => account.accountId === selectedAccountId) ??
     EMPTY_COMMERCIAL_ACCOUNT;
