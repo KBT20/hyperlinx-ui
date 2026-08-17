@@ -13,7 +13,7 @@ const sourceRoot = path.resolve(import.meta.dirname, "..");
 const sources = Object.fromEntries(await Promise.all([
   "src/workspaces/CustomerWorkspace.tsx", "src/workspaces/CustomerPortalWorkspace.tsx", "src/dal/DALNavigation.tsx",
   "src/dal/DALState.tsx", "src/identity/teralinxIdentity.ts", "src/identity/TeralinxAuth.tsx",
-  "src/components/workspaces/GoogleRfpWorkspace.tsx", "server/routes/customer-portal-authority.js",
+  "src/components/workspaces/GoogleRfpWorkspace.tsx", "server/routes/customer-portal-authority.js", "server/routes/accounts.js",
 ].map(async (name) => [name, await readFile(path.join(sourceRoot, name), "utf8")])));
 
 assert.match(sources["src/dal/DALNavigation.tsx"], /customerView.*Customer View/);
@@ -30,6 +30,8 @@ assert.match(sources["src/components/workspaces/GoogleRfpWorkspace.tsx"], /searc
 assert.match(sources["server/routes/customer-portal-authority.js"], /enrollmentPath:.*opportunityId/);
 assert.match(sources["src/workspaces/CustomerPortalWorkspace.tsx"], /URLSearchParams\(window\.location\.search\)\.get\("opportunityId"\)/);
 assert.match(sources["src/dal/DALState.tsx"], /URLSearchParams\(window\.location\.search\)\.get\("workspace"\)/);
+assert.match(sources["server/routes/accounts.js"], /existing\?\.accountId \? String\(existing\.accountId\) : cleanId\(rawId\)/);
+assert.match(sources["server/routes/accounts.js"], /loadRecord\(DIRS\.accounts, accountId\).*loadRecord\(DIRS\.accounts, cleanId\(accountId\)\)/s);
 
 const user = { principalId: "demo-principal", organizationId: "org-demo", authorityClass: "DEMO", permissions: ["opportunity.read", "proposal.read", "demo.tenant"] };
 await withRepositoryAuthority(user, async () => {

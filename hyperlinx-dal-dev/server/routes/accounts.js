@@ -114,7 +114,9 @@ function normalizeAccount(record = {}, user, existing = null, options = {}) {
   const timestamp = options.timestamp ?? nowIso();
   const creating = !existing;
   const rawId = String(record.accountId ?? existing?.accountId ?? createId("account"));
-  const accountId = cleanId(rawId);
+  // Persisted Account identity is governed and case-sensitive. Legacy creation still
+  // normalizes a new requested ID, but read projections must never rewrite an existing ID.
+  const accountId = existing?.accountId ? String(existing.accountId) : cleanId(rawId);
   const ownerId = String(record.ownerId ?? existing?.ownerId ?? user.userId);
   const createdById = String(existing?.createdById ?? user.userId);
   const contactIds = unique([
@@ -423,7 +425,8 @@ async function handleListAccounts(res, user) {
 }
 
 async function handleGetAccount(res, accountId, user) {
-  const existing = await loadRecord(DIRS.accounts, cleanId(accountId)).catch(() => null);
+  const existing = await loadRecord(DIRS.accounts, accountId).catch(() => null)
+    ?? await loadRecord(DIRS.accounts, cleanId(accountId)).catch(() => null);
   if (!existing) {
     errorResponse(res, 404, `Account not found: ${accountId}`);
     return;
