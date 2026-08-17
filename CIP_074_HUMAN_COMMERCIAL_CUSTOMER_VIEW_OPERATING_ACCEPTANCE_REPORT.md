@@ -6,7 +6,7 @@ Outcome: **STOPPED AT A GENUINE GOVERNED PREDICATE — NOT FULLY ACCEPTED**
 
 ## Deployed contract
 
-- Final deployed Git SHA: `734110c77c95fd7c629af93b8fb71c880c9f1844`
+- Final deployed Git SHA: `fdda603f507bdd3bcb9be33a93f875dadcbfe332`
 - PM2 process: `hyperlinx-dal-api`, online after final restart
 - Public browser runtime: commit `734110c77c95`
 - Production file-authority checksum before and after: `79ba5acef3628e28683c29dd3751a9505ba4b4a2f925121a1483cbdc7d84636e`
@@ -186,4 +186,4 @@ Recoverable audit captures of the rejected fixture attempts are stored on DAL1 u
 
 ## Governing conclusion
 
-The Customer View/Deal Room operating surface and the existing Cheyenne projection are accepted at commit `734110c77c95fd7c629af93b8fb71c880c9f1844`. Full CIP-074 operating acceptance is **not** claimed because the available bounded pre-Engineering fixture lacks governed route authority and correctly failed closed before customer submission. The next legitimate resume point is to establish or select a governed Route Repository for Opportunity 3, create a new exact Proposal Revision if material state changes, and continue from Internal Commercial Review—without changing the accepted Cheyenne fixture.
+The Customer View/Deal Room operating surface and the existing Cheyenne projection are accepted at deployed commit `fdda603f507bdd3bcb9be33a93f875dadcbfe332`. Full CIP-074 operating acceptance is **not** claimed because the available bounded pre-Engineering fixture lacks governed route authority and correctly failed closed before customer submission. The next legitimate resume point is to establish or select a governed Route Repository for Opportunity 3, create a new exact Proposal Revision if material state changes, and continue from Internal Commercial Review—without changing the accepted Cheyenne fixture.
