@@ -70,6 +70,12 @@ async function exactRecord(dir, id, code, label) {
   return record;
 }
 
+async function exactLinkedRecord(dir, predicate, code, label) {
+  const matches = (await listRecords(dir)).filter(predicate);
+  if (matches.length !== 1) fail(code, `${label} must resolve to exactly one governed record.`, { matchCount: matches.length });
+  return matches[0];
+}
+
 function routeAuthority(scope, sourceDraft) {
   const truth = rec(scope.canonicalTruth);
   const diagnostics = rec(truth.geometryAuthorityDiagnostics);
@@ -163,11 +169,30 @@ export async function resolveOperationalBaseline(scopeVersionId) {
   if (!revision) fail("PROPOSAL_REVISION_NOT_FOUND", `Exact Proposal Revision ${proposalRevisionId} was not found.`);
   same(proposalHash, txt(revision.proposalHash, revision.revisionHash, revision.hash), "PROPOSAL_HASH_MISMATCH", "Proposal Revision hash");
 
-  const engineeringPackageId = txt(references.engineering.packageId, certified.engineeringPackageId);
-  const engineeringPackage = await exactRecord(DIRS.engineeringPackages, engineeringPackageId, "ENGINEERING_PACKAGE_NOT_FOUND", "Engineering Package");
-  same(references.engineering.revisionId, txt(engineeringPackage.engineeringRevisionId, certified.engineeringRevisionId), "ENGINEERING_REVISION_MISMATCH", "Engineering Revision identity");
-  const approval = await exactRecord(DIRS.engineeringApprovals, references.engineering.approvalId, "ENGINEERING_APPROVAL_NOT_FOUND", "Engineering Approval");
-  same(references.engineering.approvalId, txt(approval.engineeringApprovalId, approval.approvalId), "ENGINEERING_APPROVAL_MISMATCH", "Engineering Approval identity");
+  let engineeringPackageId = txt(references.engineering.packageId, certified.engineeringPackageId);
+  const engineeringPackage = engineeringPackageId
+    ? await exactRecord(DIRS.engineeringPackages, engineeringPackageId, "ENGINEERING_PACKAGE_NOT_FOUND", "Engineering Package")
+    : await exactLinkedRecord(
+      DIRS.engineeringPackages,
+      (item) => txt(item.draftIofPackageId, item.sourceDraftPackageId, item.packageId) === sourceDraftId,
+      "ENGINEERING_PACKAGE_LINKAGE_UNRESOLVED",
+      "Engineering Package linked to the exact Draft IOF",
+    );
+  engineeringPackageId = txt(engineeringPackage.engineeringPackageId, engineeringPackage.packageId);
+  required(engineeringPackageId, "ENGINEERING_PACKAGE_ID_MISSING", "Resolved Engineering Package has no immutable identity.");
+  const engineeringRevisionId = txt(references.engineering.revisionId, certified.engineeringRevisionId, engineeringPackage.engineeringRevisionId, engineeringPackage.currentRevisionId);
+  same(engineeringRevisionId, txt(engineeringPackage.engineeringRevisionId, engineeringPackage.currentRevisionId, certified.engineeringRevisionId), "ENGINEERING_REVISION_MISMATCH", "Engineering Revision identity");
+  let engineeringApprovalId = txt(references.engineering.approvalId, certified.engineeringApprovalId, engineeringPackage.engineeringApprovalId, engineeringPackage.approvalId);
+  const approval = engineeringApprovalId
+    ? await exactRecord(DIRS.engineeringApprovals, engineeringApprovalId, "ENGINEERING_APPROVAL_NOT_FOUND", "Engineering Approval")
+    : await exactLinkedRecord(
+      DIRS.engineeringApprovals,
+      (item) => txt(item.engineeringPackageId, item.packageId) === engineeringPackageId && txt(item.engineeringRevisionId, item.revisionId) === engineeringRevisionId,
+      "ENGINEERING_APPROVAL_LINKAGE_UNRESOLVED",
+      "Engineering Approval linked to the exact Engineering Revision",
+    );
+  engineeringApprovalId = txt(approval.engineeringApprovalId, approval.approvalId);
+  required(engineeringApprovalId, "ENGINEERING_APPROVAL_ID_MISSING", "Resolved Engineering Approval has no immutable identity.");
 
   same(scope.organizationId, txt(account.organizationId, account.tenantId), "ACCOUNT_ORGANIZATION_MISMATCH", "Account organization");
   same(scope.organizationId, txt(opportunity.organizationId, opportunity.tenantId), "OPPORTUNITY_ORGANIZATION_MISMATCH", "Opportunity organization");
@@ -244,7 +269,7 @@ export async function resolveOperationalBaseline(scopeVersionId) {
     project: { organizationId: scope.organizationId, customerId: scope.customerId, accountId: scope.accountId, accountName: txt(account.name, account.accountName), opportunityId: scope.opportunityId, opportunityName: txt(opportunity.opportunityName, opportunity.name), productId: scope.productId, productName: scope.productName },
     lineage: {
       proposalId: scope.proposalId, proposalRevisionId, proposalHash,
-      engineeringPackageId, engineeringRevisionId: references.engineering.revisionId, engineeringApprovalId: references.engineering.approvalId,
+      engineeringPackageId, engineeringRevisionId, engineeringApprovalId,
       certifiedIofPackageId: scope.certifiedIofPackageId, certifiedIofHash: exactReferences.certifiedIof.hash,
       serviceOrderId: scope.serviceOrderId, serviceOrderHash: exactReferences.serviceOrder.hash,
       productDoctrineId: txt(sourceDraft.productDoctrineId, rec(sourceDraft.productDoctrineAssembly).productDoctrineId, rec(sourceDraft.projectConfiguration).productDoctrineId),
