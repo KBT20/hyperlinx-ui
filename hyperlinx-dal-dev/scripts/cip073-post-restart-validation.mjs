@@ -61,7 +61,7 @@ assert.equal(externalDeal.permittedActions.some((action) => action.mutation), fa
 
 const project = (await request(`/api/customer-portal/projects/${encodeURIComponent(opportunityId)}`, { cookie, persona: "CUSTOMER_VIEWER" })).value.project;
 assert.equal(project.projectId, opportunityId);
-assert.equal(project.status, "ENGINEERING");
+assert.equal(project.status, "ENGINEERING_SUBMITTED");
 assert.equal(project.proposal.proposalRevisionId, proposalRevisionId);
 assert.equal(project.proposal.proposalHash, proposalHash);
 assert.equal(project.map.routeRepositoryId, deal.customerSafe.route.routeRepositoryId);
