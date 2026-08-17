@@ -56,6 +56,7 @@ import { authorityModeConfidence, type ConstraintValue, type ConstraintAuthority
 import {
   COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT,
   advanceRuntimeLifecycleBridge,
+  approveProposalInternalCommercialReview,
   approveProposalRuntimeObject,
   assignDraftIofPackageEngineer,
   archiveProposalRuntimeObject,
@@ -4723,6 +4724,40 @@ export default function GoogleRfpWorkspace() {
     await saveCurrentRuntimeProposal(activeProposalRuntime?.status ?? "DRAFT");
   }
 
+  function exactProposalSubmissionLineage(proposal: ProposalRuntimeObject) {
+    return {
+      accountId: String(proposal.accountId ?? selectedAccount.accountId),
+      opportunityId: proposal.opportunityId,
+      opportunityStateVersion: Number(proposal.opportunityStateVersion),
+      opportunityStateHash: String(proposal.opportunityStateHash ?? ""),
+      proposalId: proposal.proposalId,
+      proposalRevisionId: String(proposal.proposalRevisionId ?? ""),
+      proposalHash: String(proposal.proposalHash ?? ""),
+      routeId: String(proposal.routeRepositoryId ?? ""),
+      routeRepositoryId: String(proposal.routeRepositoryId ?? ""),
+      routeRevision: Number(proposal.routeRevision),
+      routeGeometryId: String(proposal.routeGeometryId ?? ""),
+      geometryHash: String(proposal.routeGeometryHash ?? ""),
+    };
+  }
+
+  async function handleInternalCommercialApproval() {
+    if (!activeProposalRuntime) return;
+    setProposalRuntimeActionPending(true);
+    try {
+      const saved = await approveProposalInternalCommercialReview(activeProposalRuntime.proposalId, {
+        ...exactProposalSubmissionLineage(activeProposalRuntime),
+        comment: "Internal Commercial Review approved for customer submission.",
+      }, session);
+      upsertProposalRuntimeRecord(saved);
+      setProposalRuntimeNotice(`Internal Commercial Review approved exact ${saved.proposalRevisionId}.`);
+    } catch (error) {
+      setProposalRuntimeNotice(`Internal Commercial Review failed: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setProposalRuntimeActionPending(false);
+    }
+  }
+
   async function handleSubmitRuntimeProposalToCustomer() {
     const proposal = activeProposalRuntime ?? await saveCurrentRuntimeProposal("DRAFT");
     if (!proposal) return;
@@ -4734,6 +4769,7 @@ export default function GoogleRfpWorkspace() {
         ? ["demo-customer-b-viewer", "demo-customer-b-reviewer", "demo-customer-b-signer"]
         : ["demo-customer-a-viewer", "demo-customer-a-reviewer", "demo-customer-a-signer"];
       const input = {
+        ...exactProposalSubmissionLineage(proposal),
         assignedCustomerUsers: demoSubmission ? assignedCustomerUsers : ["google-participant-001"],
         customerOrganizationId: demoSubmission ? customerOrganizationId : undefined,
         proposalRecipientContactIds,
@@ -9900,6 +9936,10 @@ export default function GoogleRfpWorkspace() {
   const activeProposalAuthoritySnapshot = evaluateProposalAuthorityState(activeProposalRuntime, proposalStatusLabel);
   const activeProposalStatus = activeProposalAuthoritySnapshot.repositoryStatus;
   const activeProposalApprovalState = String(activeProposalRuntime?.approvalState ?? "");
+  const internalCommercialApproval = activeProposalRuntime?.internalCommercialApproval as Record<string, unknown> | undefined;
+  const exactInternalCommercialApproval = Boolean(activeProposalRuntime && internalCommercialApproval?.status === "APPROVED" &&
+    internalCommercialApproval.proposalRevisionId === activeProposalRuntime.proposalRevisionId &&
+    internalCommercialApproval.proposalHash === activeProposalRuntime.proposalHash);
   const proposalSubmitted = Boolean(activeProposalRuntime && !["", "DRAFT", "CREATED"].includes(activeProposalStatus));
   const proposalRepositoryCustomerReviewState = proposalCustomerReviewStateFromRepository(activeProposalRuntime);
   const renderedCustomerReviewStatus = proposalRepositoryCustomerReviewState !== "NOT_STARTED" ? proposalRepositoryCustomerReviewState : accountCustomerReviewStatus;
@@ -11666,6 +11706,7 @@ export default function GoogleRfpWorkspace() {
                 <div><span>Revision Hash</span><b>{activeProposalRuntime?.proposalHash ? activeProposalRuntime.proposalHash.slice(0, 12) : "Save required"}</b></div>
                 <div><span>Visibility</span><b>{activeProposalRuntime?.visibility ?? "Private default"}</b></div>
                 <div><span>Approval</span><b>{activeProposalRuntime?.approvalState?.replaceAll("_", " ") ?? "Not submitted"}</b></div>
+                <div><span>Internal Commercial Review</span><b>{exactInternalCommercialApproval ? "APPROVED" : "PENDING"}</b></div>
                 <div><span>Readiness</span><b>{activeProposalRuntime?.readiness?.status ?? "Blocked"}</b></div>
                 <div><span>References</span><b>{activeProposalRuntime?.runtimeObjectIds?.length.toLocaleString() ?? "0"}</b></div>
                 <div><span>Evidence</span><b>{activeProposalRuntime?.runtimeEvidenceIds?.length.toLocaleString() ?? "0"}</b></div>
@@ -11693,7 +11734,8 @@ export default function GoogleRfpWorkspace() {
                 {canManageProposalRuntime ? (
                   <>
                     <button type="button" onClick={handleSaveRuntimeProposal} disabled={proposalRuntimeActionPending}>Save Proposal Revision</button>
-                    <button type="button" onClick={handleSubmitRuntimeProposalToCustomer} disabled={proposalRuntimeActionPending}>Submit to Customer</button>
+                    <button type="button" onClick={handleInternalCommercialApproval} disabled={!activeProposalRuntime?.proposalRevisionId || activeProposalRuntime.revisionStatus !== "SAVED" || exactInternalCommercialApproval || proposalRuntimeActionPending}>Approve Internal Commercial Review</button>
+                    <button type="button" onClick={handleSubmitRuntimeProposalToCustomer} disabled={!exactInternalCommercialApproval || proposalRuntimeActionPending}>Submit to Customer</button>
                     <button type="button" onClick={handleCreateRuntimeProposalRevision} disabled={!activeProposalRuntime?.proposalRevisionId || proposalRuntimeActionPending}>Create New Revision</button>
                     <button type="button" onClick={handleDuplicateRuntimeProposal} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Duplicate</button>
                     <button type="button" onClick={handleArchiveRuntimeProposal} disabled={!activeProposalRuntime || proposalRuntimeActionPending}>Archive</button>

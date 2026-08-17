@@ -63,7 +63,9 @@ export type CustomerPortalProject = {
 
 export type GovernedArtifactStates = {
   proposal: { state: string; proposalRevisionId?: string | null; proposalHash?: string | null; acceptanceEvidenceId?: string | null; evidenceExact: boolean };
-  engineering: { state: string; engineeringPackageId?: string | null; engineeringRevisionId?: string | null };
+  customerReview: { state: string; customerReviewPackageId?: string | null; evidenceExact: boolean };
+  customerAcceptance: { state: string; acceptanceEvidenceId?: string | null; evidenceExact: boolean };
+  engineering: { state: string; eligibility: "NOT_ELIGIBLE" | "ELIGIBLE" | "SUBMITTED" | string; engineeringPackageId?: string | null; engineeringRevisionId?: string | null };
   certifiedIof: { state: string; certifiedPackageId?: string | null; certificationHash?: string | null };
   serviceOrder: { state: string; signatureState: string; serviceOrderId?: string | null; documentHash?: string | null };
   customerSignature: { state: string; customerSignatureId?: string | null; signatureHash?: string | null };
@@ -1629,6 +1631,19 @@ export type ProposalCustomerRecipientInput = {
   sofRecipientContactIds?: string[];
   customerContactEmails?: string[];
   customerOrganizationId?: string;
+  accountId?: string;
+  opportunityId?: string;
+  opportunityStateVersion?: number;
+  opportunityStateHash?: string;
+  proposalId?: string;
+  proposalRevisionId?: string;
+  proposalHash?: string;
+  proposalRevisionHash?: string;
+  routeId?: string;
+  routeRepositoryId?: string;
+  routeRevision?: number;
+  routeGeometryId?: string;
+  geometryHash?: string;
 };
 
 export type CertifiedIofPackageRuntime = DraftIofPackageRuntime & {
@@ -2488,6 +2503,14 @@ export async function submitProposalToCustomerPortal<T extends ProposalRuntimeOb
   return requestJson<{ proposal: T; customerReviewPackage?: Record<string, unknown>; invitations: Array<{ customerInvitationId: string; principalId: string; expiresAt: string; enrollmentPath: string }> }>(`/api/proposals/${encodeURIComponent(proposalId)}/submit-customer`, {
     method: "POST", headers: authHeaders(session, { "Content-Type": "application/json" }), body: JSON.stringify(input),
   });
+}
+
+export async function approveProposalInternalCommercialReview<T extends ProposalRuntimeObject = ProposalRuntimeObject>(
+  proposalId: string,
+  input: ProposalCustomerRecipientInput & { comment?: string },
+  session?: TeralinxAuthSession | null,
+) {
+  return proposalAction<T>(proposalId, "internal-commercial-approve", input, session);
 }
 
 export async function withdrawProposalRuntimeObject<T extends ProposalRuntimeObject = ProposalRuntimeObject>(proposalId: string, session?: TeralinxAuthSession | null) {

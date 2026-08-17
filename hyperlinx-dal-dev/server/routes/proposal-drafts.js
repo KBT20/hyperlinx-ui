@@ -698,7 +698,8 @@ export async function validateOpportunityStateBinding(record, { requireCurrent =
   if (!record.opportunityId) return ["Opportunity reference is required."];
   const opportunity = await loadRecord(DIRS.commercialOpportunities, record.opportunityId).catch(() => null);
   if (!opportunity) return [`Persisted Opportunity not found: ${record.opportunityId}.`];
-  const governedByCip067 = opportunity?.commercialStateSnapshot?.schemaVersion === "CIP-067";
+  const governedByCip067 = opportunity?.commercialStateSnapshot?.schemaVersion === "CIP-067" ||
+    opportunity?.commercialWorkingState?.schemaVersion === "CIP-067";
   if (!governedByCip067) return [];
   const failures = [];
   if (!record.opportunityStateVersion) failures.push("Opportunity state version is required.");
@@ -721,6 +722,53 @@ export async function validateOpportunityStateBinding(record, { requireCurrent =
     ["routeGeometryHash", "geometryHash"],
   ]) {
     if (String(record[proposalField] ?? "") !== String(opportunity[opportunityField] ?? "")) failures.push(`${proposalField} does not match the persisted Opportunity.`);
+  }
+  return failures;
+}
+
+function exactCommercialApproval(record = {}) {
+  const approval = asRecord(record.internalCommercialApproval);
+  return Boolean(
+    approval.status === "APPROVED" &&
+    firstText(approval.proposalRevisionId) === firstText(record.proposalRevisionId) &&
+    firstText(approval.proposalHash) === firstText(record.proposalHash) &&
+    firstText(approval.opportunityId) === firstText(record.opportunityId) &&
+    Number(approval.opportunityStateVersion ?? 0) === Number(record.opportunityStateVersion ?? 0) &&
+    firstText(approval.opportunityStateHash) === firstText(record.opportunityStateHash) &&
+    firstText(approval.routeRepositoryId) === firstText(record.routeRepositoryId) &&
+    Number(approval.routeRevision ?? 0) === Number(record.routeRevision ?? 0) &&
+    firstText(approval.routeGeometryId) === firstText(record.routeGeometryId) &&
+    firstText(approval.geometryHash) === firstText(record.routeGeometryHash)
+  );
+}
+
+function submissionLineageFailures(record = {}, body = {}) {
+  const exact = [
+    ["accountId", record.accountId],
+    ["opportunityId", record.opportunityId],
+    ["opportunityStateHash", record.opportunityStateHash],
+    ["proposalId", record.proposalId],
+    ["proposalRevisionId", record.proposalRevisionId],
+    ["proposalHash", record.proposalHash],
+    ["routeRepositoryId", record.routeRepositoryId],
+    ["routeGeometryId", record.routeGeometryId],
+    ["geometryHash", record.routeGeometryHash],
+  ];
+  const failures = exact.flatMap(([field, expected]) => {
+    const supplied = field === "proposalHash"
+      ? firstText(body.proposalHash, body.proposalRevisionHash)
+      : field === "routeRepositoryId"
+        ? firstText(body.routeRepositoryId, body.routeId)
+        : firstText(body[field]);
+    return supplied && supplied === firstText(expected) ? [] : [`${field} must identify the exact current governed record.`];
+  });
+  for (const [field, expected] of [
+    ["opportunityStateVersion", record.opportunityStateVersion],
+    ["routeRevision", record.routeRevision],
+  ]) {
+    if (!Number.isFinite(Number(body[field])) || Number(body[field]) !== Number(expected)) {
+      failures.push(`${field} must identify the exact current governed record.`);
+    }
   }
   return failures;
 }
@@ -1373,12 +1421,21 @@ async function handleSubmitCustomer(req, res, id, user) {
     errorResponse(res, 409, "Save the active Proposal Revision before submitting it to the customer.");
     return;
   }
-  const opportunityFailures = await validateOpportunityStateBinding(existing, { requireCurrent: false });
+  const body = await readRequestJson(req);
+  if (!exactCommercialApproval(existing)) {
+    errorResponse(res, 409, "CUSTOMER SUBMISSION BLOCKED: exact Internal Commercial Review approval is required for the selected saved Proposal Revision.");
+    return;
+  }
+  const lineageFailures = submissionLineageFailures(existing, body);
+  if (lineageFailures.length) {
+    errorResponse(res, 409, `CUSTOMER SUBMISSION BLOCKED: ${lineageFailures.join(" ")}`);
+    return;
+  }
+  const opportunityFailures = await validateOpportunityStateBinding(existing, { requireCurrent: true });
   if (opportunityFailures.length) {
     errorResponse(res, 409, `CUSTOMER SUBMISSION BLOCKED: ${opportunityFailures.join(" ")}`);
     return;
   }
-  const body = await readRequestJson(req);
   const explicitCustomerUsers = normalizeUserIds(body.assignedCustomerUsers ?? body.customerUsers ?? body.customerReviewers);
   const customerUsers = unique([...asArray(existing.assignedCustomerUsers), ...explicitCustomerUsers, ...defaultCustomerUserIds(existing.customerId)]);
   const proposalRecipientContactIds = unique([...asArray(existing.proposalRecipientContactIds), ...asArray(body.proposalRecipientContactIds)]);
@@ -1449,6 +1506,65 @@ async function handleSubmitCustomer(req, res, id, user) {
     }, user, opportunity), user, "runtime.opportunity.submitted.customer", "Opportunity advanced to Customer Review through its exact saved Proposal Revision.");
   }
   jsonResponse(res, 200, { proposal: saved, opportunity: savedOpportunity, customerReviewPackage: customerPortal?.reviewPackage, invitations: customerPortal?.invitations ?? [] });
+}
+
+async function handleInternalCommercialApproval(req, res, id, user) {
+  const existing = await readProposal(id).catch(() => null);
+  if (!existing) {
+    errorResponse(res, 404, `Proposal not found: ${id}`);
+    return;
+  }
+  if (!canGovernProposal(existing, user)) {
+    errorResponse(res, 403, "Only the Commercial owner or approver may complete Internal Commercial Review.");
+    return;
+  }
+  if (!existing.proposalRevisionId || !existing.proposalHash || existing.revisionStatus !== "SAVED" ||
+    !asArray(existing.proposalRevisions).some((revision) =>
+      revision?.proposalRevisionId === existing.proposalRevisionId && revision?.proposalHash === existing.proposalHash && revision?.revisionStatus === "SAVED"
+    )) {
+    errorResponse(res, 409, "Internal Commercial Review must bind to an exact immutable saved Proposal Revision ID/hash.");
+    return;
+  }
+  const body = await readRequestJson(req);
+  const lineageFailures = submissionLineageFailures(existing, body);
+  const opportunityFailures = await validateOpportunityStateBinding(existing, { requireCurrent: true });
+  if (lineageFailures.length || opportunityFailures.length) {
+    errorResponse(res, 409, `INTERNAL COMMERCIAL REVIEW BLOCKED: ${[...lineageFailures, ...opportunityFailures].join(" ")}`);
+    return;
+  }
+  if (exactCommercialApproval(existing)) {
+    jsonResponse(res, 200, { proposal: normalizeProposalRecord(existing, user, existing), idempotentReplay: true });
+    return;
+  }
+  const timestamp = nowIso();
+  const approval = {
+    internalCommercialApprovalId: `INTERNAL-COMMERCIAL-APPROVAL-${safeIdPart(existing.proposalRevisionId)}`,
+    status: "APPROVED",
+    accountId: existing.accountId,
+    opportunityId: existing.opportunityId,
+    opportunityStateVersion: Number(existing.opportunityStateVersion),
+    opportunityStateHash: existing.opportunityStateHash,
+    proposalId: existing.proposalId,
+    proposalRevisionId: existing.proposalRevisionId,
+    proposalHash: existing.proposalHash,
+    routeRepositoryId: existing.routeRepositoryId,
+    routeRevision: Number(existing.routeRevision),
+    routeGeometryId: existing.routeGeometryId,
+    geometryHash: existing.routeGeometryHash,
+    approvedBy: user.name,
+    approvedById: user.userId,
+    approvedByPrincipalId: user.principalId ?? user.userId,
+    approvedByMembershipId: user.membershipId,
+    approvedBySessionId: user.sessionId,
+    authorityClass: user.authorityClass,
+    demoPersona: user.demoPersona,
+    comment: firstText(body.comment),
+    approvedAt: timestamp,
+  };
+  const approved = normalizeProposalRecord({ ...existing, internalCommercialApproval: approval }, user, existing);
+  jsonResponse(res, 200, {
+    proposal: await saveProposal(approved, user, "runtime.proposal.internal_commercial.approved", "Internal Commercial Review approved the exact saved Proposal Revision.", { internalCommercialApprovalId: approval.internalCommercialApprovalId }),
+  });
 }
 
 async function handleWithdraw(res, id, user) {
@@ -2007,6 +2123,11 @@ export async function handleProposalDrafts(req, res, pathname) {
 
   if (!match.base && req.method === "POST" && match.action === "submit-customer") {
     await handleSubmitCustomer(req, res, match.id, user);
+    return true;
+  }
+
+  if (!match.base && req.method === "POST" && match.action === "internal-commercial-approve") {
+    await handleInternalCommercialApproval(req, res, match.id, user);
     return true;
   }
 

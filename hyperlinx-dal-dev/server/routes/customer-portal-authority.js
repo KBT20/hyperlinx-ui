@@ -59,8 +59,20 @@ export async function createCustomerReviewAuthority(proposal = {}, input = {}, u
     error.code = "CUSTOMER_ORGANIZATION_REQUIRED";
     throw error;
   }
-  if (text(proposal.customerId) && text(proposal.customerId) !== customerOrganization.customerId) {
-    const error = new Error("Proposal customer scope does not match the selected customer organization.");
+  const accountId = text(proposal.accountId);
+  const opportunityId = text(proposal.opportunityId);
+  const [account, opportunity] = await Promise.all([
+    (await listRecords(DIRS.accounts)).find((item) => text(item.accountId) === accountId),
+    (await listRecords(DIRS.commercialOpportunities)).find((item) => text(item.opportunityId) === opportunityId),
+  ]);
+  const accountScopeExact = Boolean(account && opportunity &&
+    text(account.customerId) === customerOrganization.customerId &&
+    text(account.customerOrganizationId) === customerOrganizationId &&
+    text(opportunity.accountId) === accountId &&
+    text(opportunity.organizationId) === text(proposal.organizationId) &&
+    text(opportunity.customerId) === text(proposal.customerId));
+  if (!accountScopeExact) {
+    const error = new Error("Proposal, Opportunity, Account, and selected customer organization do not resolve to one exact governed customer scope.");
     error.status = 409;
     error.code = "CUSTOMER_ORGANIZATION_SCOPE_MISMATCH";
     throw error;
@@ -94,7 +106,6 @@ export async function createCustomerReviewAuthority(proposal = {}, input = {}, u
     throw error;
   }
   const timestamp = nowIso();
-  const opportunityId = text(proposal.opportunityId);
   const reviewPackageId = `CUSTOMER-REVIEW-DEMO-${idPart(lineage.proposalRevisionId)}`;
   const priorPackages = (await listRecords(DIRS.customerReviewPackages)).filter((item) =>
     item.opportunityId === opportunityId && item.customerOrganizationId === customerOrganizationId &&
@@ -122,6 +133,7 @@ export async function createCustomerReviewAuthority(proposal = {}, input = {}, u
     authority: "BOUNDED_CUSTOMER_PROJECTION",
     sourceAuthority: "PROPOSAL_REPOSITORY",
     ...lineage,
+    accountId,
     opportunityId,
     customerId: customerOrganization.customerId,
     customerOrganizationId,
@@ -137,6 +149,11 @@ export async function createCustomerReviewAuthority(proposal = {}, input = {}, u
       routeGeometryId: text(proposal.routeGeometryId, record(proposal.routeSnapshot).routeGeometryId),
       geometryHash: text(proposal.routeGeometryHash, record(proposal.routeSnapshot).geometryHash),
       routeMiles: Number(proposal.routeMiles ?? record(proposal.pricingSummary).routeMiles ?? 0),
+    },
+    opportunityBinding: {
+      opportunityId,
+      opportunityStateVersion: Number(proposal.opportunityStateVersion),
+      opportunityStateHash: text(proposal.opportunityStateHash),
     },
     commercialTerms: customerSafeCommercialTerms(proposal),
     schedule: record(proposal.scheduleSummary ?? proposal.deliverySummary),

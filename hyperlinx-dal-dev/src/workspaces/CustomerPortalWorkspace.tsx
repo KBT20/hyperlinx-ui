@@ -86,7 +86,12 @@ export default function CustomerPortalWorkspace() {
     } catch (error) { setStatus(error instanceof Error ? error.message : String(error)); }
   }
 
-  const exactProposal = selected ? { proposalRevisionId: selected.proposal.proposalRevisionId, proposalHash: selected.proposal.proposalHash } : {};
+  const exactProposal = selected ? {
+    accountId: accountTwin?.account.accountId,
+    opportunityId: selected.projectId,
+    proposalRevisionId: selected.proposal.proposalRevisionId,
+    proposalHash: selected.proposal.proposalHash,
+  } : {};
   return (
     <div className="customer-portal-shell">
       <header className="customer-portal-header">
@@ -125,7 +130,8 @@ export default function CustomerPortalWorkspace() {
             <div className="customer-project-tabs">{(["Overview", "Proposal", "Service Order", "Specifications", "Documents", "Activity"] as ProjectTab[]).map((item) => <button className={tab === item ? "active" : ""} onClick={() => setTab(item)} key={item}>{item}</button>)}</div>
             {tab === "Overview" ? <div className="customer-overview-grid">
               <article><small>PROPOSAL</small><strong>Revision {selected.proposal.proposalRevisionNumber}</strong><p>{selected.artifactStates.proposal.state.replaceAll("_", " ")}</p></article>
-              <article><small>ENGINEERING</small><strong>{selected.engineering.status.replaceAll("_", " ")}</strong><p>{selected.engineering.customerSafeSummary}</p></article>
+              <article><small>CUSTOMER RESPONSE</small><strong>{selected.artifactStates.customerAcceptance.state === "COMPLETE" ? "CUSTOMER ACCEPTED" : "AWAITING CUSTOMER"}</strong><p>Customer Review: {selected.artifactStates.customerReview.state.replaceAll("_", " ")}</p></article>
+              <article><small>ENGINEERING</small><strong>{selected.artifactStates.engineering.eligibility.replaceAll("_", " ")}</strong><p>{selected.engineering.customerSafeSummary}</p></article>
               <article><small>SERVICE ORDER</small><strong>{selected.artifactStates.serviceOrder.state.replaceAll("_", " ")}</strong><p>{selected.artifactStates.serviceOrder.signatureState.replaceAll("_", " ")}</p></article>
               <article><small>SCOPEVERSION</small><strong>{selected.artifactStates.scopeVersion.state.replaceAll("_", " ")}</strong><p>{selected.artifactStates.scopeVersion.scopeVersionId ?? "Requires complete signature chain"}</p></article>
               <article className="wide"><small>NEXT GOVERNED STEP</small><strong>{selectedDeal?.permittedActions.find((action) => action.mutation)?.label ?? (selectedDeal?.currentState === "AUTHORIZED" ? "Authorized project available for review." : "Teralinx is advancing the governed workflow.")}</strong></article>

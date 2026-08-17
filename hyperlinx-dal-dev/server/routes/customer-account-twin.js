@@ -52,14 +52,25 @@ export function deriveArtifactStates({ proposal, reviewPackage, portalActions = 
     && (!scopeVersion.serviceOrderId || text(scopeVersion.serviceOrderId) === text(serviceOrder.serviceOrderId)));
   return {
     proposal: {
-      state: proposalAccepted ? "ACCEPTED" : exactReviewPackage ? "CUSTOMER_REVIEW" : text(proposal?.status, proposal ? "DRAFT" : "NOT_CREATED"),
+      state: proposalAccepted ? "ACCEPTED" : exactReviewPackage ? "SUBMITTED" : text(proposal?.status, proposal ? "DRAFT" : "NOT_CREATED"),
       proposalRevisionId: proposalRevisionId || null,
       proposalHash: proposalHash || null,
       acceptanceEvidenceId: acceptance?.customerPortalActionId ?? null,
       evidenceExact: proposalAccepted,
     },
+    customerReview: {
+      state: exactReviewPackage && !proposalAccepted ? "ACTIVE" : proposalAccepted ? "COMPLETE" : "NOT_STARTED",
+      customerReviewPackageId: exactReviewPackage ? reviewPackage.customerReviewPackageId : null,
+      evidenceExact: exactReviewPackage,
+    },
+    customerAcceptance: {
+      state: proposalAccepted ? "COMPLETE" : exactReviewPackage ? "PENDING" : "NOT_REQUESTED",
+      acceptanceEvidenceId: acceptance?.customerPortalActionId ?? null,
+      evidenceExact: proposalAccepted,
+    },
     engineering: {
       state: certifiedPackage?.certifiedPackageId ? "CERTIFIED" : engineeringPackage?.engineeringPackageId ? text(engineeringPackage.status, "IN_REVIEW") : "NOT_STARTED",
+      eligibility: engineeringPackage?.engineeringPackageId ? "SUBMITTED" : proposalAccepted ? "ELIGIBLE" : "NOT_ELIGIBLE",
       engineeringPackageId: engineeringPackage?.engineeringPackageId ?? null,
       engineeringRevisionId: engineeringPackage?.engineeringRevisionId ?? null,
     },
@@ -116,7 +127,10 @@ function permittedActions(state, { lens, persona, user, serviceOrder }) {
   if (["DRAFT", "PROPOSED"].includes(state) && hasPermission(user, "proposal.manage")) {
     actions.push({ action: "OPEN_PROPOSAL", label: "Open Proposal", authority: "proposal.manage", mutation: true });
   }
-  if (["ACCEPTED", "ENGINEERING"].includes(state) && hasPermission(user, "engineering.lifecycle.manage")) {
+  if (state === "ACCEPTED" && hasPermission(user, "commercial.lifecycle.manage")) {
+    actions.push({ action: "SEND_TO_ENGINEERING", label: "Send to Engineering", authority: "commercial.lifecycle.manage", mutation: true });
+  }
+  if (state === "ENGINEERING" && hasPermission(user, "engineering.lifecycle.manage")) {
     actions.push({ action: "OPEN_ENGINEERING", label: "Open Engineering", authority: "engineering.lifecycle.manage", mutation: true });
   }
   if (state === "CUSTOMER_SIGNED" && hasPermission(user, "service_order.countersign")) {
@@ -344,7 +358,8 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
         ...array(proposal?.proposalRevisions).map((revision) => {
           const accepted = opportunityPortalActions.some((item) => item.action === "ACCEPT" && exactProposalEvidence(item, revision.proposalRevisionId, revision.proposalHash))
             || (revision.proposalRevisionId === artifactStates.proposal.proposalRevisionId && revision.proposalHash === artifactStates.proposal.proposalHash && artifactStates.proposal.state === "ACCEPTED");
-          return { documentType: "PROPOSAL", documentId: revision.proposalRevisionId, revision: revision.revisionNumber, status: accepted ? "ACCEPTED" : revision.proposalRevisionId === proposal?.proposalRevisionId ? "CURRENT" : "SUPERSEDED", authorityHash: revision.proposalHash, createdAt: revision.createdAt };
+          const currentExact = revision.proposalRevisionId === artifactStates.proposal.proposalRevisionId && revision.proposalHash === artifactStates.proposal.proposalHash;
+          return { documentType: "PROPOSAL", documentId: revision.proposalRevisionId, revision: revision.revisionNumber, status: accepted ? "ACCEPTED" : currentExact ? artifactStates.proposal.state : "SUPERSEDED", authorityHash: revision.proposalHash, createdAt: revision.createdAt };
         }),
         ...(engineeringPackage ? [{ documentType: "ENGINEERING_PACKAGE", documentId: engineeringPackage.engineeringPackageId, revision: engineeringPackage.revisionNumber, status: artifactStates.engineering.state, authorityHash: engineeringPackage.engineeringHash ?? engineeringPackage.packageHash, createdAt: engineeringPackage.createdAt }] : []),
         ...(certifiedPackage ? [{ documentType: "CERTIFIED_IOF", documentId: certifiedPackage.certifiedPackageId, revision: certifiedPackage.revisionNumber, status: artifactStates.certifiedIof.state, authorityHash: certifiedPackage.certificationHash, createdAt: certifiedPackage.createdAt ?? certifiedPackage.certifiedAt }] : []),

@@ -58,6 +58,8 @@ function exactRevisionMatches(reviewPackage, proposal, body = {}) {
   const requestedId = text(body.proposalRevisionId);
   const requestedHash = text(body.proposalHash);
   return Boolean(requestedId && requestedHash &&
+    text(body.accountId) === text(reviewPackage.accountId) &&
+    text(body.opportunityId) === text(reviewPackage.opportunityId) &&
     requestedId === reviewPackage.proposalRevisionId && requestedHash === reviewPackage.proposalHash &&
     requestedId === proposal.proposalRevisionId && requestedHash === proposal.proposalHash);
 }
