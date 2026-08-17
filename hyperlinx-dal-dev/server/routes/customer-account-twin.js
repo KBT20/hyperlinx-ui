@@ -5,7 +5,7 @@ export const CUSTOMER_DEAL_STATES = [
   "SERVICE_ORDER", "CUSTOMER_SIGNED", "COUNTERSIGNED", "AUTHORIZED",
 ];
 
-const text = (value) => String(value ?? "").trim();
+const text = (value, fallback = "") => String(value ?? fallback).trim() || String(fallback).trim();
 const array = (value) => Array.isArray(value) ? value : value == null || value === "" ? [] : [value];
 const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : null;

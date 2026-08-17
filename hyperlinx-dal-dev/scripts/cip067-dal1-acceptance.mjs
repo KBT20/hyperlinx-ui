@@ -132,6 +132,6 @@ const deal = twin.deals.find((item) => item.opportunityId === opportunityId);
 assert.ok(deal);
 assert.equal(deal.workingOpportunity.stateHash, reopened.commercialStateHash);
 const customerProjects = (await request("Customer View parity", "/api/customer-portal/projects", { cookie, persona: "CUSTOMER_VIEWER" })).value.projects;
-assert.ok(customerProjects.some((project) => project.opportunityId === opportunityId));
+assert.ok(customerProjects.some((project) => project.projectId === opportunityId));
 
 console.log(JSON.stringify({ result: verifyOnly ? "PASS_AFTER_RESTART" : "PASS_TO_CUSTOMER_ACCEPTANCE", opportunityId, accountId, stateVersion: reopened.commercialStateVersion, stateHash: reopened.commercialStateHash, civilMix: reopened.commercialWorkingState.civilMixCalibration, productId: reopened.productId, productDoctrineId: reopened.productDoctrineId, route: { routeRepositoryId, routeRevision: reopened.routeRevision, routeGeometryId: reopened.routeGeometryId, geometryHash: reopened.geometryHash }, proposalId, customerState: deal.currentState, refreshRehydration: "PASS", logoutLoginRehydration: "PASS", accountFiltering: "PASS", customerTwinProjection: "PASS", customerViewParity: "PASS", productionEligible: false, chicagoAccess: "ZERO", trace }, null, 2));
