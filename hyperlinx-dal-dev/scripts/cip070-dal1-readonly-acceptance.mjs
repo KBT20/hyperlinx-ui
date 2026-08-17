@@ -32,7 +32,7 @@ assert.equal(login.value.user.principalId, "demo-principal");
 assert.equal(login.value.user.organizationId, "org-demo");
 
 const accountsResponse = await call("/api/accounts", { cookie, persona: "SALES" });
-const accounts = accountsResponse.value.accounts ?? accountsResponse.value.items ?? [];
+const accounts = Array.isArray(accountsResponse.value) ? accountsResponse.value : accountsResponse.value.accounts ?? accountsResponse.value.items ?? [];
 const account = accounts.find((item) => item.accountId === accountId);
 assert.ok(account, "The accepted Northstar Account must be discoverable by exact accountId.");
 const internal = (await call(`/api/accounts/${encodeURIComponent(accountId)}/customer-twin`, { cookie, persona: "SALES" })).value.customerTwin;
