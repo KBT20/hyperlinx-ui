@@ -68,9 +68,9 @@ function dealTimestamp(...records) {
 function customerSafeProjection({ proposal, reviewPackage, route, serviceOrder }) {
   const configuration = record(proposal?.projectConfiguration ?? reviewPackage?.product?.configuration);
   const quantities = record(proposal?.constructionQuantities ?? reviewPackage?.majorQuantities);
-  const pricing = record(reviewPackage?.commercialTerms ?? proposal?.commercialTerms);
+  const pricing = record(proposal?.commercialTerms ?? reviewPackage?.commercialTerms);
   const facingPricing = record(record(proposal?.proposalContent).customerFacingPricing);
-  const schedule = record(reviewPackage?.schedule ?? proposal?.scheduleSummary ?? proposal?.deliverySummary);
+  const schedule = record(proposal?.scheduleSummary ?? proposal?.deliverySummary ?? reviewPackage?.schedule);
   const routeFeet = number(route?.routeFeet ?? quantities.routeFeet);
   const routeMiles = number(route?.routeMiles ?? quantities.routeMiles ?? (routeFeet != null ? routeFeet / 5280 : null));
   const assumptions = array(proposal?.commercialAssumptions ?? reviewPackage?.assumptions).map(text).filter(Boolean);
@@ -190,7 +190,13 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
   const deals = [...opportunityIds].map((opportunityId) => {
     const opportunity = newest(opportunities.filter((item) => text(item.opportunityId) === opportunityId));
     const proposal = newest(proposals.filter((item) => text(item.opportunityId) === opportunityId));
-    const reviewPackage = newest(reviewPackages.filter((item) => text(item.opportunityId) === opportunityId));
+    const opportunityReviewPackages = reviewPackages.filter((item) => text(item.opportunityId) === opportunityId);
+    const reviewPackage = proposal
+      ? newest(opportunityReviewPackages.filter((item) => (
+          text(item.proposalRevisionId) === text(proposal.proposalRevisionId)
+          && text(item.proposalHash) === text(proposal.proposalHash)
+        )))
+      : newest(opportunityReviewPackages);
     const engineeringPackage = newest(engineeringPackages.filter((item) => text(item.opportunityId) === opportunityId || (proposal && text(item.proposalId) === text(proposal.proposalId))));
     const certifiedPackage = newest(certifiedPackages.filter((item) => text(item.opportunityId) === opportunityId || (proposal && text(item.proposalId) === text(proposal.proposalId))));
     const serviceOrder = newest(serviceOrders.filter((item) => text(item.opportunityId) === opportunityId || (proposal && text(item.proposalId) === text(proposal.proposalId))));
