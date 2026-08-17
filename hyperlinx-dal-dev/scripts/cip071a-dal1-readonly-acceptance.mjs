@@ -50,7 +50,8 @@ if (process.env.CIP071A_REQUIRE_ARTIFACT_STATES === "1") {
   assert.deepEqual(externalDeal.artifactStates, internalDeal.artifactStates);
   assert.deepEqual(project.artifactStates, internalDeal.artifactStates);
   const acceptedRevisions = internalDeal.documentHistory.filter((item) => item.documentType === "PROPOSAL" && item.status === "ACCEPTED");
-  assert.ok(acceptedRevisions.length >= 1, "At least one exact persisted Proposal acceptance must remain visible in history.");
+  assert.deepEqual(acceptedRevisions.map((item) => item.documentId), [internalDeal.commercial.proposalRevisionId]);
+  assert.equal(internalDeal.documentHistory.find((item) => item.documentId.endsWith("-revision-3"))?.status, "CURRENT");
 }
 
 console.log(JSON.stringify({

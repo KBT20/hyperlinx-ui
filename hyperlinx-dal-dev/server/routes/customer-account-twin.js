@@ -343,7 +343,7 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
       documentHistory: [
         ...array(proposal?.proposalRevisions).map((revision) => {
           const accepted = opportunityPortalActions.some((item) => item.action === "ACCEPT" && exactProposalEvidence(item, revision.proposalRevisionId, revision.proposalHash))
-            || (revision.proposalRevisionId === proposal?.proposalRevisionId && revision.proposalHash === proposal?.proposalHash && artifactStates.proposal.state === "ACCEPTED");
+            || (revision.proposalRevisionId === artifactStates.proposal.proposalRevisionId && revision.proposalHash === artifactStates.proposal.proposalHash && artifactStates.proposal.state === "ACCEPTED");
           return { documentType: "PROPOSAL", documentId: revision.proposalRevisionId, revision: revision.revisionNumber, status: accepted ? "ACCEPTED" : revision.proposalRevisionId === proposal?.proposalRevisionId ? "CURRENT" : "SUPERSEDED", authorityHash: revision.proposalHash, createdAt: revision.createdAt };
         }),
         ...(engineeringPackage ? [{ documentType: "ENGINEERING_PACKAGE", documentId: engineeringPackage.engineeringPackageId, revision: engineeringPackage.revisionNumber, status: artifactStates.engineering.state, authorityHash: engineeringPackage.engineeringHash ?? engineeringPackage.packageHash, createdAt: engineeringPackage.createdAt }] : []),
