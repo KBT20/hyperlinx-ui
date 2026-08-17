@@ -10,7 +10,14 @@ const array = (value) => Array.isArray(value) ? value : value == null || value =
 const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const newest = (records) => sortedByUpdated(records)[0] ?? null;
-const displayText = (value) => typeof value === "string" || typeof value === "number" ? text(value) : text(record(value).text ?? record(value).summary ?? record(value).description);
+const displayText = (value) => {
+  if (typeof value === "string" || typeof value === "number") return text(value);
+  const source = record(value);
+  for (const candidate of [source.text, source.summary, source.description, source.executiveSummary, source.title]) {
+    if (typeof candidate === "string" || typeof candidate === "number") return text(candidate);
+  }
+  return "";
+};
 
 function hasPermission(user, permission) {
   return Array.isArray(user?.permissions) && user.permissions.includes(permission);
