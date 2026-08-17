@@ -78,7 +78,8 @@ export type AccountCustomerTwin = {
     currentState: CustomerDealState; currentStateIndex: number; updatedAt?: string | null;
     lifecycle: Array<{ name: CustomerDealState; status: "COMPLETE" | "CURRENT" | "PENDING" }>;
     permittedActions: Array<{ action: string; label: string; authority: string; mutation: boolean }>;
-    commercial: { proposalId?: string | null; proposalRevisionId?: string | null; proposalRevisionNumber?: number | null; proposalHash?: string | null };
+    commercial: { opportunityStateVersion?: number | null; opportunityStateHash?: string | null; proposalId?: string | null; proposalRevisionId?: string | null; proposalRevisionNumber?: number | null; proposalHash?: string | null };
+    workingOpportunity: { stateVersion?: number | null; stateHash?: string | null; productId?: string | null; productName?: string | null; productDoctrineId?: string | null; routeRepositoryId?: string | null; routeRevision?: number | null; routeGeometryId?: string | null; geometryHash?: string | null; civilMixCalibration?: Record<string, unknown> | null; economics?: Record<string, unknown> | null; modifiedBy?: string | null; modifiedAt?: string | null };
     spatial: { routeRepositoryId?: string | null; routeRevision?: number | null; geometryHash?: string | null };
     engineering: { engineeringPackageId?: string | null; certifiedPackageId?: string | null; certificationHash?: string | null };
     contractual: { serviceOrderId?: string | null; serviceOrderStatus?: string | null; documentHash?: string | null; scopeVersionId?: string | null };

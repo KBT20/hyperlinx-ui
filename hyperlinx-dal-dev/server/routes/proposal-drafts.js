@@ -24,6 +24,7 @@ import {
 import { assembleDraftIofPackageFromProposal } from "./engineering-certification.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 import { createCustomerReviewAuthority } from "./customer-portal-authority.js";
+import { commercialOpportunityStateHash, normalizeCommercialOpportunity, saveOpportunity } from "./commercial-opportunities.js";
 
 const ROLE_KEYS = ["contributors", "reviewers", "approvers", "executives", "customerReviewers", "salesEngineering"];
 const CUSTOMER_USER_BY_CUSTOMER = {
@@ -672,6 +673,7 @@ const PROPOSAL_REVISION_SNAPSHOT_FIELDS = Object.freeze([
   "runtimeEvidenceIds", "fulfillmentPlanId", "fulfillmentStrategy", "fulfillmentPlan",
   "fulfillmentMix", "commercialRevisionId", "commercialRevisionHash",
   "commercialRepositoryId", "estimatingDoctrineId", "commercialPolicyId",
+  "opportunityStateVersion", "opportunityStateHash", "opportunityStateSnapshot",
 ]);
 
 function canonicalJson(value) {
@@ -690,6 +692,37 @@ export function proposalSnapshot(record = {}) {
 
 export function proposalSnapshotHash(snapshot) {
   return createHash("sha256").update(canonicalJson(snapshot)).digest("hex");
+}
+
+export async function validateOpportunityStateBinding(record, { requireCurrent = true } = {}) {
+  if (!record.opportunityId) return ["Opportunity reference is required."];
+  const opportunity = await loadRecord(DIRS.commercialOpportunities, record.opportunityId).catch(() => null);
+  if (!opportunity) return [`Persisted Opportunity not found: ${record.opportunityId}.`];
+  const governedByCip067 = opportunity?.commercialStateSnapshot?.schemaVersion === "CIP-067";
+  if (!governedByCip067) return [];
+  const failures = [];
+  if (!record.opportunityStateVersion) failures.push("Opportunity state version is required.");
+  if (!record.opportunityStateHash) failures.push("Opportunity state hash is required.");
+  if (!record.opportunityStateSnapshot || typeof record.opportunityStateSnapshot !== "object") failures.push("Opportunity state snapshot is required.");
+  if (String(record.organizationId ?? "") !== String(opportunity.organizationId ?? "")) failures.push("Opportunity organization scope mismatch.");
+  if (String(record.accountId ?? "") !== String(opportunity.accountId ?? "")) failures.push("Opportunity account scope mismatch.");
+  if (String(record.customerId ?? "") !== String(opportunity.customerId ?? "")) failures.push("Opportunity customer scope mismatch.");
+  if (record.opportunityStateSnapshot && commercialOpportunityStateHash(record.opportunityStateSnapshot) !== String(record.opportunityStateHash ?? "")) {
+    failures.push("Opportunity state snapshot hash mismatch.");
+  }
+  if (requireCurrent) {
+    if (Number(record.opportunityStateVersion ?? 0) !== Number(opportunity.commercialStateVersion ?? 0)) failures.push("Opportunity state version is not current.");
+    if (String(record.opportunityStateHash ?? "") !== String(opportunity.commercialStateHash ?? "")) failures.push("Opportunity state hash is not current.");
+  }
+  for (const [proposalField, opportunityField] of [
+    ["routeRepositoryId", "routeRepositoryId"],
+    ["routeRevision", "routeRevision"],
+    ["routeGeometryId", "routeGeometryId"],
+    ["routeGeometryHash", "geometryHash"],
+  ]) {
+    if (String(record[proposalField] ?? "") !== String(opportunity[opportunityField] ?? "")) failures.push(`${proposalField} does not match the persisted Opportunity.`);
+  }
+  return failures;
 }
 
 export function currentProposalApproval(record = {}) {
@@ -1236,6 +1269,13 @@ async function handleSave(req, res, user, id = "") {
       proposalId: proposalId || item?.proposalId,
       proposalRecordId: proposalId || item?.proposalRecordId,
     }, user, existing);
+    if (saveAsRevision) {
+      const opportunityFailures = await validateOpportunityStateBinding(normalized);
+      if (opportunityFailures.length) {
+        errorResponse(res, 409, `PROPOSAL GENERATION BLOCKED: ${opportunityFailures.join(" ")}`);
+        return;
+      }
+    }
     const revisionAware = saveAsRevision ? saveImmutableProposalRevision(normalized, user, revisionReason) : normalized;
     saved.push(await saveProposal(
       revisionAware,
@@ -1333,6 +1373,11 @@ async function handleSubmitCustomer(req, res, id, user) {
     errorResponse(res, 409, "Save the active Proposal Revision before submitting it to the customer.");
     return;
   }
+  const opportunityFailures = await validateOpportunityStateBinding(existing, { requireCurrent: false });
+  if (opportunityFailures.length) {
+    errorResponse(res, 409, `CUSTOMER SUBMISSION BLOCKED: ${opportunityFailures.join(" ")}`);
+    return;
+  }
   const body = await readRequestJson(req);
   const explicitCustomerUsers = normalizeUserIds(body.assignedCustomerUsers ?? body.customerUsers ?? body.customerReviewers);
   const customerUsers = unique([...asArray(existing.assignedCustomerUsers), ...explicitCustomerUsers, ...defaultCustomerUserIds(existing.customerId)]);
@@ -1382,7 +1427,28 @@ async function handleSubmitCustomer(req, res, id, user) {
     assignedCustomerUsers: customerUsers,
     customerReviewPackageId: customerPortal?.reviewPackage?.customerReviewPackageId,
   });
-  jsonResponse(res, 200, { proposal: saved, customerReviewPackage: customerPortal?.reviewPackage, invitations: customerPortal?.invitations ?? [] });
+  const opportunity = await loadRecord(DIRS.commercialOpportunities, saved.opportunityId).catch(() => null);
+  let savedOpportunity = null;
+  if (opportunity?.commercialWorkingState?.schemaVersion === "CIP-067") {
+    savedOpportunity = await saveOpportunity(normalizeCommercialOpportunity({
+      ...opportunity,
+      state: "CUSTOMER_REVIEW",
+      proposalId: saved.proposalId,
+      proposalRevisionId: saved.proposalRevisionId,
+      proposalHash: saved.proposalHash,
+      commercialWorkingState: {
+        ...opportunity.commercialWorkingState,
+        currentLifecycleState: "CUSTOMER_REVIEW",
+        proposalReferences: {
+          proposalId: saved.proposalId,
+          proposalRevisionId: saved.proposalRevisionId,
+          proposalHash: saved.proposalHash,
+        },
+        lastGovernedRevisionState: "SUBMITTED_TO_CUSTOMER",
+      },
+    }, user, opportunity), user, "runtime.opportunity.submitted.customer", "Opportunity advanced to Customer Review through its exact saved Proposal Revision.");
+  }
+  jsonResponse(res, 200, { proposal: saved, opportunity: savedOpportunity, customerReviewPackage: customerPortal?.reviewPackage, invitations: customerPortal?.invitations ?? [] });
 }
 
 async function handleWithdraw(res, id, user) {

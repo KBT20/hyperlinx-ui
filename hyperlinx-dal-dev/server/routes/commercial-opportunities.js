@@ -14,9 +14,54 @@ import {
   unwrapBody,
   updateTransactionManifest,
 } from "./_shared.js";
+import { createHash } from "node:crypto";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
 
 const ROLE_KEYS = ["contributors", "reviewers", "approvers", "executives"];
+
+function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+export function commercialOpportunityStateSnapshot(record = {}) {
+  return {
+    schemaVersion: "CIP-067",
+    opportunityId: String(record.opportunityId ?? ""),
+    accountId: String(record.accountId ?? ""),
+    customerId: String(record.customerId ?? ""),
+    customerTwinId: String(record.customerTwinId ?? record.customerTwinReference ?? ""),
+    organizationId: String(record.organizationId ?? ""),
+    commercialStateVersion: Number(record.commercialStateVersion ?? 0),
+    state: String(record.state ?? record.status ?? ""),
+    productId: String(record.productId ?? ""),
+    productName: String(record.productName ?? ""),
+    productDoctrineId: String(record.productDoctrineId ?? ""),
+    productDoctrineVersion: String(record.productDoctrineVersion ?? ""),
+    productDoctrineHash: String(record.productDoctrineHash ?? ""),
+    routeRepositoryId: String(record.routeRepositoryId ?? record.routeRepositoryRef?.routeRepositoryId ?? ""),
+    routeRevision: Number(record.routeRevision ?? 0),
+    routeGeometryId: String(record.routeGeometryId ?? ""),
+    geometryHash: String(record.geometryHash ?? ""),
+    commercialWorkingState: structuredClone(record.commercialWorkingState ?? {}),
+    estimate: structuredClone(record.estimate ?? {}),
+    commercialWorkbook: structuredClone(record.commercialWorkbook ?? {}),
+    doctrineAssumptions: structuredClone(record.doctrineAssumptions ?? {}),
+    commercialOverrides: structuredClone(record.commercialOverrides ?? []),
+    constructionMixSnapshot: structuredClone(record.constructionMixSnapshot ?? {}),
+    commercialNotes: String(record.commercialNotes ?? ""),
+    proposalId: String(record.proposalId ?? ""),
+    proposalRevisionId: String(record.proposalRevisionId ?? ""),
+    proposalHash: String(record.proposalHash ?? ""),
+  };
+}
+
+export function commercialOpportunityStateHash(snapshot) {
+  return createHash("sha256").update(canonicalJson(snapshot)).digest("hex");
+}
 
 function asArray(value) {
   if (Array.isArray(value)) return value;
@@ -146,8 +191,14 @@ export function normalizeCommercialOpportunity(record = {}, user, existing = nul
     ...asArray(existing?.activityHistory),
     ...asArray(record.activityHistory ?? record.historyIds),
   ]);
+  const cip067WorkingState = record?.commercialWorkingState?.schemaVersion === "CIP-067" || existing?.commercialWorkingState?.schemaVersion === "CIP-067";
+  const commercialStateVersion = cip067WorkingState
+    ? options.bumpVersion === false
+      ? Number(existing?.commercialStateVersion ?? record.commercialStateVersion ?? 1)
+      : Number(existing?.commercialStateVersion ?? 0) + 1
+    : existing?.commercialStateVersion ?? record.commercialStateVersion;
 
-  return {
+  const normalized = {
     ...existing,
     ...record,
     opportunityId,
@@ -176,6 +227,9 @@ export function normalizeCommercialOpportunity(record = {}, user, existing = nul
     lifecycleState: record.lifecycleState ?? lifecycleForStatus(status),
     version,
     status,
+    state: record.state ?? status,
+    customerTwinId: record.customerTwinId ?? record.customerTwinReference ?? existing?.customerTwinId ?? existing?.customerTwinReference ?? "",
+    commercialStateVersion,
     selectedScopeId: record.selectedScopeId ?? existing?.selectedScopeId ?? "",
     activeView: record.activeView ?? existing?.activeView ?? "networks",
     commercialDraftType: record.commercialDraftType ?? existing?.commercialDraftType ?? null,
@@ -189,11 +243,20 @@ export function normalizeCommercialOpportunity(record = {}, user, existing = nul
     historyIds: activityHistory,
     createdDate: existing?.createdDate ?? existing?.createdAt ?? record.createdDate ?? record.createdAt ?? timestamp,
     modifiedDate: timestamp,
+    modifiedBy: user.name,
+    modifiedById: user.userId,
     createdAt: existing?.createdAt ?? record.createdAt ?? timestamp,
     updatedAt: timestamp,
     archivedAt: status === "ARCHIVED" ? (record.archivedAt ?? existing?.archivedAt ?? timestamp) : record.archivedAt ?? existing?.archivedAt,
     noScopeVersionCreation: true,
     noInventoryMutation: true,
+  };
+  if (!cip067WorkingState) return normalized;
+  const commercialStateSnapshot = commercialOpportunityStateSnapshot(normalized);
+  return {
+    ...normalized,
+    commercialStateSnapshot,
+    commercialStateHash: commercialOpportunityStateHash(commercialStateSnapshot),
   };
 }
 

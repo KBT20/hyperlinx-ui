@@ -12,7 +12,7 @@ import {
 } from "./_shared.js";
 import { findAlphaUserById, runtimeWorkspaceForUser, userFromBearerToken, userHasPermission } from "./auth.js";
 import { normalizeCommercialOpportunity, readOpportunity, saveOpportunity } from "./commercial-opportunities.js";
-import { normalizeProposalRecord, readProposal, saveProposal } from "./proposal-drafts.js";
+import { normalizeProposalRecord, readProposal, saveImmutableProposalRevision, saveProposal, validateOpportunityStateBinding } from "./proposal-drafts.js";
 import { ensureProductFulfillment } from "./product-fulfillment.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 import { listReviewQueue } from "./engineering-certification.js";
@@ -366,6 +366,9 @@ async function ensureCommercialDraft(input, user, lifecycleId, opportunity, cust
     objectName: draft.name,
     customerId: customerIdFor(input),
     opportunityId: opportunity.opportunityId,
+    opportunityStateVersion: input.opportunityStateVersion,
+    opportunityStateHash: input.opportunityStateHash,
+    opportunityStateSnapshot: input.opportunityStateSnapshot,
   }, "Commercial Draft linked as child of Commercial Opportunity.");
   return draft;
 }
@@ -441,6 +444,10 @@ async function ensureProposal(input, user, lifecycleId, opportunity, commercialD
     centerline: input.centerline ?? input.proposal?.centerline ?? routeGeometry,
     centerlineRoute: input.centerlineRoute ?? input.proposal?.centerlineRoute ?? input.commercialDraft?.centerlineRoute,
     route: input.route ?? input.proposal?.route,
+    routeRepositoryId: input.routeRepositoryId ?? input.proposal?.routeRepositoryId,
+    routeRevision: input.routeRevision ?? input.proposal?.routeRevision,
+    routeGeometryId: input.routeGeometryId ?? input.proposal?.routeGeometryId,
+    routeGeometryHash: input.routeGeometryHash ?? input.proposal?.routeGeometryHash,
     routeSegments: input.routeSegments ?? input.proposal?.routeSegments,
     routeMiles: input.routeMiles ?? input.pricingSummary?.routeMiles ?? input.productConfiguration?.routeMiles,
     proposalDocumentReferences: unique(input.proposalDocumentReferences ?? ["Runtime lifecycle proposal"]),
@@ -448,7 +455,13 @@ async function ensureProposal(input, user, lifecycleId, opportunity, commercialD
     noScopeVersionCreation: true,
     noInventoryMutation: true,
   }, user, null);
-  const saved = await saveProposal(proposal, user, "PROPOSAL_CREATED", "Proposal Runtime Object generated from Commercial Draft by Runtime Lifecycle Bridge.", { lifecycleId, commercialDraftId: commercialDraft.objectId });
+  let proposalForSave = proposal;
+  if (opportunity?.commercialWorkingState?.schemaVersion === "CIP-067") {
+    const failures = await validateOpportunityStateBinding(proposal);
+    if (failures.length) throw new Error(`PROPOSAL GENERATION BLOCKED: ${failures.join(" ")}`);
+    proposalForSave = saveImmutableProposalRevision(proposal, user, "Runtime lifecycle proposal generated from exact saved Opportunity state.");
+  }
+  const saved = await saveProposal(proposalForSave, user, "PROPOSAL_CREATED", "Proposal Runtime Object generated from Commercial Draft by Runtime Lifecycle Bridge.", { lifecycleId, commercialDraftId: commercialDraft.objectId });
   await persistRelationshipOnce({
     fromObjectId: commercialDraft.runtimeId,
     fromObjectType: "COMMERCIAL_DRAFT",

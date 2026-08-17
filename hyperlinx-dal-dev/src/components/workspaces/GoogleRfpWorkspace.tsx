@@ -67,6 +67,7 @@ import {
   downloadRuntimeArtifact,
   duplicateProposalRuntimeObject,
   listCommercialDraftIofPackages,
+  loadAccountCustomerTwin,
   loadRuntimeRehydration,
   listEngineeringReviewQueue,
   openEngineeringPackage,
@@ -85,6 +86,7 @@ import {
   type ProposalRuntimeObject,
   type RuntimeRehydrationState,
   type RuntimeLifecycleBridgeState,
+  type AccountCustomerTwin,
 } from "../../api/teralinxRuntime";
 import {
   evaluateProposalAuthorityState,
@@ -487,6 +489,14 @@ interface CommercialOpportunityRecord {
   doctrineVersion?: string;
   customerSnapshot?: Record<string, unknown>;
   customerTwinReference?: string;
+  customerTwinId?: string;
+  commercialStateVersion?: number;
+  commercialStateHash?: string;
+  commercialStateSnapshot?: Record<string, unknown>;
+  commercialWorkingState?: Record<string, unknown>;
+  state?: string;
+  modifiedBy?: string;
+  modifiedById?: string;
   routeRepositoryId?: string;
   routeRepositoryRef?: {
     routeRepositoryId: string;
@@ -521,6 +531,8 @@ interface CommercialOpportunityRecord {
   restoreSnapshotVersion?: string;
   commercialSnapshot?: Record<string, unknown>;
   proposalId?: string;
+  proposalRevisionId?: string;
+  proposalHash?: string;
   commercialRepositoryId?: string;
   commercialRevisionId?: string;
   revisionId?: string;
@@ -3221,6 +3233,7 @@ export default function GoogleRfpWorkspace() {
   const [accountDraft, setAccountDraft] = useState<AccountEditorState>(() => emptyAccountEditor(currentUserName));
   const [contactDraft, setContactDraft] = useState<ContactEditorState>(() => contactEditorDefaults());
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [accountDealTwin, setAccountDealTwin] = useState<AccountCustomerTwin | null>(null);
   const [selectedProductId, setSelectedProductId] = useState(POINT_TO_POINT_LONG_HAUL_PRODUCT_ID);
   const [activeView, setActiveView] = useState<CommercialWorkspaceView>("networks");
   const [activeDesignMode, setActiveDesignMode] = useState<CommercialDesignMode>("EXTEND_EXISTING_NETWORK");
@@ -3387,14 +3400,16 @@ export default function GoogleRfpWorkspace() {
     if (!session || !selectedAccountId) {
       setGovernedContacts([]);
       setRuntimeHistory([]);
+      setAccountDealTwin(null);
       return;
     }
     let cancelled = false;
-    Promise.all([CustomerRepository.listContacts(selectedAccountId), CustomerRepository.listHistory()])
-      .then(([contacts, history]) => {
+    Promise.all([CustomerRepository.listContacts(selectedAccountId), CustomerRepository.listHistory(), loadAccountCustomerTwin(selectedAccountId, session)])
+      .then(([contacts, history, customerTwin]) => {
         if (cancelled) return;
         setGovernedContacts(contacts.filter((contact) => contact.accountId === selectedAccountId));
         setRuntimeHistory(history.filter((event) => event.accountId === selectedAccountId || event.customerId === selectedAccountId || event.customerId === customerIdForAccount(selectedAccountId)));
+        setAccountDealTwin(customerTwin);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -3696,6 +3711,18 @@ export default function GoogleRfpWorkspace() {
     () => commercialOpportunities.filter((record) => record.accountId === selectedAccount.accountId),
     [commercialOpportunities, selectedAccount.accountId],
   );
+  const accountOpportunityGroups = useMemo(() => {
+    const lifecycleOrder = ["AUTHORIZED", "COUNTERSIGNED", "CUSTOMER_SIGNED", "SERVICE_ORDER", "CERTIFIED", "ENGINEERING", "ACCEPTED", "CUSTOMER_REVIEW", "PROPOSED", "DRAFT", "SAVED", "RECENT", "ARCHIVED"];
+    const dealState = new Map((accountDealTwin?.deals ?? []).map((deal) => [deal.opportunityId, deal.currentState]));
+    const groups = new Map<string, CommercialOpportunityRecord[]>();
+    for (const record of accountCommercialOpportunities) {
+      const state = record.status === "ARCHIVED" ? "ARCHIVED" : String(dealState.get(record.opportunityId) ?? record.state ?? record.status ?? "DRAFT").toUpperCase();
+      groups.set(state, [...(groups.get(state) ?? []), record]);
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => (lifecycleOrder.indexOf(a) < 0 ? 999 : lifecycleOrder.indexOf(a)) - (lifecycleOrder.indexOf(b) < 0 ? 999 : lifecycleOrder.indexOf(b)))
+      .map(([state, records]) => ({ state, records: records.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt))) }));
+  }, [accountCommercialOpportunities, accountDealTwin?.deals]);
   const recentCommercialOpportunities = useMemo(
     () => [...accountCommercialOpportunities]
       .filter((record) => record.status !== "ARCHIVED")
@@ -4463,9 +4490,32 @@ export default function GoogleRfpWorkspace() {
   }
 
   async function handleAdvanceRuntimeLifecycleBridge(trigger = "QUOTE_READY_FOR_CUSTOMER", overrides: Record<string, unknown> = {}) {
+    let governedOverrides = overrides;
+    if (trigger === "QUOTE_READY_FOR_CUSTOMER") {
+      if (!activeCommercialOpportunity) {
+        setRuntimeLifecycleNotice("PROPOSAL GENERATION BLOCKED: save a governed Opportunity before advancing the lifecycle.");
+        return;
+      }
+      const authoritativeOpportunity = await upsertCommercialOpportunity(buildCommercialOpportunityRecord("SAVED", { overrideName: opportunityNameDraft }));
+      if (!authoritativeOpportunity?.commercialStateHash || !authoritativeOpportunity.commercialStateSnapshot) {
+        setRuntimeLifecycleNotice("PROPOSAL GENERATION BLOCKED: authoritative Opportunity persistence or verification failed.");
+        return;
+      }
+      governedOverrides = {
+        ...overrides,
+        opportunityId: authoritativeOpportunity.opportunityId,
+        opportunityStateVersion: authoritativeOpportunity.commercialStateVersion,
+        opportunityStateHash: authoritativeOpportunity.commercialStateHash,
+        opportunityStateSnapshot: authoritativeOpportunity.commercialStateSnapshot,
+        routeRepositoryId: authoritativeOpportunity.routeRepositoryId,
+        routeRevision: authoritativeOpportunity.routeRevision,
+        routeGeometryId: authoritativeOpportunity.routeGeometryId,
+        routeGeometryHash: authoritativeOpportunity.geometryHash,
+      };
+    }
     setRuntimeLifecyclePending(true);
     try {
-      const result = await advanceRuntimeLifecycleBridge(runtimeLifecycleBridgeInput(trigger, overrides), session);
+      const result = await advanceRuntimeLifecycleBridge(runtimeLifecycleBridgeInput(trigger, governedOverrides), session);
       setRuntimeLifecycleState(result.lifecycle);
       if (result.opportunity) {
         const opportunity = result.opportunity as unknown as CommercialOpportunityRecord;
@@ -4483,20 +4533,18 @@ export default function GoogleRfpWorkspace() {
     }
   }
 
-  useEffect(() => {
-    if (
-      opportunityWorkflowState !== "QUICK_QUOTE_READY" ||
-      runtimeLifecycleState ||
-      runtimeLifecyclePending ||
-      !session ||
-      !canManageProposalRuntime
-    ) return;
-    void handleAdvanceRuntimeLifecycleBridge("QUOTE_READY_FOR_CUSTOMER");
-  }, [opportunityWorkflowState, runtimeLifecycleState?.lifecycleId, runtimeLifecyclePending, session?.token, canManageProposalRuntime]);
-
   async function saveCurrentRuntimeProposal(status: ProposalRuntimeObject["status"] = "DRAFT") {
     if (!canManageProposalRuntime) {
       setProposalRuntimeNotice("Only commercial proposal authority may create or update Commercial Proposals.");
+      return null;
+    }
+    if (!activeCommercialOpportunity) {
+      setProposalRuntimeNotice("PROPOSAL GENERATION BLOCKED: save a governed Opportunity before generating a Proposal Revision.");
+      return null;
+    }
+    const authoritativeOpportunity = await upsertCommercialOpportunity(buildCommercialOpportunityRecord("SAVED", { overrideName: opportunityNameDraft }));
+    if (!authoritativeOpportunity?.commercialStateHash || !authoritativeOpportunity.commercialStateSnapshot) {
+      setProposalRuntimeNotice("PROPOSAL GENERATION BLOCKED: authoritative Opportunity persistence or verification failed.");
       return null;
     }
     const routePlan = activeLiveSession?.routePlan ?? selectedRoutePlans[0];
@@ -4508,8 +4556,8 @@ export default function GoogleRfpWorkspace() {
     try {
       const timestamp = new Date().toISOString();
       const geometry = activeLiveSession?.activeEditableRouteGeometry ?? routePlan.stationedCorridor?.centerlineRoute.geometry ?? routePlan.proposedGraph?.centerlineRoute?.geometry ?? [];
-      const proposalRouteAuthority = activeCommercialOpportunity?.routeRepositorySnapshot ?? generatedRouteRepositorySnapshot;
-      const proposalId = activeProposalRuntime?.proposalId ?? currentCommercialRecordIds.proposalId;
+      const proposalRouteAuthority = authoritativeOpportunity.routeRepositorySnapshot ?? generatedRouteRepositorySnapshot;
+      const proposalId = activeProposalRuntime?.proposalId ?? authoritativeOpportunity.proposalId ?? currentCommercialRecordIds.proposalId;
       const proposalRecord = {
         ...(activeProposalRuntime ?? {}),
         saveProposalRevision: true,
@@ -4522,7 +4570,7 @@ export default function GoogleRfpWorkspace() {
         proposalNumber: activeProposalRuntime?.proposalNumber ?? proposalId,
         customerId: customerIdForAccount(selectedAccount.accountId),
         accountId: selectedAccount.accountId,
-        opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId || routePlan.routeRequirement.routeRequirementId,
+        opportunityId: authoritativeOpportunity.opportunityId,
         organizationId: currentOrganizationId,
         workspaceId: currentWorkspaceId,
         productId: selectedProductOption.productId,
@@ -4580,25 +4628,28 @@ export default function GoogleRfpWorkspace() {
         commercialAssumptionIds: [selectedAssumptionState.stateId],
         dealPointIds: selectedScope.routeRequirementIds,
         runtimeObjectIds: [
-          activeCommercialOpportunity?.runtimeObjectId,
+          authoritativeOpportunity.runtimeObjectId,
           selectedImportedCustomerDesignImport?.designImportId,
           ...activeCommercialDraftNetworks.map((network) => network.networkId),
         ].filter(Boolean),
         runtimeRelationshipIds: [
-          activeCommercialOpportunity?.opportunityId ? `DERIVED_FROM:${activeCommercialOpportunity.opportunityId}` : "",
+          authoritativeOpportunity.opportunityId ? `DERIVED_FROM:${authoritativeOpportunity.opportunityId}` : "",
           routePlan.routeRequirement.routeRequirementId ? `PROPOSES_ROUTE:${routePlan.routeRequirement.routeRequirementId}` : "",
         ].filter(Boolean),
         runtimeEvidenceIds: activeProposalRuntime?.runtimeEvidenceIds ?? [],
         existingInventoryReferences: activeExistingReferenceNetworkIds,
         customerDesignReferences: selectedImportedCustomerDesignImport ? [selectedImportedCustomerDesignImport.designId] : [],
         customerTwinReference: accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
-        routeRepositoryId: proposalRouteAuthority?.routeRepositoryId ?? activeCommercialOpportunity?.routeRepositoryId,
+        routeRepositoryId: proposalRouteAuthority?.routeRepositoryId ?? authoritativeOpportunity.routeRepositoryId,
         routeId: proposalRouteAuthority?.routeId,
-        routeRevision: proposalRouteAuthority?.routeRevision ?? activeCommercialOpportunity?.routeRevision,
-        routeGeometryId: proposalRouteAuthority?.routeGeometryId ?? activeCommercialOpportunity?.routeGeometryId,
-        routeGeometryHash: proposalRouteAuthority?.geometryHash ?? activeCommercialOpportunity?.geometryHash,
-        aSite: proposalRouteAuthority?.endpointAuthority?.aSite ?? activeCommercialOpportunity?.aSite,
-        zSite: proposalRouteAuthority?.endpointAuthority?.zSite ?? activeCommercialOpportunity?.zSite,
+        routeRevision: proposalRouteAuthority?.routeRevision ?? authoritativeOpportunity.routeRevision,
+        routeGeometryId: proposalRouteAuthority?.routeGeometryId ?? authoritativeOpportunity.routeGeometryId,
+        routeGeometryHash: proposalRouteAuthority?.geometryHash ?? authoritativeOpportunity.geometryHash,
+        aSite: proposalRouteAuthority?.endpointAuthority?.aSite ?? authoritativeOpportunity.aSite,
+        zSite: proposalRouteAuthority?.endpointAuthority?.zSite ?? authoritativeOpportunity.zSite,
+        opportunityStateVersion: authoritativeOpportunity.commercialStateVersion,
+        opportunityStateHash: authoritativeOpportunity.commercialStateHash,
+        opportunityStateSnapshot: authoritativeOpportunity.commercialStateSnapshot,
         routeSnapshot: proposalRouteAuthority ? {
           routeRepositoryId: proposalRouteAuthority.routeRepositoryId,
           routeId: proposalRouteAuthority.routeId,
@@ -4636,6 +4687,22 @@ export default function GoogleRfpWorkspace() {
     };
       const saved = await ProposalRepository.saveProposal<any>(proposalRecord, session) as ProposalRuntimeObject;
       upsertProposalRuntimeRecord(saved);
+      const linkedOpportunity = await OpportunityRepository.saveOpportunity(opportunityRecordForRepository({
+        ...authoritativeOpportunity,
+        proposalId: saved.proposalId,
+        proposalRevisionId: saved.proposalRevisionId,
+        proposalHash: saved.proposalHash,
+        commercialWorkingState: {
+          ...(authoritativeOpportunity.commercialWorkingState ?? {}),
+          proposalReferences: {
+            proposalId: saved.proposalId,
+            proposalRevisionId: saved.proposalRevisionId,
+            proposalHash: saved.proposalHash,
+          },
+          lastGovernedRevisionState: "PROPOSAL_REVISION_SAVED",
+        },
+      }), session);
+      setCommercialOpportunities((prev) => [linkedOpportunity, ...prev.filter((candidate) => candidate.opportunityId !== linkedOpportunity.opportunityId)]);
       setProposalRuntimeNotice(`${saved.proposalNumber} revision ${saved.revisionNumber ?? saved.version} saved immutably.`);
       return saved;
     } catch (error) {
@@ -4674,6 +4741,7 @@ export default function GoogleRfpWorkspace() {
         : { proposal: await submitProposalToCustomer(proposal.proposalId, input, session), invitations: [] };
       const saved = portalResult.proposal;
       upsertProposalRuntimeRecord(saved);
+      setAccountDealTwin(await loadAccountCustomerTwin(selectedAccount.accountId, session));
       setCustomerEnrollmentLinks(portalResult.invitations);
       const invitationSummary = portalResult.invitations.length
         ? ` Enrollment links issued once for ${portalResult.invitations.map((item) => item.principalId).join(", ")}.`
@@ -4692,6 +4760,11 @@ export default function GoogleRfpWorkspace() {
     if (!reason.trim()) return;
     setProposalRuntimeActionPending(true);
     try {
+      if (!activeCommercialOpportunity) throw new Error("Save a governed Opportunity before creating a Proposal Revision.");
+      const authoritativeOpportunity = await upsertCommercialOpportunity(buildCommercialOpportunityRecord("SAVED", { overrideName: opportunityNameDraft }));
+      if (!authoritativeOpportunity?.commercialStateHash || !authoritativeOpportunity.commercialStateSnapshot) {
+        throw new Error("Authoritative Opportunity persistence or verification failed.");
+      }
       const saved = await createProposalRevision(activeProposalRuntime.proposalId, {
         reason,
         basisProposalRevisionId: activeProposalRuntime.proposalRevisionId,
@@ -4701,6 +4774,13 @@ export default function GoogleRfpWorkspace() {
             grossMarginDollars: selectedPricingSummary.reconciliation.grossMarginDollars,
             grossMarginPercent: selectedPricingSummary.reconciliation.grossMarginPercent,
           },
+          opportunityStateVersion: authoritativeOpportunity.commercialStateVersion,
+          opportunityStateHash: authoritativeOpportunity.commercialStateHash,
+          opportunityStateSnapshot: authoritativeOpportunity.commercialStateSnapshot,
+          routeRepositoryId: authoritativeOpportunity.routeRepositoryId,
+          routeRevision: authoritativeOpportunity.routeRevision,
+          routeGeometryId: authoritativeOpportunity.routeGeometryId,
+          routeGeometryHash: authoritativeOpportunity.geometryHash,
         },
         changes: {
           changedRuntimeObjectIds: activeProposalRuntime.runtimeObjectIds,
@@ -6566,6 +6646,7 @@ export default function GoogleRfpWorkspace() {
     const nextVersion = options.duplicate || !existing ? 1 : Math.max(1, Number(existing.version ?? 0) + 1);
     const recordIds = commercialRecordIdsForOpportunity(opportunityName, nextVersion);
     const opportunityId = existing?.opportunityId ?? pendingGeneratedRouteSnapshot?.opportunityId ?? `OPP-${recordIds.slug}-${Date.now()}`;
+    const canonicalProposalId = options.duplicate ? recordIds.proposalId : activeProposalRuntime?.proposalId ?? existing?.proposalId ?? recordIds.proposalId;
     const sourceFiles = [
       ...((existing?.sourceFiles ?? []) as Array<Record<string, unknown>>),
       ...(options.sourceFile ? [options.sourceFile] : []),
@@ -6668,14 +6749,14 @@ export default function GoogleRfpWorkspace() {
       ? {
           ...existing.proposalPreview,
           proposalPreviewId: recordIds.proposalPreviewId,
-          proposalId: recordIds.proposalId,
+          proposalId: canonicalProposalId,
           revision: `v${nextVersion}`,
           updatedAt: timestamp,
         }
       : {
           proposalPreviewId: recordIds.proposalPreviewId,
           templateId: TemplateRepository.proposalTemplateId(),
-          proposalId: recordIds.proposalId,
+          proposalId: canonicalProposalId,
           customer: selectedAccount.name,
           opportunity: opportunityName,
           product: selectedProductOption.productName,
@@ -6691,14 +6772,14 @@ export default function GoogleRfpWorkspace() {
           ...existing.serviceOrderPreview,
           serviceOrderPreviewId: recordIds.serviceOrderPreviewId,
           sourceOpportunityId: opportunityId,
-          sourceProposalId: recordIds.proposalId,
+          sourceProposalId: canonicalProposalId,
           updatedAt: timestamp,
         }
       : {
           serviceOrderPreviewId: recordIds.serviceOrderPreviewId,
           templateId: TemplateRepository.serviceOrderTemplateId(),
           sourceOpportunityId: opportunityId,
-          sourceProposalId: recordIds.proposalId,
+          sourceProposalId: canonicalProposalId,
           certifiedDraftIofPackage: displayedDraftIofPackage?.status === "CERTIFIED" ? displayedDraftIofPackage.packageId : "CERTIFIED_PACKAGE_PLACEHOLDER",
           legalBusinessTerms: "Commercial Release 2 placeholder",
           noScopeVersionCreation: true,
@@ -6711,6 +6792,55 @@ export default function GoogleRfpWorkspace() {
       ...(commercialDraft?.financialValidationWarnings ?? []),
       ...((commercialDraft?.unknownQuantities ?? []).map((item) => item.label)),
     ].filter(Boolean);
+    const commercialWorkingState = {
+      schemaVersion: "CIP-067",
+      opportunityId,
+      accountId: selectedAccount.accountId,
+      customerTwinId: accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
+      product: {
+        productId: selectedProductOption.productId,
+        productName: selectedProductOption.productName,
+        productDoctrineId: selectedProductDoctrine?.doctrineId,
+        productDoctrineVersion: selectedProductDoctrine?.doctrineVersion,
+        productDoctrineHash: selectedProductDoctrine ? POINT_TO_POINT_LONG_HAUL_DOCTRINE_HASH : undefined,
+      },
+      route: routeRepositorySnapshot ? {
+        routeRepositoryId: routeRepositorySnapshot.routeRepositoryId,
+        routeRevision: routeRepositorySnapshot.routeRevision,
+        routeGeometryId: routeRepositorySnapshot.routeGeometryId,
+        geometryHash: routeRepositorySnapshot.geometryHash,
+      } : null,
+      assumptionState: selectedAssumptionState,
+      civilMixCalibration: selectedCivilMixCalibration,
+      estimateControls: transparentEstimateControls,
+      estimate: estimateSnapshot,
+      economics: {
+        constructionCost: estimateSnapshot.constructionCost,
+        sellPrice: estimateSnapshot.sellPrice,
+        mrc: estimateSnapshot.mrc,
+        lifecycleValue: estimateSnapshot.lifecycleValue,
+        grossMarginDollars: estimateSnapshot.grossMarginDollars,
+        grossMarginPercent: estimateSnapshot.grossMarginPercent,
+        termMonths: selectedProductOption.defaultTermYears * 12,
+      },
+      quantities: commercialDraft?.transparentEstimate.physicalQuantities ?? {},
+      assumptions: commercialOverrides,
+      specifications: transparentEstimateControls.projectConfiguration,
+      commercialRequirements: selectedScope.routeRequirementIds,
+      customerRequirements: {
+        proposalRecipientContactIds,
+        customerReviewContactIds,
+        approvalAuthorityContactIds,
+        sofRecipientContactIds,
+      },
+      proposalReferences: {
+        proposalId: activeProposalRuntime?.proposalId ?? existing?.proposalId ?? canonicalProposalId,
+        proposalRevisionId: activeProposalRuntime?.proposalRevisionId ?? existing?.proposalRevisionId ?? null,
+        proposalHash: activeProposalRuntime?.proposalHash ?? existing?.proposalHash ?? null,
+      },
+      currentLifecycleState: existing?.state ?? existing?.status ?? status,
+      updatedAt: timestamp,
+    };
     const revisionHistory = RevisionRepository.appendRevision(
       { revisionHistory: (existing?.revisionHistory ?? []) as Array<Record<string, unknown>> },
       {
@@ -6718,7 +6848,7 @@ export default function GoogleRfpWorkspace() {
         event: options.duplicate ? "SAVE_AS" : existing ? "SAVE" : "CREATE",
         opportunityId,
         opportunityName,
-        proposalId: recordIds.proposalId,
+        proposalId: canonicalProposalId,
         workbookId: recordIds.workbookId,
         serviceOrderPreviewId: recordIds.serviceOrderPreviewId,
         routeId: routeRepositoryRef?.routeId ?? commercialDraft?.routeId ?? sourceRoute?.routeId ?? selectedScope.scopeId,
@@ -6753,6 +6883,7 @@ export default function GoogleRfpWorkspace() {
         contacts: selectedAccount.contacts,
       },
       customerTwinReference: accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
+      customerTwinId: accountCustomerTwin?.customerTwinId ?? `CUSTOMER-TWIN-${selectedAccount.accountId}`,
       routeRepositoryId: routeRepositoryRef?.routeRepositoryId,
       routeRepositoryRef,
       routeRepositorySnapshot,
@@ -6783,6 +6914,7 @@ export default function GoogleRfpWorkspace() {
       constructionMixSnapshot,
       riskSnapshot,
       commercialNotes: existing?.commercialNotes ?? "",
+      commercialWorkingState,
       importedEvidenceReferences: routeRepositorySnapshot?.importedEvidence ?? [],
       restoreSnapshotVersion: "CIP-014C",
       commercialSnapshot: {
@@ -6802,12 +6934,13 @@ export default function GoogleRfpWorkspace() {
         serviceOrderPreview: serviceOrderPreviewSnapshot,
         commercialOverrides,
         constructionMix: constructionMixSnapshot,
+        commercialWorkingState,
         risks: riskSnapshot,
         attachments: attachmentMetadata,
         importedEvidenceReferences: routeRepositorySnapshot?.importedEvidence ?? [],
         updatedAt: timestamp,
       },
-      proposalId: recordIds.proposalId,
+      proposalId: canonicalProposalId,
       proposalPreviewId: recordIds.proposalPreviewId,
       proposalStatus,
       proposalPreview: proposalPreviewSnapshot,
@@ -7318,6 +7451,21 @@ export default function GoogleRfpWorkspace() {
 
     await runRestoreStep("map", "Map", () => {
       resetCommercialOpportunityWorkingState({ preserveActiveOpportunity: true });
+      const workingState = objectRecord(record.commercialWorkingState);
+      const workingProduct = objectRecord(workingState?.product);
+      const restoredProductId = String(workingProduct?.productId ?? record.productId ?? "");
+      if (restoredProductId && LAYER_1_PRODUCT_OPTIONS.some((product) => product.productId === restoredProductId)) {
+        setSelectedProductId(restoredProductId);
+      }
+      const restoredAssumptionState = objectRecord(workingState?.assumptionState);
+      if (restoredAssumptionState?.stateId && objectRecord(restoredAssumptionState.civilMix)) {
+        setAssumptionStates([restoredAssumptionState as unknown as BudgetAssumptionState]);
+        setSelectedAssumptionStateId(String(restoredAssumptionState.stateId));
+      }
+      const restoredEstimateControls = objectRecord(workingState?.estimateControls);
+      if (restoredEstimateControls && objectRecord(restoredEstimateControls.production) && objectRecord(restoredEstimateControls.financial)) {
+        setTransparentEstimateControls(restoredEstimateControls as unknown as TransparentEstimateControls);
+      }
       if (record.accountId && record.accountId !== selectedAccountId) setSelectedAccountId(record.accountId);
       setCommercialOpportunities((prev) => [record, ...prev.filter((candidate) => candidate.opportunityId !== record.opportunityId)]);
       setActiveCommercialOpportunityId(record.opportunityId);
@@ -7327,6 +7475,7 @@ export default function GoogleRfpWorkspace() {
       setCommercialDraftType(safeRestoreDraftType(record.commercialDraftType, validation.draft));
       setActiveDesignMode(validation.draft ? "CUSTOMER_PROPOSAL_REVIEW" : "NEW_INDEPENDENT_GRAPH");
       if (record.liveSession) setLiveCommercialSession(record.liveSession);
+      if (record.proposalRevisionId) setReleaseProposalRevisionId(record.proposalRevisionId);
       if (record.selectedImportId && record.selectedRouteId && record.customerDesignImportSnapshot && record.selectedRouteSnapshot) {
         setSelectedCustomerDesignImportId(record.selectedImportId);
         setSelectedCustomerDesignRouteId(record.selectedRouteId);
@@ -7349,7 +7498,10 @@ export default function GoogleRfpWorkspace() {
 
     await runRestoreStep("workbook", "Workbook", () => {
       if (!hasObjectPayload(record.commercialWorkbook)) throw new Error("Missing workbook.json.");
-      setCommercialWorkbookOpenSections((prev) => new Set([...prev, "proposal-summary"]));
+      const restoredSections = Array.isArray(record.commercialWorkbook?.openSections)
+        ? record.commercialWorkbook.openSections.map(String)
+        : [];
+      setCommercialWorkbookOpenSections(new Set([...restoredSections, "proposal-summary"]));
     });
 
     await runRestoreStep("proposal", "Proposal", () => {
@@ -8525,6 +8677,10 @@ export default function GoogleRfpWorkspace() {
   }
 
   const compactOwner = activeCommercialOpportunity?.owner ?? (accountAcceptedProposal ? "Engineering" : activeLiveSession?.currentOwner ?? "Sales");
+  const activePersistedLifecycleState = accountDealTwin?.deals.find((deal) => deal.opportunityId === activeCommercialOpportunity?.opportunityId)?.currentState
+    ?? activeCommercialOpportunity?.state
+    ?? activeCommercialOpportunity?.status
+    ?? "Unsaved";
   const currentDraftLabel = temporaryImportedRoute
     ? `Temporary Imported Route / ${temporaryImportedRoute.route.name}`
     : selectedImportedCustomerRoute
@@ -10536,7 +10692,7 @@ export default function GoogleRfpWorkspace() {
               ))}
             </select>
           </label>
-          <div><span>Commercial Status</span><b title={activeCommercialOpportunity?.status?.replaceAll("_", " ") ?? "Unsaved"}>{activeCommercialOpportunity?.status?.replaceAll("_", " ") ?? "Unsaved"}</b></div>
+          <div><span>Commercial Status</span><b title={activePersistedLifecycleState.replaceAll("_", " ")}>{activePersistedLifecycleState.replaceAll("_", " ")}</b></div>
           <div><span>Owner</span><b title={compactOwner}>{compactOwner}</b></div>
           <div><span>Created</span><b>{activeCommercialOpportunity?.createdAt ? new Date(activeCommercialOpportunity.createdAt).toLocaleDateString() : "Not saved"}</b></div>
           <div><span>Modified</span><b>{activeCommercialOpportunity?.updatedAt ? new Date(activeCommercialOpportunity.updatedAt).toLocaleDateString() : "Not saved"}</b></div>
@@ -10551,33 +10707,15 @@ export default function GoogleRfpWorkspace() {
             </button>
             <select value="" onChange={(event) => handleOpportunityLibrarySelect(event.currentTarget.value)} aria-label="Open opportunity or library item">
               <option value="">Open Opportunity</option>
-            {recentCommercialOpportunities.length ? (
-              <optgroup label="Recent">
-                {recentCommercialOpportunities.map((record) => (
-                  <option key={`recent-${record.opportunityId}`} value={`opportunity::${record.opportunityId}`}>
-                    {record.name}
+            {accountOpportunityGroups.map((group) => (
+              <optgroup key={`opportunity-state-${group.state}`} label={group.state.replaceAll("_", " ")}>
+                {group.records.map((record) => (
+                  <option key={`${group.state}-${record.opportunityId}`} value={`opportunity::${record.opportunityId}`}>
+                    {record.name} | {record.opportunityId} | {record.productName ?? "Product pending"} | {record.owner ?? "Unassigned"} | {new Date(record.updatedAt).toLocaleDateString()}
                   </option>
                 ))}
               </optgroup>
-            ) : null}
-            {savedCommercialOpportunities.length ? (
-              <optgroup label="Saved">
-                {savedCommercialOpportunities.map((record) => (
-                  <option key={`saved-${record.opportunityId}`} value={`opportunity::${record.opportunityId}`}>
-                    {record.name}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-            {archivedCommercialOpportunities.length ? (
-              <optgroup label="Archived">
-                {archivedCommercialOpportunities.map((record) => (
-                  <option key={`archived-${record.opportunityId}`} value={`opportunity::${record.opportunityId}`}>
-                    {record.name}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
+            ))}
             <optgroup label="Create">
               <option value="new::opportunity">New Opportunity</option>
             </optgroup>

@@ -191,7 +191,8 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
     const opportunity = newest(opportunities.filter((item) => text(item.opportunityId) === opportunityId));
     const proposal = newest(proposals.filter((item) => text(item.opportunityId) === opportunityId));
     const opportunityReviewPackages = reviewPackages.filter((item) => text(item.opportunityId) === opportunityId);
-    const reviewPackage = proposal
+    const lineageAwareReviewPackages = opportunityReviewPackages.filter((item) => item.proposalRevisionId && item.proposalHash);
+    const reviewPackage = proposal?.proposalRevisionId && proposal?.proposalHash && lineageAwareReviewPackages.length
       ? newest(opportunityReviewPackages.filter((item) => (
           text(item.proposalRevisionId) === text(proposal.proposalRevisionId)
           && text(item.proposalHash) === text(proposal.proposalHash)
@@ -219,10 +220,27 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
       lifecycle: CUSTOMER_DEAL_STATES.map((name, index) => ({ name, status: index < currentStateIndex ? "COMPLETE" : index === currentStateIndex ? "CURRENT" : "PENDING" })),
       permittedActions: permittedActions(state, { lens, persona, user, serviceOrder }),
       commercial: {
+        opportunityStateVersion: opportunity?.commercialStateVersion ?? null,
+        opportunityStateHash: opportunity?.commercialStateHash ?? null,
         proposalId: proposal?.proposalId ?? reviewPackage?.proposalId ?? null,
         proposalRevisionId: proposal?.proposalRevisionId ?? reviewPackage?.proposalRevisionId ?? null,
         proposalRevisionNumber: proposal?.proposalRevisionNumber ?? reviewPackage?.proposalRevisionNumber ?? null,
         proposalHash: proposal?.proposalHash ?? reviewPackage?.proposalHash ?? null,
+      },
+      workingOpportunity: {
+        stateVersion: opportunity?.commercialStateVersion ?? null,
+        stateHash: opportunity?.commercialStateHash ?? null,
+        productId: opportunity?.productId ?? null,
+        productName: opportunity?.productName ?? null,
+        productDoctrineId: opportunity?.productDoctrineId ?? null,
+        routeRepositoryId: opportunity?.routeRepositoryId ?? opportunity?.routeRepositoryRef?.routeRepositoryId ?? null,
+        routeRevision: opportunity?.routeRevision ?? null,
+        routeGeometryId: opportunity?.routeGeometryId ?? null,
+        geometryHash: opportunity?.geometryHash ?? null,
+        civilMixCalibration: opportunity?.commercialWorkingState?.civilMixCalibration ?? opportunity?.constructionMixSnapshot ?? null,
+        economics: opportunity?.commercialWorkingState?.economics ?? opportunity?.estimate ?? null,
+        modifiedBy: opportunity?.modifiedBy ?? opportunity?.owner ?? null,
+        modifiedAt: opportunity?.updatedAt ?? null,
       },
       spatial: {
         routeRepositoryId: reviewPackage?.route?.routeRepositoryId ?? opportunity?.routeRepositoryId ?? null,
