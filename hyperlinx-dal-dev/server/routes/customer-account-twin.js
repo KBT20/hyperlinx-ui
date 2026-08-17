@@ -15,17 +15,81 @@ function hasPermission(user, permission) {
   return Array.isArray(user?.permissions) && user.permissions.includes(permission);
 }
 
-function deriveState({ proposal, reviewPackage, engineeringPackage, certifiedPackage, serviceOrder, scopeVersion }) {
+function deriveState({ proposal, reviewPackage, engineeringPackage, certifiedPackage, serviceOrder, scopeVersion, artifactStates }) {
   if (scopeVersion?.scopeVersionId) return "AUTHORIZED";
   if (serviceOrder?.status === "COUNTERSIGNED" || serviceOrder?.countersignedAt) return "COUNTERSIGNED";
   if (serviceOrder?.status === "CUSTOMER_ACCEPTED" || serviceOrder?.customerSignedAt || serviceOrder?.customerSignatureId) return "CUSTOMER_SIGNED";
   if (serviceOrder?.serviceOrderId) return "SERVICE_ORDER";
   if (certifiedPackage?.certifiedPackageId) return "CERTIFIED";
   if (engineeringPackage?.engineeringPackageId) return "ENGINEERING";
-  if (proposal?.approvalState === "APPROVED") return "ACCEPTED";
+  if (artifactStates?.proposal?.state === "ACCEPTED") return "ACCEPTED";
   if (reviewPackage?.customerReviewPackageId) return "CUSTOMER_REVIEW";
   if (proposal?.proposalId && !["DRAFT", "SAVED"].includes(text(proposal.status).toUpperCase())) return "PROPOSED";
   return "DRAFT";
+}
+
+function exactProposalEvidence(item, proposalRevisionId, proposalHash) {
+  return Boolean(item && proposalRevisionId && proposalHash
+    && text(item.proposalRevisionId) === text(proposalRevisionId)
+    && text(item.proposalHash) === text(proposalHash));
+}
+
+export function deriveArtifactStates({ proposal, reviewPackage, portalActions = [], engineeringPackage, certifiedPackage, serviceOrder, customerSignature, countersignature, scopeVersion }) {
+  const proposalRevisionId = text(proposal?.proposalRevisionId ?? reviewPackage?.proposalRevisionId);
+  const proposalHash = text(proposal?.proposalHash ?? reviewPackage?.proposalHash);
+  const exactReviewPackage = exactProposalEvidence(reviewPackage, proposalRevisionId, proposalHash);
+  const acceptance = portalActions.find((item) => item.action === "ACCEPT" && exactProposalEvidence(item, proposalRevisionId, proposalHash));
+  const proposalAccepted = Boolean(exactReviewPackage && (acceptance || proposal?.approvalState === "APPROVED"));
+  const customerSignatureExact = Boolean(customerSignature && serviceOrder
+    && text(customerSignature.serviceOrderId) === text(serviceOrder.serviceOrderId)
+    && text(customerSignature.documentHash) === text(serviceOrder.documentHash));
+  const countersignatureExact = Boolean(countersignature && serviceOrder && customerSignatureExact
+    && text(countersignature.serviceOrderId) === text(serviceOrder.serviceOrderId)
+    && text(countersignature.documentHash) === text(serviceOrder.documentHash)
+    && text(countersignature.customerSignatureId) === text(customerSignature.customerSignatureId));
+  const scopeVersionExact = Boolean(scopeVersion && serviceOrder
+    && text(scopeVersion.scopeVersionId) === text(serviceOrder.scopeVersionId)
+    && (!scopeVersion.serviceOrderId || text(scopeVersion.serviceOrderId) === text(serviceOrder.serviceOrderId)));
+  return {
+    proposal: {
+      state: proposalAccepted ? "ACCEPTED" : exactReviewPackage ? "CUSTOMER_REVIEW" : text(proposal?.status, proposal ? "DRAFT" : "NOT_CREATED"),
+      proposalRevisionId: proposalRevisionId || null,
+      proposalHash: proposalHash || null,
+      acceptanceEvidenceId: acceptance?.customerPortalActionId ?? null,
+      evidenceExact: proposalAccepted,
+    },
+    engineering: {
+      state: certifiedPackage?.certifiedPackageId ? "CERTIFIED" : engineeringPackage?.engineeringPackageId ? text(engineeringPackage.status, "IN_REVIEW") : "NOT_STARTED",
+      engineeringPackageId: engineeringPackage?.engineeringPackageId ?? null,
+      engineeringRevisionId: engineeringPackage?.engineeringRevisionId ?? null,
+    },
+    certifiedIof: {
+      state: certifiedPackage?.certifiedPackageId ? "CERTIFIED" : "NOT_CERTIFIED",
+      certifiedPackageId: certifiedPackage?.certifiedPackageId ?? null,
+      certificationHash: certifiedPackage?.certificationHash ?? null,
+    },
+    serviceOrder: {
+      state: serviceOrder?.status ?? "NOT_CREATED",
+      signatureState: serviceOrder?.signatureStatus ?? (customerSignatureExact ? "CUSTOMER_SIGNED" : "UNSIGNED"),
+      serviceOrderId: serviceOrder?.serviceOrderId ?? null,
+      documentHash: serviceOrder?.documentHash ?? null,
+    },
+    customerSignature: {
+      state: customerSignatureExact ? "SIGNED" : "NOT_SIGNED",
+      customerSignatureId: customerSignatureExact ? customerSignature.customerSignatureId : null,
+      signatureHash: customerSignatureExact ? customerSignature.signatureHash : null,
+    },
+    countersignature: {
+      state: countersignatureExact ? "COUNTERSIGNED" : "NOT_COUNTERSIGNED",
+      countersignatureId: countersignatureExact ? countersignature.countersignatureId : null,
+      countersignatureHash: countersignatureExact ? countersignature.countersignatureHash : null,
+    },
+    scopeVersion: {
+      state: scopeVersionExact ? "AUTHORIZED" : "NOT_AUTHORIZED",
+      scopeVersionId: scopeVersionExact ? scopeVersion.scopeVersionId : null,
+      evidenceExact: scopeVersionExact,
+    },
+  };
 }
 
 function permittedActions(state, { lens, persona, user, serviceOrder }) {
@@ -174,10 +238,11 @@ function aggregateTasks(deals, portalActions, lens, persona, user) {
 }
 
 export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL", persona = "", allowedOpportunityIds = null }) {
-  const [opportunities, proposals, reviewPackages, engineeringPackages, certifiedPackages, serviceOrders, scopeVersions, routes, portalActions] = await Promise.all([
+  const [opportunities, proposals, reviewPackages, engineeringPackages, certifiedPackages, serviceOrders, scopeVersions, routes, portalActions, customerSignatures, countersignatures] = await Promise.all([
     listRecords(DIRS.commercialOpportunities), listRecords(DIRS.proposalDrafts), listRecords(DIRS.customerReviewPackages),
     listRecords(DIRS.engineeringPackages), listRecords(DIRS.certifiedIofPackages), listRecords(DIRS.serviceOrders), listRecords(DIRS.scopeVersions),
-    listRecords(DIRS.commercialRoutes), listRecords(DIRS.customerPortalActions),
+    listRecords(DIRS.commercialRoutes), listRecords(DIRS.customerPortalActions), listRecords(DIRS.customerSignatures),
+    listRecords(DIRS.teralinxCountersignatures),
   ]);
   const accountId = text(account.accountId);
   const customerId = text(account.customerId);
@@ -210,7 +275,15 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
       : newest(scopeVersions.filter((item) => text(item.opportunityId ?? item.canonicalTruth?.opportunityId) === opportunityId));
     const routeId = text(reviewPackage?.route?.routeRepositoryId ?? proposal?.routeRepositoryId ?? opportunity?.routeRepositoryId);
     const route = routes.find((item) => text(item.routeRepositoryId) === routeId) ?? null;
-    const state = deriveState({ proposal, reviewPackage, engineeringPackage, certifiedPackage, serviceOrder, scopeVersion });
+    const opportunityPortalActions = portalActions.filter((item) => text(item.opportunityId) === opportunityId);
+    const customerSignature = serviceOrder?.customerSignatureId
+      ? customerSignatures.find((item) => text(item.customerSignatureId) === text(serviceOrder.customerSignatureId)) ?? null
+      : null;
+    const countersignature = serviceOrder?.countersignatureId
+      ? countersignatures.find((item) => text(item.countersignatureId) === text(serviceOrder.countersignatureId)) ?? null
+      : null;
+    const artifactStates = deriveArtifactStates({ proposal, reviewPackage, portalActions: opportunityPortalActions, engineeringPackage, certifiedPackage, serviceOrder, customerSignature, countersignature, scopeVersion });
+    const state = deriveState({ proposal, reviewPackage, engineeringPackage, certifiedPackage, serviceOrder, scopeVersion, artifactStates });
     const currentStateIndex = CUSTOMER_DEAL_STATES.indexOf(state);
     return {
       dealId: opportunityId,
@@ -223,6 +296,7 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
       currentStateIndex,
       lifecycle: CUSTOMER_DEAL_STATES.map((name, index) => ({ name, status: index < currentStateIndex ? "COMPLETE" : index === currentStateIndex ? "CURRENT" : "PENDING" })),
       permittedActions: permittedActions(state, { lens, persona, user, serviceOrder }),
+      artifactStates,
       commercial: {
         opportunityStateVersion: opportunity?.commercialStateVersion ?? null,
         opportunityStateHash: opportunity?.commercialStateHash ?? null,
@@ -264,8 +338,17 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
       },
       customerSafe: customerSafeProjection({ opportunity, proposal, reviewPackage, route, serviceOrder }),
       documentHistory: [
-        ...array(proposal?.proposalRevisions).map((revision) => ({ documentType: "PROPOSAL", documentId: revision.proposalRevisionId, revision: revision.revisionNumber, status: revision.proposalRevisionId === proposal?.proposalRevisionId ? (proposal?.approvalState === "APPROVED" ? "ACCEPTED" : "CURRENT") : "SUPERSEDED", authorityHash: revision.proposalHash, createdAt: revision.createdAt })),
+        ...array(proposal?.proposalRevisions).map((revision) => {
+          const accepted = opportunityPortalActions.some((item) => item.action === "ACCEPT" && exactProposalEvidence(item, revision.proposalRevisionId, revision.proposalHash))
+            || (revision.proposalRevisionId === proposal?.proposalRevisionId && revision.proposalHash === proposal?.proposalHash && artifactStates.proposal.state === "ACCEPTED");
+          return { documentType: "PROPOSAL", documentId: revision.proposalRevisionId, revision: revision.revisionNumber, status: accepted ? "ACCEPTED" : revision.proposalRevisionId === proposal?.proposalRevisionId ? "CURRENT" : "SUPERSEDED", authorityHash: revision.proposalHash, createdAt: revision.createdAt };
+        }),
+        ...(engineeringPackage ? [{ documentType: "ENGINEERING_PACKAGE", documentId: engineeringPackage.engineeringPackageId, revision: engineeringPackage.revisionNumber, status: artifactStates.engineering.state, authorityHash: engineeringPackage.engineeringHash ?? engineeringPackage.packageHash, createdAt: engineeringPackage.createdAt }] : []),
+        ...(certifiedPackage ? [{ documentType: "CERTIFIED_IOF", documentId: certifiedPackage.certifiedPackageId, revision: certifiedPackage.revisionNumber, status: artifactStates.certifiedIof.state, authorityHash: certifiedPackage.certificationHash, createdAt: certifiedPackage.createdAt ?? certifiedPackage.certifiedAt }] : []),
         ...(serviceOrder ? [{ documentType: "SERVICE_ORDER", documentId: serviceOrder.serviceOrderId, revision: serviceOrder.documentRevision, status: serviceOrder.status, authorityHash: serviceOrder.documentHash, createdAt: serviceOrder.createdAt }] : []),
+        ...(customerSignature && artifactStates.customerSignature.state === "SIGNED" ? [{ documentType: "CUSTOMER_SIGNATURE", documentId: customerSignature.customerSignatureId, status: artifactStates.customerSignature.state, authorityHash: customerSignature.signatureHash, createdAt: customerSignature.signedAt ?? customerSignature.createdAt }] : []),
+        ...(countersignature && artifactStates.countersignature.state === "COUNTERSIGNED" ? [{ documentType: "TERALINX_COUNTERSIGNATURE", documentId: countersignature.countersignatureId, status: artifactStates.countersignature.state, authorityHash: countersignature.countersignatureHash, createdAt: countersignature.countersignedAt ?? countersignature.createdAt }] : []),
+        ...(scopeVersion && artifactStates.scopeVersion.state === "AUTHORIZED" ? [{ documentType: "SCOPEVERSION", documentId: scopeVersion.scopeVersionId, revision: scopeVersion.revisionNumber, status: artifactStates.scopeVersion.state, authorityHash: scopeVersion.scopeVersionHash ?? scopeVersion.authorityHash, createdAt: scopeVersion.createdAt }] : []),
       ],
       updatedAt: dealTimestamp(opportunity, proposal, reviewPackage, engineeringPackage, certifiedPackage, serviceOrder, scopeVersion),
     };

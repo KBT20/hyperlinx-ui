@@ -140,6 +140,7 @@ import {
 } from "../../commercialChangeSet";
 import { useDALState } from "../../dal/DALState";
 import { useTeralinxAuth } from "../../identity/TeralinxAuth";
+import { governedClientId } from "../../identity/governedIdNamespace";
 import AccountDealRoomPanel from "./teralinx/AccountDealRoomPanel";
 import type { GovernedAccount, GovernedContact, RuntimeHistoryEvent } from "../../api/accountLibrary";
 import type { CustomerDesignImport, ImportedCustomerRoute } from "../../translate/CustomerDesignImport";
@@ -1359,15 +1360,16 @@ function customerAwareOpportunityName(input: string, accountName: string) {
   return trimmed.toLowerCase().startsWith(accountName.toLowerCase()) ? trimmed : `${accountName} ${trimmed}`;
 }
 
-function commercialRecordIdsForOpportunity(opportunityName: string, revision = 1) {
+function commercialRecordIdsForOpportunity(opportunityName: string, revision = 1, demoContext = false) {
   const slug = cleanCommercialSlug(opportunityName, "COMMERCIAL-OPPORTUNITY");
   const version = Math.max(1, Math.round(Number(revision) || 1));
+  const context = demoContext ? { authorityClass: "DEMO", organizationId: "org-demo" } : null;
   return {
     slug,
-    proposalId: `PROP-${slug}-v${version}`,
-    workbookId: `WORKBOOK-${slug}-v${version}`,
-    proposalPreviewId: `PROPOSAL-PREVIEW-${slug}-v${version}`,
-    serviceOrderPreviewId: `SO-PREVIEW-${slug}-v${version}`,
+    proposalId: governedClientId(`PROP-${slug}-v${version}`, context),
+    workbookId: governedClientId(`WORKBOOK-${slug}-v${version}`, context),
+    proposalPreviewId: governedClientId(`PROPOSAL-PREVIEW-${slug}-v${version}`, context),
+    serviceOrderPreviewId: governedClientId(`SO-PREVIEW-${slug}-v${version}`, context),
   };
 }
 
@@ -3184,6 +3186,9 @@ export default function GoogleRfpWorkspace() {
     setWorkspace,
   } = useDALState();
   const { session, runtimeInfo, activity, recordActivity, can } = useTeralinxAuth();
+  const demoGovernedIdContext = session?.user.authorityClass === "DEMO" && session.user.organizationId === "org-demo"
+    ? session.user
+    : null;
   const currentUserName = session?.user.name ?? "Teralinx";
   const currentUserId = session?.user.userId ?? "teralinx-user-system";
   const currentWorkspaceId = session?.user.workspaceId ?? session?.workspace?.workspaceId ?? "workspace-teralinx-system";
@@ -4418,7 +4423,7 @@ export default function GoogleRfpWorkspace() {
       organizationId: currentOrganizationId,
       workspaceId: currentWorkspaceId,
       ownerId: activeCommercialOpportunity?.ownerId ?? currentUserId,
-      opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId || routePlan?.routeRequirement.routeRequirementId || `OPP-${currentCommercialRecordIds.slug}`,
+      opportunityId: activeCommercialOpportunityId || activeCommercialOpportunity?.opportunityId || routePlan?.routeRequirement.routeRequirementId || governedClientId(`OPP-${currentCommercialRecordIds.slug}`, demoGovernedIdContext),
       opportunity: activeCommercialOpportunity ?? {
         name: activeOpportunityDisplayName,
         selectedScopeId: selectedScope.scopeId,
@@ -6570,6 +6575,7 @@ export default function GoogleRfpWorkspace() {
       : [generatedRouteEvidence(routeRepositoryId, routeId, geometryHash, args.timestamp)];
     return {
       routeRepositoryId,
+      transactionId: `ROUTE-SAVE-${routeRepositoryId}-${Date.now()}`,
       routeSnapshotId: `${routeRepositoryId}-v${routeRevision}`,
       routeGeometryId: routeGeometryId(routeRepositoryId, geometryHash),
       geometryHash,
@@ -6650,8 +6656,8 @@ export default function GoogleRfpWorkspace() {
     const requestedName = options.overrideName ?? opportunityNameDraft ?? existing?.name ?? selectedCustomerDesignLabel ?? "";
     const opportunityName = customerAwareOpportunityName(requestedName, selectedAccount.name);
     const nextVersion = options.duplicate || !existing ? 1 : Math.max(1, Number(existing.version ?? 0) + 1);
-    const recordIds = commercialRecordIdsForOpportunity(opportunityName, nextVersion);
-    const opportunityId = existing?.opportunityId ?? pendingGeneratedRouteSnapshot?.opportunityId ?? `OPP-${recordIds.slug}-${Date.now()}`;
+    const recordIds = commercialRecordIdsForOpportunity(opportunityName, nextVersion, Boolean(demoGovernedIdContext));
+    const opportunityId = existing?.opportunityId ?? pendingGeneratedRouteSnapshot?.opportunityId ?? governedClientId(`OPP-${recordIds.slug}-${Date.now()}`, demoGovernedIdContext);
     const canonicalProposalId = options.duplicate ? recordIds.proposalId : activeProposalRuntime?.proposalId ?? existing?.proposalId ?? recordIds.proposalId;
     const sourceFiles = [
       ...((existing?.sourceFiles ?? []) as Array<Record<string, unknown>>),
@@ -7925,8 +7931,8 @@ export default function GoogleRfpWorkspace() {
       const routeFeet = generatedDraft?.routeFeet ?? Math.round(routeMiles * 5280);
       const opportunityName = customerAwareOpportunityName(opportunityNameDraft || `${selectedAccount.name} Route`, selectedAccount.name);
       const nextVersion = activeCommercialOpportunity ? Math.max(1, Number(activeCommercialOpportunity.version ?? 1)) : 1;
-      const recordIds = commercialRecordIdsForOpportunity(opportunityName, nextVersion);
-      const opportunityId = activeCommercialOpportunity?.opportunityId ?? generatedRouteRepositorySnapshot?.opportunityId ?? `OPP-${recordIds.slug}-${Date.now()}`;
+      const recordIds = commercialRecordIdsForOpportunity(opportunityName, nextVersion, Boolean(demoGovernedIdContext));
+      const opportunityId = activeCommercialOpportunity?.opportunityId ?? generatedRouteRepositorySnapshot?.opportunityId ?? governedClientId(`OPP-${recordIds.slug}-${Date.now()}`, demoGovernedIdContext);
       const routeSnapshot = buildCommercialRouteRepositoryRecord({
         opportunityId,
         opportunityName,
@@ -8795,7 +8801,7 @@ export default function GoogleRfpWorkspace() {
     opportunityNameDraft || activeCommercialOpportunity?.name || selectedImportedCustomerRoute?.name || "Opportunity",
     selectedAccount.name,
   );
-  const currentCommercialRecordIds = commercialRecordIdsForOpportunity(activeOpportunityDisplayName, activeCommercialOpportunity?.version ?? 1);
+  const currentCommercialRecordIds = commercialRecordIdsForOpportunity(activeOpportunityDisplayName, activeCommercialOpportunity?.version ?? 1, Boolean(demoGovernedIdContext));
   const activeRouteFeet = activeFinancialDraft?.routeFeet ?? temporaryImportedRoute?.route.routeFeet ?? Math.round(selectedPricingSummary.reconciliation.routeFeet);
   const activeRouteMiles = activeFinancialDraft?.routeMiles ?? temporaryImportedRoute?.route.routeMiles ?? selectedPricingSummary.reconciliation.routeMiles;
   const activeConstructionCost = activeFinancialAuthority?.constructionCost ?? selectedPricingSummary.reconciliation.budgetCost;

@@ -13,6 +13,7 @@ import type { OpportunitySeed } from "../types/portfolio";
 import type { ProposedGraph } from "../proposedGraph/ProposedGraph";
 import { useTeralinxAuth } from "../identity/TeralinxAuth";
 import { canAccessWorkspace } from "../identity/teralinxIdentity";
+import { governedClientId } from "../identity/governedIdNamespace";
 
 export type DALWorkspace =
   | "translate"
@@ -278,7 +279,10 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
   );
 
   function upsertCustomerDesignImport(record: CustomerDesignImport) {
-    const normalized = normalizeCustomerDesignImport(record);
+    const normalized = normalizeCustomerDesignImport({
+      ...record,
+      importId: governedClientId(record.importId || `CUSTOMER-DESIGN-IMPORT-${Date.now()}`, session?.user),
+    });
     setCustomerDesignImports((prev) => [normalized, ...prev.filter((item) => item.importId !== normalized.importId)]);
     setSelectedCustomerDesignImportId(normalized.importId);
     setSelectedCustomerDesignRouteId(normalized.activeRouteId ?? normalized.routes[0]?.routeId ?? "");

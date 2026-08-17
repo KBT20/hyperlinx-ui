@@ -42,12 +42,13 @@ export type CustomerPortalProject = {
   title: string;
   summary?: string;
   status: string;
+  artifactStates: GovernedArtifactStates;
   proposal: {
     proposalId: string; proposalRevisionId: string; proposalRevisionNumber: number; proposalHash: string;
     title?: string; summary?: string; product?: Record<string, unknown>;
     commercialTerms?: { currency?: string; nrc?: number; mrc?: number; termMonths?: number; tcv?: number };
     schedule?: Record<string, unknown>; majorQuantities?: Record<string, number>;
-    expiration?: string; decision?: string; status?: string;
+    expiration?: string; decision?: string; status?: string; artifactState: string;
   };
   engineering: { status: string; certifiedAt?: string | null; customerSafeSummary: string };
   map: {
@@ -55,9 +56,19 @@ export type CustomerPortalProject = {
     routeMiles?: number; coordinates: [number, number][]; endpointA?: unknown; endpointZ?: unknown;
   };
   documents: Array<Record<string, unknown>>;
-  serviceOrder?: null | { serviceOrderId: string; documentRevision: number; documentHash: string; status: string; signatureStatus: string; pricingSummary?: Record<string, unknown>; serviceDescription?: Record<string, unknown> };
-  scopeVersion?: null | { scopeVersionId: string; status?: string; createdAt?: string };
+  serviceOrder?: null | { serviceOrderId: string; documentRevision: number; documentHash: string; status: string; signatureStatus: string; artifactState: string; pricingSummary?: Record<string, unknown>; serviceDescription?: Record<string, unknown> };
+  scopeVersion?: null | { scopeVersionId: string; status?: string; artifactState: string; createdAt?: string };
   activity: Array<{ customerPortalActionId: string; action: string; message?: string; actorDisplayName?: string; createdAt: string }>;
+};
+
+export type GovernedArtifactStates = {
+  proposal: { state: string; proposalRevisionId?: string | null; proposalHash?: string | null; acceptanceEvidenceId?: string | null; evidenceExact: boolean };
+  engineering: { state: string; engineeringPackageId?: string | null; engineeringRevisionId?: string | null };
+  certifiedIof: { state: string; certifiedPackageId?: string | null; certificationHash?: string | null };
+  serviceOrder: { state: string; signatureState: string; serviceOrderId?: string | null; documentHash?: string | null };
+  customerSignature: { state: string; customerSignatureId?: string | null; signatureHash?: string | null };
+  countersignature: { state: string; countersignatureId?: string | null; countersignatureHash?: string | null };
+  scopeVersion: { state: string; scopeVersionId?: string | null; evidenceExact: boolean };
 };
 
 export type CustomerDealState = "DRAFT" | "PROPOSED" | "CUSTOMER_REVIEW" | "ACCEPTED" | "ENGINEERING" | "CERTIFIED" | "SERVICE_ORDER" | "CUSTOMER_SIGNED" | "COUNTERSIGNED" | "AUTHORIZED";
@@ -78,6 +89,7 @@ export type AccountCustomerTwin = {
     currentState: CustomerDealState; currentStateIndex: number; updatedAt?: string | null;
     lifecycle: Array<{ name: CustomerDealState; status: "COMPLETE" | "CURRENT" | "PENDING" }>;
     permittedActions: Array<{ action: string; label: string; authority: string; mutation: boolean }>;
+    artifactStates: GovernedArtifactStates;
     commercial: { opportunityStateVersion?: number | null; opportunityStateHash?: string | null; proposalId?: string | null; proposalRevisionId?: string | null; proposalRevisionNumber?: number | null; proposalHash?: string | null };
     workingOpportunity: { stateVersion?: number | null; stateHash?: string | null; productId?: string | null; productName?: string | null; productDoctrineId?: string | null; routeRepositoryId?: string | null; routeRevision?: number | null; routeGeometryId?: string | null; geometryHash?: string | null; civilMixCalibration?: Record<string, unknown> | null; economics?: Record<string, unknown> | null; modifiedBy?: string | null; modifiedAt?: string | null };
     spatial: { routeRepositoryId?: string | null; routeRevision?: number | null; geometryHash?: string | null };

@@ -18,7 +18,7 @@ for (let index = 0; index < CUSTOMER_DEAL_STATES.length; index += 1) {
   const opportunityId = `OPP-${state}`;
   await save(DIRS.commercialOpportunities, opportunityId, { opportunityId, name: `${state} Deal`, order: index });
   if (index >= 1) await save(DIRS.proposalDrafts, `PROP-${state}`, { proposalId: `PROP-${state}`, opportunityId, status: "PROPOSED", approvalState: index >= 3 ? "APPROVED" : "PENDING", proposalRevisionId: `PROP-${state}-R1`, proposalHash: `HASH-${state}`, order: index });
-  if (index >= 2) await save(DIRS.customerReviewPackages, `REVIEW-${state}`, { customerReviewPackageId: `REVIEW-${state}`, opportunityId, proposalId: `PROP-${state}`, status: "ACTIVE", order: index });
+  if (index >= 2) await save(DIRS.customerReviewPackages, `REVIEW-${state}`, { customerReviewPackageId: `REVIEW-${state}`, opportunityId, proposalId: `PROP-${state}`, proposalRevisionId: `PROP-${state}-R1`, proposalHash: `HASH-${state}`, status: "ACTIVE", order: index });
   if (index >= 4) await save(DIRS.engineeringPackages, `ENG-${state}`, { engineeringPackageId: `ENG-${state}`, opportunityId, proposalId: `PROP-${state}`, order: index });
   if (index >= 5) await save(DIRS.certifiedIofPackages, `CERT-${state}`, { certifiedPackageId: `CERT-${state}`, opportunityId, proposalId: `PROP-${state}`, order: index });
   if (index >= 6) await save(DIRS.serviceOrders, `SO-${state}`, { serviceOrderId: `SO-${state}`, opportunityId, proposalId: `PROP-${state}`, status: index === 6 ? "ISSUED" : index === 7 ? "CUSTOMER_ACCEPTED" : "COUNTERSIGNED", ...(index >= 7 ? { customerSignedAt: "2026-01-02T00:00:00Z" } : {}), ...(index >= 8 ? { countersignedAt: "2026-01-03T00:00:00Z" } : {}), ...(index === 9 ? { scopeVersionId: "SV-AUTHORIZED" } : {}), order: index });

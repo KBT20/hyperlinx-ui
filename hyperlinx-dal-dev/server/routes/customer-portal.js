@@ -2,6 +2,7 @@ import {
   DIRS, createId, errorResponse, handleOptions, jsonResponse, listRecords, loadRecord, nowIso,
   persistRecord, readRequestJson, routeMatch, sortedByUpdated, withRepositoryAuthority,
 } from "./_shared.js";
+import { deriveArtifactStates } from "./customer-account-twin.js";
 import { requireRuntimeUser } from "./authority.js";
 import { authQuery, withAuthTransaction } from "../auth/postgres.js";
 import { hashPassword } from "../auth/password.js";
@@ -88,6 +89,13 @@ async function projectProjection(reviewPackage) {
   const actions = sortedByUpdated((await listRecords(DIRS.customerPortalActions)).filter((item) =>
     item.customerReviewPackageId === reviewPackage.customerReviewPackageId
   ));
+  const customerSignature = serviceOrder?.customerSignatureId
+    ? await loadRecord(DIRS.customerSignatures, serviceOrder.customerSignatureId).catch(() => null)
+    : null;
+  const countersignature = serviceOrder?.countersignatureId
+    ? await loadRecord(DIRS.teralinxCountersignatures, serviceOrder.countersignatureId).catch(() => null)
+    : null;
+  const artifactStates = deriveArtifactStates({ proposal, reviewPackage, portalActions: actions, engineeringPackage, certifiedPackage: certified, serviceOrder, customerSignature, countersignature, scopeVersion });
   const governedMilestones = [
     { id: `${reviewPackage.customerReviewPackageId}:SUBMITTED`, action: "PROPOSAL_SUBMITTED", message: `Proposal Revision ${reviewPackage.proposalRevisionNumber} submitted for customer review.`, createdAt: reviewPackage.submittedAt },
     engineeringPackage ? { id: `${engineeringPackage.engineeringPackageId}:STARTED`, action: "ENGINEERING_STARTED", message: "Engineering review started.", createdAt: engineeringPackage.createdAt ?? engineeringPackage.updatedAt } : null,
@@ -104,6 +112,7 @@ async function projectProjection(reviewPackage) {
     title: reviewPackage.title || reviewPackage.product?.name || "Customer Project",
     summary: reviewPackage.summary,
     status: safeStatus(proposal, serviceOrder, scopeVersion),
+    artifactStates,
     proposal: {
       proposalId: reviewPackage.proposalId,
       proposalRevisionId: reviewPackage.proposalRevisionId,
@@ -118,9 +127,10 @@ async function projectProjection(reviewPackage) {
       expiration: reviewPackage.expiration,
       decision: text(proposal?.approvalState),
       status: text(proposal?.status),
+      artifactState: artifactStates.proposal.state,
     },
     engineering: {
-      status: certified ? "CERTIFIED" : engineeringPackage ? "IN_REVIEW" : proposal?.approvalState === "APPROVED" ? "QUEUED" : "NOT_STARTED",
+      status: artifactStates.engineering.state,
       certifiedAt: certified?.certifiedAt ?? null,
       customerSafeSummary: certified ? "Teralinx has certified the governed technical scope for this project." : engineeringPackage ? "Engineering review is in progress." : "Engineering begins after Proposal acceptance.",
     },
@@ -145,10 +155,11 @@ async function projectProjection(reviewPackage) {
       documentHash: serviceOrder.documentHash,
       status: serviceOrder.status,
       signatureStatus: serviceOrder.signatureStatus,
+      artifactState: artifactStates.serviceOrder.state,
       pricingSummary: serviceOrder.pricingSummary,
       serviceDescription: serviceOrder.serviceDescription,
     } : null,
-    scopeVersion: scopeVersion ? { scopeVersionId: scopeVersion.scopeVersionId, status: scopeVersion.status, createdAt: scopeVersion.createdAt } : null,
+    scopeVersion: scopeVersion ? { scopeVersionId: scopeVersion.scopeVersionId, status: scopeVersion.status, artifactState: artifactStates.scopeVersion.state, createdAt: scopeVersion.createdAt } : null,
     activity: [...actions.map((item) => ({
       customerPortalActionId: item.customerPortalActionId, action: item.action, message: item.message,
       actorDisplayName: item.actorDisplayNameAtAction, createdAt: item.createdAt,
