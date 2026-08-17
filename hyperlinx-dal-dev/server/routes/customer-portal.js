@@ -11,6 +11,7 @@ import {
 } from "./customer-portal-authority.js";
 import { handleApprove, handleReject, handleRequestChanges } from "./proposal-drafts.js";
 import { signAsCustomer } from "./service-orders.js";
+import { buildAccountCustomerTwin } from "./customer-account-twin.js";
 
 const BASE_PATH = "/api/customer-portal";
 const CUSTOMER_PERSONAS = new Set([
@@ -371,6 +372,17 @@ export async function handleCustomerPortal(req, res, pathname) {
       const available = await accessiblePackages(user);
       const projects = await Promise.all(available.packages.map(projectProjection));
       jsonResponse(res, 200, { projects }); return true;
+    }
+    if (pathname === `${BASE_PATH}/account-twin` && req.method === "GET") {
+      const available = await accessiblePackages(user);
+      const accounts = await listRecords(DIRS.accounts);
+      const account = accounts.find((item) =>
+        item.customerOrganizationId === available.context.customerOrganizationId || item.customerId === available.context.organization.customerId
+      );
+      if (!account) return errorResponse(res, 404, "The Customer Account backing this portal was not found.");
+      const allowedOpportunityIds = available.packages.map((item) => item.opportunityId);
+      const customerTwin = await buildAccountCustomerTwin({ account, user, lens: "CUSTOMER", persona: available.context.persona, allowedOpportunityIds });
+      jsonResponse(res, 200, { customerTwin }); return true;
     }
     const projectMatch = pathname.match(/^\/api\/customer-portal\/projects\/([^/]+)(?:\/(.+))?$/);
     if (!projectMatch) { errorResponse(res, 404, "Customer Portal resource not found."); return true; }

@@ -138,6 +138,7 @@ import {
 } from "../../commercialChangeSet";
 import { useDALState } from "../../dal/DALState";
 import { useTeralinxAuth } from "../../identity/TeralinxAuth";
+import AccountDealRoomPanel from "./teralinx/AccountDealRoomPanel";
 import type { GovernedAccount, GovernedContact, RuntimeHistoryEvent } from "../../api/accountLibrary";
 import type { CustomerDesignImport, ImportedCustomerRoute } from "../../translate/CustomerDesignImport";
 import { scheduleDraftIofPackageAssembly, schedulePointToPointLongHaulDoctrineAssembly } from "../../runtime/ConstitutionalAssemblyScheduler";
@@ -10829,6 +10830,7 @@ export default function GoogleRfpWorkspace() {
           <div><span>IOF Packages</span><b>{activeDraftIofPackage?.customerId === customerIdForAccount(selectedAccount.accountId) || activeDraftIofPackage?.accountId === selectedAccount.accountId ? "1" : "0"}</b></div>
           <div><span>Recent Activity</span><b>{accountRuntimeHistory.length}</b></div>
         </div>
+        {selectedGovernedAccount ? <AccountDealRoomPanel accountId={selectedGovernedAccount.accountId} /> : null}
 
         <div className="account-product-fulfillment">
           <label>

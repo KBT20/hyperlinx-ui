@@ -14,6 +14,7 @@ import {
   unwrapBody,
 } from "./_shared.js";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
+import { buildAccountCustomerTwin } from "./customer-account-twin.js";
 
 const DEFAULT_ACCOUNT_BLUEPRINTS = [
   {
@@ -546,6 +547,16 @@ export async function handleAccounts(req, res, pathname) {
 
   if (parts.length === 1 && req.method === "GET") {
     await handleGetAccount(res, parts[0], user);
+    return true;
+  }
+
+  if (parts.length === 2 && parts[1] === "customer-twin" && req.method === "GET") {
+    const existing = await loadRecord(DIRS.accounts, parts[0]).catch(() => null);
+    if (!existing || !canReadAccount(existing, user)) {
+      errorResponse(res, existing ? 403 : 404, existing ? "You do not have authority to open this Account Customer Twin." : `Account not found: ${parts[0]}`);
+      return true;
+    }
+    jsonResponse(res, 200, { customerTwin: await buildAccountCustomerTwin({ account: existing, user, lens: "INTERNAL" }) });
     return true;
   }
 

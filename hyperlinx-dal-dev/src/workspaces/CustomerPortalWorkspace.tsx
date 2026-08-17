@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   customerPortalProjectAction, listCustomerPortalProjects, loadCustomerPortalContext,
-  downloadRuntimeArtifact,
-  type CustomerPortalProject,
+  downloadRuntimeArtifact, loadCustomerPortalAccountTwin,
+  type AccountCustomerTwin, type CustomerPortalProject,
 } from "../api/teralinxRuntime";
 import { useTeralinxAuth } from "../identity/TeralinxAuth";
 import MapKernel from "../mapkernel/MapKernel";
@@ -43,18 +43,20 @@ export default function CustomerPortalWorkspace() {
   const [tab, setTab] = useState<ProjectTab>("Overview");
   const [context, setContext] = useState<Awaited<ReturnType<typeof loadCustomerPortalContext>> | null>(null);
   const [projects, setProjects] = useState<CustomerPortalProject[]>([]);
+  const [accountTwin, setAccountTwin] = useState<AccountCustomerTwin | null>(null);
   const [selectedId, setSelectedId] = useState("");
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState("Loading your projects...");
   const selected = projects.find((item) => item.projectId === selectedId) ?? projects[0] ?? null;
+  const selectedDeal = accountTwin?.deals.find((item) => item.opportunityId === selected?.projectId) ?? null;
   const spec = useMemo(() => selected ? mapSpec(selected) : null, [selected]);
   const canReview = context?.role === "CUSTOMER_COMMERCIAL_REVIEWER" || context?.role === "CUSTOMER_AUTHORIZED_SIGNER";
   const canSign = context?.role === "CUSTOMER_AUTHORIZED_SIGNER";
 
   async function refresh() {
     try {
-      const [nextContext, nextProjects] = await Promise.all([loadCustomerPortalContext(), listCustomerPortalProjects()]);
-      setContext(nextContext); setProjects(nextProjects);
+      const [nextContext, nextProjects, nextTwin] = await Promise.all([loadCustomerPortalContext(), listCustomerPortalProjects(), loadCustomerPortalAccountTwin()]);
+      setContext(nextContext); setProjects(nextProjects); setAccountTwin(nextTwin);
       setSelectedId((current) => nextProjects.some((item) => item.projectId === current) ? current : nextProjects[0]?.projectId ?? "");
       setStatus(nextProjects.length ? "" : "No customer projects have been assigned yet.");
     } catch (error) { setStatus(error instanceof Error ? error.message : String(error)); }
@@ -75,7 +77,7 @@ export default function CustomerPortalWorkspace() {
   return (
     <div className="customer-portal-shell">
       <header className="customer-portal-header">
-        <div><div className="dal-kicker">TERALINX CUSTOMER</div><h1>{context?.customerOrganization.name ?? "Customer Portal"}</h1></div>
+        <div><div className="dal-kicker">TERALINX CUSTOMER TWIN</div><h1>{accountTwin?.account.name ?? context?.customerOrganization.name ?? "Customer Portal"}</h1><small>Governed Deal Room</small></div>
         <nav aria-label="Customer Portal">
           {(["Projects", "Documents", "Account"] as PortalSection[]).map((item) => <button className={section === item ? "active" : ""} key={item} onClick={() => setSection(item)}>{item}</button>)}
         </nav>
@@ -91,6 +93,11 @@ export default function CustomerPortalWorkspace() {
         <section className="customer-project">
           {selected ? <>
             <div className="customer-project-heading"><div><small>PROJECT</small><h2>{selected.title}</h2><p>{selected.summary}</p></div><span>{selected.status.replaceAll("_", " ")}</span></div>
+            {selectedDeal ? <section className="customer-deal-lifecycle" aria-label="Governed deal lifecycle">
+              <div className="customer-deal-lifecycle-heading"><div><small>CURRENT GOVERNED STATE</small><strong>{selectedDeal.currentState.replaceAll("_", " ")}</strong></div><span>{accountTwin?.customerTwinId}</span></div>
+              <ol>{selectedDeal.lifecycle.map((step) => <li className={step.status.toLowerCase()} key={step.name}><i aria-hidden="true" /><span>{step.name.replaceAll("_", " ")}</span></li>)}</ol>
+              <div className="customer-permitted-actions"><small>PERMITTED IN THIS PERSPECTIVE</small>{selectedDeal.permittedActions.map((action) => <span className={action.mutation ? "governed" : "read"} key={action.action}>{action.label}</span>)}</div>
+            </section> : null}
             <div className="customer-project-tabs">{(["Overview", "Map", "Proposal", "Activity"] as ProjectTab[]).map((item) => <button className={tab === item ? "active" : ""} onClick={() => setTab(item)} key={item}>{item}</button>)}</div>
             {tab === "Overview" ? <div className="customer-overview-grid">
               <article><small>ROUTE</small><strong>{selected.map.routeMiles?.toFixed(1) ?? "—"} miles</strong><p>Revision {selected.map.routeRevision}</p></article>
@@ -112,7 +119,7 @@ export default function CustomerPortalWorkspace() {
         </section>
       </main> : null}
       {section === "Documents" ? <main className="customer-portal-page"><h2>Documents</h2><p>Only governed, customer-authorized documents appear here.</p>{projects.map((project) => <article key={project.projectId}><b>{project.title}</b><span>Proposal Revision {project.proposal.proposalRevisionNumber}</span><code>{project.proposal.proposalRevisionId}</code><div className="customer-actions"><button onClick={() => void downloadRuntimeArtifact(`/api/exports/proposals/${encodeURIComponent(project.proposal.proposalId)}/pdf`)}>Download Proposal PDF</button><button onClick={() => void downloadRuntimeArtifact(`/api/exports/proposals/${encodeURIComponent(project.proposal.proposalId)}/route.kmz`)}>Download Route KMZ</button>{project.serviceOrder ? <button onClick={() => void downloadRuntimeArtifact(`/api/exports/service-orders/${encodeURIComponent(project.serviceOrder!.serviceOrderId)}/pdf`)}>Download Service Order</button> : null}</div></article>)}</main> : null}
-      {section === "Account" ? <main className="customer-portal-page"><h2>Account</h2><article><b>{session?.user.name}</b><span>{context?.customerOrganization.name}</span><span>{context?.role?.replaceAll("_", " ")}</span><small>Authenticated principal: {context?.actorPrincipalId}</small></article></main> : null}
+      {section === "Account" ? <main className="customer-portal-page"><h2>Account Customer Twin</h2><p>The Account is the persistent parent. Every visible deal below is a read-only projection of governed Commercial, spatial, Engineering, contractual, and ScopeVersion records.</p><article><b>{accountTwin?.account.name ?? context?.customerOrganization.name}</b><span>{accountTwin?.customerTwinId}</span><span>{accountTwin?.dealCount ?? 0} governed deal{accountTwin?.dealCount === 1 ? "" : "s"}</span><span>{context?.role?.replaceAll("_", " ")}</span><small>Authenticated principal: {context?.actorPrincipalId}</small></article>{accountTwin?.deals.map((deal) => <article key={deal.dealId}><b>{deal.title}</b><span>{deal.currentState.replaceAll("_", " ")}</span><code>{deal.opportunityId}</code></article>)}</main> : null}
     </div>
   );
 }

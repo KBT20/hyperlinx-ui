@@ -60,6 +60,32 @@ export type CustomerPortalProject = {
   activity: Array<{ customerPortalActionId: string; action: string; message?: string; actorDisplayName?: string; createdAt: string }>;
 };
 
+export type CustomerDealState = "DRAFT" | "PROPOSED" | "CUSTOMER_REVIEW" | "ACCEPTED" | "ENGINEERING" | "CERTIFIED" | "SERVICE_ORDER" | "CUSTOMER_SIGNED" | "COUNTERSIGNED" | "AUTHORIZED";
+
+export type AccountCustomerTwin = {
+  customerTwinId: string;
+  projectionType: "ACCOUNT_CUSTOMER_TWIN";
+  projectionAuthority: "READ_ONLY_GOVERNED_PROJECTION";
+  account: { accountId: string; accountNumber?: number | null; customerId: string; customerOrganizationId?: string | null; name: string; status: string; organizationId: string };
+  lens: "INTERNAL" | "CUSTOMER";
+  persona?: string | null;
+  dealCount: number;
+  stateCounts: Record<CustomerDealState, number>;
+  lifecycleStates: CustomerDealState[];
+  deals: Array<{
+    dealId: string; opportunityId: string; accountId: string; customerId: string; title: string; summary?: string;
+    currentState: CustomerDealState; currentStateIndex: number; updatedAt?: string | null;
+    lifecycle: Array<{ name: CustomerDealState; status: "COMPLETE" | "CURRENT" | "PENDING" }>;
+    permittedActions: Array<{ action: string; label: string; authority: string; mutation: boolean }>;
+    commercial: { proposalId?: string | null; proposalRevisionId?: string | null; proposalRevisionNumber?: number | null; proposalHash?: string | null };
+    spatial: { routeRepositoryId?: string | null; routeRevision?: number | null; geometryHash?: string | null };
+    engineering: { engineeringPackageId?: string | null; certifiedPackageId?: string | null; certificationHash?: string | null };
+    contractual: { serviceOrderId?: string | null; serviceOrderStatus?: string | null; documentHash?: string | null; scopeVersionId?: string | null };
+  }>;
+  generatedAt: string;
+  createsAuthority: false;
+};
+
 export type TeralinxUser = {
   userId: string;
   principalId: string;
@@ -3155,6 +3181,16 @@ export async function loadCustomerPortalContext() {
 export async function listCustomerPortalProjects() {
   const data = await requestJson<{ projects: CustomerPortalProject[] }>("/api/customer-portal/projects", { headers: authHeaders() });
   return data.projects;
+}
+
+export async function loadCustomerPortalAccountTwin() {
+  const data = await requestJson<{ customerTwin: AccountCustomerTwin }>("/api/customer-portal/account-twin", { headers: authHeaders() });
+  return data.customerTwin;
+}
+
+export async function loadAccountCustomerTwin(accountId: string, session?: TeralinxAuthSession | null) {
+  const data = await requestJson<{ customerTwin: AccountCustomerTwin }>(`/api/accounts/${encodeURIComponent(accountId)}/customer-twin`, { headers: authHeaders(session) });
+  return data.customerTwin;
 }
 
 export async function customerPortalProjectAction(
