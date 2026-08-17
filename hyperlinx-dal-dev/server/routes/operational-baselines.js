@@ -234,6 +234,7 @@ export async function resolveOperationalBaseline(scopeVersionId) {
 
   const exactReferences = operationalReferences({ scope, certified, serviceOrder, sourceDraft, authorizedTwin });
   exactReferences.route.geometryId = resolvedGeometryId;
+  exactReferences.engineering = { packageId: engineeringPackageId, revisionId: engineeringRevisionId, approvalId: engineeringApprovalId };
   const identitySet = {
     stationIds: idList(stations, ["stationId", "id"]),
     objectIds: idList(objects, ["objectId", "id"]),
