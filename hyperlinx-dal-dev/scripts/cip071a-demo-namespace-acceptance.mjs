@@ -36,6 +36,24 @@ const login = await call("Demo login", "/api/auth/login", { method: "POST", body
 const cookie = login.cookie;
 assert.equal(login.value.user.principalId, "demo-principal");
 assert.equal(login.value.user.organizationId, "org-demo");
+if (process.env.CIP071A_NEGATIVE_NAMESPACE === "1") {
+  const invalidCases = [
+    ["Commercial Opportunity", "/api/commercial/opportunities", { opportunity: { opportunityId: "OPPORTUNITY-CIP071A-INVALID", transactionId: "OPPORTUNITY-SAVE-CIP071A-INVALID", accountId, customerId } }],
+    ["Commercial Route", "/api/commercial/routes", { commercialRoute: { routeRepositoryId: "ROUTE-CIP071A-INVALID", transactionId: "ROUTE-SAVE-CIP071A-INVALID", opportunityId: "OPPORTUNITY-CIP071A-INVALID", commercialGeometry: geometry } }],
+    ["Customer Design Import", "/api/customer-design-imports", { customerDesignImport: { importId: "CUSTOMER-DESIGN-IMPORT-CIP071A-INVALID", designId: "DESIGN-CIP071A-INVALID" } }],
+    ["Proposal", "/api/proposals", { proposal: { proposalId: "PROPOSAL-CIP071A-INVALID", proposalRecordId: "PROPOSAL-CIP071A-INVALID", accountId, customerId } }],
+  ];
+  const rejected = [];
+  for (const [label, pathname, body] of invalidCases) {
+    const response = await fetch(`${baseUrl}${pathname}`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie, "X-Hyperlinx-Demo-Persona": "SALES", "X-Hyperlinx-Demo-Customer-Organization": customerOrganizationId }, body: JSON.stringify(body) });
+    const value = await response.json().catch(() => ({}));
+    assert.equal(response.status, 409, `${label} unnamespaced Demo ID must fail closed.`);
+    assert.match(String(value.error ?? ""), /DEMO_ID_NAMESPACE_REQUIRED/);
+    rejected.push({ label, status: response.status, error: String(value.error).split(":")[0] });
+  }
+  console.log(JSON.stringify({ result: "PASS", negativeNamespaceEnforcement: rejected, writesExpected: 0 }, null, 2));
+  process.exit(0);
+}
 if (process.env.CIP071A_READ_ONLY === "1") {
   const [savedImport, savedRoute, savedOpportunity, savedProposal] = await Promise.all([
     call("Reload Customer Design Import", `/api/customer-design-imports/${encodeURIComponent(importId)}`, { cookie }),
