@@ -174,7 +174,7 @@ export async function resolveOperationalBaseline(scopeVersionId) {
     ? await exactRecord(DIRS.engineeringPackages, engineeringPackageId, "ENGINEERING_PACKAGE_NOT_FOUND", "Engineering Package")
     : await exactLinkedRecord(
       DIRS.engineeringPackages,
-      (item) => txt(item.draftIofPackageId, item.sourceDraftPackageId, item.packageId) === sourceDraftId,
+      (item) => txt(item.draftIofPackageId, item.draftIOFPackageId, item.sourceDraftPackageId, item.packageId) === sourceDraftId,
       "ENGINEERING_PACKAGE_LINKAGE_UNRESOLVED",
       "Engineering Package linked to the exact Draft IOF",
     );
