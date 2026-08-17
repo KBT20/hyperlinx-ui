@@ -99,6 +99,7 @@ console.log(JSON.stringify({
   route: { routeRevision: internalDeal.customerSafe.route.routeRevision, geometryHash: internalDeal.customerSafe.route.geometryHash, routeMiles: internalDeal.customerSafe.route.routeMiles },
   economics: internalDeal.customerSafe.economics,
   activity: internalDeal.activity.map((item) => ({ eventType: item.eventType, actor: item.actor, timestamp: item.timestamp })),
+  accountPortfolio: internal.deals.map((item) => ({ opportunityId: item.opportunityId, title: item.title, state: item.currentState, proposalRevision: item.commercial.proposalRevisionNumber ?? null })),
   internalCustomerParity: true,
   customerSafeActivity: true,
   deepLinkProjectStatus: project.status,

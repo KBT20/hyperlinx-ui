@@ -356,7 +356,7 @@ function DALShell() {
     </div>
   );
   return (
-    <div className="dal-shell">
+    <div className={`dal-shell dal-workspace-${workspace}`}>
       <header className="dal-header">
         <div>
           <div className="dal-kicker">TERALINX</div>
@@ -364,18 +364,18 @@ function DALShell() {
           <button className="dal-navigation-trigger" type="button" aria-expanded={navigationOpen} aria-controls="dal-workspace-navigation" onClick={() => setNavigationOpen((open) => !open)}>☰ Workspaces</button>
         </div>
         <div className="dal-targets">
-          <span>User: {session?.user.name} / {session?.user.title} / {session?.user.role}</span>
+          <span className="dal-human-context">User: {session?.user.name} / {session?.user.title} / {session?.user.role}</span>
           <span>Workspace: {session?.user.workspaceId ?? session?.workspace?.workspaceId ?? "unassigned"} / Principal: {session?.user.principalId ?? "anonymous"}</span>
           <span>Organization: {session?.user.organization ?? runtimeInfo?.organization ?? "Teralinx"} / Membership: {session?.user.membershipId ?? "unassigned"}</span>
-          <span>Authority: {isDemo ? "DEMO — NOT PRODUCTION ELIGIBLE" : "PRODUCTION"}</span>
+          <span className="dal-human-context">Authority: {isDemo ? "DEMO — NOT PRODUCTION ELIGIBLE" : "PRODUCTION"}</span>
           <span>Runtime Version: {runtimeInfo?.runtimeVersion ?? "loading"} / Commit: {runtimeInfo?.gitCommit ?? "loading"}</span>
           <span>Build Date: {runtimeInfo?.buildDate ?? "loading"} / Environment: {runtimeInfo?.environment ?? "alpha"}</span>
           <span>DAL API: {DAL_API}</span>
           <span>Baseline Graph API: {DAL_BASELINE_GRAPH_API}</span>
           <span>Inventory API: {DAL_INVENTORY_GRAPH_API}</span>
           {workspace !== "routeEngineering" ? <span>Reasoning: {reasoningHealth.reasoningEnabled ? reasoningHealth.serviceStatus : "DISABLED"} / {reasoningEndpoint ? endpointBaseUrl(reasoningEndpoint) : "not configured"} / Circuit: {reasoningHealth.circuitBreakerState}</span> : null}
-          {isDemo ? <button className="dal-header-signout" type="button" onClick={() => void resetDemo()}>Reset Demo</button> : null}
-          {isDemo ? <select value={demoScenarioId} onChange={(event) => setDemoScenarioId(event.currentTarget.value)}>{demoScenarios.map((scenario) => <option key={scenario.scenarioId} value={scenario.scenarioId}>{scenario.name}</option>)}</select> : null}
+          {isDemo ? <button className="dal-header-signout dal-demo-reset" type="button" onClick={() => void resetDemo()}>Reset Demo</button> : null}
+          {isDemo ? <select className="dal-demo-scenario" value={demoScenarioId} onChange={(event) => setDemoScenarioId(event.currentTarget.value)}>{demoScenarios.map((scenario) => <option key={scenario.scenarioId} value={scenario.scenarioId}>{scenario.name}</option>)}</select> : null}
           {demoResetStatus ? <span>{demoResetStatus}</span> : null}
           <button className="dal-header-signout" type="button" onClick={() => void logout()}>Sign Out</button>
         </div>

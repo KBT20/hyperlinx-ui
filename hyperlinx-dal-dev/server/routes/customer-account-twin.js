@@ -10,6 +10,7 @@ const array = (value) => Array.isArray(value) ? value : value == null || value =
 const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const newest = (records) => sortedByUpdated(records)[0] ?? null;
+const displayText = (value) => typeof value === "string" || typeof value === "number" ? text(value) : text(record(value).text ?? record(value).summary ?? record(value).description);
 
 function hasPermission(user, permission) {
   return Array.isArray(user?.permissions) && user.permissions.includes(permission);
@@ -407,7 +408,7 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
       accountId,
       customerId,
       title: text(opportunity?.name || reviewPackage?.title || proposal?.name || opportunityId),
-      summary: text(reviewPackage?.summary || proposal?.summary || opportunity?.description),
+      summary: displayText(reviewPackage?.summary || proposal?.summary || opportunity?.description),
       currentState: state,
       currentStateIndex,
       lifecycle: CUSTOMER_DEAL_STATES.map((name, index) => ({ name, status: index < currentStateIndex ? "COMPLETE" : index === currentStateIndex ? "CURRENT" : "PENDING" })),
