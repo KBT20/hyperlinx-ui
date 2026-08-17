@@ -9,8 +9,8 @@ const sshKey = process.env.CIP074_SSH_KEY ?? "C:\\Users\\kbt20\\.ssh\\estella_id
 const dalHost = process.env.CIP074_DAL_HOST ?? "ubuntu@67.213.118.179";
 const baseUrl = process.env.CIP074_PUBLIC_URL ?? "https://app.teralinx.net";
 const accountId = "ACCOUNT-DEMO-NORTHSTAR";
-const opportunityId = "DEMO-OPP-NORTHSTAR-CLOUD-INFRASTRUCTURE-OPPORTUNITY-1786992435632";
-const opportunityTitle = "Northstar Cloud Infrastructure Opportunity";
+const opportunityId = "DEMO-OPP-NORTHSTAR-CLOUD-INFRASTRUCTURE-OPPORTUNITY-3-1786992269237";
+const opportunityTitle = "Northstar Cloud Infrastructure Opportunity 3";
 const outputDir = path.resolve(process.env.CIP074_BROWSER_ARTIFACT_DIR ?? "artifacts/cip074");
 const port = Number(process.env.CIP074_CDP_PORT ?? 9335);
 const profile = await mkdtemp(path.join(tmpdir(), "cip074-lifecycle-edge-"));
@@ -96,9 +96,12 @@ try {
   await screenshot("07-draft-before-commercial.png");
 
   await clickText("Continue Commercial");
-  text = await waitText(/Account Manager/);
-  assert.match(text, new RegExp(opportunityId));
-  assert.match(text, /Account Manager/);
+  text = await eventually(async () => {
+    const current = await bodyText();
+    const header = await evaluate("document.querySelector('.commercial-compact-header-grid')?.innerText || ''");
+    assert.match(header, new RegExp(opportunityId));
+    return current;
+  }, "Commercial repository restore did not complete");
   if (!(await controlState("Save Proposal Revision")).exists) await clickText("Open Proposal Builder");
   await eventually(async () => {
     const state = await controlState("Save Proposal Revision");

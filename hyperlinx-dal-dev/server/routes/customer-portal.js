@@ -22,6 +22,14 @@ const REVIEW_PERSONAS = new Set(["CUSTOMER_COMMERCIAL_REVIEWER", "CUSTOMER_AUTHO
 const text = (value) => String(value ?? "").trim();
 const array = (value) => Array.isArray(value) ? value : value == null ? [] : [value];
 const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
+const displayText = (value) => {
+  if (typeof value === "string" || typeof value === "number") return text(value);
+  const source = record(value);
+  for (const candidate of [source.text, source.summary, source.description, source.executiveSummary, source.title]) {
+    if (typeof candidate === "string" || typeof candidate === "number") return text(candidate);
+  }
+  return "";
+};
 
 function demoRepositoryUser() {
   return { principalId: "customer-enrollment", organizationId: "org-demo", authorityClass: "DEMO", permissions: ["demo.tenant"] };
@@ -112,7 +120,7 @@ async function projectProjection(reviewPackage) {
     customerReviewPackageId: reviewPackage.customerReviewPackageId,
     customerOrganizationId: reviewPackage.customerOrganizationId,
     title: reviewPackage.title || reviewPackage.product?.name || "Customer Project",
-    summary: reviewPackage.summary,
+    summary: displayText(reviewPackage.summary),
     status: safeStatus(proposal, serviceOrder, scopeVersion),
     artifactStates,
     proposal: {
@@ -121,7 +129,7 @@ async function projectProjection(reviewPackage) {
       proposalRevisionNumber: reviewPackage.proposalRevisionNumber,
       proposalHash: reviewPackage.proposalHash,
       title: reviewPackage.title,
-      summary: reviewPackage.summary,
+      summary: displayText(reviewPackage.summary),
       product: reviewPackage.product,
       commercialTerms: reviewPackage.commercialTerms,
       schedule: reviewPackage.schedule,
