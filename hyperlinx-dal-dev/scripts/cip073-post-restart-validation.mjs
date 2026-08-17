@@ -47,9 +47,9 @@ assert.equal(deal.artifactStates.proposal.state, "ACCEPTED");
 assert.equal(deal.artifactStates.customerAcceptance.state, "COMPLETE");
 assert.equal(deal.artifactStates.engineering.eligibility, "SUBMITTED");
 assert.equal(deal.engineering.engineeringPackageId, engineeringPackageId);
-assert.equal(deal.proposal.proposalRevisionId, proposalRevisionId);
-assert.equal(deal.proposal.proposalHash, proposalHash);
-assert.equal(deal.scopeVersion, null);
+assert.equal(deal.commercial.proposalRevisionId, proposalRevisionId);
+assert.equal(deal.commercial.proposalHash, proposalHash);
+assert.equal(deal.contractual.scopeVersionId, null);
 
 await request("/api/auth/logout", { method: "POST", cookie });
 
@@ -66,5 +66,5 @@ console.log(JSON.stringify({
   customerAcceptanceState: deal.artifactStates.customerAcceptance.state,
   engineeringPackageId,
   finalState: deal.currentState,
-  scopeVersionAbsent: deal.scopeVersion === null,
+  scopeVersionAbsent: deal.contractual.scopeVersionId === null,
 }, null, 2));
