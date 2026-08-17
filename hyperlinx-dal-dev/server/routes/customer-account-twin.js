@@ -35,11 +35,11 @@ function exactProposalEvidence(item, proposalRevisionId, proposalHash) {
 }
 
 export function deriveArtifactStates({ proposal, reviewPackage, portalActions = [], engineeringPackage, certifiedPackage, serviceOrder, customerSignature, countersignature, scopeVersion }) {
-  const proposalRevisionId = text(proposal?.proposalRevisionId ?? reviewPackage?.proposalRevisionId);
-  const proposalHash = text(proposal?.proposalHash ?? reviewPackage?.proposalHash);
+  const proposalRevisionId = text(reviewPackage?.proposalRevisionId ?? proposal?.proposalRevisionId);
+  const proposalHash = text(reviewPackage?.proposalHash ?? proposal?.proposalHash);
   const exactReviewPackage = exactProposalEvidence(reviewPackage, proposalRevisionId, proposalHash);
   const acceptance = portalActions.find((item) => item.action === "ACCEPT" && exactProposalEvidence(item, proposalRevisionId, proposalHash));
-  const proposalAccepted = Boolean(exactReviewPackage && (acceptance || proposal?.approvalState === "APPROVED"));
+  const proposalAccepted = Boolean(exactReviewPackage && (acceptance || (exactProposalEvidence(proposal, proposalRevisionId, proposalHash) && proposal?.approvalState === "APPROVED")));
   const customerSignatureExact = Boolean(customerSignature && serviceOrder
     && text(customerSignature.serviceOrderId) === text(serviceOrder.serviceOrderId)
     && text(customerSignature.documentHash) === text(serviceOrder.documentHash));
@@ -259,21 +259,24 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
   const deals = [...opportunityIds].map((opportunityId) => {
     const opportunity = newest(opportunities.filter((item) => text(item.opportunityId) === opportunityId));
     const proposal = newest(proposals.filter((item) => text(item.opportunityId) === opportunityId));
-    const opportunityReviewPackages = reviewPackages.filter((item) => text(item.opportunityId) === opportunityId);
-    const lineageAwareReviewPackages = opportunityReviewPackages.filter((item) => item.proposalRevisionId && item.proposalHash);
-    const reviewPackage = proposal?.proposalRevisionId && proposal?.proposalHash && lineageAwareReviewPackages.length
-      ? newest(opportunityReviewPackages.filter((item) => (
-          text(item.proposalRevisionId) === text(proposal.proposalRevisionId)
-          && text(item.proposalHash) === text(proposal.proposalHash)
-        )))
-      : newest(opportunityReviewPackages);
     const engineeringPackage = newest(engineeringPackages.filter((item) => text(item.opportunityId) === opportunityId || (proposal && text(item.proposalId) === text(proposal.proposalId))));
     const certifiedPackage = newest(certifiedPackages.filter((item) => text(item.opportunityId) === opportunityId || (proposal && text(item.proposalId) === text(proposal.proposalId))));
     const serviceOrder = newest(serviceOrders.filter((item) => text(item.opportunityId) === opportunityId || (proposal && text(item.proposalId) === text(proposal.proposalId))));
+    const opportunityReviewPackages = reviewPackages.filter((item) => text(item.opportunityId) === opportunityId && item.proposalRevisionId && item.proposalHash);
+    const governedProposalRevisionId = text(serviceOrder?.proposalRevisionId ?? certifiedPackage?.proposalRevisionId ?? engineeringPackage?.proposalRevisionId);
+    const governedProposalHash = text(serviceOrder?.proposalHash ?? certifiedPackage?.proposalHash ?? engineeringPackage?.proposalHash);
+    const reviewPackage = governedProposalRevisionId && governedProposalHash
+      ? newest(opportunityReviewPackages.filter((item) => exactProposalEvidence(item, governedProposalRevisionId, governedProposalHash)))
+        ?? newest(opportunityReviewPackages)
+      : newest(opportunityReviewPackages);
+    const persistedProposalRevision = array(proposal?.proposalRevisions).find((revision) => exactProposalEvidence(revision, reviewPackage?.proposalRevisionId, reviewPackage?.proposalHash));
+    const governedProposal = persistedProposalRevision
+      ? { ...proposal, ...record(persistedProposalRevision.snapshot), proposalRevisionId: persistedProposalRevision.proposalRevisionId, proposalRevisionNumber: persistedProposalRevision.revisionNumber, revisionNumber: persistedProposalRevision.revisionNumber, proposalHash: persistedProposalRevision.proposalHash }
+      : proposal;
     const scopeVersion = serviceOrder?.scopeVersionId
       ? scopeVersions.find((item) => text(item.scopeVersionId) === text(serviceOrder.scopeVersionId)) ?? null
       : newest(scopeVersions.filter((item) => text(item.opportunityId ?? item.canonicalTruth?.opportunityId) === opportunityId));
-    const routeId = text(reviewPackage?.route?.routeRepositoryId ?? proposal?.routeRepositoryId ?? opportunity?.routeRepositoryId);
+    const routeId = text(reviewPackage?.route?.routeRepositoryId ?? governedProposal?.routeRepositoryId ?? opportunity?.routeRepositoryId);
     const route = routes.find((item) => text(item.routeRepositoryId) === routeId) ?? null;
     const opportunityPortalActions = portalActions.filter((item) => text(item.opportunityId) === opportunityId);
     const customerSignature = serviceOrder?.customerSignatureId
@@ -282,8 +285,8 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
     const countersignature = serviceOrder?.countersignatureId
       ? countersignatures.find((item) => text(item.countersignatureId) === text(serviceOrder.countersignatureId)) ?? null
       : null;
-    const artifactStates = deriveArtifactStates({ proposal, reviewPackage, portalActions: opportunityPortalActions, engineeringPackage, certifiedPackage, serviceOrder, customerSignature, countersignature, scopeVersion });
-    const state = deriveState({ proposal, reviewPackage, engineeringPackage, certifiedPackage, serviceOrder, scopeVersion, artifactStates });
+    const artifactStates = deriveArtifactStates({ proposal: governedProposal, reviewPackage, portalActions: opportunityPortalActions, engineeringPackage, certifiedPackage, serviceOrder, customerSignature, countersignature, scopeVersion });
+    const state = deriveState({ proposal: governedProposal, reviewPackage, engineeringPackage, certifiedPackage, serviceOrder, scopeVersion, artifactStates });
     const currentStateIndex = CUSTOMER_DEAL_STATES.indexOf(state);
     return {
       dealId: opportunityId,
@@ -300,10 +303,10 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
       commercial: {
         opportunityStateVersion: opportunity?.commercialStateVersion ?? null,
         opportunityStateHash: opportunity?.commercialStateHash ?? null,
-        proposalId: proposal?.proposalId ?? reviewPackage?.proposalId ?? null,
-        proposalRevisionId: proposal?.proposalRevisionId ?? reviewPackage?.proposalRevisionId ?? null,
-        proposalRevisionNumber: proposal?.proposalRevisionNumber ?? reviewPackage?.proposalRevisionNumber ?? null,
-        proposalHash: proposal?.proposalHash ?? reviewPackage?.proposalHash ?? null,
+        proposalId: governedProposal?.proposalId ?? reviewPackage?.proposalId ?? null,
+        proposalRevisionId: reviewPackage?.proposalRevisionId ?? governedProposal?.proposalRevisionId ?? null,
+        proposalRevisionNumber: reviewPackage?.proposalRevisionNumber ?? governedProposal?.proposalRevisionNumber ?? governedProposal?.revisionNumber ?? null,
+        proposalHash: reviewPackage?.proposalHash ?? governedProposal?.proposalHash ?? null,
       },
       workingOpportunity: {
         stateVersion: opportunity?.commercialStateVersion ?? null,
@@ -336,7 +339,7 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
         documentHash: serviceOrder?.documentHash ?? null,
         scopeVersionId: scopeVersion?.scopeVersionId ?? serviceOrder?.scopeVersionId ?? null,
       },
-      customerSafe: customerSafeProjection({ opportunity, proposal, reviewPackage, route, serviceOrder }),
+      customerSafe: customerSafeProjection({ opportunity, proposal: governedProposal, reviewPackage, route, serviceOrder }),
       documentHistory: [
         ...array(proposal?.proposalRevisions).map((revision) => {
           const accepted = opportunityPortalActions.some((item) => item.action === "ACCEPT" && exactProposalEvidence(item, revision.proposalRevisionId, revision.proposalHash))
