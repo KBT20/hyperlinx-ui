@@ -43,6 +43,12 @@ async function contextFrom({ proposal, serviceOrder, certified, scopeVersion } =
   const routeId = txt(resolvedCertified?.routeRepositoryId ?? source?.routeRepositoryId ?? resolvedProposal?.routeRepositoryId ?? serviceOrder?.routeSummary?.routeRepositoryId);
   const route = routeId ? await loadRecord(DIRS.commercialRoutes, routeId).catch(() => null) : null;
   if (!resolvedProposal || !route || arr(route.commercialGeometry).length < 2) throw Object.assign(new Error("Governed Proposal and Commercial Route Repository geometry are required for export."), { status: 409 });
+  const expectedRevision = num(resolvedProposal.routeRevision ?? resolvedProposal.routeSnapshot?.routeRevision, -1);
+  const expectedGeometryHash = txt(resolvedProposal.routeGeometryHash ?? resolvedProposal.routeSnapshot?.geometryHash);
+  const expectedGeometryId = txt(resolvedProposal.routeGeometryId ?? resolvedProposal.routeSnapshot?.routeGeometryId);
+  if (expectedRevision !== num(route.routeRevision, -2) || expectedGeometryHash !== txt(route.geometryHash) || expectedGeometryId !== txt(route.routeGeometryId)) {
+    throw Object.assign(new Error("The current Commercial Route no longer matches the exact selected Proposal Revision spine. Export is blocked."), { status: 409 });
+  }
   return { proposal: resolvedProposal, serviceOrder, certified: resolvedCertified, scopeVersion, source, route };
 }
 
@@ -143,13 +149,14 @@ function proposalPdf(context) {
   const p = context.proposal, q = quantities(context), price = proposalPricing(p), civil = rec(rec(p.transparentEstimate).civilMix), a = endpoint(context.route,"A"), z = endpoint(context.route,"Z");
   const config = rec(p.projectConfiguration);
   const sections = [
-    { heading: "PROPOSAL", lines: [`Customer: ${txt(p.customerName ?? p.executiveSummary?.customer,"Google")}`, `Opportunity: ${txt(p.title ?? p.opportunityId)}`, `Product: ${txt(p.productName ?? context.certified?.productName,"Point-to-Point Fiber Infrastructure")}`, `Proposal Revision: ${txt(p.proposalRevisionId)} | Proposal Hash: ${txt(p.proposalHash)}`, `Proposal Date: ${txt(p.updatedAt ?? p.createdAt)}`] },
+    ...(p.environment === "DEMO" ? [{ heading: "DEMO DOCUMENT", lines: ["Demonstration projection only. Not production eligible. Placeholder contract language is not approved Teralinx legal terms."] }] : []),
+    { heading: "PROPOSAL", lines: [`Customer: ${txt(p.customerName ?? p.executiveSummary?.customer,"Customer")}`, `Opportunity: ${txt(p.title ?? p.opportunityId)}`, `Product: ${txt(p.productName ?? context.certified?.productName,"Point-to-Point Fiber Infrastructure")}`, `Proposal Revision: ${txt(p.proposalRevisionId)}`, `Proposal Date: ${txt(p.updatedAt ?? p.createdAt)}`] },
     { heading: "PROJECT OVERVIEW", lines: [`A Location: ${a.name} (${a.coordinate.join(", ")})`, `Z Location: ${z.name} (${z.coordinate.join(", ")})`, `Route Length: ${q.routeMiles.toFixed(2)} miles (${Math.round(q.routeFeet).toLocaleString("en-US")} feet)`, `Route Type: Governed commercial route alignment`] },
     { heading: "CUSTOMER SOLUTION", lines: [`${q.ductCount} x ${q.ductDiameter || config.ductDiameter || 1.25}-inch ${q.ductMaterial} ducts`, `${q.fiberCount}-count ${txt(config.fiberCableType,"shielded fiber cable")}`, `Fiber placement: ${txt(config.fiberPlacementPolicy,"BLOWN")}`, `ILA configuration: ${q.ilaSites ? `${q.ilaSites} governed facility locations` : "No certified ILA/regeneration facility objects"}`] },
     { heading: "CONSTRUCTION ASSUMPTIONS", lines: [`Civil mix: ${num(civil.plowPercent)}% plow, ${num(civil.directionalBoreDirtPercent)}% dirt bore, ${num(civil.directionalBoreRockPercent)}% rock bore, ${num(civil.openTrenchPercent)}% open trench`, `Stationing: A to Z, 0+00 through ${station(q.routeFeet)}; routine station rows omitted from this customer document.`] },
     { heading: "INFRASTRUCTURE SUMMARY", lines: [`Conduit: ${Math.round(q.conduitFeet).toLocaleString("en-US")} feet`, `Purchased fiber: ${Math.round(q.purchasedFiberFeet).toLocaleString("en-US")} feet`, `Handholes: ${q.handholes} | Vaults: ${q.vaults} | Splice cases: ${q.spliceCases}`, `Marker posts: ${q.markerPosts} | Slack loops: ${q.slackLoops} | ILA/regeneration sites: ${q.ilaSites}`] },
     { heading: "COMMERCIAL TERMS", lines: [`NRC: ${money(price.nrc)} | MRC/O&M: ${money(price.mrc)} | Term: ${price.termMonths} months | TCV: ${money(price.tcv)}`, ...arr(p.commercialAssumptions).slice(0,5).map((v) => txt(v))] },
-    { heading: "REVISION / AUDIT REFERENCE", lines: [`Route Repository: ${context.route.routeRepositoryId}`, `Route Revision: ${context.route.routeRevision} | Geometry Hash: ${context.route.geometryHash}`, `Customer-facing projection of the exact governed authority.`] },
+    { heading: "REVISION / AUDIT REFERENCE", lines: [`Route Repository: ${context.route.routeRepositoryId}`, `Route Revision: ${context.route.routeRevision}`, `Customer-facing projection of the exact governed authority. Technical hashes remain in protected export metadata.`] },
   ];
   return buildPdf([textPage("TERALINX", sections.slice(0,4)), textPage("PROPOSAL - SCOPE & TERMS", sections.slice(4)), mapPage("GOVERNED OPPORTUNITY MAP", context, q)], { title: `Teralinx Proposal ${p.proposalRevisionId}`, subject: `Governed Proposal projection ${p.proposalHash}` });
 }
@@ -161,6 +168,7 @@ function serviceOrderPdf(context, signature, countersignature) {
   const conditions = arr(context.source?.engineeringConstraints); const unresolved = conditions.filter((v) => !["ACCEPTED","RESOLVED"].includes(txt(v.status).toUpperCase()));
   const major = q.objects.filter((o) => /ILA|REGEN|VAULT|SPLICE/i.test(txt(o.objectType))).slice(0, 12);
   const sections = [
+    ...(so.environment === "DEMO" ? [{ heading: "DEMO DOCUMENT", lines: ["Demonstration projection only. Not production eligible. Placeholder contract language is not approved Teralinx legal terms."] }] : []),
     { heading: "STATEMENT OF WORK / SERVICE ORDER", lines: [`Status: ${status}`, `Customer: ${txt(so.customer?.name,"Google")} | Opportunity: ${so.opportunityId}`, `Product: ${txt(so.serviceDescription?.productName)}`, `Service Order: ${so.serviceOrderId} | Revision ${so.documentRevision}`, `Document Hash: ${so.documentHash}`] },
     { heading: "CERTIFIED TECHNICAL BASIS", lines: [`Certified IOF: ${so.certifiedPackageId}`, `Certification date: ${txt(context.certified?.certifiedAt)}`, `Engineering Revision: ${txt(context.certified?.engineeringRevisionId)} | Approval: ${txt(context.certified?.engineeringApprovalId)}`] },
     { heading: "PROJECT OVERVIEW / SCOPE OF WORK", lines: [`A Location: ${a.name} (${a.coordinate.join(", ")})`, `Z Location: ${z.name} (${z.coordinate.join(", ")})`, `Route Length: ${q.routeMiles.toFixed(2)} miles`, `Teralinx will deliver the governed point-to-point duct and fiber infrastructure represented by the exact Certified IOF.`] },
@@ -218,6 +226,16 @@ export async function handleCustomerExports(req, res, pathname) {
   const user = requireRuntimeUser(req,res); if (!user) return true;
   const parts = pathname.slice(BASE.length).split("/").filter(Boolean).map(decodeURIComponent);
   try {
+    if (parts[0] === "proposals" && parts[1] && parts[2] === "revisions" && parts[3] && parts[4] === "pdf") {
+      const proposal = await loadRecord(DIRS.proposalDrafts,parts[1]).catch(()=>null);
+      if (!proposal) { errorResponse(res,404,"Proposal not found."); return true; }
+      if (!await canExport(proposal,user)) { errorResponse(res,403,"Proposal export is outside your organization/customer/opportunity scope."); return true; }
+      const revision = arr(proposal.proposalRevisions).find((item) => item.proposalRevisionId === parts[3]);
+      if (!revision?.snapshot || !revision?.proposalHash) { errorResponse(res,404,"Immutable Proposal Revision not found."); return true; }
+      const revisionProposal = { ...proposal, ...revision.snapshot, proposalRevisionId: revision.proposalRevisionId, proposalHash: revision.proposalHash, revisionNumber: revision.revisionNumber, version: revision.revisionNumber, updatedAt: revision.createdAt };
+      const context = await contextFrom({proposal:revisionProposal}); const label=safe(context.route.routeName ?? proposal.opportunityId,"Route");
+      const buffer=proposalPdf(context); send(res,buffer,"application/pdf",`Teralinx_${label}_Proposal_R${num(revision.revisionNumber,1)}.pdf`,txt(revision.proposalHash),{"X-Teralinx-Proposal-Revision":revision.proposalRevisionId,"X-Teralinx-Route-Revision":String(context.route.routeRevision),"X-Teralinx-Geometry-Hash":txt(context.route.geometryHash)}); return true;
+    }
     if (parts[0] === "proposals" && parts[1] && ["pdf","route.kmz"].includes(parts[2])) {
       const proposal = await loadRecord(DIRS.proposalDrafts,parts[1]).catch(()=>null);
       if (!proposal) { errorResponse(res,404,"Proposal not found."); return true; }

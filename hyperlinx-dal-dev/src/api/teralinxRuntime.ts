@@ -71,6 +71,7 @@ export type AccountCustomerTwin = {
   persona?: string | null;
   dealCount: number;
   stateCounts: Record<CustomerDealState, number>;
+  tasks: Array<{ taskType: string; label: string; count: number; dealIds: string[] }>;
   lifecycleStates: CustomerDealState[];
   deals: Array<{
     dealId: string; opportunityId: string; accountId: string; customerId: string; title: string; summary?: string;
@@ -81,6 +82,18 @@ export type AccountCustomerTwin = {
     spatial: { routeRepositoryId?: string | null; routeRevision?: number | null; geometryHash?: string | null };
     engineering: { engineeringPackageId?: string | null; certifiedPackageId?: string | null; certificationHash?: string | null };
     contractual: { serviceOrderId?: string | null; serviceOrderStatus?: string | null; documentHash?: string | null; scopeVersionId?: string | null };
+    customerSafe: {
+      product: { productId?: string | null; name: string; description?: string | null };
+      route: { routeRepositoryId?: string | null; routeRevision?: number | null; routeRevisionId?: string | null; routeGeometryId?: string | null; geometryHash?: string | null; routeMiles?: number | null; routeFeet?: number | null; endpointA?: unknown; endpointZ?: unknown; coordinates: [number, number][] };
+      economics: { currency: string; nrc?: number | null; mrc?: number | null; termMonths?: number | null; tcv?: number | null; unitPricePerFoot?: number | null };
+      delivery: { targetDate?: string | null; durationMonths?: number | null; durationDays?: number | null; facilityCount?: number | null };
+      specifications: Record<string, unknown>;
+      dealPoints: { paymentStructure?: string | null; customerResponsibilities: string[]; teralinxResponsibilities: string[]; assumptions: string[]; exclusions: string[]; specialConditions: string[] };
+      doctrineLineage: { productDoctrineId?: string | null; productDoctrineVersion?: string | null; productDoctrineHash?: string | null };
+      contracting: { mode: "TERALINX_PAPER" | "CUSTOMER_PAPER" | string; supportedModes: string[]; governingTermsReference?: string | null; customerPaperReferences: Array<Record<string, unknown>>; demoLegalClassification?: string | null };
+      lineage: { status: "PASS" | "FAIL_CLOSED"; checks: Record<string, boolean>; expected: Record<string, unknown> };
+    };
+    documentHistory: Array<{ documentType: string; documentId: string; revision?: number; status: string; authorityHash?: string; createdAt?: string }>;
   }>;
   generatedAt: string;
   createsAuthority: false;
