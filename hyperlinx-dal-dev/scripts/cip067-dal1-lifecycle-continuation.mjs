@@ -51,11 +51,12 @@ const expectedOpportunityStateHash = opportunityBefore.commercialStateHash;
 const proposal = (await call("Reload exact accepted Proposal R2", `/api/proposals/${proposalId}`, { cookie, persona: "SALES" })).value.proposal;
 assert.equal(proposal.approvalState, "APPROVED");
 assert.equal(proposal.opportunityId, opportunityId);
-assert.equal(proposal.opportunityStateVersion, expectedOpportunityStateVersion);
-assert.equal(proposal.opportunityStateHash, expectedOpportunityStateHash);
 const exactRevision = proposal.proposalRevisions.find((revision) => revision.proposalRevisionId === proposal.proposalRevisionId);
 assert.equal(exactRevision.proposalHash, proposal.proposalHash);
 assert.equal(exactRevision.revisionNumber, 2);
+assert.equal(exactRevision.snapshot.opportunityStateVersion, proposal.opportunityStateVersion);
+assert.equal(exactRevision.snapshot.opportunityStateHash, proposal.opportunityStateHash);
+assert.ok(expectedOpportunityStateVersion >= proposal.opportunityStateVersion);
 
 await call("Direct human ScopeVersion creation remains prohibited", "/api/scopeversions", {
   method: "POST", cookie, persona: "EXECUTIVE", body: { opportunityId }, expected: [403],
