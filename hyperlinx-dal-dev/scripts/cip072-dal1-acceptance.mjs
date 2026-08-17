@@ -91,7 +91,7 @@ try {
   assert.equal(reviewDeal.artifactStates.engineering.eligibility, "NOT_ELIGIBLE");
 
   await call("Engineering cannot begin before acceptance", "/api/engineering/certification/draft-packages/from-proposal", {
-    method: "POST", cookie, body: { proposalId }, expected: [409],
+    method: "POST", cookie, persona: "ENGINEERING", body: { proposalId }, expected: [409],
   });
   await call("Customer cannot create ScopeVersion", "/api/scopeversions", {
     method: "POST", cookie, persona: "CUSTOMER_COMMERCIAL_REVIEWER", body: {}, expected: [403],
@@ -128,7 +128,7 @@ try {
   assert.equal(reloginDeal.artifactStates.proposal.state, "ACCEPTED");
   assert.equal(reloginDeal.artifactStates.customerAcceptance.state, "COMPLETE");
 
-  const assembled = (await call("Assemble legitimate Draft IOF", "/api/engineering/certification/draft-packages/from-proposal", { method: "POST", cookie, body: { proposalId } })).value;
+  const assembled = (await call("Assemble legitimate Draft IOF", "/api/engineering/certification/draft-packages/from-proposal", { method: "POST", cookie, persona: "ENGINEERING", body: { proposalId } })).value;
   const draft = assembled.draftPackage ?? assembled.iofPackage ?? assembled;
   assert.ok(draft.packageId);
   await call("Customer cannot invoke Send to Engineering", `/api/commercial/iof-packages/${encodeURIComponent(draft.packageId)}/submit-engineering`, {
