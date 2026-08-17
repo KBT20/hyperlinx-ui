@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createId, listControlWorkItems, listMarketplaceQuotes, listScopeVersions, now, saveControlWorkItem, saveScopeVersion } from "../api/dalClient";
 import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
+import OperationalAuthorityBanner from "../components/OperationalAuthorityBanner";
 import { useDALState } from "../dal/DALState";
 import { buildFieldExecutionViewModel } from "../field/FieldExecutionViewModel";
 import { LeafletMap, type GISBuildPath, type GISPoint, type GISRoute } from "../gis";
@@ -326,6 +327,7 @@ export default function ControlWorkspace() {
         </button>
       </div>
 
+      <OperationalAuthorityBanner scopeVersionId={activeScope?.scopeVersionId} lensId="CONTROL" />
       <ScopeVersionLifecycleRibbon scopeVersion={activeScope} />
 
       <div className="dal-grid">

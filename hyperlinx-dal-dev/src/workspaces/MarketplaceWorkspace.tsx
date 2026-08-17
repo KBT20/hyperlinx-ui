@@ -3,6 +3,7 @@ import { listScopeVersions } from "../api/dalClient";
 import { bootstrapMarketplaceFulfillment, createMarketplaceAllocation, createMarketplaceAward, createMarketplaceResponse, downloadRuntimeArtifact, loadMarketplaceFulfillment } from "../api/teralinxRuntime";
 import { useDALState } from "../dal/DALState";
 import { useTeralinxAuth } from "../identity/TeralinxAuth";
+import OperationalAuthorityBanner from "../components/OperationalAuthorityBanner";
 import { MapKernel, renderSharedOpportunityMapProjection } from "../mapkernel";
 import type { MarketplaceFulfillmentState } from "../marketplace/MarketplaceFulfillment";
 import type { ScopeVersion } from "../types/dal";
@@ -67,6 +68,7 @@ export default function MarketplaceWorkspace() {
 
   if (!scope) return <section className="dal-workspace"><div className="dal-status warning">No immutable authorized ScopeVersion is available for Marketplace.</div></section>;
   return <section className="dal-workspace engineering-certification-shell marketplace-fulfillment-shell">
+    <OperationalAuthorityBanner scopeVersionId={scope.scopeVersionId} lensId="MARKETPLACE" />
     <div className="dal-workspace-header"><div><span className="engineering-review-eyebrow">Authorized fulfillment</span><h2>Marketplace · 3SWR Delivery Readiness</h2><p>ScopeVersion defines what must be delivered. Marketplace determines how the market can fulfill it. Humans allocate responsibility.</p></div><div className="dal-actions"><button type="button" onClick={() => void refresh()}>Refresh</button>{!state?.packages.length ? <button type="button" onClick={() => void bootstrap()} disabled={pending}>Prepare 3SWR Marketplace</button> : null}</div></div>
 
     <div className="engineering-final-review-grid" aria-label="Authorized Scope"><span>Customer<b>{short(scope.customerId)}</b></span><span>Product<b>{short(scope.productName ?? scope.productId)}</b></span><span>ScopeVersion<b>{short(scope.scopeVersionId)}</b></span><span>Route Miles<b>{state?.demand.route.routeMiles.toFixed(2) ?? number(scope.routeMiles)}</b></span><span>Certified IOF<b>{short(scope.certifiedIofPackageId)}</b></span><span>Service Order<b>{short(scope.serviceOrderId)}</b></span></div>

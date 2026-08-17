@@ -35,6 +35,7 @@ import { handleIofPackages } from "./routes/iof-packages.js";
 import { handleMarketplaceQuotes } from "./routes/marketplace-quotes.js";
 import { handleMarketplaceFulfillment } from "./routes/marketplace-fulfillment.js";
 import { handleOpportunitySeeds } from "./routes/opportunity-seeds.js";
+import { handleOperationalBaselines } from "./routes/operational-baselines.js";
 import { handleProposalDrafts } from "./routes/proposal-drafts.js";
 import { handleProductFulfillment } from "./routes/product-fulfillment.js";
 import { handleRuntime } from "./routes/runtime.js";
@@ -59,6 +60,7 @@ export const REGISTERED_API_ROUTES = [
   { basePath: "/api/geocode", handler: "handleGeocode" },
   { basePath: "/api/certified-routes", handler: "handleCertifiedRoutes" },
   { basePath: "/api/scopeversions", handler: "handleScopeVersions" },
+  { basePath: "/api/operational-baselines", handler: "handleOperationalBaselines", canonical: true, authority: "SCOPEVERSION_ORDER_FOR_EXECUTION" },
   { basePath: "/api/customer-design-imports", handler: "handleCustomerDesignImports" },
   { basePath: "/api/exports", handler: "handleCustomerExports" },
   { basePath: "/api/commercial/opportunities", handler: "handleCommercialOpportunities" },
@@ -127,6 +129,7 @@ const routes = [
   handleGeocode,
   handleCertifiedRoutes,
   handleScopeVersions,
+  handleOperationalBaselines,
   handleCustomerDesignImports,
   handleCustomerExports,
   handleCommercialOpportunities,
@@ -282,6 +285,7 @@ const server = http.createServer(async (req, res) => {
           productLibrary: true,
           fulfillmentPlans: true,
           scopeVersions: true,
+          operationalBaselines: true,
           candidateSites: true,
           opportunitySeeds: true,
           inventoryGraphs: true,

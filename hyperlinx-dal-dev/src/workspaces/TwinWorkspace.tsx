@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { listControlWorkItems, listFieldClosures, loadCertifiedIofTwinState, loadTwinState } from "../api/dalClient";
 import { countersignServiceOrder, downloadRuntimeArtifact, generateServiceOrder, issueServiceOrder, listServiceOrders, type ServiceOrderRuntime } from "../api/teralinxRuntime";
 import ScopeVersionLifecycleRibbon from "../components/ScopeVersionLifecycleRibbon";
+import OperationalAuthorityBanner from "../components/OperationalAuthorityBanner";
 import { useDALState } from "../dal/DALState";
 import { MapKernel, renderSharedOpportunityMapProjection, type SharedOpportunityMapProjection } from "../mapkernel";
 import { LeafletMap, type GISBuildPath, type GISPoint, type GISRoute } from "../gis";
@@ -377,6 +378,7 @@ export default function TwinWorkspace() {
         </div>
       </div>
 
+      <OperationalAuthorityBanner scopeVersionId={projectionScopeVersion?.scopeVersionId} lensId="TWIN" />
       <ScopeVersionLifecycleRibbon scopeVersion={projectionScopeVersion} />
 
       <div className="dal-panel">
