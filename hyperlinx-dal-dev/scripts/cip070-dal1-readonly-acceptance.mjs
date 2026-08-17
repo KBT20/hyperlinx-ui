@@ -42,7 +42,8 @@ for (const candidateAccount of accounts) {
 }
 const preScopeDeal = accountTwins.flatMap((candidateTwin) => candidateTwin.deals.map((deal) => ({ account: candidateTwin.account, deal })))
   .find(({ deal }) => ["DRAFT", "PROPOSED", "CUSTOMER_REVIEW", "ACCEPTED"].includes(deal.currentState) && deal.customerSafe.lineage.status === "PASS" && deal.customerSafe.route.coordinates.length >= 2);
-assert.ok(preScopeDeal, "A legitimate persisted pre-ScopeVersion deal with exact governed route authority is required for CIP-070 acceptance.");
+const preScopeInventory = accountTwins.map((candidateTwin) => ({ accountId: candidateTwin.account.accountId, deals: candidateTwin.deals.map((deal) => ({ opportunityId: deal.opportunityId, state: deal.currentState, lineage: deal.customerSafe.lineage.status, routeRepositoryId: deal.customerSafe.route.routeRepositoryId, routeRevision: deal.customerSafe.route.routeRevision, geometryHash: deal.customerSafe.route.geometryHash, coordinateCount: deal.customerSafe.route.coordinates.length })) }));
+assert.ok(preScopeDeal, `A legitimate persisted pre-ScopeVersion deal with exact governed route authority is required for CIP-070 acceptance. Inventory: ${JSON.stringify(preScopeInventory)}`);
 const internal = (await call(`/api/accounts/${encodeURIComponent(accountId)}/customer-twin`, { cookie, persona: "SALES" })).value.customerTwin;
 assert.equal(internal.customerTwinId, `CUSTOMER-TWIN-${accountId}`);
 const internalDeal = internal.deals.find((deal) => deal.opportunityId === opportunityId);
