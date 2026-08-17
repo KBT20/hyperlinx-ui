@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const baseUrl = process.env.CIP071A_BASE_URL ?? "http://127.0.0.1:3001";
 const password = (await readFile(process.env.CIP071A_DEMO_CREDENTIAL_FILE ?? "/home/ubuntu/.hyperlinx-demo-credential", "utf8")).trim();
-const suffix = String(Date.now());
+const suffix = String(process.env.CIP071A_SUFFIX ?? Date.now());
 const accountId = "ACCOUNT-DEMO-BLUE-MESA";
 const customerId = "customer-demo-b";
 const customerOrganizationId = "org-demo-customer-b";
@@ -36,6 +36,21 @@ const login = await call("Demo login", "/api/auth/login", { method: "POST", body
 const cookie = login.cookie;
 assert.equal(login.value.user.principalId, "demo-principal");
 assert.equal(login.value.user.organizationId, "org-demo");
+if (process.env.CIP071A_READ_ONLY === "1") {
+  const [savedImport, savedRoute, savedOpportunity, savedProposal] = await Promise.all([
+    call("Reload Customer Design Import", `/api/customer-design-imports/${encodeURIComponent(importId)}`, { cookie }),
+    call("Reload Commercial Route", `/api/commercial/routes/${encodeURIComponent(routeRepositoryId)}`, { cookie }),
+    call("Reload Commercial Opportunity", `/api/commercial/opportunities/${encodeURIComponent(opportunityId)}`, { cookie }),
+    call("Reload Proposal", `/api/proposals/${encodeURIComponent(proposalId)}`, { cookie }),
+  ]);
+  assert.equal(savedImport.value.customerDesignImport.importId, importId);
+  assert.equal(savedRoute.value.commercialRoute.routeRepositoryId, routeRepositoryId);
+  assert.equal(savedOpportunity.value.opportunity.opportunityId, opportunityId);
+  assert.equal(savedProposal.value.proposal.proposalId, proposalId);
+  assert.equal(savedProposal.value.proposal.status, "WAITING_CUSTOMER_REVIEW");
+  console.log(JSON.stringify({ result: "PASS", readOnly: true, restartPersistence: true, records: { importId, routeRepositoryId, opportunityId, proposalId, proposalRevisionId: savedProposal.value.proposal.proposalRevisionId, proposalHash: savedProposal.value.proposal.proposalHash } }, null, 2));
+  process.exit(0);
+}
 const northstarBefore = (await call("Northstar before", "/api/accounts/ACCOUNT-DEMO-NORTHSTAR/customer-twin", { cookie })).value.customerTwin.deals.find((item) => item.opportunityId === "OPPORTUNITY-DEMO-CIP067-NORTHSTAR-PERSISTENCE");
 
 const imported = (await call("Customer Design Import", "/api/customer-design-imports", { method: "POST", cookie, expected: [201], body: { customerDesignImport: {
