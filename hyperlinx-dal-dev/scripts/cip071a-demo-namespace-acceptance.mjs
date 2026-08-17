@@ -13,13 +13,13 @@ const importId = `CUSTOMER-DESIGN-IMPORT-DEMO-CIP071A-${suffix}`;
 const proposalId = `PROPOSAL-DEMO-CIP071A-${suffix}`;
 const geometry = [[-104.9903, 39.7392], [-104.9702, 39.7508], [-104.9501, 39.7614]];
 
-async function call(label, pathname, { method = "GET", body, cookie = "", expected = [200] } = {}) {
+async function call(label, pathname, { method = "GET", body, cookie = "", expected = [200], persona = "SALES" } = {}) {
   const response = await fetch(`${baseUrl}${pathname}`, {
     method,
     headers: {
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       ...(cookie ? { Cookie: cookie } : {}),
-      "X-Hyperlinx-Demo-Persona": "SALES",
+      "X-Hyperlinx-Demo-Persona": persona,
       "X-Hyperlinx-Demo-Customer-Organization": customerOrganizationId,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -52,6 +52,27 @@ if (process.env.CIP071A_NEGATIVE_NAMESPACE === "1") {
     rejected.push({ label, status: response.status, error: String(value.error).split(":")[0] });
   }
   console.log(JSON.stringify({ result: "PASS", negativeNamespaceEnforcement: rejected, writesExpected: 0 }, null, 2));
+  process.exit(0);
+}
+if (process.env.CIP071A_ACCEPT_CUSTOMER === "1") {
+  const exactProposal = (await call("Load exact Proposal", `/api/proposals/${encodeURIComponent(proposalId)}`, { cookie })).value.proposal;
+  const accepted = (await call("Customer accepts exact Proposal Revision", `/api/customer-portal/projects/${encodeURIComponent(opportunityId)}/proposal/accept`, {
+    method: "POST", cookie, persona: "CUSTOMER_COMMERCIAL_REVIEWER",
+    body: { proposalRevisionId: exactProposal.proposalRevisionId, proposalHash: exactProposal.proposalHash, comment: "CIP-071A authoritative customer acceptance validation." },
+  })).value;
+  assert.equal(accepted.project.artifactStates.proposal.state, "ACCEPTED");
+  const internal = (await call("Internal Customer Twin after acceptance", `/api/accounts/${accountId}/customer-twin`, { cookie, persona: "ENGINEERING" })).value.customerTwin;
+  const external = (await call("Customer Twin after acceptance", "/api/customer-portal/account-twin", { cookie, persona: "CUSTOMER_VIEWER" })).value.customerTwin;
+  const internalDeal = internal.deals.find((item) => item.opportunityId === opportunityId);
+  const externalDeal = external.deals.find((item) => item.opportunityId === opportunityId);
+  assert.equal(internalDeal.currentState, "ACCEPTED");
+  assert.equal(externalDeal.currentState, "ACCEPTED");
+  assert.equal(internalDeal.artifactStates.proposal.state, "ACCEPTED");
+  assert.equal(internalDeal.artifactStates.proposal.proposalRevisionId, exactProposal.proposalRevisionId);
+  assert.equal(internalDeal.artifactStates.proposal.proposalHash, exactProposal.proposalHash);
+  assert.deepEqual(externalDeal.artifactStates.proposal, internalDeal.artifactStates.proposal);
+  assert.ok(internalDeal.permittedActions.some((item) => item.action === "OPEN_ENGINEERING"));
+  console.log(JSON.stringify({ result: "PASS", authoritativeCustomerTransition: "CUSTOMER_REVIEW_TO_ACCEPTED", opportunityId, proposalId, proposalRevisionId: exactProposal.proposalRevisionId, proposalHash: exactProposal.proposalHash, acceptanceEvidenceId: internalDeal.artifactStates.proposal.acceptanceEvidenceId, internalExternalParity: true, engineeringEligibility: "PERSISTED_ACCEPTANCE" }, null, 2));
   process.exit(0);
 }
 if (process.env.CIP071A_READ_ONLY === "1") {
