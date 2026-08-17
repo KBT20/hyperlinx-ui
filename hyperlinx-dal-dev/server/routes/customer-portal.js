@@ -23,7 +23,10 @@ const text = (value) => String(value ?? "").trim();
 const array = (value) => Array.isArray(value) ? value : value == null ? [] : [value];
 const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
 const displayText = (value) => {
-  if (typeof value === "string" || typeof value === "number") return text(value);
+  if (typeof value === "string" || typeof value === "number") {
+    const rendered = text(value);
+    return rendered === "[object Object]" ? "" : rendered;
+  }
   const source = record(value);
   for (const candidate of [source.text, source.summary, source.description, source.executiveSummary, source.title]) {
     if (typeof candidate === "string" || typeof candidate === "number") return text(candidate);

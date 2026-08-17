@@ -11,7 +11,10 @@ const record = (value) => value && typeof value === "object" && !Array.isArray(v
 const number = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 const newest = (records) => sortedByUpdated(records)[0] ?? null;
 const displayText = (value) => {
-  if (typeof value === "string" || typeof value === "number") return text(value);
+  if (typeof value === "string" || typeof value === "number") {
+    const rendered = text(value);
+    return rendered === "[object Object]" ? "" : rendered;
+  }
   const source = record(value);
   for (const candidate of [source.text, source.summary, source.description, source.executiveSummary, source.title]) {
     if (typeof candidate === "string" || typeof candidate === "number") return text(candidate);
