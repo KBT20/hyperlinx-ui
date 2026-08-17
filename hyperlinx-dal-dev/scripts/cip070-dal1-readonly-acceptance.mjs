@@ -35,6 +35,14 @@ const accountsResponse = await call("/api/accounts", { cookie, persona: "SALES" 
 const accounts = Array.isArray(accountsResponse.value) ? accountsResponse.value : accountsResponse.value.accounts ?? accountsResponse.value.items ?? [];
 const account = accounts.find((item) => item.accountId === accountId);
 assert.ok(account, "The accepted Northstar Account must be discoverable by exact accountId.");
+const accountTwins = [];
+for (const candidateAccount of accounts) {
+  const candidateTwin = (await call(`/api/accounts/${encodeURIComponent(candidateAccount.accountId)}/customer-twin`, { cookie, persona: "SALES" })).value.customerTwin;
+  accountTwins.push(candidateTwin);
+}
+const preScopeDeal = accountTwins.flatMap((candidateTwin) => candidateTwin.deals.map((deal) => ({ account: candidateTwin.account, deal })))
+  .find(({ deal }) => ["DRAFT", "PROPOSED", "CUSTOMER_REVIEW", "ACCEPTED"].includes(deal.currentState) && deal.customerSafe.lineage.status === "PASS" && deal.customerSafe.route.coordinates.length >= 2);
+assert.ok(preScopeDeal, "A legitimate persisted pre-ScopeVersion deal with exact governed route authority is required for CIP-070 acceptance.");
 const internal = (await call(`/api/accounts/${encodeURIComponent(accountId)}/customer-twin`, { cookie, persona: "SALES" })).value.customerTwin;
 assert.equal(internal.customerTwinId, `CUSTOMER-TWIN-${accountId}`);
 const internalDeal = internal.deals.find((deal) => deal.opportunityId === opportunityId);
@@ -80,5 +88,6 @@ console.log(JSON.stringify({
   contractual: internalDeal.contractual, historicalProposalRevision: project.proposal,
   internalExternalParity: true, customerAtoBIsolation: true, viewerReadOnly: true,
   internalCustomerMutationRejected: true, proposalPdf: "PASS", serviceOrderPdf: "PASS",
+  preScopeDeal: { accountId: preScopeDeal.account.accountId, opportunityId: preScopeDeal.deal.opportunityId, currentState: preScopeDeal.deal.currentState, route: preScopeDeal.deal.customerSafe.route },
   createsAuthority: internal.createsAuthority, lifecycleMutationPerformed: false,
 }, null, 2));
