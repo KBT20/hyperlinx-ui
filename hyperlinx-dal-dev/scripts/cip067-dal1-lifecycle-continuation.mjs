@@ -204,9 +204,14 @@ await call("Wrong Service Order document hash rejected", `/api/customer-portal/p
     serviceOrderId: serviceOrder.serviceOrderId, documentHash: "WRONG", typedName: "Demo Customer Signer", authorityAcknowledged: true,
   },
 });
+await call("Wrong customer signer name rejected", `/api/customer-portal/projects/${opportunityId}/service-order/sign`, {
+  method: "POST", cookie, persona: "CUSTOMER_AUTHORIZED_SIGNER", expected: [409], body: {
+    serviceOrderId: serviceOrder.serviceOrderId, documentHash: serviceOrder.documentHash, typedName: "Demo Customer Signer", authorityAcknowledged: true,
+  },
+});
 const customerSignature = (await call("Independent Demo customer authority signs exact Service Order", `/api/customer-portal/projects/${opportunityId}/service-order/sign`, {
   method: "POST", cookie, persona: "CUSTOMER_AUTHORIZED_SIGNER", body: {
-    serviceOrderId: serviceOrder.serviceOrderId, documentHash: serviceOrder.documentHash, typedName: "Demo Customer Signer", authorityAcknowledged: true,
+    serviceOrderId: serviceOrder.serviceOrderId, documentHash: serviceOrder.documentHash, typedName: login.value.user.name, authorityAcknowledged: true,
   },
 })).value;
 const countersigned = (await call("Demo Executive countersigns and system creates ScopeVersion atomically", `/api/service-orders/${serviceOrder.serviceOrderId}/countersign`, {
