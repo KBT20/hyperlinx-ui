@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { DIRS, listRecords, withRepositoryAuthority } from "../server/routes/_shared.js";
+import { resolveOperationalBaseline } from "../server/routes/operational-baselines.js";
 
 const baseUrl = process.env.CIP071_BASE_URL ?? "http://127.0.0.1:3001";
 const scopeVersionId = "ScopeVersion-0001-CERT-IOF-DRAFT-IOF-PROPOSAL-DEMO-CIP067-NORTHSTAR-PERSISTENCE";
@@ -54,6 +56,23 @@ assert.equal(projections.TWIN.lens.mutationAuthority, "NONE");
 const missing = await request("/api/operational-baselines/ScopeVersion-DEMO-MISSING", { expected: 409 });
 assert.equal(missing.error, "SCOPEVERSION_NOT_FOUND");
 await request(path, { method: "POST", body: {}, expected: 405 });
+await request("/api/scopeversions", { method: "POST", body: { scopeVersionId: "ScopeVersion-DEMO-CIP071-PROHIBITED" }, expected: 403 });
+
+const productionAuthority = { organizationId: "org-teralinx", authorityClass: "PRODUCTION", principalId: "cip071-isolation-probe" };
+const demoAuthority = { organizationId: "org-demo", authorityClass: "DEMO", principalId: "demo-principal", permissions: ["demo.tenant"] };
+await assert.rejects(
+  withRepositoryAuthority(productionAuthority, () => resolveOperationalBaseline(scopeVersionId)),
+  (error) => error?.code === "SCOPEVERSION_NOT_FOUND",
+  "Production repository context must not resolve Demo execution authority.",
+);
+const productionScopeIds = await withRepositoryAuthority(productionAuthority, async () => (await listRecords(DIRS.scopeVersions)).map((item) => item?.scopeVersionId).filter(Boolean));
+if (productionScopeIds[0]) {
+  await assert.rejects(
+    withRepositoryAuthority(demoAuthority, () => resolveOperationalBaseline(productionScopeIds[0])),
+    (error) => error?.code === "SCOPEVERSION_NOT_FOUND",
+    "Demo repository context must not resolve Production execution authority.",
+  );
+}
 
 console.log(JSON.stringify({
   result: "PASS",
@@ -78,5 +97,8 @@ console.log(JSON.stringify({
   idempotent: true,
   missingScopeVersion: "REJECTED",
   baselineMutationMethod: "REJECTED",
+  directHumanScopeVersionCreation: "REJECTED",
+  productionToDemoAuthorityAccess: "REJECTED",
+  demoToProductionAuthorityAccess: productionScopeIds[0] ? "REJECTED" : "NO_PRODUCTION_SCOPEVERSION_AVAILABLE",
   closeBoundary: first.closeBoundary,
 }, null, 2));

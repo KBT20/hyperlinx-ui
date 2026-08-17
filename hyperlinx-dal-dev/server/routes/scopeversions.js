@@ -755,20 +755,7 @@ export async function handleScopeVersions(req, res, pathname) {
   }
 
   if (match.base && req.method === "POST") {
-    const body = await readRequestJson(req);
-    const proposed = normalizeScopeVersion(body);
-    const existing = await loadRecord(DIRS.scopeVersions, proposed.scopeVersionId).catch(() => null);
-    if (existing) {
-      errorResponse(res, 409, `ScopeVersion already exists and cannot be overwritten: ${proposed.scopeVersionId}`);
-      return true;
-    }
-    const proposedSource = String(proposed.source ?? proposed.canonicalTruth?.source ?? proposed.canonicalTruth?.sourceWorkspace ?? proposed.canonicalTruth?.authority ?? "").toUpperCase();
-    if (proposedSource.includes("COMMERCIAL")) {
-      errorResponse(res, 409, "Commercial cannot create ScopeVersion. Runtime may promote a Certified Draft IOF Package only after executed Service Order authority.");
-      return true;
-    }
-    const scopeVersion = await persistScopeVersion(proposed);
-    jsonResponse(res, 201, { scopeVersion });
+    errorResponse(res, 403, "Direct human/API ScopeVersion creation is prohibited. ScopeVersion may be created only by the atomic authorized countersignature transaction.");
     return true;
   }
 
