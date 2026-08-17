@@ -65,34 +65,37 @@ function dealTimestamp(...records) {
   return records.filter(Boolean).map((item) => item.updatedAt ?? item.createdAt ?? item.submittedAt ?? "").sort().at(-1) ?? null;
 }
 
-function customerSafeProjection({ proposal, reviewPackage, route, serviceOrder }) {
-  const configuration = record(proposal?.projectConfiguration ?? reviewPackage?.product?.configuration);
+function customerSafeProjection({ opportunity, proposal, reviewPackage, route, serviceOrder }) {
+  const opportunityWorkingState = record(opportunity?.commercialWorkingState);
+  const opportunityProduct = record(opportunityWorkingState.product);
+  const configuration = record(proposal?.projectConfiguration ?? reviewPackage?.product?.configuration ?? opportunityWorkingState.estimateControls?.projectConfiguration);
   const quantities = record(proposal?.constructionQuantities ?? reviewPackage?.majorQuantities);
-  const pricing = record(proposal?.commercialTerms ?? reviewPackage?.commercialTerms);
+  const pricing = record(proposal?.commercialTerms ?? reviewPackage?.commercialTerms ?? opportunityWorkingState.economics ?? opportunity?.estimate);
   const facingPricing = record(record(proposal?.proposalContent).customerFacingPricing);
   const schedule = record(proposal?.scheduleSummary ?? proposal?.deliverySummary ?? reviewPackage?.schedule);
   const routeFeet = number(route?.routeFeet ?? quantities.routeFeet);
   const routeMiles = number(route?.routeMiles ?? quantities.routeMiles ?? (routeFeet != null ? routeFeet / 5280 : null));
   const assumptions = array(proposal?.commercialAssumptions ?? reviewPackage?.assumptions).map(text).filter(Boolean);
   const exclusions = array(proposal?.exclusions ?? reviewPackage?.exclusions).map(text).filter(Boolean);
-  const expectedRouteId = text(proposal?.routeRepositoryId ?? proposal?.routeSnapshot?.routeRepositoryId ?? reviewPackage?.route?.routeRepositoryId);
-  const expectedRevision = number(proposal?.routeRevision ?? proposal?.routeSnapshot?.routeRevision ?? reviewPackage?.route?.routeRevision);
-  const expectedGeometryId = text(proposal?.routeGeometryId ?? proposal?.routeSnapshot?.routeGeometryId ?? reviewPackage?.route?.routeGeometryId);
-  const expectedGeometryHash = text(proposal?.routeGeometryHash ?? proposal?.routeSnapshot?.geometryHash ?? reviewPackage?.route?.geometryHash);
+  const expectedRouteId = text(proposal?.routeRepositoryId ?? proposal?.routeSnapshot?.routeRepositoryId ?? reviewPackage?.route?.routeRepositoryId ?? opportunity?.routeRepositoryId ?? opportunity?.routeRepositoryRef?.routeRepositoryId);
+  const expectedRevision = number(proposal?.routeRevision ?? proposal?.routeSnapshot?.routeRevision ?? reviewPackage?.route?.routeRevision ?? opportunity?.routeRevision);
+  const expectedGeometryId = text(proposal?.routeGeometryId ?? proposal?.routeSnapshot?.routeGeometryId ?? reviewPackage?.route?.routeGeometryId ?? opportunity?.routeGeometryId);
+  const expectedGeometryHash = text(proposal?.routeGeometryHash ?? proposal?.routeSnapshot?.geometryHash ?? reviewPackage?.route?.geometryHash ?? opportunity?.geometryHash);
+  const proposalAuthorityRequired = Boolean(proposal || reviewPackage);
   const lineageChecks = {
     routeRepositoryId: Boolean(expectedRouteId && expectedRouteId === text(route?.routeRepositoryId)),
     routeRevision: Boolean(expectedRevision != null && expectedRevision === number(route?.routeRevision)),
     routeGeometryId: Boolean(expectedGeometryId && expectedGeometryId === text(route?.routeGeometryId)),
     geometryHash: Boolean(expectedGeometryHash && expectedGeometryHash === text(route?.geometryHash)),
-    proposalRevisionId: Boolean(proposal?.proposalRevisionId && (!reviewPackage || proposal.proposalRevisionId === reviewPackage.proposalRevisionId)),
-    proposalHash: Boolean(proposal?.proposalHash && (!reviewPackage || proposal.proposalHash === reviewPackage.proposalHash)),
+    proposalRevisionId: !proposalAuthorityRequired || Boolean(proposal?.proposalRevisionId && (!reviewPackage || proposal.proposalRevisionId === reviewPackage.proposalRevisionId)),
+    proposalHash: !proposalAuthorityRequired || Boolean(proposal?.proposalHash && (!reviewPackage || proposal.proposalHash === reviewPackage.proposalHash)),
   };
   const exactSpine = Object.values(lineageChecks).every(Boolean);
   return {
     product: {
-      productId: text(proposal?.productId ?? reviewPackage?.product?.productId) || null,
-      name: text(proposal?.productName ?? reviewPackage?.product?.name, "Product not specified"),
-      description: text(proposal?.productDescription ?? reviewPackage?.product?.description ?? proposal?.summary) || null,
+      productId: text(proposal?.productId ?? reviewPackage?.product?.productId ?? opportunity?.productId ?? opportunityProduct.productId) || null,
+      name: text(proposal?.productName ?? reviewPackage?.product?.name ?? opportunity?.productName ?? opportunityProduct.productName, "Product not specified"),
+      description: text(proposal?.productDescription ?? reviewPackage?.product?.description ?? proposal?.summary ?? opportunity?.description) || null,
     },
     route: {
       routeRepositoryId: route?.routeRepositoryId ?? reviewPackage?.route?.routeRepositoryId ?? null,
@@ -133,8 +136,9 @@ function customerSafeProjection({ proposal, reviewPackage, route, serviceOrder }
       specialConditions: array(proposal?.specialConditions).map(text).filter(Boolean),
     },
     doctrineLineage: {
-      productDoctrineId: proposal?.productDoctrineId ?? null, productDoctrineVersion: proposal?.productDoctrineVersion ?? null,
-      productDoctrineHash: proposal?.productDoctrineHash ?? null,
+      productDoctrineId: proposal?.productDoctrineId ?? opportunity?.productDoctrineId ?? opportunityProduct.productDoctrineId ?? null,
+      productDoctrineVersion: proposal?.productDoctrineVersion ?? opportunity?.productDoctrineVersion ?? opportunityProduct.productDoctrineVersion ?? null,
+      productDoctrineHash: proposal?.productDoctrineHash ?? opportunity?.productDoctrineHash ?? opportunityProduct.productDoctrineHash ?? null,
     },
     contracting: {
       mode: text(serviceOrder?.contractingMode ?? serviceOrder?.documentBasis?.contractingMode, "TERALINX_PAPER"),
@@ -258,7 +262,7 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
         documentHash: serviceOrder?.documentHash ?? null,
         scopeVersionId: scopeVersion?.scopeVersionId ?? serviceOrder?.scopeVersionId ?? null,
       },
-      customerSafe: customerSafeProjection({ proposal, reviewPackage, route, serviceOrder }),
+      customerSafe: customerSafeProjection({ opportunity, proposal, reviewPackage, route, serviceOrder }),
       documentHistory: [
         ...array(proposal?.proposalRevisions).map((revision) => ({ documentType: "PROPOSAL", documentId: revision.proposalRevisionId, revision: revision.revisionNumber, status: revision.proposalRevisionId === proposal?.proposalRevisionId ? (proposal?.approvalState === "APPROVED" ? "ACCEPTED" : "CURRENT") : "SUPERSEDED", authorityHash: revision.proposalHash, createdAt: revision.createdAt })),
         ...(serviceOrder ? [{ documentType: "SERVICE_ORDER", documentId: serviceOrder.serviceOrderId, revision: serviceOrder.documentRevision, status: serviceOrder.status, authorityHash: serviceOrder.documentHash, createdAt: serviceOrder.createdAt }] : []),

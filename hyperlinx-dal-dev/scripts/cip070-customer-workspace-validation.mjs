@@ -32,6 +32,7 @@ assert.match(sources["src/workspaces/CustomerPortalWorkspace.tsx"], /URLSearchPa
 assert.match(sources["src/dal/DALState.tsx"], /URLSearchParams\(window\.location\.search\)\.get\("workspace"\)/);
 assert.match(sources["server/routes/accounts.js"], /existing\?\.accountId \? String\(existing\.accountId\) : cleanId\(rawId\)/);
 assert.match(sources["server/routes/accounts.js"], /loadRecord\(DIRS\.accounts, accountId\).*loadRecord\(DIRS\.accounts, cleanId\(accountId\)\)/s);
+assert.match(await readFile(path.join(sourceRoot, "server/routes/customer-account-twin.js"), "utf8"), /proposalAuthorityRequired.*!proposalAuthorityRequired/s);
 
 const user = { principalId: "demo-principal", organizationId: "org-demo", authorityClass: "DEMO", permissions: ["opportunity.read", "proposal.read", "demo.tenant"] };
 await withRepositoryAuthority(user, async () => {
@@ -59,14 +60,20 @@ async function persistDeal({ account, opportunityId, authorized = false }) {
 const authorized = await persistDeal({ account: accountA, opportunityId: "OPPORTUNITY-DEMO-AUTHORIZED", authorized: true });
 await persistDeal({ account: accountA, opportunityId: "OPPORTUNITY-DEMO-CUSTOMER-REVIEW" });
 await persistDeal({ account: accountB, opportunityId: "OPPORTUNITY-DEMO-OTHER-CUSTOMER" });
+await persistRecord(DIRS.commercialRoutes, "ROUTE-DEMO-DRAFT", { accountId: accountA.accountId, customerId: accountA.customerId, opportunityId: "OPPORTUNITY-DEMO-DRAFT", organizationId: "org-demo", environment: "DEMO", productionEligible: false, routeRepositoryId: "ROUTE-DEMO-DRAFT", routeRevision: 1, routeGeometryId: "ROUTE-DEMO-DRAFT:GEOMETRY:1", geometryHash: "HASH-ROUTE-DEMO-DRAFT", routeMiles: 2, routeFeet: 10560, commercialGeometry: [[-97.2, 36], [-97.1, 36.1]] });
+await persistRecord(DIRS.commercialOpportunities, "OPPORTUNITY-DEMO-DRAFT", { accountId: accountA.accountId, customerId: accountA.customerId, opportunityId: "OPPORTUNITY-DEMO-DRAFT", organizationId: "org-demo", environment: "DEMO", productionEligible: false, name: "Persisted Draft", productId: "DARK-FIBER", productName: "Dark Fiber", routeRepositoryId: "ROUTE-DEMO-DRAFT", routeRevision: 1, routeGeometryId: "ROUTE-DEMO-DRAFT:GEOMETRY:1", geometryHash: "HASH-ROUTE-DEMO-DRAFT" });
 const internal = await buildAccountCustomerTwin({ account: accountA, user, lens: "INTERNAL" });
 const external = await buildAccountCustomerTwin({ account: accountA, user, lens: "CUSTOMER", persona: "CUSTOMER_VIEWER", allowedOpportunityIds: [authorized.opportunityId] });
 const internalDeal = internal.deals.find((deal) => deal.opportunityId === authorized.opportunityId);
 const externalDeal = external.deals[0];
-assert.equal(internal.dealCount, 2);
+assert.equal(internal.dealCount, 3);
 assert.equal(internal.deals.some((deal) => deal.opportunityId === "OPPORTUNITY-DEMO-OTHER-CUSTOMER"), false);
 assert.equal(internalDeal.currentState, "AUTHORIZED");
 assert.equal(internal.deals.find((deal) => deal.opportunityId === "OPPORTUNITY-DEMO-CUSTOMER-REVIEW")?.currentState, "CUSTOMER_REVIEW");
+const persistedDraft = internal.deals.find((deal) => deal.opportunityId === "OPPORTUNITY-DEMO-DRAFT");
+assert.equal(persistedDraft?.currentState, "DRAFT");
+assert.equal(persistedDraft?.customerSafe.lineage.status, "PASS");
+assert.equal(persistedDraft?.customerSafe.route.coordinates.length, 2);
 assert.equal(internalDeal.customerSafe.lineage.status, "PASS");
 assert.ok(internalDeal.customerSafe.route.routeMiles > 0);
 for (const field of ["opportunityId", "currentState"]) assert.equal(internalDeal[field], externalDeal[field]);
