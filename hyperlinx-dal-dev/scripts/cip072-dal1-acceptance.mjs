@@ -29,7 +29,7 @@ async function call(step, pathname, { method = "GET", body, cookie = "", persona
 
 try {
   const login = await call("Demo login", "/api/auth/login", { method: "POST", body: { username: "demo", password } });
-  const cookie = login.cookie;
+  let cookie = login.cookie;
   assert.equal(login.value.user.principalId, "demo-principal");
   assert.equal(login.value.user.organizationId, "org-demo");
 
@@ -113,6 +113,20 @@ try {
   assert.equal(acceptedDeal.artifactStates.customerAcceptance.state, "COMPLETE");
   assert.equal(acceptedDeal.artifactStates.engineering.eligibility, "ELIGIBLE");
   assert.ok(acceptedDeal.permittedActions.some((item) => item.action === "SEND_TO_ENGINEERING"));
+
+  await call("Logout after Customer acceptance", "/api/auth/logout", { method: "POST", cookie });
+  const relogin = await call("Demo login after Customer acceptance", "/api/auth/login", {
+    method: "POST",
+    body: { username: "demo", password },
+  });
+  cookie = relogin.cookie;
+  assert.equal(relogin.value.user.principalId, "demo-principal");
+  assert.equal(relogin.value.user.organizationId, "org-demo");
+  const reloginTwin = (await call("Reload Accepted Twin after logout/login", `/api/accounts/${encodeURIComponent(accountId)}/customer-twin`, { cookie })).value.customerTwin;
+  const reloginDeal = reloginTwin.deals.find((item) => item.opportunityId === opportunityId);
+  assert.equal(reloginDeal.currentState, "ACCEPTED");
+  assert.equal(reloginDeal.artifactStates.proposal.state, "ACCEPTED");
+  assert.equal(reloginDeal.artifactStates.customerAcceptance.state, "COMPLETE");
 
   const assembled = (await call("Assemble legitimate Draft IOF", "/api/engineering/certification/draft-packages/from-proposal", { method: "POST", cookie, body: { proposalId } })).value;
   const draft = assembled.draftPackage ?? assembled.iofPackage ?? assembled;
