@@ -173,6 +173,22 @@ export interface DoctrineQuantityPlacement {
   noScopeVersionCreation: true;
 }
 
+export interface DoctrineRequiredAssetModelEntry {
+  assetId: string;
+  assetType: string;
+  requirement: "REQUIRED" | "CONDITIONAL";
+  requirementId: string;
+  quantityAuthority: "PROJECT_CONFIGURATION" | "SOURCE_EVIDENCE" | "ENGINEERING_DESIGN" | "OPTICAL_ENGINEERING_DEFINED" | "UNKNOWN";
+  resolutionRequired: boolean;
+  applicability: "APPLICABLE" | "NOT_APPLICABLE" | "ENGINEERING_REVIEW_REQUIRED";
+  instantiatedQuantity: number;
+  existenceCause: string;
+  quantityRule: string;
+  placementRule: string;
+  routeLengthCreatesAsset: false;
+  noScopeVersionCreation: true;
+}
+
 export interface DoctrineStationObjectIndexEntry {
   objectId: string;
   doctrineObjectId?: string;
@@ -281,6 +297,7 @@ export interface DoctrineEngineeringObjectManifest {
   stationLifecycleRules: DoctrineStationLifecycleRule[];
   scopeVersionReadinessRequirements: ProductDoctrineScopeVersionReadinessRequirement[];
   quantityPlacement: DoctrineQuantityPlacement;
+  requiredAssetModel: DoctrineRequiredAssetModelEntry[];
   stationObjectIndex: DoctrineStationObjectIndexEntry[];
   sequencedActionObjects: DoctrineSequencedActionObject[];
   derivedSpans: DoctrineDerivedSpan[];
@@ -325,6 +342,7 @@ export interface DoctrineObjectInstantiationResult {
   evidenceRequirements: ProductDoctrineEvidenceRequirement[];
   stationLifecycleRules: DoctrineStationLifecycleRule[];
   quantityPlacement: DoctrineQuantityPlacement;
+  requiredAssetModel: DoctrineRequiredAssetModelEntry[];
   stationObjectIndex: DoctrineStationObjectIndexEntry[];
   sequencedActionObjects: DoctrineSequencedActionObject[];
   derivedSpans: DoctrineDerivedSpan[];
@@ -717,17 +735,124 @@ function buildQuantityPlacement(
   };
 }
 
+const CONDITIONAL_ASSET_REQUIREMENTS = new Map<string, string>([
+  ["ASSET:HANDHOLES", "HANDHOLE_PLAN_DEFINED"],
+  ["ASSET:VAULTS", "VAULT_PLAN_DEFINED"],
+  ["ASSET:SPLICE-CASES", "SPLICE_ARCHITECTURE_DEFINED"],
+  ["ASSET:ILA-REGEN-FACILITIES", "ILA_CONFIGURATION_DEFINED"],
+]);
+
+function configuredAssetCount(asset: ProductDoctrineRequiredAsset, assembly: ProductDoctrineAssembly) {
+  const configuration = assembly.projectConfiguration as Record<string, unknown> | undefined;
+  const type = asset.assetType.toUpperCase();
+  if (type.includes("HANDHOLE")) return configuration?.handholeCount;
+  if (type.includes("VAULT")) return configuration?.vaultCount;
+  if (type.includes("SPLICE")) return configuration?.spliceCaseCount;
+  return undefined;
+}
+
 function assetCount(asset: ProductDoctrineRequiredAsset, assembly: ProductDoctrineAssembly, quantityPlacement: DoctrineQuantityPlacement, targetCount: number) {
   const type = asset.assetType.toUpperCase();
   if (type.includes("HANDHOLE")) return quantityPlacement.handholeCount;
   if (type.includes("VAULT")) return quantityPlacement.vaultCount;
   if (type.includes("SPLICE")) return quantityPlacement.spliceCaseCount;
-  if (type.includes("ILA") || type.includes("REGEN")) return Math.max(1, quantityPlacement.ilaRegenCount);
+  if (type.includes("ILA") || type.includes("REGEN")) return quantityPlacement.ilaRegenCount;
   if (type.includes("MARKER")) return quantityPlacement.markerCount;
   if (type.includes("SLACK")) return quantityPlacement.slackLoopCount;
   if (type.includes("CONDUIT") || type.includes("FIBER") || type.includes("WIRE") || type.includes("TAPE")) return Math.max(1, targetCount);
-  if (type.includes("LIU") || type.includes("TERMINATION")) return 2;
+  if (type.includes("LIU") || type.includes("TERMINATION")) {
+    const termination = String((assembly.projectConfiguration as Record<string, unknown> | undefined)?.terminationConfiguration ?? "").toUpperCase();
+    return termination && !["UNKNOWN", "ENGINEERING_DEFINED", "NONE", "NOT_APPLICABLE"].includes(termination) ? 2 : 0;
+  }
+  if (asset.requiredWhen) return 0;
   return 1;
+}
+
+function requiredAssetRule(asset: ProductDoctrineRequiredAsset, doctrine: ProductDoctrine) {
+  const requirementId = CONDITIONAL_ASSET_REQUIREMENTS.get(asset.assetId) ?? "";
+  const policy = doctrine.requirementPolicies?.find((candidate) => candidate.requirementId === requirementId);
+  return {
+    requirementId: requirementId || `${asset.assetId}:REQUIRED`,
+    requirement: policy?.requirement ?? (asset.requiredWhen ? "CONDITIONAL" : "REQUIRED"),
+    quantityAuthority: policy?.quantityAuthority ?? "UNKNOWN",
+    resolutionRequired: policy?.resolutionRequired ?? Boolean(asset.requiredWhen),
+  } as const;
+}
+
+function assetRuleText(asset: ProductDoctrineRequiredAsset) {
+  switch (asset.assetId) {
+    case "ASSET:HANDHOLES": return {
+      cause: "A governed source or Engineering structure plan identifies a handhole access, pull, or maintenance event.",
+      quantity: "Count of handhole events in the governed structure plan; route mileage alone creates none.",
+      placement: "Exact governed station assigned by the structure plan; a count-only legacy plan remains an Engineering review projection.",
+    };
+    case "ASSET:VAULTS": return {
+      cause: "A governed source or Engineering structure plan identifies a vault functional location.",
+      quantity: "Count of vault functional locations in the governed structure plan; route mileage alone creates none.",
+      placement: "Exact governed station assigned by the structure plan; a count-only legacy plan remains an Engineering review projection.",
+    };
+    case "ASSET:SPLICE-CASES": return {
+      cause: "A governed splice architecture identifies a splice, branch, transition, or other splice-case event.",
+      quantity: "Count of governed splice events; route mileage and display stations create none.",
+      placement: "Exact governed station of each splice event from the splice architecture.",
+    };
+    case "ASSET:ILA-REGEN-FACILITIES": return {
+      cause: "A governed optical design or explicit project configuration requires an ILA or regeneration facility.",
+      quantity: "Count of governed optical facility decisions; route length alone creates none.",
+      placement: "Exact governed optical-design station with site and power authority.",
+    };
+    case "ASSET:LIU-TERMINATION-HARDWARE": return {
+      cause: "A governed customer handoff or termination configuration requires LIU hardware.",
+      quantity: "Quantity from the governed termination configuration.",
+      placement: "Governed A/Z or other termination point identified by the termination configuration.",
+    };
+    default: return {
+      cause: asset.requiredWhen ?? "Product Doctrine requires this asset for the selected product.",
+      quantity: "Quantity derives from the Product Doctrine Assembly and governed project configuration.",
+      placement: "Placement derives from the governed spine and Product Doctrine placement projection.",
+    };
+  }
+}
+
+function buildRequiredAssetModel(
+  doctrine: ProductDoctrine,
+  assembly: ProductDoctrineAssembly,
+  quantityPlacement: DoctrineQuantityPlacement,
+  targetCount: number,
+): DoctrineRequiredAssetModelEntry[] {
+  return doctrine.requiredAssets.map((asset) => {
+    const rule = requiredAssetRule(asset, doctrine);
+    const instantiatedQuantity = assetCount(asset, assembly, quantityPlacement, targetCount);
+    const configuredCount = configuredAssetCount(asset, assembly);
+    const configuration = assembly.projectConfiguration as Record<string, unknown> | undefined;
+    const explicitZero = Number.isFinite(Number(configuredCount)) && Number(configuredCount) === 0;
+    const explicitNoIla = asset.assetId === "ASSET:ILA-REGEN-FACILITIES"
+      && configuration?.intermediateIlaEnabled === false
+      && configuration?.bookendIlaEnabled === false;
+    const applicability = instantiatedQuantity > 0
+      ? "APPLICABLE"
+      : rule.requirement === "REQUIRED"
+        ? "ENGINEERING_REVIEW_REQUIRED"
+        : explicitZero || explicitNoIla
+          ? "NOT_APPLICABLE"
+          : "ENGINEERING_REVIEW_REQUIRED";
+    const text = assetRuleText(asset);
+    return {
+      assetId: asset.assetId,
+      assetType: asset.assetType,
+      requirement: rule.requirement,
+      requirementId: rule.requirementId,
+      quantityAuthority: rule.quantityAuthority,
+      resolutionRequired: rule.resolutionRequired,
+      applicability,
+      instantiatedQuantity,
+      existenceCause: text.cause,
+      quantityRule: text.quantity,
+      placementRule: text.placement,
+      routeLengthCreatesAsset: false,
+      noScopeVersionCreation: true,
+    };
+  });
 }
 
 function engineeringObjectCount(
@@ -1054,6 +1179,7 @@ function validateManifest(
   productDoctrine: ProductDoctrine,
   objects: DoctrineInstantiatedObject[],
   quantityPlacement: DoctrineQuantityPlacement,
+  requiredAssetModel: DoctrineRequiredAssetModelEntry[],
   stationObjectIndex: DoctrineStationObjectIndexEntry[],
   sequencedActionObjects: DoctrineSequencedActionObject[],
   derivedSpans: DoctrineDerivedSpan[],
@@ -1063,6 +1189,7 @@ function validateManifest(
   const objectTypes = new Set(objects.map((object) => object.objectType));
   const serviceIds = new Set(objects.filter((object) => object.objectGroup === "REQUIRED_SERVICE").map((object) => object.requiredServices[0]));
   const assetIds = new Set(objects.filter((object) => object.objectGroup === "REQUIRED_ASSET").map((object) => object.requiredAssets[0]));
+  const assetsRequiredForInstantiation = requiredAssetModel.filter((asset) => asset.applicability === "APPLICABLE");
   const expectedCounts = expectedStationObjectCounts(quantityPlacement);
   const actualCounts = stationObjectIndex.reduce((counts, entry) => {
     counts.set(entry.objectType, (counts.get(entry.objectType) ?? 0) + 1);
@@ -1103,7 +1230,7 @@ function validateManifest(
     ...objects.filter((object) => !object.closeSequence?.closeSequenceId).map((object) => `Object ${object.objectId} is missing close sequence.`),
     ...objects.filter((object) => !object.evidenceRequirements.length && object.objectGroup !== "EVIDENCE_OBJECT").map((object) => `Object ${object.objectId} is missing evidence requirements.`),
     ...productDoctrine.requiredServices.filter((service) => !serviceIds.has(service.serviceId)).map((service) => `Required service ${service.serviceId} was not instantiated.`),
-    ...productDoctrine.requiredAssets.filter((asset) => !assetIds.has(asset.assetId)).map((asset) => `Required asset ${asset.assetId} was not instantiated.`),
+    ...assetsRequiredForInstantiation.filter((asset) => !assetIds.has(asset.assetId)).map((asset) => `Required asset ${asset.assetId} was not instantiated.`),
     ...expectedEngineeringObjectTypes.filter((type) => !objectTypes.has(type)).map((type) => `Engineering object type ${type} was not instantiated.`),
     ...quantityMismatchFailures,
     ...missingStationAddressFailures,
@@ -1118,7 +1245,7 @@ function validateManifest(
     checkedObjectCount: objects.length,
     missingAddressCount: objects.filter((object) => !object.address.addressLabel || !object.address.stationRange).length,
     missingRequiredServiceCount: productDoctrine.requiredServices.filter((service) => !serviceIds.has(service.serviceId)).length,
-    missingRequiredAssetCount: productDoctrine.requiredAssets.filter((asset) => !assetIds.has(asset.assetId)).length,
+    missingRequiredAssetCount: assetsRequiredForInstantiation.filter((asset) => !assetIds.has(asset.assetId)).length,
     missingEngineeringObjectTypeCount: expectedEngineeringObjectTypes.filter((type) => !objectTypes.has(type)).length,
     missingPaymentSequenceCount: objects.filter((object) => !object.paymentSequence.paymentSequenceId).length,
     missingCloseSequenceCount: objects.filter((object) => !object.closeSequence?.closeSequenceId).length,
@@ -1144,6 +1271,7 @@ export function instantiateDoctrineObjects(input: DoctrineObjectInstantiationInp
   const stations = normalizedStations(productDoctrineAssembly);
   const targets = segmentTargets(productDoctrineAssembly, stations);
   const quantityPlacement = buildQuantityPlacement(packageId, productDoctrineAssembly);
+  const requiredAssetModel = buildRequiredAssetModel(productDoctrine, productDoctrineAssembly, quantityPlacement, targets.length);
   const objects: DoctrineInstantiatedObject[] = [];
   let sequence = 0;
 
@@ -1225,7 +1353,7 @@ export function instantiateDoctrineObjects(input: DoctrineObjectInstantiationInp
   });
 
   productDoctrine.requiredAssets.forEach((asset, assetIndex) => {
-    const count = assetCount(asset, productDoctrineAssembly, quantityPlacement, targets.length);
+    const count = requiredAssetModel.find((candidate) => candidate.assetId === asset.assetId)?.instantiatedQuantity ?? 0;
     Array.from({ length: count }, (_, index) => {
       const target = targetForObject(asset.assetType, index + assetIndex, count, stations, targets);
       const references = [asset.assetId, `ASSET:${asset.assetType}`, asset.assetType];
@@ -1277,6 +1405,7 @@ export function instantiateDoctrineObjects(input: DoctrineObjectInstantiationInp
     productDoctrine,
     hierarchicalObjects,
     quantityPlacement,
+    requiredAssetModel,
     stationObjectIndex,
     sequencedActionObjects,
     derivedSpans,
@@ -1304,6 +1433,7 @@ export function instantiateDoctrineObjects(input: DoctrineObjectInstantiationInp
     stationLifecycleRules,
     scopeVersionReadinessRequirements: productDoctrine.scopeVersionReadinessRequirements,
     quantityPlacement,
+    requiredAssetModel,
     stationObjectIndex,
     sequencedActionObjects,
     derivedSpans,
@@ -1311,7 +1441,7 @@ export function instantiateDoctrineObjects(input: DoctrineObjectInstantiationInp
     engineeringMovementPolicy: movementPolicy,
     continuousStationClosure: true,
     marketplaceProjection: {
-      requiredAssetIds: productDoctrine.requiredAssets.map((asset) => asset.assetId),
+      requiredAssetIds: requiredAssetModel.filter((asset) => asset.applicability === "APPLICABLE").map((asset) => asset.assetId),
       requiredServiceIds: productDoctrine.requiredServices.map((service) => service.serviceId),
       vendorQualifications: ["qualified OSP contractor", "fiber splicing vendor", "traffic control provider", "survey provider"],
       deliveryDatePolicy: "Delivery dates are projected after ScopeVersion work packaging.",
@@ -1347,6 +1477,7 @@ export function instantiateDoctrineObjects(input: DoctrineObjectInstantiationInp
     evidenceRequirements: productDoctrine.evidenceRequirements,
     stationLifecycleRules,
     quantityPlacement,
+    requiredAssetModel,
     stationObjectIndex,
     sequencedActionObjects,
     derivedSpans,

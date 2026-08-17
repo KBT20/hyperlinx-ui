@@ -1,63 +1,63 @@
-import { createHash as Ke } from "node:crypto";
-const v = "DOCTRINE_OBJECT_INSTANTIATION_ENGINE", ze = "32.1";
+import { createHash as ze } from "node:crypto";
+const q = "DOCTRINE_OBJECT_INSTANTIATION_ENGINE", Ze = "32.1";
 function X(e, n = "UNKNOWN") {
   return (String(e ?? n).trim() || n).replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 96) || n;
 }
-function Ue(e) {
+function Ve(e) {
   const n = Math.max(0, Math.round(e)), t = Math.floor(n / 100), r = n % 100;
   return `STA ${t}+${String(r).padStart(2, "0")}`;
 }
-function Ze(e) {
+function Xe(e) {
   return {
     stationId: e.stationId,
-    stationLabel: Ue(e.stationFeet),
+    stationLabel: Ve(e.stationFeet),
     measureFeet: e.stationFeet,
     coordinate: e.coordinate
   };
 }
-function fe(e, n) {
+function _e(e, n) {
   return e.reduce((t, r) => Math.abs(r.measureFeet - n) < Math.abs(t.measureFeet - n) ? r : t, e[0]);
 }
-function Xe(e, n, t) {
+function et(e, n, t) {
   if (e.length <= 1) return e[0];
   if (t <= 1) return e[Math.floor(e.length / 2)];
   const r = Math.min(e.length - 1, Math.max(0, Math.round(n / Math.max(1, t - 1) * (e.length - 1))));
   return e[r];
 }
-function et(e) {
+function tt(e) {
   return e[0];
 }
-function tt(e) {
+function nt(e) {
   return e[e.length - 1] ?? e[0];
 }
-function nt(e) {
-  const n = e.stations.map(Ze);
+function it(e) {
+  const n = e.stations.map(Xe);
   if (n.length) return n;
   const t = e.centerline, r = e.quantitySummary.routeFeet;
   return t.length > 1 ? [
     { stationId: `${e.assemblyId}:STA-A`, stationLabel: "STA 0+00", measureFeet: 0, coordinate: t[0] },
-    { stationId: `${e.assemblyId}:STA-Z`, stationLabel: Ue(r), measureFeet: r, coordinate: t[t.length - 1] }
+    { stationId: `${e.assemblyId}:STA-Z`, stationLabel: Ve(r), measureFeet: r, coordinate: t[t.length - 1] }
   ] : [
     { stationId: `${e.assemblyId}:STA-UNKNOWN-A`, stationLabel: "STA 0+00", measureFeet: 0, coordinate: [0, 0] },
     { stationId: `${e.assemblyId}:STA-UNKNOWN-Z`, stationLabel: "STA 0+01", measureFeet: 1, coordinate: [0, 0] }
   ];
 }
-function it(e, n) {
+function rt(e, n) {
   const t = new Map(n.map((o) => [o.stationId, o])), r = e.routeSegments.map((o, c) => ({
     segmentId: o.segmentId,
-    stationStart: t.get(o.fromStationId) ?? fe(n, o.fromMile * 5280),
-    stationEnd: t.get(o.toStationId) ?? fe(n, o.toMile * 5280),
+    stationStart: t.get(o.fromStationId) ?? _e(n, o.fromMile * 5280),
+    stationEnd: t.get(o.toStationId) ?? _e(n, o.toMile * 5280),
     addressKind: "LINEAR",
     index: c
   }));
   return r.length ? r : [{
     segmentId: `${e.assemblyId}:SEGMENT:FULL-ROUTE`,
-    stationStart: et(n),
-    stationEnd: tt(n),
+    stationStart: tt(n),
+    stationEnd: nt(n),
     addressKind: "LINEAR"
   }];
 }
-function rt(e, n, t, r) {
+function ot(e, n, t, r) {
   return {
     paymentSequenceId: `${n}:PAYMENT-SEQUENCE`,
     objectId: n,
@@ -69,17 +69,17 @@ function rt(e, n, t, r) {
     noScopeVersionCreation: !0
   };
 }
-function ce(e, n) {
+function oe(e, n) {
   const t = new Set(n);
   return e.filter((r) => r.requiredFor.some((o) => t.has(o)));
+}
+function ce(e, n, t) {
+  return e.find((r) => r.appliesTo === n && r.appliesToId === t) ?? null;
 }
 function se(e, n, t) {
   return e.find((r) => r.appliesTo === n && r.appliesToId === t) ?? null;
 }
-function ae(e, n, t) {
-  return e.find((r) => r.appliesTo === n && r.appliesToId === t) ?? null;
-}
-function ot(e) {
+function ct(e) {
   const n = e.target.pointStation, t = n?.stationLabel ?? e.target.stationStart.stationLabel, r = n?.stationLabel ?? e.target.stationEnd.stationLabel, o = n?.measureFeet ?? e.target.stationStart.measureFeet, c = n?.measureFeet ?? e.target.stationEnd.measureFeet, i = t === r ? t : `${t} to ${r}`, d = n?.coordinate, a = [
     e.scopeVersionCandidateId,
     X(e.target.segmentId),
@@ -108,7 +108,7 @@ function ot(e) {
     noScopeVersionCreation: !0
   };
 }
-function ct(e, n) {
+function st(e, n) {
   const t = n.pointStation;
   return t ? {
     geometryType: "POINT",
@@ -120,22 +120,22 @@ function ct(e, n) {
     geometryHash: e.geometryHash
   };
 }
-function st(e) {
+function at(e) {
   const n = e.toUpperCase();
   return n.includes("BORE") ? "DIRECTIONAL_BORE" : n.includes("TRENCH") ? "OPEN_TRENCH" : n.includes("FIBER") ? "FIBER_PLACEMENT" : n.includes("SPLICE") ? "SPLICING" : n.includes("TEST") ? "TESTING" : n.includes("CONDUIT") || n.includes("DUCT") ? "CONDUIT_PLACEMENT" : "ENGINEERING_PLACEMENT";
 }
-function de(e) {
-  const n = `${e.packageId}:DOIE:${e.objectGroup}:${X(e.objectType)}:${String(e.objectSequence).padStart(5, "0")}`, t = e.evidenceRequirements.length ? e.evidenceRequirements : e.lifecycle.requiredEvidence.map((I, l) => ({
-    evidenceRequirementId: `${n}:EVIDENCE:${String(l + 1).padStart(3, "0")}`,
-    evidenceType: X(I).toUpperCase(),
-    label: I,
+function ae(e) {
+  const n = `${e.packageId}:DOIE:${e.objectGroup}:${X(e.objectType)}:${String(e.objectSequence).padStart(5, "0")}`, t = e.evidenceRequirements.length ? e.evidenceRequirements : e.lifecycle.requiredEvidence.map((p, I) => ({
+    evidenceRequirementId: `${n}:EVIDENCE:${String(I + 1).padStart(3, "0")}`,
+    evidenceType: X(p).toUpperCase(),
+    label: p,
     requiredFor: [n, e.objectType],
     requiredAtState: "EVIDENCE_CAPTURED",
     acceptanceCriteria: e.lifecycle.acceptanceCriteria,
     responsibleRole: e.lifecycle.responsibleRole,
     blocksRelease: !1,
     blocksClose: !0
-  })), r = ot({
+  })), r = ct({
     scopeVersionCandidateId: e.scopeVersionCandidateId,
     routeId: e.routeId,
     objectType: e.objectType,
@@ -144,9 +144,9 @@ function de(e) {
     geometryHash: e.geometryHash,
     jurisdiction: e.jurisdiction,
     target: e.target
-  }), o = rt(e.packageId, n, e.objectSequence, e.lifecycle), c = ct(r, e.target), i = e.lifecycle, d = String(
+  }), o = ot(e.packageId, n, e.objectSequence, e.lifecycle), c = st(r, e.target), i = e.lifecycle, d = String(
     i.serviceId ?? i.assetId ?? i.engineeringObjectType ?? e.objectType
-  ), a = e.lifecycle.prerequisiteDependencies.map((I) => `${n}:DEP:${X(I)}`), E = t.filter((I) => I.evidenceType.includes("INSPECTION") || I.label.toLowerCase().includes("inspection"));
+  ), a = e.lifecycle.prerequisiteDependencies.map((p) => `${n}:DEP:${X(p)}`), E = t.filter((p) => p.evidenceType.includes("INSPECTION") || p.label.toLowerCase().includes("inspection"));
   return {
     objectId: n,
     objectType: e.objectType,
@@ -175,7 +175,7 @@ function de(e) {
     },
     requiredServices: e.requiredServices,
     requiredAssets: e.requiredAssets,
-    constructionMethod: st(e.objectType),
+    constructionMethod: at(e.objectType),
     placementStrategy: e.target.pointStation ? "POINT_STATION_ADDRESS" : "LINEAR_STATION_RANGE",
     executionSequence: e.executionSequence,
     executionSequenceId: e.executionSequence?.sequenceId ?? `${n}:EXECUTION-SEQUENCE`,
@@ -198,8 +198,8 @@ function de(e) {
     },
     currentState: "PLANNED",
     currentLifecycleState: "PLANNED",
-    authority: v,
-    engineeringAuthority: v,
+    authority: q,
+    engineeringAuthority: q,
     noScopeVersionCreation: !0
   };
 }
@@ -214,7 +214,7 @@ function K(e, ...n) {
     return t.some((c) => o.includes(c));
   }).reduce((r, o) => r + k(o.quantity), 0);
 }
-function at(e, n) {
+function dt(e, n) {
   const t = Math.max(1, Math.ceil(n.quantitySummary.routeMiles / 5)), r = Math.max(1, Math.ceil(n.quantitySummary.routeMiles / 5));
   return {
     quantityPlacementId: `${e}:DOIE:QUANTITY-PLACEMENT`,
@@ -231,15 +231,107 @@ function at(e, n) {
     stationCount: k(n.quantitySummary.stationCount),
     routeFeet: k(n.quantitySummary.routeFeet),
     noNewQuantityLogic: !0,
-    authority: v,
+    authority: q,
     noScopeVersionCreation: !0
   };
 }
-function dt(e, n, t, r) {
-  const o = e.assetType.toUpperCase();
-  return o.includes("HANDHOLE") ? t.handholeCount : o.includes("VAULT") ? t.vaultCount : o.includes("SPLICE") ? t.spliceCaseCount : o.includes("ILA") || o.includes("REGEN") ? Math.max(1, t.ilaRegenCount) : o.includes("MARKER") ? t.markerCount : o.includes("SLACK") ? t.slackLoopCount : o.includes("CONDUIT") || o.includes("FIBER") || o.includes("WIRE") || o.includes("TAPE") ? Math.max(1, r) : o.includes("LIU") || o.includes("TERMINATION") ? 2 : 1;
+const ut = /* @__PURE__ */ new Map([
+  ["ASSET:HANDHOLES", "HANDHOLE_PLAN_DEFINED"],
+  ["ASSET:VAULTS", "VAULT_PLAN_DEFINED"],
+  ["ASSET:SPLICE-CASES", "SPLICE_ARCHITECTURE_DEFINED"],
+  ["ASSET:ILA-REGEN-FACILITIES", "ILA_CONFIGURATION_DEFINED"]
+]);
+function Et(e, n) {
+  const t = n.projectConfiguration, r = e.assetType.toUpperCase();
+  if (r.includes("HANDHOLE")) return t?.handholeCount;
+  if (r.includes("VAULT")) return t?.vaultCount;
+  if (r.includes("SPLICE")) return t?.spliceCaseCount;
 }
-function _e(e, n, t, r, o) {
+function lt(e, n, t, r) {
+  const o = e.assetType.toUpperCase();
+  if (o.includes("HANDHOLE")) return t.handholeCount;
+  if (o.includes("VAULT")) return t.vaultCount;
+  if (o.includes("SPLICE")) return t.spliceCaseCount;
+  if (o.includes("ILA") || o.includes("REGEN")) return t.ilaRegenCount;
+  if (o.includes("MARKER")) return t.markerCount;
+  if (o.includes("SLACK")) return t.slackLoopCount;
+  if (o.includes("CONDUIT") || o.includes("FIBER") || o.includes("WIRE") || o.includes("TAPE")) return Math.max(1, r);
+  if (o.includes("LIU") || o.includes("TERMINATION")) {
+    const c = String(n.projectConfiguration?.terminationConfiguration ?? "").toUpperCase();
+    return c && !["UNKNOWN", "ENGINEERING_DEFINED", "NONE", "NOT_APPLICABLE"].includes(c) ? 2 : 0;
+  }
+  return e.requiredWhen ? 0 : 1;
+}
+function It(e, n) {
+  const t = ut.get(e.assetId) ?? "", r = n.requirementPolicies?.find((o) => o.requirementId === t);
+  return {
+    requirementId: t || `${e.assetId}:REQUIRED`,
+    requirement: r?.requirement ?? (e.requiredWhen ? "CONDITIONAL" : "REQUIRED"),
+    quantityAuthority: r?.quantityAuthority ?? "UNKNOWN",
+    resolutionRequired: r?.resolutionRequired ?? !!e.requiredWhen
+  };
+}
+function pt(e) {
+  switch (e.assetId) {
+    case "ASSET:HANDHOLES":
+      return {
+        cause: "A governed source or Engineering structure plan identifies a handhole access, pull, or maintenance event.",
+        quantity: "Count of handhole events in the governed structure plan; route mileage alone creates none.",
+        placement: "Exact governed station assigned by the structure plan; a count-only legacy plan remains an Engineering review projection."
+      };
+    case "ASSET:VAULTS":
+      return {
+        cause: "A governed source or Engineering structure plan identifies a vault functional location.",
+        quantity: "Count of vault functional locations in the governed structure plan; route mileage alone creates none.",
+        placement: "Exact governed station assigned by the structure plan; a count-only legacy plan remains an Engineering review projection."
+      };
+    case "ASSET:SPLICE-CASES":
+      return {
+        cause: "A governed splice architecture identifies a splice, branch, transition, or other splice-case event.",
+        quantity: "Count of governed splice events; route mileage and display stations create none.",
+        placement: "Exact governed station of each splice event from the splice architecture."
+      };
+    case "ASSET:ILA-REGEN-FACILITIES":
+      return {
+        cause: "A governed optical design or explicit project configuration requires an ILA or regeneration facility.",
+        quantity: "Count of governed optical facility decisions; route length alone creates none.",
+        placement: "Exact governed optical-design station with site and power authority."
+      };
+    case "ASSET:LIU-TERMINATION-HARDWARE":
+      return {
+        cause: "A governed customer handoff or termination configuration requires LIU hardware.",
+        quantity: "Quantity from the governed termination configuration.",
+        placement: "Governed A/Z or other termination point identified by the termination configuration."
+      };
+    default:
+      return {
+        cause: e.requiredWhen ?? "Product Doctrine requires this asset for the selected product.",
+        quantity: "Quantity derives from the Product Doctrine Assembly and governed project configuration.",
+        placement: "Placement derives from the governed spine and Product Doctrine placement projection."
+      };
+  }
+}
+function St(e, n, t, r) {
+  return e.requiredAssets.map((o) => {
+    const c = It(o, e), i = lt(o, n, t, r), d = Et(o, n), a = n.projectConfiguration, E = Number.isFinite(Number(d)) && Number(d) === 0, p = o.assetId === "ASSET:ILA-REGEN-FACILITIES" && a?.intermediateIlaEnabled === !1 && a?.bookendIlaEnabled === !1, I = i > 0 ? "APPLICABLE" : c.requirement === "REQUIRED" ? "ENGINEERING_REVIEW_REQUIRED" : E || p ? "NOT_APPLICABLE" : "ENGINEERING_REVIEW_REQUIRED", C = pt(o);
+    return {
+      assetId: o.assetId,
+      assetType: o.assetType,
+      requirement: c.requirement,
+      requirementId: c.requirementId,
+      quantityAuthority: c.quantityAuthority,
+      resolutionRequired: c.resolutionRequired,
+      applicability: I,
+      instantiatedQuantity: i,
+      existenceCause: C.cause,
+      quantityRule: C.quantity,
+      placementRule: C.placement,
+      routeLengthCreatesAsset: !1,
+      noScopeVersionCreation: !0
+    };
+  });
+}
+function Pe(e, n, t, r, o) {
   switch (e.engineeringObjectType) {
     case "STATION":
       return t.length;
@@ -263,8 +355,8 @@ function _e(e, n, t, r, o) {
       return 1;
   }
 }
-function ue(e, n, t, r, o) {
-  const c = e.toUpperCase(), i = o[Math.min(o.length - 1, Math.max(0, n % Math.max(1, o.length)))] ?? o[0], d = Xe(r, n, t);
+function de(e, n, t, r, o) {
+  const c = e.toUpperCase(), i = o[Math.min(o.length - 1, Math.max(0, n % Math.max(1, o.length)))] ?? o[0], d = et(r, n, t);
   return c.includes("STATION") || c.includes("HANDHOLE") || c.includes("VAULT") || c.includes("SPLICE") || c.includes("ILA") || c.includes("REGEN") || c.includes("TERMINATION") || c.includes("MARKER") || c.includes("EVIDENCE") || c.includes("LIU") ? {
     segmentId: i.segmentId,
     stationStart: d,
@@ -273,14 +365,14 @@ function ue(e, n, t, r, o) {
     addressKind: c.includes("EVIDENCE") ? "EVIDENCE" : "POINT"
   } : c.includes("SERVICE") ? { ...i, addressKind: "SERVICE" } : i;
 }
-function ut(e) {
+function Tt(e) {
   const n = new Map(e.map((t) => [t.objectId, t]));
   return e.forEach((t) => {
     const r = n.get(t.parentObjectId);
     r && (r.childObjectIds.push(t.objectId), r.hierarchy.childObjectIds.push(t.objectId));
   }), e;
 }
-function Et(e, n) {
+function Ct(e, n) {
   const t = n.map((d) => ({
     nodeId: `${d.objectId}:NODE`,
     objectId: d.objectId,
@@ -312,11 +404,11 @@ function Et(e, n) {
     edgeCount: i.length,
     nodes: t,
     edges: i,
-    authority: v,
+    authority: q,
     noScopeVersionCreation: !0
   };
 }
-function lt(e, n, t) {
+function mt(e, n, t) {
   const r = t.requiredServices.map((i) => i.serviceId), o = t.requiredAssets.map((i) => i.assetId), c = t.evidenceRequirements.map((i) => i.evidenceRequirementId);
   return n.map((i) => ({
     stationLifecycleRuleId: `${e}:DOIE:STATION-LIFECYCLE:${X(i.stationId)}`,
@@ -337,11 +429,11 @@ function lt(e, n, t) {
     closeEligibility: "ELIGIBLE_AFTER_CLOSE_SEQUENCE_ACCEPTED",
     paymentEligibility: "ELIGIBLE_AFTER_ACCEPTANCE_AND_BILLABLE_TRIGGER",
     twinStateTransition: "PLANNED_RELEASED_INSTALLED_INSPECTED_VALIDATED_ACCEPTED_OPERATIONAL",
-    authority: v,
+    authority: q,
     noScopeVersionCreation: !0
   }));
 }
-function It(e) {
+function Rt(e) {
   return [
     {
       objectType: "HANDHOLE",
@@ -387,9 +479,9 @@ function It(e) {
     }
   ];
 }
-function pt(e) {
-  return It(e.quantityPlacement).flatMap((t) => Array.from({ length: t.count }, (r, o) => {
-    const c = ue(t.objectType, o, t.count, e.stations, e.targets), i = c.pointStation ?? c.stationStart;
+function Nt(e) {
+  return Rt(e.quantityPlacement).flatMap((t) => Array.from({ length: t.count }, (r, o) => {
+    const c = de(t.objectType, o, t.count, e.stations, e.targets), i = c.pointStation ?? c.stationStart;
     return {
       objectId: `${t.prefix}-${String(o + 1).padStart(3, "0")}`,
       objectType: t.objectType,
@@ -399,7 +491,7 @@ function pt(e) {
       parentRouteId: e.routeId,
       parentSegmentId: c.segmentId,
       placementReason: t.placementReason,
-      placementAuthority: v,
+      placementAuthority: q,
       doctrineQuantitySource: t.doctrineQuantitySource,
       originalDoctrineStation: i.stationLabel,
       currentEngineeringStation: i.stationLabel,
@@ -408,7 +500,7 @@ function pt(e) {
     };
   })).sort((t, r) => t.stationFeet - r.stationFeet || t.objectId.localeCompare(r.objectId)).map((t, r) => ({ ...t, stationSequence: r + 1 }));
 }
-function St(e) {
+function At(e) {
   return e.map((n, t) => ({
     ...n,
     sequenceId: `${n.parentRouteId}:DOIE:ACTION-SEQUENCE:${String(t + 1).padStart(5, "0")}`,
@@ -420,7 +512,7 @@ function je(e) {
   const n = e.toUpperCase();
   return n.includes("HANDHOLE") ? "HH" : n.includes("VAULT") ? "VAULT" : n.includes("SPLICE") ? "SPLICE" : n.includes("ILA") || n.includes("REGEN") ? "ILA" : n.includes("MARKER") ? "MARKER" : n.includes("SLACK") ? "SLACK" : "STRUCTURE";
 }
-function Tt(e, n) {
+function Ot(e, n) {
   return n.slice(0, -1).map((t, r) => {
     const o = n[r + 1], c = Math.min(t.stationFeet, o.stationFeet), i = Math.max(t.stationFeet, o.stationFeet);
     return {
@@ -435,22 +527,22 @@ function Tt(e, n) {
       parentRouteId: t.parentRouteId,
       parentSegmentId: t.parentSegmentId === o.parentSegmentId ? t.parentSegmentId : `${t.parentSegmentId}->${o.parentSegmentId}`,
       routeFeet: Math.max(0, i - c),
-      spanAuthority: v,
+      spanAuthority: q,
       closureBoundary: "VIEW_ONLY_NOT_CLOSURE_LIMIT",
       preservesContinuousStationClosure: !0,
       noScopeVersionCreation: !0
     };
   });
 }
-const Ve = [
+const $e = [
   ["CONDUIT", "productDoctrineAssembly.quantitySummary.conduitFeet"],
   ["FIBER", "productDoctrineAssembly.quantitySummary.fiberFeet"],
   ["TRACE_WIRE", "Product Doctrine locate wire asset attached to every station span"],
   ["WARNING_TAPE", "Product Doctrine warning tape asset attached to every station span"],
   ["MULE_TAPE_PULL_TAPE", "Product Doctrine conduit placement assumption attaches pull tape to every station span"]
 ];
-function Ct(e) {
-  return e.flatMap((n) => Ve.map(([t, r]) => ({
+function gt(e) {
+  return e.flatMap((n) => $e.map(([t, r]) => ({
     attachmentId: `${n.spanId}:ASSET:${t}`,
     spanId: n.spanId,
     assetType: t,
@@ -460,21 +552,21 @@ function Ct(e) {
     stationEnd: n.stationEnd,
     routeFeet: n.routeFeet,
     doctrineQuantitySource: r,
-    placementAuthority: v,
+    placementAuthority: q,
     noScopeVersionCreation: !0
   })));
 }
-function Rt(e) {
+function bt(e) {
   return {
     policyId: `${e}:DOIE:ENGINEERING-MOVEMENT-POLICY`,
     movementCreatesEngineeringChangeSet: !0,
     requiredPatchType: "MOVE_OBJECT",
     requiredFields: ["originalDoctrineStation", "newEngineeringStation", "delta", "rationale"],
-    authority: v,
+    authority: q,
     noScopeVersionCreation: !0
   };
 }
-function mt(e) {
+function ht(e) {
   return /* @__PURE__ */ new Map([
     ["HANDHOLE", e.handholeCount],
     ["VAULT", e.vaultCount],
@@ -484,95 +576,95 @@ function mt(e) {
     ["SLACK_LOOP", e.slackLoopCount]
   ]);
 }
-function Nt(e) {
+function yt(e) {
   const n = /* @__PURE__ */ new Set(), t = /* @__PURE__ */ new Set();
   return e.forEach((r) => {
     n.has(r) && t.add(r), n.add(r);
   }), t.size;
 }
-function Ot(e, n, t, r, o, c, i, d, a) {
-  const E = new Set(t.map((s) => s.objectType)), I = new Set(t.filter((s) => s.objectGroup === "REQUIRED_SERVICE").map((s) => s.requiredServices[0])), l = new Set(t.filter((s) => s.objectGroup === "REQUIRED_ASSET").map((s) => s.requiredAssets[0])), m = mt(r), A = o.reduce((s, T) => (s.set(T.objectType, (s.get(T.objectType) ?? 0) + 1), s), /* @__PURE__ */ new Map()), S = [...m.entries()].filter(([, s]) => s > 0).filter(([s, T]) => (A.get(s) ?? 0) !== T).map(([s, T]) => `Doctrine station object count mismatch for ${s}: expected ${T}, placed ${A.get(s) ?? 0}.`), O = o.filter((s) => !s.stationAddress || !s.stationSequence).map((s) => `Station object ${s.objectId} is missing station address or sequence.`), b = o.filter((s, T) => s.stationSequence !== T + 1).map((s, T) => `Station object ${s.objectId} has sequence ${s.stationSequence}; expected ${T + 1}.`), R = Nt(o.map((s) => s.objectId)) ? ["Station object index contains duplicate object IDs."] : [], _ = [
-    ...c.length > 1 && !i.length ? ["Sequenced action objects exist but span derivation produced no spans."] : [],
-    ...i.filter((s) => s.stationEndFeet < s.stationStartFeet).map((s) => `Derived span ${s.spanId} has invalid station order.`)
-  ], h = /* @__PURE__ */ new Map();
-  d.forEach((s) => {
-    const T = h.get(s.spanId) ?? /* @__PURE__ */ new Set();
-    T.add(s.assetType), h.set(s.spanId, T);
+function Dt(e, n, t, r, o, c, i, d, a, E) {
+  const p = new Set(t.map((s) => s.objectType)), I = new Set(t.filter((s) => s.objectGroup === "REQUIRED_SERVICE").map((s) => s.requiredServices[0])), C = new Set(t.filter((s) => s.objectGroup === "REQUIRED_ASSET").map((s) => s.requiredAssets[0])), R = o.filter((s) => s.applicability === "APPLICABLE"), T = ht(r), m = c.reduce((s, l) => (s.set(l.objectType, (s.get(l.objectType) ?? 0) + 1), s), /* @__PURE__ */ new Map()), h = [...T.entries()].filter(([, s]) => s > 0).filter(([s, l]) => (m.get(s) ?? 0) !== l).map(([s, l]) => `Doctrine station object count mismatch for ${s}: expected ${l}, placed ${m.get(s) ?? 0}.`), g = c.filter((s) => !s.stationAddress || !s.stationSequence).map((s) => `Station object ${s.objectId} is missing station address or sequence.`), A = c.filter((s, l) => s.stationSequence !== l + 1).map((s, l) => `Station object ${s.objectId} has sequence ${s.stationSequence}; expected ${l + 1}.`), y = yt(c.map((s) => s.objectId)) ? ["Station object index contains duplicate object IDs."] : [], D = [
+    ...i.length > 1 && !d.length ? ["Sequenced action objects exist but span derivation produced no spans."] : [],
+    ...d.filter((s) => s.stationEndFeet < s.stationStartFeet).map((s) => `Derived span ${s.spanId} has invalid station order.`)
+  ], f = /* @__PURE__ */ new Map();
+  a.forEach((s) => {
+    const l = f.get(s.spanId) ?? /* @__PURE__ */ new Set();
+    l.add(s.assetType), f.set(s.spanId, l);
   });
-  const D = i.flatMap((s) => {
-    const T = h.get(s.spanId) ?? /* @__PURE__ */ new Set();
-    return Ve.filter(([j]) => !T.has(j)).map(([j]) => `Derived span ${s.spanId} is missing ${j} attachment.`);
-  }), L = [
+  const _ = d.flatMap((s) => {
+    const l = f.get(s.spanId) ?? /* @__PURE__ */ new Set();
+    return $e.filter(([G]) => !l.has(G)).map(([G]) => `Derived span ${s.spanId} is missing ${G} attachment.`);
+  }), P = [
     ...t.filter((s) => !s.address.addressLabel || !s.address.stationRange).map((s) => `Object ${s.objectId} is missing deterministic address.`),
     ...t.filter((s) => !s.paymentSequence.paymentSequenceId).map((s) => `Object ${s.objectId} is missing payment sequence.`),
     ...t.filter((s) => !s.closeSequence?.closeSequenceId).map((s) => `Object ${s.objectId} is missing close sequence.`),
     ...t.filter((s) => !s.evidenceRequirements.length && s.objectGroup !== "EVIDENCE_OBJECT").map((s) => `Object ${s.objectId} is missing evidence requirements.`),
     ...n.requiredServices.filter((s) => !I.has(s.serviceId)).map((s) => `Required service ${s.serviceId} was not instantiated.`),
-    ...n.requiredAssets.filter((s) => !l.has(s.assetId)).map((s) => `Required asset ${s.assetId} was not instantiated.`),
-    ...a.filter((s) => !E.has(s)).map((s) => `Engineering object type ${s} was not instantiated.`),
-    ...S,
-    ...O,
-    ...b,
-    ...R,
-    ..._,
-    ...D
+    ...R.filter((s) => !C.has(s.assetId)).map((s) => `Required asset ${s.assetId} was not instantiated.`),
+    ...E.filter((s) => !p.has(s)).map((s) => `Engineering object type ${s} was not instantiated.`),
+    ...h,
+    ...g,
+    ...A,
+    ...y,
+    ...D,
+    ..._
   ];
   return {
     validationId: `${e}:DOIE:VALIDATION`,
-    status: L.length ? "FAIL" : "PASS",
+    status: P.length ? "FAIL" : "PASS",
     checkedObjectCount: t.length,
     missingAddressCount: t.filter((s) => !s.address.addressLabel || !s.address.stationRange).length,
     missingRequiredServiceCount: n.requiredServices.filter((s) => !I.has(s.serviceId)).length,
-    missingRequiredAssetCount: n.requiredAssets.filter((s) => !l.has(s.assetId)).length,
-    missingEngineeringObjectTypeCount: a.filter((s) => !E.has(s)).length,
+    missingRequiredAssetCount: R.filter((s) => !C.has(s.assetId)).length,
+    missingEngineeringObjectTypeCount: E.filter((s) => !p.has(s)).length,
     missingPaymentSequenceCount: t.filter((s) => !s.paymentSequence.paymentSequenceId).length,
     missingCloseSequenceCount: t.filter((s) => !s.closeSequence?.closeSequenceId).length,
     missingEvidenceRequirementCount: t.filter((s) => !s.evidenceRequirements.length && s.objectGroup !== "EVIDENCE_OBJECT").length,
-    quantityMismatchCount: S.length,
-    missingStationAddressCount: O.length,
-    sequenceGapCount: b.length,
-    duplicateObjectIdCount: R.length,
-    spanDerivationFailureCount: _.length,
-    unattachedLinearAssetCount: D.length,
-    failures: L,
-    authority: v,
+    quantityMismatchCount: h.length,
+    missingStationAddressCount: g.length,
+    sequenceGapCount: A.length,
+    duplicateObjectIdCount: y.length,
+    spanDerivationFailureCount: D.length,
+    unattachedLinearAssetCount: _.length,
+    failures: P,
+    authority: q,
     noScopeVersionCreation: !0
   };
 }
-function At(e) {
-  const { packageId: n, productDoctrine: t, productDoctrineAssembly: r } = e, o = e.routeId ?? r.osrmRoute?.routeId ?? r.centerlineId, c = e.scopeVersionCandidateId ?? `${n}:SCOPEVERSION-CANDIDATE`, i = e.geometryHash ?? r.centerlineId, d = e.jurisdiction ?? "UNRESOLVED_JURISDICTION", a = nt(r), E = it(r, a), I = at(n, r), l = [];
-  let m = 0;
-  const A = E[0], S = t.engineeringObjects.find((u) => u.engineeringObjectType === "SPINE") ?? t.engineeringObjects[0], O = ce(t.evidenceRequirements, ["ENGINEERING_OBJECT:SPINE", S?.engineeringObjectType ?? "SPINE"]), b = de({
+function Lt(e) {
+  const { packageId: n, productDoctrine: t, productDoctrineAssembly: r } = e, o = e.routeId ?? r.osrmRoute?.routeId ?? r.centerlineId, c = e.scopeVersionCandidateId ?? `${n}:SCOPEVERSION-CANDIDATE`, i = e.geometryHash ?? r.centerlineId, d = e.jurisdiction ?? "UNRESOLVED_JURISDICTION", a = it(r), E = rt(r, a), p = dt(n, r), I = St(t, r, p, E.length), C = [];
+  let R = 0;
+  const T = E[0], m = t.engineeringObjects.find((u) => u.engineeringObjectType === "SPINE") ?? t.engineeringObjects[0], h = oe(t.evidenceRequirements, ["ENGINEERING_OBJECT:SPINE", m?.engineeringObjectType ?? "SPINE"]), g = ae({
     packageId: n,
     productDoctrine: t,
     objectGroup: "ENGINEERING_OBJECT",
     objectType: "SPINE",
-    objectSequence: ++m,
+    objectSequence: ++R,
     parentObjectId: "ROOT",
-    target: A,
+    target: T,
     scopeVersionCandidateId: c,
     routeId: o,
     geometryHash: i,
     jurisdiction: d,
-    requiredServices: S?.requiredServiceIds ?? [],
-    requiredAssets: S?.requiredAssetIds ?? [],
-    lifecycle: S,
-    executionSequence: ae(t.executionSequences, "ENGINEERING_OBJECT", "SPINE"),
-    closeSequence: se(t.closeSequences, "ENGINEERING_OBJECT", "SPINE"),
-    evidenceRequirements: O
+    requiredServices: m?.requiredServiceIds ?? [],
+    requiredAssets: m?.requiredAssetIds ?? [],
+    lifecycle: m,
+    executionSequence: se(t.executionSequences, "ENGINEERING_OBJECT", "SPINE"),
+    closeSequence: ce(t.closeSequences, "ENGINEERING_OBJECT", "SPINE"),
+    evidenceRequirements: h
   });
-  l.push(b), t.engineeringObjects.filter((u) => u.engineeringObjectType !== "SPINE").forEach((u) => {
-    const G = _e(u, I, a, E, r);
-    Array.from({ length: G }, ($, p) => {
-      const y = ue(u.engineeringObjectType, p, G, a, E), x = [`ENGINEERING_OBJECT:${u.engineeringObjectType}`, u.engineeringObjectType, ...u.requiredServiceIds, ...u.requiredAssetIds];
-      l.push(de({
+  C.push(g), t.engineeringObjects.filter((u) => u.engineeringObjectType !== "SPINE").forEach((u) => {
+    const V = Pe(u, p, a, E, r);
+    Array.from({ length: V }, (S, O) => {
+      const x = de(u.engineeringObjectType, O, V, a, E), me = [`ENGINEERING_OBJECT:${u.engineeringObjectType}`, u.engineeringObjectType, ...u.requiredServiceIds, ...u.requiredAssetIds];
+      C.push(ae({
         packageId: n,
         productDoctrine: t,
         objectGroup: u.engineeringObjectType === "EVIDENCE_OBJECT" ? "EVIDENCE_OBJECT" : "ENGINEERING_OBJECT",
         objectType: u.engineeringObjectType,
-        objectSequence: ++m,
-        parentObjectId: b.objectId,
-        target: y,
+        objectSequence: ++R,
+        parentObjectId: g.objectId,
+        target: x,
         scopeVersionCandidateId: c,
         routeId: o,
         geometryHash: i,
@@ -580,21 +672,21 @@ function At(e) {
         requiredServices: u.requiredServiceIds,
         requiredAssets: u.requiredAssetIds,
         lifecycle: u,
-        executionSequence: ae(t.executionSequences, "ENGINEERING_OBJECT", u.engineeringObjectType),
-        closeSequence: se(t.closeSequences, "ENGINEERING_OBJECT", u.engineeringObjectType),
-        evidenceRequirements: ce(t.evidenceRequirements, x)
+        executionSequence: se(t.executionSequences, "ENGINEERING_OBJECT", u.engineeringObjectType),
+        closeSequence: ce(t.closeSequences, "ENGINEERING_OBJECT", u.engineeringObjectType),
+        evidenceRequirements: oe(t.evidenceRequirements, me)
       }));
     });
-  }), t.requiredServices.forEach((u, G) => {
-    const $ = ue(`${u.serviceType}_SERVICE`, G, t.requiredServices.length, a, E), p = [u.serviceId, `SERVICE:${u.serviceName.toUpperCase().replaceAll(" ", "-")}`];
-    l.push(de({
+  }), t.requiredServices.forEach((u, V) => {
+    const S = de(`${u.serviceType}_SERVICE`, V, t.requiredServices.length, a, E), O = [u.serviceId, `SERVICE:${u.serviceName.toUpperCase().replaceAll(" ", "-")}`];
+    C.push(ae({
       packageId: n,
       productDoctrine: t,
       objectGroup: "REQUIRED_SERVICE",
       objectType: u.serviceType,
-      objectSequence: ++m,
-      parentObjectId: b.objectId,
-      target: { ...$, addressKind: "SERVICE" },
+      objectSequence: ++R,
+      parentObjectId: g.objectId,
+      target: { ...S, addressKind: "SERVICE" },
       scopeVersionCandidateId: c,
       routeId: o,
       geometryHash: i,
@@ -602,22 +694,22 @@ function At(e) {
       requiredServices: [u.serviceId],
       requiredAssets: [],
       lifecycle: u,
-      executionSequence: ae(t.executionSequences, "SERVICE", u.serviceId),
-      closeSequence: se(t.closeSequences, "SERVICE", u.serviceId),
-      evidenceRequirements: ce(t.evidenceRequirements, p)
+      executionSequence: se(t.executionSequences, "SERVICE", u.serviceId),
+      closeSequence: ce(t.closeSequences, "SERVICE", u.serviceId),
+      evidenceRequirements: oe(t.evidenceRequirements, O)
     }));
-  }), t.requiredAssets.forEach((u, G) => {
-    const $ = dt(u, r, I, E.length);
-    Array.from({ length: $ }, (p, y) => {
-      const x = ue(u.assetType, y + G, $, a, E), Qe = [u.assetId, `ASSET:${u.assetType}`, u.assetType];
-      l.push(de({
+  }), t.requiredAssets.forEach((u, V) => {
+    const S = I.find((O) => O.assetId === u.assetId)?.instantiatedQuantity ?? 0;
+    Array.from({ length: S }, (O, x) => {
+      const me = de(u.assetType, x + V, S, a, E), Ke = [u.assetId, `ASSET:${u.assetType}`, u.assetType];
+      C.push(ae({
         packageId: n,
         productDoctrine: t,
         objectGroup: "REQUIRED_ASSET",
         objectType: u.assetType,
-        objectSequence: ++m,
-        parentObjectId: b.objectId,
-        target: x,
+        objectSequence: ++R,
+        parentObjectId: g.objectId,
+        target: me,
         scopeVersionCandidateId: c,
         routeId: o,
         geometryHash: i,
@@ -625,58 +717,60 @@ function At(e) {
         requiredServices: [],
         requiredAssets: [u.assetId],
         lifecycle: u,
-        executionSequence: ae(t.executionSequences, "ASSET", u.assetId),
-        closeSequence: se(t.closeSequences, "ASSET", u.assetId),
-        evidenceRequirements: ce(t.evidenceRequirements, Qe)
+        executionSequence: se(t.executionSequences, "ASSET", u.assetId),
+        closeSequence: ce(t.closeSequences, "ASSET", u.assetId),
+        evidenceRequirements: oe(t.evidenceRequirements, Ke)
       }));
     });
   });
-  const R = ut(l), _ = Et(n, R), h = R.map((u) => u.paymentSequence), D = lt(n, a, t), L = pt({
+  const A = Tt(C), y = Ct(n, A), D = A.map((u) => u.paymentSequence), f = mt(n, a, t), _ = Nt({
     routeId: o,
-    quantityPlacement: I,
+    quantityPlacement: p,
     stations: a,
     targets: E
-  }), s = St(L), T = Tt(n, s), j = Ct(T), C = Rt(n), oe = t.engineeringObjects.filter((u) => u.engineeringObjectType === "SPINE" || _e(u, I, a, E, r) > 0).map((u) => u.engineeringObjectType), Q = Ot(
+  }), P = At(_), s = Ot(n, P), l = gt(s), G = bt(n), Ce = t.engineeringObjects.filter((u) => u.engineeringObjectType === "SPINE" || Pe(u, p, a, E, r) > 0).map((u) => u.engineeringObjectType), Q = Dt(
     n,
     t,
-    R,
+    A,
+    p,
     I,
-    L,
+    _,
+    P,
     s,
-    T,
-    j,
-    oe
+    l,
+    Ce
   );
   return {
     engineeringObjectManifest: {
       manifestId: `${n}:DOCTRINE-ENGINEERING-OBJECT-MANIFEST`,
-      manifestVersion: ze,
+      manifestVersion: Ze,
       packageId: n,
       productId: t.productId,
       doctrineId: t.doctrineId,
       doctrineVersion: t.doctrineVersion,
       scopeVersionCandidateId: c,
-      objectCount: R.length,
+      objectCount: A.length,
       requiredServiceCount: t.requiredServices.length,
       requiredAssetCount: t.requiredAssets.length,
       engineeringObjectTypeCount: t.engineeringObjects.length,
-      instantiatedObjects: R,
-      dependencyGraph: _,
+      instantiatedObjects: A,
+      dependencyGraph: y,
       executionSequence: t.executionSequences,
       closeSequence: t.closeSequences,
-      paymentSequence: h,
+      paymentSequence: D,
       evidenceRequirements: t.evidenceRequirements,
-      stationLifecycleRules: D,
+      stationLifecycleRules: f,
       scopeVersionReadinessRequirements: t.scopeVersionReadinessRequirements,
-      quantityPlacement: I,
-      stationObjectIndex: L,
-      sequencedActionObjects: s,
-      derivedSpans: T,
-      linearAssetSpanAttachments: j,
-      engineeringMovementPolicy: C,
+      quantityPlacement: p,
+      requiredAssetModel: I,
+      stationObjectIndex: _,
+      sequencedActionObjects: P,
+      derivedSpans: s,
+      linearAssetSpanAttachments: l,
+      engineeringMovementPolicy: G,
       continuousStationClosure: !0,
       marketplaceProjection: {
-        requiredAssetIds: t.requiredAssets.map((u) => u.assetId),
+        requiredAssetIds: I.filter((u) => u.applicability === "APPLICABLE").map((u) => u.assetId),
         requiredServiceIds: t.requiredServices.map((u) => u.serviceId),
         vendorQualifications: ["qualified OSP contractor", "fiber splicing vendor", "traffic control provider", "survey provider"],
         deliveryDatePolicy: "Delivery dates are projected after ScopeVersion work packaging.",
@@ -684,12 +778,12 @@ function At(e) {
       },
       controlProjection: {
         executionSequenceIds: t.executionSequences.map((u) => u.sequenceId),
-        dependencyGraphId: _.graphId,
+        dependencyGraphId: y.graphId,
         releaseGatePolicy: "CONTROL_RELEASES_AFTER_SCOPEVERSION",
         workReleaseStatus: "BLOCKED_UNTIL_SCOPEVERSION"
       },
       fieldProjection: {
-        addressedObjectIds: R.map((u) => u.objectId),
+        addressedObjectIds: A.map((u) => u.objectId),
         evidenceRequirementIds: t.evidenceRequirements.map((u) => u.evidenceRequirementId),
         closurePolicy: "FIELD_CLOSES_AGAINST_ADDRESSED_OBJECTS"
       },
@@ -699,53 +793,54 @@ function At(e) {
       },
       validation: Q,
       currentState: "PLANNED",
-      authority: v,
+      authority: q,
       noScopeVersionCreation: !0
     },
-    instantiatedObjects: R,
-    dependencyGraph: _,
+    instantiatedObjects: A,
+    dependencyGraph: y,
     executionSequence: t.executionSequences,
     closeSequence: t.closeSequences,
-    paymentSequence: h,
+    paymentSequence: D,
     evidenceRequirements: t.evidenceRequirements,
-    stationLifecycleRules: D,
-    quantityPlacement: I,
-    stationObjectIndex: L,
-    sequencedActionObjects: s,
-    derivedSpans: T,
-    linearAssetSpanAttachments: j,
-    engineeringMovementPolicy: C,
+    stationLifecycleRules: f,
+    quantityPlacement: p,
+    requiredAssetModel: I,
+    stationObjectIndex: _,
+    sequencedActionObjects: P,
+    derivedSpans: s,
+    linearAssetSpanAttachments: l,
+    engineeringMovementPolicy: G,
     validation: Q,
     summary: {
       summaryId: `${n}:DOIE:SUMMARY`,
       packageId: n,
-      objectCount: R.length,
-      addressCount: R.filter((u) => u.address.addressLabel).length,
-      paymentSequenceCount: h.length,
+      objectCount: A.length,
+      addressCount: A.filter((u) => u.address.addressLabel).length,
+      paymentSequenceCount: D.length,
       closeSequenceCount: t.closeSequences.length,
-      stationLifecycleRuleCount: D.length,
-      stationObjectIndexCount: L.length,
-      derivedSpanCount: T.length,
-      linearAssetAttachmentCount: j.length,
+      stationLifecycleRuleCount: f.length,
+      stationObjectIndexCount: _.length,
+      derivedSpanCount: s.length,
+      linearAssetAttachmentCount: l.length,
       status: Q.status,
-      authority: v,
+      authority: q,
       noScopeVersionCreation: !0
     },
     noScopeVersionCreation: !0
   };
 }
-function Pe(e, n = 3) {
+function qe(e, n = 3) {
   const t = 10 ** n;
   return Math.round(e * t) / t;
 }
-function bt(e, n) {
+function ft(e, n) {
   const t = Math.max(0, Math.min(e.routeLengthFeet, n)), r = e.segments.find((a) => t >= a.cumulativeStartFeet && t <= a.cumulativeEndFeet) ?? e.segments[e.segments.length - 1], o = Math.max(1e-6, r.cumulativeEndFeet - r.cumulativeStartFeet), c = Math.max(0, Math.min(1, (t - r.cumulativeStartFeet) / o)), i = r.startCoordinate[0] + (r.endCoordinate[0] - r.startCoordinate[0]) * c, d = r.startCoordinate[1] + (r.endCoordinate[1] - r.startCoordinate[1]) * c;
   return {
-    coordinate: [Pe(i, 7), Pe(d, 7)],
+    coordinate: [qe(i, 7), qe(d, 7)],
     segmentId: r.segmentId
   };
 }
-const te = "CLOSURE_ENGINE", ye = "CLOSURE_LEDGER", $e = "IOF_PACKAGE_TWIN", me = [
+const te = "CLOSURE_ENGINE", De = "CLOSURE_LEDGER", ke = "IOF_PACKAGE_TWIN", Ne = [
   "COMMERCIAL_ASSEMBLED",
   "COMMERCIAL_REVIEW",
   "COMMERCIAL_APPROVED",
@@ -771,7 +866,7 @@ const te = "CLOSURE_ENGINE", ye = "CLOSURE_LEDGER", $e = "IOF_PACKAGE_TWIN", me 
   "MAINTAINED",
   "MODIFIED",
   "RETIRED"
-], Ee = {
+], ue = {
   COMMERCIAL_ASSEMBLED: "Commercial",
   COMMERCIAL_REVIEW: "Commercial",
   COMMERCIAL_APPROVED: "Commercial",
@@ -797,7 +892,7 @@ const te = "CLOSURE_ENGINE", ye = "CLOSURE_LEDGER", $e = "IOF_PACKAGE_TWIN", me 
   MAINTAINED: "Twin",
   MODIFIED: "Twin",
   RETIRED: "Twin"
-}, ke = {
+}, He = {
   COMMERCIAL_ASSEMBLED: ["commercial review evidence"],
   COMMERCIAL_REVIEW: ["commercial approval evidence"],
   COMMERCIAL_APPROVED: ["customer acceptance evidence"],
@@ -824,24 +919,24 @@ const te = "CLOSURE_ENGINE", ye = "CLOSURE_LEDGER", $e = "IOF_PACKAGE_TWIN", me 
   MODIFIED: ["retirement authorization evidence"],
   RETIRED: []
 };
-function gt(e, n = "UNKNOWN") {
+function _t(e, n = "UNKNOWN") {
   return (String(e ?? n).trim() || n).replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 96) || n;
 }
-function He(e) {
-  const n = me.indexOf(e);
-  return n >= 0 ? me[n + 1] : void 0;
+function xe(e) {
+  const n = Ne.indexOf(e);
+  return n >= 0 ? Ne[n + 1] : void 0;
 }
-function ht(e) {
-  const n = He(e);
+function Pt(e) {
+  const n = xe(e);
   return n ? [{
     fromState: e,
     toState: n,
-    authority: Ee[n],
-    requiredEvidence: ke[e]
+    authority: ue[n],
+    requiredEvidence: He[e]
   }] : [];
 }
-function De(e, n) {
-  const t = n.initialState ?? "COMMERCIAL_ASSEMBLED", r = He(t), o = Ee[t], c = r ? Ee[r] : void 0, i = ht(t);
+function Le(e, n) {
+  const t = n.initialState ?? "COMMERCIAL_ASSEMBLED", r = xe(t), o = ue[t], c = r ? ue[r] : void 0, i = Pt(t);
   return {
     ...e,
     currentState: t,
@@ -851,13 +946,13 @@ function De(e, n) {
     currentAuthority: o,
     nextAuthority: c,
     allowedTransitions: r ? [r] : [],
-    requiredEvidenceForNextTransition: ke[t],
+    requiredEvidenceForNextTransition: He[t],
     blockingDependencies: n.blockingDependencies ?? [],
     closureEventHistory: [],
     auditStatus: "OPEN",
-    domainResponsibilityMatrix: Ee,
+    domainResponsibilityMatrix: ue,
     lifecycleStateMachine: {
-      states: me,
+      states: Ne,
       currentState: t,
       transitionAuthority: te
     },
@@ -865,17 +960,17 @@ function De(e, n) {
     auditLedgerHooks: {
       closureLedgerId: n.closureLedgerId,
       transitionAuthority: te,
-      closureLedgerAuthority: ye
+      closureLedgerAuthority: De
     },
     twinProjectionMetadata: {
-      twinProjectionId: `${n.packageId}:TWIN:${n.entityKind.toUpperCase()}:${gt(n.entityId)}`,
+      twinProjectionId: `${n.packageId}:TWIN:${n.entityKind.toUpperCase()}:${_t(n.entityId)}`,
       currentState: t,
       currentAuthority: o,
-      projectionAuthority: $e
+      projectionAuthority: ke
     }
   };
 }
-function yt(e, n) {
+function jt(e, n) {
   const t = Math.max(0, Number(e.lengthFeet) || Math.max(0, Number(e.endMeasure) - Number(e.startMeasure)));
   return [
     { workType: "OPEN_TRENCH", constructionMethod: "OPEN_TRENCH", crewType: "CIVIL_CREW", laborTemplate: "LABOR:TRENCH", materialTemplate: "MATERIAL:CONDUIT", requiredEvidence: ["trench photo", "depth log"] },
@@ -903,7 +998,7 @@ function yt(e, n) {
       sequence: c + 1,
       noIndependentGeometry: !0
     };
-    return De(i, {
+    return Le(i, {
       packageId: n.packageId,
       entityId: i.closureSegmentId,
       entityKind: "closureSegment",
@@ -912,7 +1007,7 @@ function yt(e, n) {
     });
   });
 }
-function Dt(e) {
+function qt(e) {
   return {
     closureLedgerId: `${e.packageId}:CLOSURE-LEDGER`,
     packageId: e.packageId,
@@ -920,20 +1015,20 @@ function Dt(e) {
     spanCount: e.spans.length,
     workSegmentCount: e.workSegments.length,
     closureEvents: [],
-    authority: ye,
+    authority: De,
     transitionAuthority: te,
     immutableAfterCreation: !0,
     noScopeVersionCreation: !0
   };
 }
-function Lt(e) {
+function vt(e) {
   return {
     twinProjectionId: `${e.packageId}:IOF-PACKAGE-TWIN`,
     packageId: e.packageId,
     objectCount: e.objects.length,
     spanCount: e.spans.length,
     workSegmentCount: e.workSegments.length,
-    currentAuthority: $e,
+    currentAuthority: ke,
     stateAuthority: te,
     closureLedgerId: e.closureLedgerId,
     executionGraphId: `${e.packageId}:EXECUTION-GRAPH`,
@@ -949,7 +1044,7 @@ function Lt(e) {
     noScopeVersionCreation: !0
   };
 }
-function ft(e) {
+function Mt(e) {
   const n = e.renderedObjects.filter((i) => !!(i.materialTemplate || i.materialTemplateId)).length, t = e.renderedObjects.filter((i) => !!(i.laborTemplate || i.laborTemplateId)).length, r = e.renderedObjects.filter((i) => !!i.paymentSequenceId).length, o = e.renderedObjects.filter((i) => !!i.closeSequenceId).length, c = [
     ...e.expectedObjectCount === e.renderedObjects.length ? [] : [{
       objectClass: "PROJECTED_OBJECT",
@@ -999,7 +1094,7 @@ function ft(e) {
     authority: "COMMERCIAL_AUDIT_RECONCILIATION"
   };
 }
-function _t(e) {
+function Gt(e) {
   const n = [
     ...e.objects.filter((t) => !t.currentState).map((t) => `object lifecycle missing: ${t.objectId}`),
     ...e.spans.filter((t) => !t.currentState).map((t) => `span lifecycle missing: ${t.spanId}`),
@@ -1021,10 +1116,10 @@ function _t(e) {
     workSegmentCount: e.workSegments.length,
     failures: n,
     transitionAuthority: te,
-    closureLedgerAuthority: ye
+    closureLedgerAuthority: De
   };
 }
-const g = "DOCTRINE_PROJECTION_ENGINE", jt = "37.0", Ce = [
+const b = "DOCTRINE_PROJECTION_ENGINE", Ft = "37.0", Te = [
   "CONDUIT",
   "FIBER",
   "TRACE_WIRE",
@@ -1034,27 +1129,27 @@ const g = "DOCTRINE_PROJECTION_ENGINE", jt = "37.0", Ce = [
 function Z(e, n = "UNKNOWN") {
   return (String(e ?? n).trim() || n).replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 96) || n;
 }
-function Ne(e, n = 0) {
+function Ae(e, n = 0) {
   const t = Number(e);
   return Number.isFinite(t) ? t : n;
 }
 function B(e, n = 0) {
-  return Math.max(0, Math.round(Ne(e, n)));
+  return Math.max(0, Math.round(Ae(e, n)));
 }
 function Oe(e) {
   const n = Math.max(0, Math.round(e));
   return `${Math.floor(n / 100)}+${String(n % 100).padStart(2, "0")}`;
 }
-function Pt(e, n) {
+function Ut(e, n) {
   return e.stations.reduce((t, r) => Math.abs(r.measureFeet - n) < Math.abs(t.measureFeet - n) ? r : t, e.stations[0]);
 }
-function xe(e) {
+function Be(e) {
   return new Set(e.filter(Boolean)).size;
 }
-function Te(e) {
-  return Math.max(0, e.filter(Boolean).length - xe(e));
+function Se(e) {
+  return Math.max(0, e.filter(Boolean).length - Be(e));
 }
-function vt(e) {
+function Vt(e) {
   return e.quantityPlacement;
 }
 function ve(e, ...n) {
@@ -1064,7 +1159,7 @@ function ve(e, ...n) {
     return t.some((c) => o.includes(c));
   }).length;
 }
-function Be(e, n) {
+function we(e, n) {
   const t = [
     {
       objectType: "HANDHOLE",
@@ -1133,14 +1228,14 @@ function Be(e, n) {
     placementReason: "Termination count from existing Doctrine Object Manifest."
   }), t;
 }
-function qt(e, n, t) {
+function $t(e, n, t) {
   return n <= 0 || e <= 0 ? 0 : Math.min(e, Math.max(0, e / n * (t + 1)));
 }
-function Mt(e, n, t) {
+function kt(e, n, t) {
   return `${e}:SPAN:${Z(n)}:${String(t).padStart(3, "0")}`;
 }
-function Gt(e) {
-  const n = qt(e.routeFeet, e.seed.count, e.seedIndex), t = bt(e.measuredSpine, n), r = Pt(e.stationAuthority, n), o = t.coordinate, c = Oe(n), i = `${e.seed.prefix}-${String(e.seedIndex + 1).padStart(3, "0")}`, d = Mt(e.routeRepositoryId, e.seed.objectType, e.seedIndex + 1), a = e.seedIndex + 1, E = {
+function Ht(e) {
+  const n = $t(e.routeFeet, e.seed.count, e.seedIndex), t = ft(e.measuredSpine, n), r = Ut(e.stationAuthority, n), o = t.coordinate, c = Oe(n), i = `${e.seed.prefix}-${String(e.seedIndex + 1).padStart(3, "0")}`, d = kt(e.routeRepositoryId, e.seed.objectType, e.seedIndex + 1), a = e.seedIndex + 1, E = {
     addressId: `${i}:DOCTRINE-PROJECTION-ADDRESS`,
     routeId: e.routeRepositoryId,
     segmentId: t.segmentId,
@@ -1156,9 +1251,9 @@ function Gt(e) {
     longitude: o[0],
     geometryHash: e.geometryHash,
     addressLabel: `${i} ${c} ${o[1].toFixed(6)}, ${o[0].toFixed(6)}`,
-    addressAuthority: g,
+    addressAuthority: b,
     noScopeVersionCreation: !0
-  }, I = {
+  }, p = {
     objectId: i,
     objectType: e.seed.objectType,
     doctrineObjectType: e.seed.doctrineObjectType,
@@ -1178,9 +1273,9 @@ function Gt(e) {
     routeId: e.routeRepositoryId,
     segmentId: t.segmentId,
     address: E,
-    placementAuthority: g,
-    projectionAuthority: g,
-    engineeringAuthority: g,
+    placementAuthority: b,
+    projectionAuthority: b,
+    engineeringAuthority: b,
     coordinateAuthority: "MEASURED_CENTERLINE",
     placementReason: e.seed.placementReason,
     doctrineQuantitySource: e.seed.doctrineQuantitySource,
@@ -1199,11 +1294,11 @@ function Gt(e) {
       objectType: e.seed.objectType,
       doctrineQuantitySource: e.seed.doctrineQuantitySource,
       nominalIntervalFeet: e.routeFeet / Math.max(1, e.seed.count),
-      placementAuthority: g
+      placementAuthority: b
     },
     noScopeVersionCreation: !0
   };
-  return De(I, {
+  return Le(p, {
     packageId: e.packageId,
     entityId: i,
     entityKind: "object",
@@ -1211,11 +1306,11 @@ function Gt(e) {
     blockingDependencies: [e.routeRepositoryId, d]
   });
 }
-function Ft(e) {
-  const n = Ne(e.measuredSpine.routeLengthFeet, Ne(e.quantityPlacement.routeFeet)), t = e.measuredSpine.geometryHash, r = Be(e.quantityPlacement, e.doctrineObjectManifest), o = r.map((i) => ({
+function xt(e) {
+  const n = Ae(e.measuredSpine.routeLengthFeet, Ae(e.quantityPlacement.routeFeet)), t = e.measuredSpine.geometryHash, r = we(e.quantityPlacement, e.doctrineObjectManifest), o = r.map((i) => ({
     seed: i,
     nominalIntervalFeet: i.count > 0 ? n / i.count : 0,
-    objects: Array.from({ length: i.count }, (d, a) => Gt({
+    objects: Array.from({ length: i.count }, (d, a) => Ht({
       packageId: e.packageId,
       closureLedgerId: e.closureLedgerId,
       seed: i,
@@ -1233,15 +1328,15 @@ function Ft(e) {
   }));
   return { seeds: r, byType: o, projectedObjects: c, routeFeet: n };
 }
-function qe(e) {
+function Me(e) {
   const n = e.toUpperCase();
   return n.includes("HANDHOLE") ? "HH" : n.includes("VAULT") ? "VAULT" : n.includes("SPLICE") ? "SPLICE" : n.includes("ILA") || n.includes("REGEN") ? "ILA" : n.includes("MARKER") ? "MARKER" : n.includes("SLACK") ? "SLACK" : "STRUCTURE";
 }
-function Ut(e, n, t, r) {
+function Bt(e, n, t, r) {
   return r.slice(0, -1).map((o, c) => {
-    const i = r[c + 1], d = o.stationFeet <= i.stationFeet ? o : i, a = o.stationFeet <= i.stationFeet ? i : o, E = `${e}:DOCTRINE-PROJECTION:SPAN:${String(c + 1).padStart(5, "0")}`, I = {
+    const i = r[c + 1], d = o.stationFeet <= i.stationFeet ? o : i, a = o.stationFeet <= i.stationFeet ? i : o, E = `${e}:DOCTRINE-PROJECTION:SPAN:${String(c + 1).padStart(5, "0")}`, p = {
       spanId: `${e}:DOCTRINE-PROJECTION:SPAN:${String(c + 1).padStart(5, "0")}`,
-      spanType: `${qe(o.objectType)}_TO_${qe(i.objectType)}`,
+      spanType: `${Me(o.objectType)}_TO_${Me(i.objectType)}`,
       measuredCenterlineId: n,
       startMeasure: d.measure,
       endMeasure: a.measure,
@@ -1252,7 +1347,7 @@ function Ut(e, n, t, r) {
       startStationFeet: d.stationFeet,
       endStationFeet: a.stationFeet,
       lengthFeet: Math.max(0, a.stationFeet - d.stationFeet),
-      containedAssets: [...Ce],
+      containedAssets: [...Te],
       dependencies: [d.objectId, a.objectId],
       lifecycleState: "COMMERCIAL_ASSEMBLED",
       laborTemplate: "LABOR:ASSET_SPAN",
@@ -1268,18 +1363,18 @@ function Ut(e, n, t, r) {
       percentComplete: 0,
       blockedStationRanges: [],
       nextClosableSegment: void 0,
-      placementAuthority: g,
+      placementAuthority: b,
       renderAuthority: "MEASURED_CENTERLINE_CLIP",
       independentGeometryProhibited: !0,
       fullSpineViewOnly: !0,
       noScopeVersionCreation: !0
-    }, l = yt(I, { packageId: e, closureLedgerId: t });
-    return De({
-      ...I,
-      closureSegments: l,
-      openClosureSegments: l.map((m) => m.closureSegmentId),
+    }, I = jt(p, { packageId: e, closureLedgerId: t });
+    return Le({
+      ...p,
+      closureSegments: I,
+      openClosureSegments: I.map((C) => C.closureSegmentId),
       closedClosureSegments: [],
-      nextClosableSegment: l[0]?.closureSegmentId
+      nextClosableSegment: I[0]?.closureSegmentId
     }, {
       packageId: e,
       entityId: E,
@@ -1289,8 +1384,8 @@ function Ut(e, n, t, r) {
     });
   });
 }
-function Vt(e) {
-  return e.flatMap((n) => Ce.map((t) => ({
+function wt(e) {
+  return e.flatMap((n) => Te.map((t) => ({
     attachmentId: `${n.spanId}:ASSET:${t}`,
     spanId: n.spanId,
     assetType: t,
@@ -1300,23 +1395,23 @@ function Vt(e) {
     stationEnd: n.endStation,
     routeFeet: n.lengthFeet,
     doctrineQuantitySource: t === "CONDUIT" ? "productDoctrineAssembly.quantitySummary.conduitFeet" : t === "FIBER" ? "productDoctrineAssembly.quantitySummary.fiberFeet" : `Product Doctrine ${t} full-spine placement assumption`,
-    placementAuthority: g,
+    placementAuthority: b,
     noScopeVersionCreation: !0
   })));
 }
-function $t(e) {
-  return Ce.map((n) => ({
+function Wt(e) {
+  return Te.map((n) => ({
     assetType: n,
     stationStart: Oe(0),
     stationEnd: Oe(e),
     routeFeet: e,
-    coverageAuthority: g
+    coverageAuthority: b
   }));
 }
-function kt(e) {
-  const n = Te(e.projectedObjects.map((t) => t.objectId));
+function Yt(e) {
+  const n = Se(e.projectedObjects.map((t) => t.objectId));
   return e.byType.map(({ seed: t, nominalIntervalFeet: r, objects: o }) => {
-    const c = Te(o.map((a) => a.stationAddress)), i = [
+    const c = Se(o.map((a) => a.stationAddress)), i = [
       {
         gate: "Math Present",
         status: e.routeFeet > 0 && t.count >= 0 && Number.isFinite(r) ? "PASS" : "FAIL",
@@ -1352,17 +1447,17 @@ function kt(e) {
         latitude: a.latitude,
         longitude: a.longitude
       })),
-      placementAuthority: g,
+      placementAuthority: b,
       projectionResult: d.length ? "FAIL" : "PASS",
       gates: i,
       failureReasons: d
     };
   });
 }
-function Ht(e) {
-  const n = e.projectedObjects.filter((i) => i.objectId.includes("ROUTE-CENTERLINE") || i.objectType === "PROJECTED_IOF_OBJECT" || i.objectType === "AUDIT_OBJECT").length, t = Te(e.projectedObjects.map((i) => i.objectId)), r = e.diagnostics.objectTypes.reduce((i, d) => i + (d.gates.some((a) => a.reason === "duplicate station") ? 1 : 0), 0), o = e.projectedSpans.reduce((i, d) => {
+function Jt(e) {
+  const n = e.projectedObjects.filter((i) => i.objectId.includes("ROUTE-CENTERLINE") || i.objectType === "PROJECTED_IOF_OBJECT" || i.objectType === "AUDIT_OBJECT").length, t = Se(e.projectedObjects.map((i) => i.objectId)), r = e.diagnostics.objectTypes.reduce((i, d) => i + (d.gates.some((a) => a.reason === "duplicate station") ? 1 : 0), 0), o = e.projectedSpans.reduce((i, d) => {
     const a = new Set(e.linearAssetSpanAttachments.filter((E) => E.spanId === d.spanId).map((E) => E.assetType));
-    return i + Ce.filter((E) => !a.has(E)).length;
+    return i + Te.filter((E) => !a.has(E)).length;
   }, 0), c = [
     ...e.expectedObjectCount <= 0 ? ["zero object count"] : [],
     ...e.projectedObjects.length !== e.expectedObjectCount ? [`math count does not match doctrine quantity: ${e.projectedObjects.length}/${e.expectedObjectCount}`] : [],
@@ -1402,12 +1497,12 @@ function Ht(e) {
     duplicateStationCount: r,
     placeholderObjectCount: n,
     failures: c,
-    authority: g,
+    authority: b,
     noScopeVersionCreation: !0
   };
 }
-function xt(e) {
-  const n = Te(e.projectedSpans.map((d) => d.measuredCenterlineId)) > 0 ? xe(e.projectedSpans.map((d) => d.measuredCenterlineId)) - 1 : 0, t = e.projectedSpans.filter((d) => Array.isArray(d.coordinates)).length, r = t, o = e.projectedObjects.filter((d) => d.coordinateAuthority === "MEASURED_CENTERLINE" && Number.isFinite(d.measure)).length, c = [
+function Qt(e) {
+  const n = Se(e.projectedSpans.map((d) => d.measuredCenterlineId)) > 0 ? Be(e.projectedSpans.map((d) => d.measuredCenterlineId)) - 1 : 0, t = e.projectedSpans.filter((d) => Array.isArray(d.coordinates)).length, r = t, o = e.projectedObjects.filter((d) => d.coordinateAuthority === "MEASURED_CENTERLINE" && Number.isFinite(d.measure)).length, c = [
     ...e.measuredCenterlineId ? [] : ["Measured Centerline ID missing."],
     ...n ? [`Duplicate measured centerline detected: ${n}`] : [],
     ...t ? [`Span contains independent geometry: ${t}`] : [],
@@ -1436,8 +1531,8 @@ function xt(e) {
     noScopeVersionCreation: !0
   };
 }
-function Bt(e) {
-  const n = vt(e.doctrineObjectManifest), t = `${e.packageId}:DOCTRINE-STATION-PROJECTION:${Z(e.measuredSpine.geometryHash)}`, r = `${e.packageId}:MEASURED-CENTERLINE:${Z(e.measuredSpine.geometryHash)}`, o = `${e.packageId}:DOCTRINE-STATION-GRAPH:${Z(e.measuredSpine.geometryHash)}`, c = `${e.packageId}:DOCTRINE-PROJECTED-OBJECT-MANIFEST`, i = `${e.packageId}:CLOSURE-LEDGER`, d = `${e.packageId}:EXECUTION-GRAPH`, a = `${e.packageId}:LIFECYCLE-GRAPH`, E = [e.stationAuthority.authorityId].filter(Boolean), { byType: I, projectedObjects: l, routeFeet: m } = Ft({
+function Kt(e) {
+  const n = Vt(e.doctrineObjectManifest), t = `${e.packageId}:DOCTRINE-STATION-PROJECTION:${Z(e.measuredSpine.geometryHash)}`, r = `${e.packageId}:MEASURED-CENTERLINE:${Z(e.measuredSpine.geometryHash)}`, o = `${e.packageId}:DOCTRINE-STATION-GRAPH:${Z(e.measuredSpine.geometryHash)}`, c = `${e.packageId}:DOCTRINE-PROJECTED-OBJECT-MANIFEST`, i = `${e.packageId}:CLOSURE-LEDGER`, d = `${e.packageId}:EXECUTION-GRAPH`, a = `${e.packageId}:LIFECYCLE-GRAPH`, E = [e.stationAuthority.authorityId].filter(Boolean), { byType: p, projectedObjects: I, routeFeet: C } = xt({
     packageId: e.packageId,
     closureLedgerId: i,
     quantityPlacement: n,
@@ -1445,69 +1540,69 @@ function Bt(e) {
     measuredSpine: e.measuredSpine,
     stationAuthority: e.stationAuthority,
     routeRepositoryId: e.routeRepositoryId
-  }), A = Be(n, e.doctrineObjectManifest).reduce((p, y) => p + y.count, 0), S = Ut(e.packageId, r, i, l), O = S.flatMap((p) => p.closureSegments), b = Vt(S), R = l.map((p) => p.address), _ = ft({
+  }), R = we(n, e.doctrineObjectManifest).reduce((S, O) => S + O.count, 0), T = Bt(e.packageId, r, i, I), m = T.flatMap((S) => S.closureSegments), h = wt(T), g = I.map((S) => S.address), A = Mt({
     packageId: e.packageId,
-    expectedObjectCount: A,
-    renderedObjects: l,
-    renderedSpans: S,
+    expectedObjectCount: R,
+    renderedObjects: I,
+    renderedSpans: T,
     stationCount: e.stationAuthority.stations.length
-  }), h = Dt({
+  }), y = qt({
     packageId: e.packageId,
-    objects: l,
-    spans: S,
-    workSegments: O
-  }), D = Lt({
+    objects: I,
+    spans: T,
+    workSegments: m
+  }), D = vt({
     packageId: e.packageId,
-    objects: l,
-    spans: S,
-    workSegments: O,
-    closureLedgerId: h.closureLedgerId
-  }), L = kt({
-    byType: I,
-    routeFeet: m,
+    objects: I,
+    spans: T,
+    workSegments: m,
+    closureLedgerId: y.closureLedgerId
+  }), f = Yt({
+    byType: p,
+    routeFeet: C,
     stationCount: e.stationAuthority.stations.length,
-    projectedObjects: l,
+    projectedObjects: I,
     stationAuthorityIds: E,
     stationProjectionId: t,
     stationGraphId: o,
     projectedObjectManifestId: c
-  }), s = L.flatMap((p) => p.gates.filter((y) => y.status === "FAIL").map((y) => ({ objectType: p.objectType, gate: y.gate, reason: y.reason }))), T = xt({
+  }), _ = f.flatMap((S) => S.gates.filter((O) => O.status === "FAIL").map((O) => ({ objectType: S.objectType, gate: O.gate, reason: O.reason }))), P = Qt({
     packageId: e.packageId,
     measuredCenterlineId: r,
     geometryHash: e.measuredSpine.geometryHash,
-    projectedObjects: l,
-    projectedSpans: S
-  }), j = {
+    projectedObjects: I,
+    projectedSpans: T
+  }), s = {
     diagnosticsId: `${e.packageId}:DOCTRINE-PROJECTION:DIAGNOSTICS`,
-    status: s.length ? "FAIL" : "PASS",
-    routeFeet: Math.round(m),
+    status: _.length ? "FAIL" : "PASS",
+    routeFeet: Math.round(C),
     stationCount: e.stationAuthority.stations.length,
-    expectedObjectCount: A,
-    projectedObjectCount: l.length,
-    derivedSpanCount: S.length,
-    linearAssetAttachmentCount: b.length,
-    failedGates: s,
-    objectTypes: L,
-    geometryAuthorityDiagnostics: T,
-    authority: g,
+    expectedObjectCount: R,
+    projectedObjectCount: I.length,
+    derivedSpanCount: T.length,
+    linearAssetAttachmentCount: h.length,
+    failedGates: _,
+    objectTypes: f,
+    geometryAuthorityDiagnostics: P,
+    authority: b,
     noPricingChange: !0,
     noScopeVersionCreation: !0
-  }, C = Ht({
+  }, l = Jt({
     packageId: e.packageId,
-    expectedObjectCount: A,
+    expectedObjectCount: R,
     manifest: e.doctrineObjectManifest,
-    projectedObjects: l,
-    projectedSpans: S,
-    linearAssetSpanAttachments: b,
+    projectedObjects: I,
+    projectedSpans: T,
+    linearAssetSpanAttachments: h,
     stationAuthorityIds: E,
-    diagnostics: j
-  }), oe = _t({
-    objects: l,
-    spans: S,
-    workSegments: O,
-    commercialAudit: _,
-    geometryAuthorityStatus: T.status
-  }), Q = {
+    diagnostics: s
+  }), G = Gt({
+    objects: I,
+    spans: T,
+    workSegments: m,
+    commercialAudit: A,
+    geometryAuthorityStatus: P.status
+  }), Ce = {
     stationProjectionId: t,
     packageId: e.packageId,
     productDoctrineId: e.productDoctrine.doctrineId,
@@ -1518,35 +1613,35 @@ function Bt(e) {
     routeRepositoryId: e.routeRepositoryId,
     routeGeometryId: e.routeGeometryId,
     geometryHash: e.measuredSpine.geometryHash,
-    objectCount: l.length,
-    spanCount: S.length,
+    objectCount: I.length,
+    spanCount: T.length,
     stationCount: e.stationAuthority.stations.length,
-    stations: e.stationAuthority.stations.map((p) => ({
-      stationId: p.stationId,
-      stationAddress: p.stationLabel,
-      measuredDistanceFeet: p.measureFeet,
-      coordinate: p.coordinate,
+    stations: e.stationAuthority.stations.map((S) => ({
+      stationId: S.stationId,
+      stationAddress: S.stationLabel,
+      measuredDistanceFeet: S.measureFeet,
+      coordinate: S.coordinate,
       geometryReference: e.routeGeometryId ?? e.measuredSpine.sourceGeometryRef,
       authority: "STATION_AUTHORITY"
     })),
-    authority: g,
+    authority: b,
     noScopeVersionCreation: !0
-  }, Le = l.reduce((p, y) => {
-    const x = p.get(y.stationId) ?? [];
-    return x.push(y.objectId), p.set(y.stationId, x), p;
-  }, /* @__PURE__ */ new Map()), u = {
+  }, Q = I.reduce((S, O) => {
+    const x = S.get(O.stationId) ?? [];
+    return x.push(O.objectId), S.set(O.stationId, x), S;
+  }, /* @__PURE__ */ new Map()), fe = {
     ...e.stationIndexedGraph,
     graphId: o,
     stationGraphId: o,
-    previousNextStationReferences: e.stationAuthority.stations.map((p, y) => ({
-      stationId: p.stationId,
-      previousStationId: e.stationAuthority.stations[y - 1]?.stationId,
-      nextStationId: e.stationAuthority.stations[y + 1]?.stationId,
-      objectReferences: Le.get(p.stationId) ?? []
+    previousNextStationReferences: e.stationAuthority.stations.map((S, O) => ({
+      stationId: S.stationId,
+      previousStationId: e.stationAuthority.stations[O - 1]?.stationId,
+      nextStationId: e.stationAuthority.stations[O + 1]?.stationId,
+      objectReferences: Q.get(S.stationId) ?? []
     })),
-    engineeringSpans: S,
-    projectionAuthority: g
-  }, G = {
+    engineeringSpans: T,
+    projectionAuthority: b
+  }, u = {
     manifestId: c,
     projectedObjectManifestId: c,
     packageId: e.packageId,
@@ -1555,49 +1650,49 @@ function Bt(e) {
     stationProjectionId: t,
     stationGraphId: o,
     stationAuthorityIds: E,
-    objectCount: l.length,
-    expectedObjectCount: A,
-    projectedObjects: l,
-    objectAddresses: R,
-    spanCount: S.length,
-    projectedSpans: S,
-    geometryAuthorityDiagnostics: T,
-    commercialAuditReconciliation: _,
-    constitutionalStateValidation: oe,
+    objectCount: I.length,
+    expectedObjectCount: R,
+    projectedObjects: I,
+    objectAddresses: g,
+    spanCount: T.length,
+    projectedSpans: T,
+    geometryAuthorityDiagnostics: P,
+    commercialAuditReconciliation: A,
+    constitutionalStateValidation: G,
     executionGraphId: d,
     lifecycleGraphId: a,
-    closureLedgerId: h.closureLedgerId,
+    closureLedgerId: y.closureLedgerId,
     iofPackageTwinId: D.twinProjectionId,
-    closureLedger: h,
+    closureLedger: y,
     iofPackageTwin: D,
-    workSegments: O,
-    linearAssetSpanAttachments: b,
-    linearAssetStationRanges: $t(m),
-    materializationAuthority: g,
+    workSegments: m,
+    linearAssetSpanAttachments: h,
+    linearAssetStationRanges: Wt(C),
+    materializationAuthority: b,
     placeholderObjectsProhibited: !0,
     syntheticAuditObjectsProhibited: !0,
     noScopeVersionCreation: !0
-  }, $ = l.map((p) => ({
-    attachmentId: `${e.packageId}:DOCTRINE-PROJECTION:ATTACH:${Z(p.objectId)}`,
-    objectId: p.objectId,
-    objectType: p.objectType,
-    stationId: p.stationId,
-    stationValue: p.stationFeet,
-    stationAddress: p.stationAddress,
-    projectedCoordinate: p.coordinate,
-    coordinate: p.coordinate,
-    parentSpanId: p.parentSpanId,
+  }, V = I.map((S) => ({
+    attachmentId: `${e.packageId}:DOCTRINE-PROJECTION:ATTACH:${Z(S.objectId)}`,
+    objectId: S.objectId,
+    objectType: S.objectType,
+    stationId: S.stationId,
+    stationValue: S.stationFeet,
+    stationAddress: S.stationAddress,
+    projectedCoordinate: S.coordinate,
+    coordinate: S.coordinate,
+    parentSpanId: S.parentSpanId,
     routeRepositoryId: e.routeRepositoryId,
     attachmentMethod: "DOCTRINE_PROJECTION_ENGINE",
     attachmentStatus: "ASSIGNED",
-    projectionAuthority: g,
-    engineeringAuthority: g,
+    projectionAuthority: b,
+    engineeringAuthority: b,
     noScopeVersionCreation: !0
   }));
   return {
     projectionId: t,
     packageId: e.packageId,
-    doctrineProjectionVersion: jt,
+    doctrineProjectionVersion: Ft,
     productDoctrineId: e.productDoctrine.doctrineId,
     doctrineObjectManifestId: e.doctrineObjectManifest.manifestId,
     projectedObjectManifestId: c,
@@ -1619,45 +1714,45 @@ function Bt(e) {
       authority: "MEASURED_SPINE_AUTHORITY",
       geometryAuthority: "MEASURED_CENTERLINE",
       singleGeometryAuthority: !0,
-      projectionAuthority: g,
+      projectionAuthority: b,
       noScopeVersionCreation: !0
     },
-    stationProjection: Q,
-    stationGraph: u,
+    stationProjection: Ce,
+    stationGraph: fe,
     stationAuthorities: [e.stationAuthority],
     stationAuthorityIds: E,
-    projectedObjectManifest: G,
-    stationObjectManifest: G,
-    projectedObjects: l,
-    projectedSpans: S,
-    objectAddresses: R,
-    geometryAuthorityDiagnostics: T,
-    commercialAuditReconciliation: _,
-    constitutionalStateValidation: oe,
+    projectedObjectManifest: u,
+    stationObjectManifest: u,
+    projectedObjects: I,
+    projectedSpans: T,
+    objectAddresses: g,
+    geometryAuthorityDiagnostics: P,
+    commercialAuditReconciliation: A,
+    constitutionalStateValidation: G,
     executionGraphId: d,
     lifecycleGraphId: a,
-    closureLedgerId: h.closureLedgerId,
+    closureLedgerId: y.closureLedgerId,
     iofPackageTwinId: D.twinProjectionId,
-    closureLedger: h,
+    closureLedger: y,
     iofPackageTwin: D,
-    workSegments: O,
-    objectStationAttachments: $,
-    doctrineProjectionDiagnostics: j,
-    validation: C,
+    workSegments: m,
+    objectStationAttachments: V,
+    doctrineProjectionDiagnostics: s,
+    validation: l,
     summary: {
       summaryId: `${e.packageId}:DOCTRINE-PROJECTION:SUMMARY`,
-      status: C.status,
-      objectCount: l.length,
-      expectedObjectCount: A,
-      spanCount: S.length,
+      status: l.status,
+      objectCount: I.length,
+      expectedObjectCount: R,
+      spanCount: T.length,
       stationCount: e.stationAuthority.stations.length,
-      authority: g,
+      authority: b,
       noScopeVersionCreation: !0
     },
     noScopeVersionCreation: !0
   };
 }
-const P = "POINT_TO_POINT_LONG_HAUL_CONDUIT_FIBER", U = "DOCTRINE-L1-POINT-TO-POINT-LONG-HAUL-CONDUIT-FIBER", we = "19B.1.0", ne = "20C.1.0", Ye = "81c488a6d4bd35183e35eabf1a1c533e53a7c700d38db5d5bf67e8c2b3883bdd", Je = "Separate Product Doctrine requirements from Project Configuration, source evidence, estimating assumptions, Commercial Policy, and Engineering authority; remove mileage-generated infrastructure.", wt = "Point-to-Point Duct & Dark Fiber", Yt = "Point-to-Point Long-Haul Conduit & Fiber", Jt = [
+const j = "POINT_TO_POINT_LONG_HAUL_CONDUIT_FIBER", U = "DOCTRINE-L1-POINT-TO-POINT-LONG-HAUL-CONDUIT-FIBER", We = "19B.1.0", ne = "20C.1.0", Ye = "81c488a6d4bd35183e35eabf1a1c533e53a7c700d38db5d5bf67e8c2b3883bdd", Je = "Separate Product Doctrine requirements from Project Configuration, source evidence, estimating assumptions, Commercial Policy, and Engineering authority; remove mileage-generated infrastructure.", zt = "Point-to-Point Duct & Dark Fiber", Zt = "Point-to-Point Long-Haul Conduit & Fiber", Xt = [
   "DEFINED",
   "SCHEDULED",
   "PREREQUISITES_RELEASED",
@@ -1668,7 +1763,7 @@ const P = "POINT_TO_POINT_LONG_HAUL_CONDUIT_FIBER", U = "DOCTRINE-L1-POINT-TO-PO
   "BILLABLE",
   "PAYMENT_ELIGIBLE",
   "CLOSED"
-], Wt = [
+], en = [
   "DEFINED",
   "PROCURED",
   "RECEIVED",
@@ -1680,9 +1775,9 @@ const P = "POINT_TO_POINT_LONG_HAUL_CONDUIT_FIBER", U = "DOCTRINE-L1-POINT-TO-PO
   "CERTIFIED",
   "OPERATIONAL"
 ];
-function Qt(e = {}) {
+function tn(e = {}) {
   return {
-    lifecycleStates: Jt,
+    lifecycleStates: Xt,
     prerequisiteDependencies: ["commercial release package", "draft IOF package", "station projection"],
     releaseGates: ["engineering station release", "permit release when applicable", "materials release when applicable"],
     blockedReasons: ["missing prerequisite", "unresolved engineering exception", "missing evidence"],
@@ -1696,9 +1791,9 @@ function Qt(e = {}) {
     ...e
   };
 }
-function Kt(e = {}) {
+function nn(e = {}) {
   return {
-    lifecycleStates: Wt,
+    lifecycleStates: en,
     prerequisiteDependencies: ["commercial release package", "draft IOF package", "station projection"],
     releaseGates: ["engineering asset release", "material availability", "station/object release"],
     blockedReasons: ["material not received", "station not released", "missing evidence"],
@@ -1712,7 +1807,7 @@ function Kt(e = {}) {
     ...e
   };
 }
-function zt(e = {}) {
+function rn(e = {}) {
   return {
     lifecycleStates: ["DEFINED", "STATIONED", "DEPENDENCIES_RELEASED", "PLACED", "EVIDENCE_CAPTURED", "ENGINEERING_ACCEPTED", "CERTIFIED"],
     prerequisiteDependencies: ["engineering baseline", "station projection", "dependency graph"],
@@ -1728,7 +1823,7 @@ function zt(e = {}) {
     ...e
   };
 }
-function f(e, n, t, r = {}) {
+function L(e, n, t, r = {}) {
   return {
     serviceId: e,
     serviceName: n,
@@ -1736,17 +1831,17 @@ function f(e, n, t, r = {}) {
     serviceVsAssetRule: "SERVICE_NOT_ASSET",
     consumes: ["LABOR", "EQUIPMENT", "SUBCONTRACTOR", "PROFESSIONAL_EFFORT"],
     stationLevelProjection: !0,
-    ...Qt(r)
+    ...tn(r)
   };
 }
-function q(e, n, t, r = {}) {
+function v(e, n, t, r = {}) {
   return {
     assetId: e,
     assetName: n,
     assetType: t,
     tangibleInfrastructure: !0,
     representedInTwin: !0,
-    ...Kt(r)
+    ...nn(r)
   };
 }
 function M(e, n, t, r, o = !0, c = {}) {
@@ -1756,10 +1851,10 @@ function M(e, n, t, r, o = !0, c = {}) {
     stationLevelProjection: o,
     requiredServiceIds: t,
     requiredAssetIds: r,
-    ...zt(c)
+    ...rn(c)
   };
 }
-function le(e, n, t) {
+function Ee(e, n, t) {
   return {
     sequenceId: `${U}:EXECUTION:${e}:${n}`,
     appliesTo: e,
@@ -1779,23 +1874,23 @@ function le(e, n, t) {
 }
 function Re(e, n, t) {
   return {
-    ...le(e, n, t),
+    ...Ee(e, n, t),
     closeSequenceId: `${U}:CLOSE:${e}:${n}`,
     closeStates: t.lifecycleStates.slice(Math.max(0, t.lifecycleStates.length - 5)),
     closeEligibility: t.acceptanceCriteria,
     paymentEligibility: [t.billableTrigger, t.paymentTrigger]
   };
 }
-const We = {
+const Qe = {
   alias: "PD-001",
   canonicalDoctrineId: U,
-  productId: P,
-  businessProductName: wt,
-  technicalDoctrineName: Yt,
+  productId: j,
+  businessProductName: zt,
+  technicalDoctrineName: Zt,
   doctrineVersion: ne,
   active: !0
-}, J = [
-  f("SERVICE:ENGINEERING", "engineering", "PROFESSIONAL_ENGINEERING", {
+}, Y = [
+  L("SERVICE:ENGINEERING", "engineering", "PROFESSIONAL_ENGINEERING", {
     responsibleRole: "ENGINEERING",
     lifecycleStates: ["DEFINED", "ASSIGNED", "REVIEWING", "STATIONED", "OBJECTS_DEFINED", "DEPENDENCIES_VALIDATED", "CERTIFICATION_READY", "CLOSED"],
     prerequisiteDependencies: ["customer accepted proposal", "commercial release package", "draft IOF package"],
@@ -1806,12 +1901,12 @@ const We = {
     paymentTrigger: "Engineering review close sequence accepted.",
     twinStateTransition: "ENGINEERING_ACCEPTANCE_PROJECTS_TO_TWIN_DESIGN_STATE"
   }),
-  f("SERVICE:SURVEY", "survey", "FIELD_SURVEY", {
+  L("SERVICE:SURVEY", "survey", "FIELD_SURVEY", {
     responsibleRole: "SURVEY",
     requiredEvidence: ["survey control", "GPS station evidence", "field notes"],
     acceptanceCriteria: ["A/Z and station evidence captured", "survey exceptions documented", "engineering acceptance recorded"]
   }),
-  f("SERVICE:PERMITTING", "permitting", "PERMITTING", {
+  L("SERVICE:PERMITTING", "permitting", "PERMITTING", {
     responsibleRole: "PERMITTING",
     lifecycleStates: ["DEFINED", "JURISDICTIONS_IDENTIFIED", "SUBMITTED", "APPROVED", "RELEASED", "CLOSED"],
     releaseGates: ["jurisdiction identified", "permit approval received"],
@@ -1819,7 +1914,7 @@ const We = {
     requiredEvidence: ["permit approval", "permit conditions", "release authorization"],
     acceptanceCriteria: ["permit approved for station range", "permit conditions attached to release gates"]
   }),
-  f("SERVICE:UTILITY-LOCATE", "utility locate", "UTILITY_LOCATE", {
+  L("SERVICE:UTILITY-LOCATE", "utility locate", "UTILITY_LOCATE", {
     responsibleRole: "CONSTRUCTION",
     lifecycleStates: ["DEFINED", "TICKET_CREATED", "LOCATE_SCHEDULED", "LOCATE_COMPLETE", "VALID_WINDOW_ACTIVE", "CLOSED"],
     releaseGates: ["valid locate ticket", "locate complete"],
@@ -1827,7 +1922,7 @@ const We = {
     requiredEvidence: ["locate ticket", "locate completion evidence", "conflict notes"],
     acceptanceCriteria: ["valid locate window active", "conflicts documented"]
   }),
-  f("SERVICE:TRAFFIC-CONTROL", "traffic control", "TRAFFIC_CONTROL", {
+  L("SERVICE:TRAFFIC-CONTROL", "traffic control", "TRAFFIC_CONTROL", {
     responsibleRole: "CONTROL",
     lifecycleStates: ["DEFINED", "PLAN_APPROVED", "CREW_SCHEDULED", "RELEASED", "DEMOBILIZED", "CLOSED"],
     releaseGates: ["traffic control plan approved", "permit conditions satisfied"],
@@ -1835,7 +1930,7 @@ const We = {
     requiredEvidence: ["traffic control plan", "release record", "demobilization record"],
     acceptanceCriteria: ["traffic control released for station range", "demobilization complete"]
   }),
-  f("SERVICE:DIRECTIONAL-BORE", "directional bore", "CIVIL_CONSTRUCTION", {
+  L("SERVICE:DIRECTIONAL-BORE", "directional bore", "CIVIL_CONSTRUCTION", {
     lifecycleStates: [
       "DEFINED",
       "SCHEDULED",
@@ -1857,57 +1952,57 @@ const We = {
     requiredEvidence: ["bore log", "conduit proof", "photo evidence", "station GPS evidence", "engineering acceptance"],
     acceptanceCriteria: ["bore completed within approved station range", "conduit verified", "evidence captured and accepted"]
   }),
-  f("SERVICE:PLOWING", "plowing", "CIVIL_CONSTRUCTION", {
+  L("SERVICE:PLOWING", "plowing", "CIVIL_CONSTRUCTION", {
     prerequisiteDependencies: ["utility locate complete", "ROW release", "conduit material received"],
     releaseGates: ["ROW released", "locate complete", "materials ready"],
     blockedReasons: ["ROW not released", "locate incomplete", "material unavailable"],
     requiredEvidence: ["plow log", "GPS evidence", "photo evidence", "engineering acceptance"]
   }),
-  f("SERVICE:OPEN-TRENCH", "open trench", "CIVIL_CONSTRUCTION", {
+  L("SERVICE:OPEN-TRENCH", "open trench", "CIVIL_CONSTRUCTION", {
     prerequisiteDependencies: ["utility locate complete", "permit release", "restoration plan"],
     releaseGates: ["permit released", "locate complete", "restoration plan approved"],
     blockedReasons: ["permit blocked", "locate incomplete", "restoration plan missing"],
     requiredEvidence: ["trench log", "conduit placement evidence", "restoration evidence"]
   }),
-  f("SERVICE:CONDUIT-PLACEMENT", "conduit placement", "ASSET_PLACEMENT", {
+  L("SERVICE:CONDUIT-PLACEMENT", "conduit placement", "ASSET_PLACEMENT", {
     prerequisiteDependencies: ["civil path released", "conduit material received"],
     releaseGates: ["civil method released", "conduit allocated"],
     blockedReasons: ["conduit material not received", "civil path not released"],
     requiredEvidence: ["conduit proof", "installation photo", "GPS evidence"]
   }),
-  f("SERVICE:HANDHOLE-VAULT-PLACEMENT", "handhole/vault placement", "STRUCTURE_PLACEMENT", {
+  L("SERVICE:HANDHOLE-VAULT-PLACEMENT", "handhole/vault placement", "STRUCTURE_PLACEMENT", {
     prerequisiteDependencies: ["structure material received", "station released", "excavation released"],
     releaseGates: ["structure allocated", "station released"],
     blockedReasons: ["structure is not installed", "GPS evidence is missing", "photo evidence is missing", "inspection is incomplete", "engineering acceptance is missing"],
     requiredEvidence: ["structure photo", "GPS evidence", "inspection record", "engineering acceptance"],
     acceptanceCriteria: ["structure installed at assigned station", "GPS/photo evidence accepted", "inspection complete", "engineering acceptance recorded"]
   }),
-  f("SERVICE:FIBER-PLACEMENT", "fiber placement", "FIBER_PLACEMENT", {
+  L("SERVICE:FIBER-PLACEMENT", "fiber placement", "FIBER_PLACEMENT", {
     prerequisiteDependencies: ["conduit path accepted", "handholes/vaults accepted", "fiber material received", "splice plan approved"],
     releaseGates: ["conduit path accepted", "structure path accepted", "fiber allocated"],
     blockedReasons: ["conduit path is not accepted", "handholes/vaults are not accepted", "fiber material is not received", "splice plan is not approved"],
     requiredEvidence: ["pull log", "fiber reel evidence", "slack loop evidence", "engineering acceptance"]
   }),
-  f("SERVICE:SPLICING", "splicing", "FIBER_SPLICING", {
+  L("SERVICE:SPLICING", "splicing", "FIBER_SPLICING", {
     prerequisiteDependencies: ["fiber installed", "splice case installed", "splice plan approved"],
     releaseGates: ["fiber path released", "splice plan approved"],
     blockedReasons: ["fiber is not installed", "splice evidence is missing", "OTDR/testing is incomplete", "labeling is incomplete"],
     requiredEvidence: ["splice record", "splice photo", "labeling evidence", "engineering acceptance"]
   }),
-  f("SERVICE:OTDR-TESTING", "OTDR testing", "FIBER_TESTING", {
+  L("SERVICE:OTDR-TESTING", "OTDR testing", "FIBER_TESTING", {
     prerequisiteDependencies: ["fiber installed", "splicing complete"],
     releaseGates: ["splice complete", "test plan approved"],
     blockedReasons: ["splice incomplete", "test result missing", "loss threshold failed"],
     requiredEvidence: ["OTDR trace", "loss report", "test acceptance"],
     acceptanceCriteria: ["OTDR trace passed", "loss report within threshold", "engineering acceptance recorded"]
   }),
-  f("SERVICE:RESTORATION", "restoration", "RESTORATION", {
+  L("SERVICE:RESTORATION", "restoration", "RESTORATION", {
     prerequisiteDependencies: ["civil work complete", "surface restoration required"],
     releaseGates: ["construction complete", "restoration method approved"],
     blockedReasons: ["restoration incomplete", "surface condition rejected"],
     requiredEvidence: ["restoration photo", "inspection signoff", "customer/municipal acceptance when required"]
   }),
-  f("SERVICE:AS-BUILT-DOCUMENTATION", "as-built documentation", "DOCUMENTATION", {
+  L("SERVICE:AS-BUILT-DOCUMENTATION", "as-built documentation", "DOCUMENTATION", {
     responsibleRole: "ENGINEERING",
     lifecycleStates: ["DEFINED", "FIELD_DATA_RECEIVED", "AS_BUILT_DRAFTED", "ENGINEERING_REVIEWED", "ACCEPTED", "CLOSED"],
     prerequisiteDependencies: ["station/object evidence captured", "field redlines received"],
@@ -1916,7 +2011,7 @@ const We = {
     requiredEvidence: ["as-built drawing", "station evidence", "object inventory reference"],
     acceptanceCriteria: ["as-built complete", "engineering acceptance recorded"]
   }),
-  f("SERVICE:INSPECTION", "inspection", "INSPECTION", {
+  L("SERVICE:INSPECTION", "inspection", "INSPECTION", {
     responsibleRole: "INSPECTION",
     lifecycleStates: ["DEFINED", "SCHEDULED", "INSPECTED", "PUNCHLIST_CREATED", "PUNCHLIST_RESOLVED", "ACCEPTED", "CLOSED"],
     prerequisiteDependencies: ["service or asset ready for inspection"],
@@ -1925,13 +2020,13 @@ const We = {
     requiredEvidence: ["inspection checklist", "photo evidence", "punchlist resolution"],
     acceptanceCriteria: ["inspection accepted", "punchlist resolved"]
   })
-], W = [
-  q("ASSET:CONDUIT", "conduit", "CONDUIT", {
+], J = [
+  v("ASSET:CONDUIT", "conduit", "CONDUIT", {
     lifecycleStates: ["DEFINED", "PROCURED", "RECEIVED", "ALLOCATED", "INSTALLED", "GPS_VERIFIED", "EVIDENCE_CAPTURED", "ENGINEERING_ACCEPTED", "CERTIFIED", "OPERATIONAL"],
     prerequisiteDependencies: ["conduit placement service", "civil path released"],
     requiredEvidence: ["material receipt", "conduit proof", "GPS evidence", "photo evidence"]
   }),
-  q("ASSET:FIBER", "fiber", "FIBER", {
+  v("ASSET:FIBER", "fiber", "FIBER", {
     lifecycleStates: ["DEFINED", "RECEIVED", "PULLED", "SLACK_INSTALLED", "SPLICED", "OTDR_PASSED", "EVIDENCE_CAPTURED", "ENGINEERING_ACCEPTED", "CERTIFIED", "OPERATIONAL"],
     prerequisiteDependencies: ["conduit path accepted", "handholes/vaults accepted", "fiber placement service", "splicing service", "OTDR testing"],
     releaseGates: ["conduit path accepted", "fiber material received", "splice plan approved"],
@@ -1939,41 +2034,41 @@ const We = {
     requiredEvidence: ["fiber reel evidence", "pull log", "slack loop evidence", "splice record", "OTDR trace"],
     acceptanceCriteria: ["fiber installed", "slack installed", "splice accepted", "OTDR passed"]
   }),
-  q("ASSET:HANDHOLES", "handholes", "HANDHOLE", {
+  v("ASSET:HANDHOLES", "handholes", "HANDHOLE", {
     prerequisiteDependencies: ["handhole/vault placement service", "station released"],
     blockedReasons: ["structure is not installed", "GPS evidence is missing", "photo evidence is missing", "inspection is incomplete", "engineering acceptance is missing"]
   }),
-  q("ASSET:VAULTS", "vaults", "VAULT", {
+  v("ASSET:VAULTS", "vaults", "VAULT", {
     prerequisiteDependencies: ["handhole/vault placement service", "station released"],
     blockedReasons: ["vault not installed", "GPS evidence missing", "inspection incomplete"]
   }),
-  q("ASSET:SPLICE-CASES", "splice cases", "SPLICE_CASE", {
+  v("ASSET:SPLICE-CASES", "splice cases", "SPLICE_CASE", {
     prerequisiteDependencies: ["fiber installed", "splice plan approved"],
     requiredEvidence: ["splice case photo", "splice record", "labeling evidence"]
   }),
-  q("ASSET:MARKER-POSTS", "marker posts", "MARKER_POST", {
+  v("ASSET:MARKER-POSTS", "marker posts", "MARKER_POST", {
     prerequisiteDependencies: ["route segment released", "marker placement plan"],
     requiredEvidence: ["marker photo", "GPS evidence"]
   }),
-  q("ASSET:WARNING-TAPE", "warning tape", "WARNING_TAPE", {
+  v("ASSET:WARNING-TAPE", "warning tape", "WARNING_TAPE", {
     prerequisiteDependencies: ["open trench or plow service", "material received"],
     requiredEvidence: ["installation photo", "station range evidence"]
   }),
-  q("ASSET:LOCATE-WIRE", "locate wire", "LOCATE_WIRE", {
+  v("ASSET:LOCATE-WIRE", "locate wire", "LOCATE_WIRE", {
     prerequisiteDependencies: ["conduit placement", "material received"],
     requiredEvidence: ["continuity evidence", "installation photo"]
   }),
-  q("ASSET:SLACK-LOOPS", "slack loops", "SLACK_LOOP", {
+  v("ASSET:SLACK-LOOPS", "slack loops", "SLACK_LOOP", {
     prerequisiteDependencies: ["fiber placement", "structure placement"],
     requiredEvidence: ["slack loop photo", "fiber inventory evidence"]
   }),
-  q("ASSET:ILA-REGEN-FACILITIES", "ILA/regeneration facilities where required", "ILA_REGENERATION_FACILITY", {
+  v("ASSET:ILA-REGEN-FACILITIES", "ILA/regeneration facilities where required", "ILA_REGENERATION_FACILITY", {
     requiredWhen: "Route span length or optical budget requires amplification/regeneration.",
     prerequisiteDependencies: ["engineering optical review", "site/power availability", "structure allocation"],
     releaseGates: ["engineering optical requirement confirmed", "site and power released"],
     requiredEvidence: ["facility layout", "power availability evidence", "engineering acceptance"]
   }),
-  q("ASSET:LIU-TERMINATION-HARDWARE", "LIU/termination hardware where required", "LIU_TERMINATION_HARDWARE", {
+  v("ASSET:LIU-TERMINATION-HARDWARE", "LIU/termination hardware where required", "LIU_TERMINATION_HARDWARE", {
     requiredWhen: "Customer handoff, POP termination, or termination point requires LIU hardware.",
     prerequisiteDependencies: ["termination point defined", "fiber assignment approved"],
     releaseGates: ["termination point released", "hardware allocated"],
@@ -1991,15 +2086,15 @@ const We = {
   M("ILA_REGENERATION_SITE", "ILA/regeneration site", ["SERVICE:ENGINEERING", "SERVICE:INSPECTION"], ["ASSET:ILA-REGEN-FACILITIES"], !0),
   M("TERMINATION_POINT", "termination point", ["SERVICE:ENGINEERING", "SERVICE:SPLICING", "SERVICE:OTDR-TESTING"], ["ASSET:LIU-TERMINATION-HARDWARE"], !0),
   M("EVIDENCE_OBJECT", "evidence object", ["SERVICE:AS-BUILT-DOCUMENTATION", "SERVICE:INSPECTION"], [], !1)
-], Ae = [
-  ...J.map((e) => le("SERVICE", e.serviceId, e)),
-  ...W.map((e) => le("ASSET", e.assetId, e)),
-  ...ie.map((e) => le("ENGINEERING_OBJECT", e.engineeringObjectType, e))
-], Ie = [
-  ...J.map((e) => Re("SERVICE", e.serviceId, e)),
-  ...W.map((e) => Re("ASSET", e.assetId, e)),
+], ge = [
+  ...Y.map((e) => Ee("SERVICE", e.serviceId, e)),
+  ...J.map((e) => Ee("ASSET", e.assetId, e)),
+  ...ie.map((e) => Ee("ENGINEERING_OBJECT", e.engineeringObjectType, e))
+], le = [
+  ...Y.map((e) => Re("SERVICE", e.serviceId, e)),
+  ...J.map((e) => Re("ASSET", e.assetId, e)),
   ...ie.map((e) => Re("ENGINEERING_OBJECT", e.engineeringObjectType, e))
-], pe = [
+], Ie = [
   {
     evidenceRequirementId: "EVIDENCE:ENGINEERING-APPROVAL",
     evidenceType: "ENGINEERING_REVIEW",
@@ -2177,7 +2272,7 @@ const We = {
     "missing ScopeVersion readiness requirement"
   ],
   noScopeVersionCreationBeforeSignedServiceOrder: !0
-}, ge = {
+}, he = {
   projectionId: `${U}:STATION-LIFECYCLE-PROJECTION`,
   derivesFor: ["station", "station-attached object", "service", "asset", "engineering object"],
   projectedFields: [
@@ -2222,7 +2317,7 @@ const We = {
     "ASSET_OPERATIONAL_PROJECTS_TO_TWIN_STATE",
     "CERTIFIED_OBJECT_PROJECTS_TO_TWIN"
   ]
-}, Se = [
+}, pe = [
   { requirementId: "SCOPEVERSION-READINESS:CERTIFIED-IOF", label: "Certified IOF Package exists.", sourceArtifact: "Certified IOF Package", required: !0 },
   { requirementId: "SCOPEVERSION-READINESS:SERVICE-ORDER", label: "Service Order executed.", sourceArtifact: "Service Order", required: !0 },
   { requirementId: "SCOPEVERSION-READINESS:CUSTOMER-SIGNATURE", label: "Customer signature received.", sourceArtifact: "Customer Acceptance / Service Order", required: !0 },
@@ -2235,7 +2330,7 @@ const We = {
   { requirementId: "SCOPEVERSION-READINESS:DEPENDENCY-GRAPH", label: "Dependency graph exists.", sourceArtifact: "Draft IOF Package / Engineering Revision", required: !0 }
 ], H = {
   doctrineId: U,
-  productId: P,
+  productId: j,
   productName: "Point-to-Point Long Haul Conduit & Fiber",
   productVersion: "1.0.0",
   doctrineVersion: ne,
@@ -2302,16 +2397,16 @@ const We = {
     "ScopeVersion readiness requirements exist",
     "validation PASS"
   ],
-  registry: We,
-  requiredServices: J,
-  requiredAssets: W,
+  registry: Qe,
+  requiredServices: Y,
+  requiredAssets: J,
   engineeringObjects: ie,
-  executionSequences: Ae,
-  closeSequences: Ie,
-  evidenceRequirements: pe,
+  executionSequences: ge,
+  closeSequences: le,
+  evidenceRequirements: Ie,
   certificationRules: be,
-  stationLevelLifecycleProjection: ge,
-  scopeVersionReadinessRequirements: Se,
+  stationLevelLifecycleProjection: he,
+  scopeVersionReadinessRequirements: pe,
   requirementPolicies: [
     { requirementId: "HANDHOLE_PLAN_DEFINED", requirement: "CONDITIONAL", quantityAuthority: "ENGINEERING_DESIGN", resolutionRequired: !0 },
     { requirementId: "VAULT_PLAN_DEFINED", requirement: "CONDITIONAL", quantityAuthority: "ENGINEERING_DESIGN", resolutionRequired: !0 },
@@ -2321,32 +2416,32 @@ const We = {
     { requirementId: "FIBER_PLACEMENT_ALLOWANCE_DEFINED", requirement: "REQUIRED", quantityAuthority: "PROJECT_CONFIGURATION", resolutionRequired: !0 },
     { requirementId: "APPLICABLE_CONSTRAINTS_EVALUATED", requirement: "REQUIRED", quantityAuthority: "ENGINEERING_DESIGN", resolutionRequired: !0 }
   ],
-  previousDoctrineVersion: we,
+  previousDoctrineVersion: We,
   changeReason: Je
 };
 function ee(e, n = "UNKNOWN") {
   return (String(e ?? n).trim() || n).replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120) || n;
 }
-function Y(e, n = 3) {
+function W(e, n = 3) {
   const t = 10 ** n;
   return Math.round(e * t) / t;
 }
-function Zt(e, n) {
+function on(e, n) {
   if (!e.length) return [0, 0];
   if (e.length === 1) return e[0];
   const t = Math.min(e.length - 1, Math.max(0, Math.round(n * (e.length - 1))));
   return e[t];
 }
-function Me(e, n, t, r) {
+function Ge(e, n, t, r) {
   return t ? {
-    siteId: `${P}:SITE:${e}:${ee(n)}`,
+    siteId: `${j}:SITE:${e}:${ee(n)}`,
     role: e,
     label: r,
     coordinate: t,
     source: "AUTHORITATIVE_ROUTE_ENDPOINT"
   } : null;
 }
-function Xt(e, n, t, r) {
+function cn(e, n, t, r) {
   if (!n.length || t <= 0) return [];
   const o = Math.max(2, Math.floor(t / r) + 1);
   return Array.from({ length: o }, (c, i) => {
@@ -2356,22 +2451,22 @@ function Xt(e, n, t, r) {
       spineId: e,
       stationIndex: i,
       stationFeet: Math.round(a),
-      milepost: Y(a / 5280),
-      coordinate: Zt(n, d),
+      milepost: W(a / 5280),
+      coordinate: on(n, d),
       stationRole: "DISPLAY_INDEX",
       constitutionalResolution: !1
     };
   });
 }
-function en(e, n, t, r) {
+function sn(e, n, t, r) {
   return t?.length && n.length ? t.map((o, c) => ({
     segmentId: `${e}:SEGMENT:${ee(o.segmentId, String(c + 1))}`,
     spineId: e,
     fromStationId: n[Math.min(c, n.length - 1)]?.stationId ?? n[0].stationId,
     toStationId: n[Math.min(c + 1, n.length - 1)]?.stationId ?? n[n.length - 1].stationId,
-    fromMile: Y(o.fromMile),
-    toMile: Y(o.toMile),
-    routeMiles: Y(o.routeMiles),
+    fromMile: W(o.fromMile),
+    toMile: W(o.toMile),
+    routeMiles: W(o.routeMiles),
     routeFeet: Math.round(o.routeMiles * 5280)
   })) : n.length < 2 || r <= 0 ? [] : n.slice(0, -1).map((o, c) => {
     const i = n[c + 1], d = Math.max(0, i.stationFeet - o.stationFeet);
@@ -2382,7 +2477,7 @@ function en(e, n, t, r) {
       toStationId: i.stationId,
       fromMile: o.milepost,
       toMile: i.milepost,
-      routeMiles: Y(d / 5280),
+      routeMiles: W(d / 5280),
       routeFeet: Math.round(d)
     };
   });
@@ -2390,7 +2485,7 @@ function en(e, n, t, r) {
 function re(e, n, t, r, o, c, i) {
   return { objectId: e, objectType: n, label: t, parentId: r, quantity: o, unit: c, metadata: i };
 }
-function tn(e, n, t, r) {
+function an(e, n, t, r) {
   const o = n.map((c) => re(
     `${c.segmentId}:CONDUIT`,
     "CONDUIT",
@@ -2408,7 +2503,7 @@ function tn(e, n, t, r) {
     objects: o
   };
 }
-function nn(e, n, t, r) {
+function dn(e, n, t, r) {
   const o = r?.mode === "PERCENTAGE" && Number.isFinite(r.slackPercent) ? 1 + Number(r.slackPercent) / 100 : 1, c = n.map((i) => re(
     `${i.segmentId}:FIBER`,
     "FIBER",
@@ -2425,7 +2520,7 @@ function nn(e, n, t, r) {
     objects: c
   };
 }
-function rn(e, n) {
+function un(e, n) {
   const r = [
     ["HANDHOLE", n?.handholeCount, n?.structurePlanAuthority],
     ["VAULT", n?.vaultCount, n?.structurePlanAuthority],
@@ -2445,7 +2540,7 @@ function rn(e, n) {
     structures: r
   };
 }
-function on(e) {
+function En(e) {
   const n = [];
   return {
     assemblyId: `${e}:CROSSING-ASSEMBLY`,
@@ -2453,15 +2548,15 @@ function on(e) {
     crossings: n
   };
 }
-function cn(e, n) {
-  const t = e.pricingSummary ?? {}, r = Number.isFinite(Number(t.budgetCost ?? t.ospCost)), o = Number.isFinite(Number(t.sellPriceIru ?? t.nrcRevenue)), c = r ? Number(t.budgetCost ?? t.ospCost) : 0, i = o ? Number(t.sellPriceIru ?? t.nrcRevenue) : 0, d = Number(t.nrcRevenue ?? i), a = Number(t.mrcRevenue ?? 0), E = Number(t.grossMarginDollars ?? i - c), I = Number(t.grossMarginPercent ?? (i ? Math.round(E / i * 1e4) / 100 : 0));
+function ln(e, n) {
+  const t = e.pricingSummary ?? {}, r = Number.isFinite(Number(t.budgetCost ?? t.ospCost)), o = Number.isFinite(Number(t.sellPriceIru ?? t.nrcRevenue)), c = r ? Number(t.budgetCost ?? t.ospCost) : 0, i = o ? Number(t.sellPriceIru ?? t.nrcRevenue) : 0, d = Number(t.nrcRevenue ?? i), a = Number(t.mrcRevenue ?? 0), E = Number(t.grossMarginDollars ?? i - c), p = Number(t.grossMarginPercent ?? (i ? Math.round(E / i * 1e4) / 100 : 0));
   return {
     budgetCost: c,
     sellPriceIru: i,
     nrcRevenue: d,
     mrcRevenue: a,
     grossMarginDollars: E,
-    grossMarginPercent: I,
+    grossMarginPercent: p,
     pricingInputs: {
       routeFeet: n.routeFeet,
       conduitFeet: n.conduitFeet,
@@ -2475,10 +2570,10 @@ function cn(e, n) {
 function N(e, n, t) {
   return { key: e, label: n, status: t ? "PASS" : "FAIL" };
 }
-function sn(e) {
+function In(e) {
   const n = [
     N("account-customer", "account/customer exists", !!(e.accountId && e.customerId)),
-    N("product-id", "productId exists", e.productId === P),
+    N("product-id", "productId exists", e.productId === j),
     N("doctrine-id", "doctrineId exists", e.doctrineId === U),
     N("a-site", "A site exists", !!e.aSite),
     N("z-site", "Z site exists", !!e.zSite),
@@ -2505,9 +2600,9 @@ function sn(e) {
     readinessScore: Math.round(t / n.length * 100)
   };
 }
-function an(e) {
-  const n = e.authoritativeRoute ?? e.osrmRoute, t = n?.geometry ?? [], r = Math.max(0, Math.round(n?.routeFeet ?? 0)), o = Y(n?.routeMiles ?? r / 5280), c = e.aSite ?? Me("A", e.accountId, t[0], "A site"), i = e.zSite ?? Me("Z", e.accountId, t[t.length - 1], "Z site"), d = `${P}:CENTERLINE:${ee(n?.routeId, "AUTHORITATIVE-ROUTE")}`, a = c && i && t.length > 1 && r > 0 ? {
-    spineId: `${P}:SPINE:${ee(n?.routeId, "AUTHORITATIVE-ROUTE")}`,
+function pn(e) {
+  const n = e.authoritativeRoute ?? e.osrmRoute, t = n?.geometry ?? [], r = Math.max(0, Math.round(n?.routeFeet ?? 0)), o = W(n?.routeMiles ?? r / 5280), c = e.aSite ?? Ge("A", e.accountId, t[0], "A site"), i = e.zSite ?? Ge("Z", e.accountId, t[t.length - 1], "Z site"), d = `${j}:CENTERLINE:${ee(n?.routeId, "AUTHORITATIVE-ROUTE")}`, a = c && i && t.length > 1 && r > 0 ? {
+    spineId: `${j}:SPINE:${ee(n?.routeId, "AUTHORITATIVE-ROUTE")}`,
     topology: "LINEAR",
     networkClass: "LONG_HAUL",
     aSiteId: c.siteId,
@@ -2522,29 +2617,29 @@ function an(e) {
     routeHash: n?.routeHash ?? "UNSPECIFIED",
     measurementAuthority: n?.measurementAuthority ?? "MEASURED_CENTERLINE",
     noScopeVersionCreation: !0
-  } : null, E = a ? Xt(a.spineId, t, r, e.stationIntervalFeet ?? 5280) : [], I = a ? en(a.spineId, E, e.routeSegments, r) : [], l = I.map((C) => re(C.segmentId, "ROUTE_SEGMENT", `Route segment ${C.fromMile}-${C.toMile}`, a?.spineId, C.routeFeet, "route-foot", C)), m = a ? [re(a.spineId, "SPINE", "Point-to-point long-haul spine", void 0, r, "route-foot", a)] : [], A = e.projectConfiguration?.ductCount ?? e.conduitCount ?? 0, S = e.projectConfiguration?.ductDiameter ?? e.conduitSizeInches ?? 0, O = e.projectConfiguration?.fiberCount ?? e.fiberCount ?? 0, b = a && A > 0 && S > 0 ? tn(a.spineId, I, A, S) : { assemblyId: `${P}:CONDUIT-ASSEMBLY`, conduitCount: A, conduitSizeInches: S, conduitFeet: 0, objects: [] }, R = a && O > 0 ? nn(a.spineId, I, O, e.projectConfiguration?.slackPolicy) : { assemblyId: `${P}:FIBER-ASSEMBLY`, fiberCount: O, fiberFeet: 0, objects: [] }, _ = a ? rn(a.spineId, e.projectConfiguration) : { assemblyId: `${P}:STRUCTURE-ASSEMBLY`, structureCount: 0, structures: [] }, h = a ? on(a.spineId) : { assemblyId: `${P}:CROSSING-ASSEMBLY`, crossingCount: 0, crossings: [] }, D = [
-    ...m,
-    ...l,
-    ...b.objects,
-    ...R.objects,
-    ..._.structures,
-    ...h.crossings
-  ], L = {
+  } : null, E = a ? cn(a.spineId, t, r, e.stationIntervalFeet ?? 5280) : [], p = a ? sn(a.spineId, E, e.routeSegments, r) : [], I = p.map((l) => re(l.segmentId, "ROUTE_SEGMENT", `Route segment ${l.fromMile}-${l.toMile}`, a?.spineId, l.routeFeet, "route-foot", l)), C = a ? [re(a.spineId, "SPINE", "Point-to-point long-haul spine", void 0, r, "route-foot", a)] : [], R = e.projectConfiguration?.ductCount ?? e.conduitCount ?? 0, T = e.projectConfiguration?.ductDiameter ?? e.conduitSizeInches ?? 0, m = e.projectConfiguration?.fiberCount ?? e.fiberCount ?? 0, h = a && R > 0 && T > 0 ? an(a.spineId, p, R, T) : { assemblyId: `${j}:CONDUIT-ASSEMBLY`, conduitCount: R, conduitSizeInches: T, conduitFeet: 0, objects: [] }, g = a && m > 0 ? dn(a.spineId, p, m, e.projectConfiguration?.slackPolicy) : { assemblyId: `${j}:FIBER-ASSEMBLY`, fiberCount: m, fiberFeet: 0, objects: [] }, A = a ? un(a.spineId, e.projectConfiguration) : { assemblyId: `${j}:STRUCTURE-ASSEMBLY`, structureCount: 0, structures: [] }, y = a ? En(a.spineId) : { assemblyId: `${j}:CROSSING-ASSEMBLY`, crossingCount: 0, crossings: [] }, D = [
+    ...C,
+    ...I,
+    ...h.objects,
+    ...g.objects,
+    ...A.structures,
+    ...y.crossings
+  ], f = {
     routeMiles: o,
     routeFeet: r,
     stationCount: E.length,
-    segmentCount: I.length,
+    segmentCount: p.length,
     objectCount: D.length,
-    conduitFeet: b.conduitFeet,
-    conduitCount: b.conduitCount,
-    fiberFeet: R.fiberFeet,
-    fiberCount: R.fiberCount,
-    structureCount: _.structureCount,
-    crossingCount: h.crossingCount
-  }, s = cn(e, L), T = sn({
+    conduitFeet: h.conduitFeet,
+    conduitCount: h.conduitCount,
+    fiberFeet: g.fiberFeet,
+    fiberCount: g.fiberCount,
+    structureCount: A.structureCount,
+    crossingCount: y.crossingCount
+  }, _ = ln(e, f), P = In({
     accountId: e.accountId,
     customerId: e.customerId,
-    productId: P,
+    productId: j,
     doctrineId: U,
     aSite: c,
     zSite: i,
@@ -2553,22 +2648,22 @@ function an(e) {
     spine: a,
     stations: E,
     objects: D,
-    quantitySummary: L,
-    pricingSummary: s,
-    requiredServices: J,
-    requiredAssets: W,
+    quantitySummary: f,
+    pricingSummary: _,
+    requiredServices: Y,
+    requiredAssets: J,
     engineeringObjects: ie,
-    executionSequences: Ae,
-    closeSequences: Ie,
-    evidenceRequirements: pe,
+    executionSequences: ge,
+    closeSequences: le,
+    evidenceRequirements: Ie,
     certificationRules: be,
-    stationLevelLifecycleProjection: ge,
-    scopeVersionReadinessRequirements: Se
-  }), j = `${P}:ASSEMBLY:${ee(n?.routeId, "AUTHORITATIVE-ROUTE")}`;
+    stationLevelLifecycleProjection: he,
+    scopeVersionReadinessRequirements: pe
+  }), s = `${j}:ASSEMBLY:${ee(n?.routeId, "AUTHORITATIVE-ROUTE")}`;
   return {
-    assemblyId: j,
+    assemblyId: s,
     doctrineId: U,
-    productId: P,
+    productId: j,
     productDoctrineVersion: ne,
     projectConfiguration: e.projectConfiguration,
     aSite: c,
@@ -2579,53 +2674,53 @@ function an(e) {
     centerlineId: d,
     spine: a,
     stations: E,
-    routeSegments: I,
+    routeSegments: p,
     objects: D,
-    conduitAssembly: b,
-    fiberAssembly: R,
-    structureAssembly: _,
-    crossingAssembly: h,
-    quantitySummary: L,
-    pricingSummary: s,
-    validationSummary: T,
+    conduitAssembly: h,
+    fiberAssembly: g,
+    structureAssembly: A,
+    crossingAssembly: y,
+    quantitySummary: f,
+    pricingSummary: _,
+    validationSummary: P,
     engineeringManifest: {
-      manifestId: `${j}:ENGINEERING-MANIFEST`,
+      manifestId: `${s}:ENGINEERING-MANIFEST`,
       packagePath: "Commercial Proposal -> Product Doctrine Assembly -> Draft IOF Package -> Engineering Review",
       requiresEngineeringCertification: !0,
       noScopeVersionCreation: !0,
-      objectIds: D.map((C) => C.objectId),
-      stationIds: E.map((C) => C.stationId),
-      quantityKeys: Object.keys(L),
-      serviceIds: J.map((C) => C.serviceId),
-      assetIds: W.map((C) => C.assetId),
-      evidenceRequirementIds: pe.map((C) => C.evidenceRequirementId),
-      closeSequenceIds: Ie.map((C) => C.closeSequenceId),
-      scopeVersionReadinessRequirementIds: Se.map((C) => C.requirementId)
+      objectIds: D.map((l) => l.objectId),
+      stationIds: E.map((l) => l.stationId),
+      quantityKeys: Object.keys(f),
+      serviceIds: Y.map((l) => l.serviceId),
+      assetIds: J.map((l) => l.assetId),
+      evidenceRequirementIds: Ie.map((l) => l.evidenceRequirementId),
+      closeSequenceIds: le.map((l) => l.closeSequenceId),
+      scopeVersionReadinessRequirementIds: pe.map((l) => l.requirementId)
     },
     rules: H.rules,
-    registry: We,
-    requiredServices: J,
-    requiredAssets: W,
+    registry: Qe,
+    requiredServices: Y,
+    requiredAssets: J,
     engineeringObjects: ie,
-    executionSequences: Ae,
-    closeSequences: Ie,
-    evidenceRequirements: pe,
+    executionSequences: ge,
+    closeSequences: le,
+    evidenceRequirements: Ie,
     certificationRules: be,
-    stationLevelLifecycleProjection: ge,
-    scopeVersionReadinessRequirements: Se,
+    stationLevelLifecycleProjection: he,
+    scopeVersionReadinessRequirements: pe,
     requirementGaps: [
       ...!e.projectConfiguration?.structurePlanAuthority || e.projectConfiguration.structurePlanAuthority === "UNKNOWN" || !Number.isFinite(e.projectConfiguration.handholeCount) && !Number.isFinite(e.projectConfiguration.vaultCount) ? [{ requirementId: "STRUCTURE_PLAN_DEFINED", objectClass: "STRUCTURE", status: "ENGINEERING_REVIEW_REQUIRED", authority: "ENGINEERING", reason: "Access and structure quantities require source evidence or an Engineering-defined structure plan." }] : [],
       ...!e.projectConfiguration?.spliceArchitectureAuthority || e.projectConfiguration.spliceArchitectureAuthority === "UNKNOWN" || !Number.isFinite(e.projectConfiguration.spliceCaseCount) ? [{ requirementId: "SPLICE_ARCHITECTURE_DEFINED", objectClass: "SPLICE_CASE", status: "ENGINEERING_REVIEW_REQUIRED", authority: "ENGINEERING", reason: "Splice architecture is not defined by route length." }] : [],
       { requirementId: "APPLICABLE_CONSTRAINTS_EVALUATED", objectClass: "CROSSING", status: "UNKNOWN", authority: "ENGINEERING", reason: "Crossing and environmental constraint counts remain unknown until evaluated." }
     ],
-    doctrineMigration: { previousDoctrineVersion: we, newDoctrineVersion: ne, changeReason: Je },
+    doctrineMigration: { previousDoctrineVersion: We, newDoctrineVersion: ne, changeReason: Je },
     noScopeVersionCreation: !0
   };
 }
-function V(e) {
+function $(e) {
   return e && typeof e == "object" && !Array.isArray(e) ? e : {};
 }
-function Ge(e) {
+function Fe(e) {
   return Array.isArray(e) ? e : [];
 }
 function F(...e) {
@@ -2642,31 +2737,31 @@ function z(...e) {
   }
   return 0;
 }
-function he(e) {
-  return Array.isArray(e) ? `[${e.map(he).join(",")}]` : e && typeof e == "object" ? `{${Object.keys(e).sort().map((n) => `${JSON.stringify(n)}:${he(e[n])}`).join(",")}}` : JSON.stringify(e ?? null);
+function ye(e) {
+  return Array.isArray(e) ? `[${e.map(ye).join(",")}]` : e && typeof e == "object" ? `{${Object.keys(e).sort().map((n) => `${JSON.stringify(n)}:${ye(e[n])}`).join(",")}}` : JSON.stringify(e ?? null);
 }
-const Fe = Ke("sha256").update(he(H)).digest("hex");
-if (Fe !== Ye)
-  throw new Error(`PRODUCT_DOCTRINE_HASH_REGISTRY_MISMATCH: ${Fe}`);
-const dn = Ye, w = Object.freeze({
-  productId: P,
+const Ue = ze("sha256").update(ye(H)).digest("hex");
+if (Ue !== Ye)
+  throw new Error(`PRODUCT_DOCTRINE_HASH_REGISTRY_MISMATCH: ${Ue}`);
+const Sn = Ye, w = Object.freeze({
+  productId: j,
   productDoctrineId: U,
   productDoctrineVersion: ne,
-  productDoctrineHash: dn,
+  productDoctrineHash: Sn,
   productName: H.productName,
   doctrineAlias: H.registry.alias,
   status: "ACTIVE",
   immutable: !0,
   authority: "PRODUCT_DOCTRINE_REGISTRY"
 });
-function En(e = {}) {
+function Cn(e = {}) {
   const n = F(e.productId), t = F(e.productDoctrineId, e.doctrineId), r = F(e.productDoctrineVersion, e.doctrineVersion), o = F(e.productDoctrineHash, e.doctrineHash);
   return !n || !t || !r || !o || n !== w.productId || t !== w.productDoctrineId || r !== w.productDoctrineVersion || o !== w.productDoctrineHash ? null : w;
 }
-function ln(e) {
-  const n = V(e.proposal), t = V(e.route), r = V(n.geometry), o = V(n.centerlineRoute), c = Ge(
+function mn(e) {
+  const n = $(e.proposal), t = $(e.route), r = $(n.geometry), o = $(n.centerlineRoute), c = Fe(
     t.commercialGeometry ?? t.geometry ?? n.routeGeometry ?? n.centerline ?? o.geometry ?? r.coordinates
-  ), i = z(t.routeMiles, n.routeMiles, V(n.pricingSummary).routeMiles, V(n.productConfiguration).routeMiles), d = z(t.routeFeet, n.routeFeet, i * 5280), a = F(t.routeRepositoryId, t.routeId, n.routeId, o.routeId, Ge(n.geometryReferences)[0], e.packageId), E = F(t.routeRevision, t.revision, n.routeRevision, "1"), I = F(t.geometryHash, n.routeGeometryHash, n.geometryHash, a), l = c.length > 1 && d > 0 ? {
+  ), i = z(t.routeMiles, n.routeMiles, $(n.pricingSummary).routeMiles, $(n.productConfiguration).routeMiles), d = z(t.routeFeet, n.routeFeet, i * 5280), a = F(t.routeRepositoryId, t.routeId, n.routeId, o.routeId, Fe(n.geometryReferences)[0], e.packageId), E = F(t.routeRevision, t.revision, n.routeRevision, "1"), p = F(t.geometryHash, n.routeGeometryHash, n.geometryHash, a), I = c.length > 1 && d > 0 ? {
     routeId: a,
     source: "COMMERCIAL_ROUTE_REPOSITORY",
     routeMiles: i || d / 5280,
@@ -2675,47 +2770,47 @@ function ln(e) {
     geometry: c,
     routeAuthority: "COMMERCIAL_ROUTE_REPOSITORY",
     routeRevision: E,
-    routeHash: I,
+    routeHash: p,
     measurementAuthority: "MEASURED_CENTERLINE"
-  } : null, m = V(n.productConfiguration ?? n.projectConfiguration), A = an({
+  } : null, C = $(n.productConfiguration ?? n.projectConfiguration), R = pn({
     accountId: F(n.accountId, n.customerId),
     customerId: F(n.customerId),
     aSite: null,
     zSite: null,
-    osrmRoute: l,
-    authoritativeRoute: l,
-    projectConfiguration: m,
-    pricingSummary: V(n.pricingSummary),
-    conduitCount: z(m.ductCount, m.conduitCount),
-    conduitSizeInches: z(m.ductDiameter, m.conduitSizeInches),
-    fiberCount: z(m.fiberCount)
+    osrmRoute: I,
+    authoritativeRoute: I,
+    projectConfiguration: C,
+    pricingSummary: $(n.pricingSummary),
+    conduitCount: z(C.ductCount, C.conduitCount),
+    conduitSizeInches: z(C.ductDiameter, C.conduitSizeInches),
+    fiberCount: z(C.fiberCount)
   });
-  if (A.validationSummary.status !== "PASS") {
-    const O = A.validationSummary.checks.filter((R) => R.status !== "PASS").map((R) => R.key), b = new Error(`PRODUCT_DOCTRINE_ASSEMBLY_FAILED: ${O.join(", ")}`);
-    throw Object.assign(b, { code: "PRODUCT_DOCTRINE_ASSEMBLY_FAILED", status: 409, failures: O }), b;
+  if (R.validationSummary.status !== "PASS") {
+    const m = R.validationSummary.checks.filter((g) => g.status !== "PASS").map((g) => g.key), h = new Error(`PRODUCT_DOCTRINE_ASSEMBLY_FAILED: ${m.join(", ")}`);
+    throw Object.assign(h, { code: "PRODUCT_DOCTRINE_ASSEMBLY_FAILED", status: 409, failures: m }), h;
   }
-  const S = At({
+  const T = Lt({
     packageId: e.packageId,
     productDoctrine: H,
-    productDoctrineAssembly: A,
+    productDoctrineAssembly: R,
     routeId: a,
     scopeVersionCandidateId: `${e.packageId}:SCOPEVERSION-CANDIDATE`,
-    geometryHash: I
+    geometryHash: p
   });
-  if (S.validation.status !== "PASS") {
-    const O = new Error(`DOCTRINE_OBJECT_INSTANTIATION_FAILED: ${S.validation.failures.join("; ")}`);
-    throw Object.assign(O, { code: "DOCTRINE_OBJECT_INSTANTIATION_FAILED", status: 409, failures: S.validation.failures }), O;
+  if (T.validation.status !== "PASS") {
+    const m = new Error(`DOCTRINE_OBJECT_INSTANTIATION_FAILED: ${T.validation.failures.join("; ")}`);
+    throw Object.assign(m, { code: "DOCTRINE_OBJECT_INSTANTIATION_FAILED", status: 409, failures: T.validation.failures }), m;
   }
   return {
     authority: w,
     productDoctrine: H,
-    productDoctrineAssembly: A,
-    doctrineObjectInstantiation: S,
-    engineeringObjectManifest: S.engineeringObjectManifest
+    productDoctrineAssembly: R,
+    doctrineObjectInstantiation: T,
+    engineeringObjectManifest: T.engineeringObjectManifest
   };
 }
-function In(e) {
-  return Bt({
+function Rn(e) {
+  return Kt({
     packageId: e.packageId,
     productDoctrine: H,
     doctrineObjectManifest: e.doctrineObjectManifest,
@@ -2729,8 +2824,8 @@ function In(e) {
 }
 export {
   w as PRODUCT_DOCTRINE_AUTHORITY,
-  dn as PRODUCT_DOCTRINE_HASH,
-  ln as assembleProductDoctrineArtifacts,
-  In as projectProductDoctrineToStationSpine,
-  En as resolveProductDoctrineAuthority
+  Sn as PRODUCT_DOCTRINE_HASH,
+  mn as assembleProductDoctrineArtifacts,
+  Rn as projectProductDoctrineToStationSpine,
+  Cn as resolveProductDoctrineAuthority
 };
