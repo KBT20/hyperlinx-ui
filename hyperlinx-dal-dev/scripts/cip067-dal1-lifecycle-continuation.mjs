@@ -63,7 +63,7 @@ await call("Direct human ScopeVersion creation remains prohibited", "/api/scopev
 });
 
 const assembly = await call("Assemble or resolve exact accepted Draft IOF", "/api/engineering/certification/draft-packages/from-proposal", {
-  method: "POST", cookie, persona: "SALES", body: { proposalId, packageId }, expected: [200, 201, 409],
+  method: "POST", cookie, persona: "ENGINEERING", body: { proposalId, packageId }, expected: [200, 201, 409],
 });
 if (!assembly.value.draftPackage && !assembly.value.iofPackage) {
   stop("STOPPED_AT_GENUINE_DRAFT_IOF_PREDICATE", assembly.value);
