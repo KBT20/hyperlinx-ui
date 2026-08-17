@@ -9937,6 +9937,12 @@ export default function GoogleRfpWorkspace() {
   const activeProposalStatus = activeProposalAuthoritySnapshot.repositoryStatus;
   const activeProposalApprovalState = String(activeProposalRuntime?.approvalState ?? "");
   const internalCommercialApproval = activeProposalRuntime?.internalCommercialApproval as Record<string, unknown> | undefined;
+  const opportunityMateriality = activeProposalRuntime?.opportunityMateriality as { decision?: string; materialCommercialState?: string; materialChanges?: Array<{ field?: string }>; unknownChanges?: Array<{ field?: string }> } | undefined;
+  const proposalBoundOpportunityVersion = Number(activeProposalRuntime?.opportunityStateVersion ?? 0);
+  const currentOpportunityVersion = Number(activeCommercialOpportunity?.commercialStateVersion ?? 0);
+  const proposalOpportunityStale = Boolean(activeProposalRuntime && activeCommercialOpportunity && (
+    proposalBoundOpportunityVersion !== currentOpportunityVersion || activeProposalRuntime.opportunityStateHash !== activeCommercialOpportunity.commercialStateHash
+  ));
   const exactInternalCommercialApproval = Boolean(activeProposalRuntime && internalCommercialApproval?.status === "APPROVED" &&
     internalCommercialApproval.proposalRevisionId === activeProposalRuntime.proposalRevisionId &&
     internalCommercialApproval.proposalHash === activeProposalRuntime.proposalHash);
@@ -11730,6 +11736,17 @@ export default function GoogleRfpWorkspace() {
                   </div>
                 ))}
               </div>
+              {proposalOpportunityStale ? <div className={`dal-status ${opportunityMateriality?.decision === "NON_MATERIAL" ? "pass" : "warning"}`}>
+                <b>Proposal R{activeProposalRuntime?.revisionNumber ?? activeProposalRuntime?.version} · {opportunityMateriality?.decision === "NON_MATERIAL" ? "CURRENT OFFER" : "STALE — REVIEW REQUIRED"}</b><br />
+                Proposal bound to Opportunity v{proposalBoundOpportunityVersion}; current Opportunity v{currentOpportunityVersion}.<br />
+                {opportunityMateriality?.decision === "NON_MATERIAL"
+                  ? "No customer-facing commercial changes were found. The complete Opportunity versions and hashes remain auditable."
+                  : opportunityMateriality?.materialChanges?.length
+                    ? `Material changes: ${opportunityMateriality.materialChanges.map((item) => item.field).join(", ")}.`
+                    : opportunityMateriality?.unknownChanges?.length
+                      ? `Review required: ${opportunityMateriality.unknownChanges.map((item) => item.field).join(", ")}.`
+                      : "Internal Commercial Review will evaluate the exact Opportunity change before customer submission."}
+              </div> : null}
               <div className="dal-actions">
                 {canManageProposalRuntime ? (
                   <>

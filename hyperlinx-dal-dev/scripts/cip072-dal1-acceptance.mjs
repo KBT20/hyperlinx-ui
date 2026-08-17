@@ -54,11 +54,21 @@ try {
     geometryHash: original.routeGeometryHash,
   };
 
+  await call("Wrong Opportunity state hash fails closed", `/api/proposals/${encodeURIComponent(proposalId)}/internal-commercial-approve`, {
+    method: "POST", cookie, body: { ...exact, opportunityStateHash: "STALE-CIP073" }, expected: [409],
+  });
+  await call("Stale route revision fails closed", `/api/proposals/${encodeURIComponent(proposalId)}/internal-commercial-approve`, {
+    method: "POST", cookie, body: { ...exact, routeRevision: Number(exact.routeRevision) - 1 }, expected: [409],
+  });
+
   const internal = (await call("Approve exact Internal Commercial Review", `/api/proposals/${encodeURIComponent(proposalId)}/internal-commercial-approve`, {
     method: "POST", cookie, body: { ...exact, comment: "CIP-072 bounded Internal Commercial Review." },
   })).value.proposal;
   assert.equal(internal.internalCommercialApproval.proposalRevisionId, original.proposalRevisionId);
   assert.equal(internal.internalCommercialApproval.proposalHash, originalHash);
+  assert.equal(internal.internalCommercialApproval.opportunityMateriality.decision, "NON_MATERIAL");
+  assert.equal(internal.internalCommercialApproval.opportunityMateriality.materialCommercialState, "UNCHANGED");
+  assert.equal(internal.internalCommercialApproval.currentOpportunityStateVersion, 5);
 
   await call("Stale submission hash fails closed", `/api/proposals/${encodeURIComponent(proposalId)}/submit-customer`, {
     method: "POST", cookie, body: { ...exact, proposalHash: "STALE-CIP072", assignedCustomerUsers: ["demo-customer-a-viewer"], customerOrganizationId: "org-demo-customer-a" }, expected: [409],
@@ -80,6 +90,13 @@ try {
   assert.equal(reviewDeal.artifactStates.customerAcceptance.state, "PENDING");
   assert.equal(reviewDeal.artifactStates.engineering.eligibility, "NOT_ELIGIBLE");
 
+  await call("Engineering cannot begin before acceptance", "/api/engineering/certification/draft-packages/from-proposal", {
+    method: "POST", cookie, body: { proposalId }, expected: [409],
+  });
+  await call("Customer cannot create ScopeVersion", "/api/scopeversions", {
+    method: "POST", cookie, persona: "CUSTOMER_COMMERCIAL_REVIEWER", body: {}, expected: [403],
+  });
+
   const projectPath = `/api/customer-portal/projects/${encodeURIComponent(opportunityId)}/proposal/accept`;
   await call("Customer Viewer cannot accept", projectPath, { method: "POST", cookie, persona: "CUSTOMER_VIEWER", body: { ...exact }, expected: [403] });
   await call("Customer Reviewer stale hash fails closed", projectPath, { method: "POST", cookie, persona: "CUSTOMER_COMMERCIAL_REVIEWER", body: { ...exact, proposalHash: "STALE-CIP072" }, expected: [409] });
@@ -100,6 +117,9 @@ try {
   const assembled = (await call("Assemble legitimate Draft IOF", "/api/engineering/certification/draft-packages/from-proposal", { method: "POST", cookie, body: { proposalId } })).value;
   const draft = assembled.draftPackage ?? assembled.iofPackage ?? assembled;
   assert.ok(draft.packageId);
+  await call("Customer cannot invoke Send to Engineering", `/api/commercial/iof-packages/${encodeURIComponent(draft.packageId)}/submit-engineering`, {
+    method: "POST", cookie, persona: "CUSTOMER_COMMERCIAL_REVIEWER", expected: [403],
+  });
   const handoff = (await call("Send accepted Proposal to Engineering", `/api/commercial/iof-packages/${encodeURIComponent(draft.packageId)}/submit-engineering`, { method: "POST", cookie, expected: [200, 409] })).value;
   if (!handoff.engineeringPackage) {
     console.log(JSON.stringify({ result: "STOPPED_AT_GENUINE_ENGINEERING_HANDOFF_PREDICATE", opportunityId, proposalId, proposalRevisionId: original.proposalRevisionId, proposalHash: originalHash, predicate: handoff.predicate, error: handoff.error, trace }, null, 2));
@@ -116,7 +136,7 @@ try {
   assert.equal(finalDeal.artifactStates.engineering.eligibility, "SUBMITTED");
   assert.equal(finalDeal.engineering.engineeringPackageId, handoff.engineeringPackage.engineeringPackageId);
 
-  console.log(JSON.stringify({ result: "PASS", accountId, opportunityId, proposalId, proposalRevisionId: original.proposalRevisionId, proposalHash: originalHash, customerReviewPackageId: submitted.customerReviewPackage.customerReviewPackageId, customerAcceptanceEvidenceId: accepted.action.customerPortalActionId, draftIofPackageId: draft.packageId, engineeringPackageId: handoff.engineeringPackage.engineeringPackageId, finalState: finalDeal.currentState, revisionCountUnchanged: true, trace }, null, 2));
+  console.log(JSON.stringify({ result: "PASS", accountId, opportunityId, proposalId, proposalRevisionId: original.proposalRevisionId, proposalHash: originalHash, opportunityMateriality: internal.internalCommercialApproval.opportunityMateriality, customerReviewPackageId: submitted.customerReviewPackage.customerReviewPackageId, customerAcceptanceEvidenceId: accepted.action.customerPortalActionId, draftIofPackageId: draft.packageId, engineeringPackageId: handoff.engineeringPackage.engineeringPackageId, finalState: finalDeal.currentState, revisionCountUnchanged: true, trace }, null, 2));
 } catch (error) {
   console.error(JSON.stringify({ result: "FAIL", error: error.message, predicate: error.value?.predicate, details: error.value?.details, trace }, null, 2));
   process.exit(1);

@@ -92,7 +92,7 @@ export type AccountCustomerTwin = {
     lifecycle: Array<{ name: CustomerDealState; status: "COMPLETE" | "CURRENT" | "PENDING" }>;
     permittedActions: Array<{ action: string; label: string; authority: string; mutation: boolean }>;
     artifactStates: GovernedArtifactStates;
-    commercial: { opportunityStateVersion?: number | null; opportunityStateHash?: string | null; proposalId?: string | null; proposalRevisionId?: string | null; proposalRevisionNumber?: number | null; proposalHash?: string | null };
+    commercial: { opportunityStateVersion?: number | null; opportunityStateHash?: string | null; proposalBoundOpportunityStateVersion?: number | null; proposalBoundOpportunityStateHash?: string | null; opportunityMateriality?: Record<string, unknown> | null; proposalId?: string | null; proposalRevisionId?: string | null; proposalRevisionNumber?: number | null; proposalHash?: string | null };
     workingOpportunity: { stateVersion?: number | null; stateHash?: string | null; productId?: string | null; productName?: string | null; productDoctrineId?: string | null; routeRepositoryId?: string | null; routeRevision?: number | null; routeGeometryId?: string | null; geometryHash?: string | null; civilMixCalibration?: Record<string, unknown> | null; economics?: Record<string, unknown> | null; modifiedBy?: string | null; modifiedAt?: string | null };
     spatial: { routeRepositoryId?: string | null; routeRevision?: number | null; geometryHash?: string | null };
     engineering: { engineeringPackageId?: string | null; certifiedPackageId?: string | null; certificationHash?: string | null };

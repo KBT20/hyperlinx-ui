@@ -317,6 +317,9 @@ export async function buildAccountCustomerTwin({ account, user, lens = "INTERNAL
       commercial: {
         opportunityStateVersion: opportunity?.commercialStateVersion ?? null,
         opportunityStateHash: opportunity?.commercialStateHash ?? null,
+        proposalBoundOpportunityStateVersion: governedProposal?.opportunityStateVersion ?? null,
+        proposalBoundOpportunityStateHash: governedProposal?.opportunityStateHash ?? null,
+        opportunityMateriality: governedProposal?.opportunityMateriality ?? reviewPackage?.opportunityBinding?.materiality ?? null,
         proposalId: governedProposal?.proposalId ?? reviewPackage?.proposalId ?? null,
         proposalRevisionId: reviewPackage?.proposalRevisionId ?? governedProposal?.proposalRevisionId ?? null,
         proposalRevisionNumber: reviewPackage?.proposalRevisionNumber ?? governedProposal?.proposalRevisionNumber ?? governedProposal?.revisionNumber ?? null,

@@ -152,8 +152,11 @@ export async function createCustomerReviewAuthority(proposal = {}, input = {}, u
     },
     opportunityBinding: {
       opportunityId,
-      opportunityStateVersion: Number(proposal.opportunityStateVersion),
-      opportunityStateHash: text(proposal.opportunityStateHash),
+      boundOpportunityStateVersion: Number(proposal.opportunityStateVersion),
+      boundOpportunityStateHash: text(proposal.opportunityStateHash),
+      currentOpportunityStateVersion: Number(record(proposal.internalCommercialApproval).currentOpportunityStateVersion ?? opportunity.commercialStateVersion),
+      currentOpportunityStateHash: text(record(proposal.internalCommercialApproval).currentOpportunityStateHash, opportunity.commercialStateHash),
+      materiality: record(proposal.opportunityMateriality ?? record(proposal.internalCommercialApproval).opportunityMateriality),
     },
     commercialTerms: customerSafeCommercialTerms(proposal),
     schedule: record(proposal.scheduleSummary ?? proposal.deliverySummary),

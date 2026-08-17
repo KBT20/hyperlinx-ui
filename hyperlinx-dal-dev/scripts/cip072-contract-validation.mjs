@@ -35,7 +35,8 @@ assert.equal(accepted.engineering.eligibility, "ELIGIBLE");
 
 const proposalRoute = await readFile(new URL("../server/routes/proposal-drafts.js", import.meta.url), "utf8");
 assert.match(proposalRoute, /exact Internal Commercial Review approval is required/);
-assert.match(proposalRoute, /validateOpportunityStateBinding\(existing, \{ requireCurrent: true \}\)/);
+assert.match(proposalRoute, /assessOpportunityStateBinding\(existing, \{ requireCurrent: true \}\)/);
+assert.match(proposalRoute, /materiality\?\.decision !== "NON_MATERIAL"/);
 assert.match(proposalRoute, /internal-commercial-approve/);
 
 const portalRoute = await readFile(new URL("../server/routes/customer-portal.js", import.meta.url), "utf8");

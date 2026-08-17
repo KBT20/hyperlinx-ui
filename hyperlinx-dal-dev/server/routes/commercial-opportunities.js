@@ -63,6 +63,70 @@ export function commercialOpportunityStateHash(snapshot) {
   return createHash("sha256").update(canonicalJson(snapshot)).digest("hex");
 }
 
+const NON_MATERIAL_OPPORTUNITY_PATHS = new Set([
+  "commercialStateVersion",
+  "state",
+  "proposalId",
+  "proposalRevisionId",
+  "proposalHash",
+  "commercialWorkingState.currentLifecycleState",
+  "commercialWorkingState.lastGovernedRevisionState",
+  "commercialWorkingState.updatedAt",
+]);
+
+const PROPOSAL_MATERIAL_PATH = /^(accountId|customerId|customerTwinId|organizationId|productId|productName|productDoctrineId|productDoctrineVersion|productDoctrineHash|routeRepositoryId|routeRevision|routeGeometryId|geometryHash|estimate|commercialWorkbook|doctrineAssumptions|commercialOverrides|constructionMixSnapshot|commercialNotes|commercialWorkingState\.(product|route|civilMixCalibration|estimateControls|economics|assumptions|specifications|dealPoints|scope|exclusions|delivery|requiredAssets|quantities|serviceCharacteristics|sla|diversity|commercialTerms))(\.|\[|$)/;
+
+function materialityScalar(value) {
+  if (value === undefined) return "<MISSING>";
+  return value == null || typeof value !== "object" ? value : structuredClone(value);
+}
+
+function opportunityStateDiff(bound, current, path = "") {
+  if (Object.is(bound, current)) return [];
+  if (Array.isArray(bound) || Array.isArray(current)) {
+    if (canonicalJson(bound) === canonicalJson(current)) return [];
+    const length = Math.max(Array.isArray(bound) ? bound.length : 0, Array.isArray(current) ? current.length : 0);
+    return Array.from({ length }, (_, index) => opportunityStateDiff(bound?.[index], current?.[index], `${path}[${index}]`)).flat();
+  }
+  if (bound && current && typeof bound === "object" && typeof current === "object") {
+    return [...new Set([...Object.keys(bound), ...Object.keys(current)])].sort()
+      .flatMap((key) => opportunityStateDiff(bound[key], current[key], path ? `${path}.${key}` : key));
+  }
+  return [{ field: path, boundValue: materialityScalar(bound), currentValue: materialityScalar(current) }];
+}
+
+function classifyOpportunityChange(field) {
+  if (NON_MATERIAL_OPPORTUNITY_PATHS.has(field) || field.startsWith("commercialWorkingState.proposalReferences.")) {
+    return { classification: "SYSTEM_DERIVED", reason: "Proposal linkage, lifecycle projection, or version metadata does not alter the customer offer." };
+  }
+  if (PROPOSAL_MATERIAL_PATH.test(field)) {
+    return { classification: "PROPOSAL_MATERIAL", reason: "The field participates in customer, product, route, scope, engineering obligation, or commercial offer authority." };
+  }
+  return { classification: "UNKNOWN", reason: "No constitutional materiality rule covers this field; Proposal review is required." };
+}
+
+export function evaluateOpportunityProposalMateriality(boundSnapshot = {}, currentSnapshot = {}, lineage = {}) {
+  const changes = opportunityStateDiff(boundSnapshot, currentSnapshot).map((change) => ({ ...change, ...classifyOpportunityChange(change.field) }));
+  const materialChanges = changes.filter((change) => change.classification === "PROPOSAL_MATERIAL");
+  const unknownChanges = changes.filter((change) => change.classification === "UNKNOWN");
+  const decision = materialChanges.length ? "PROPOSAL_MATERIAL" : unknownChanges.length ? "PROPOSAL_REVIEW_REQUIRED" : "NON_MATERIAL";
+  return {
+    evaluationType: "OPPORTUNITY_PROPOSAL_MATERIALITY",
+    doctrineVersion: "CIP-073",
+    decision,
+    materialCommercialState: decision === "NON_MATERIAL" ? "UNCHANGED" : "CHANGED_OR_UNRESOLVED",
+    boundOpportunityStateVersion: Number(lineage.boundOpportunityStateVersion ?? boundSnapshot.commercialStateVersion ?? 0),
+    boundOpportunityStateHash: String(lineage.boundOpportunityStateHash ?? ""),
+    currentOpportunityStateVersion: Number(lineage.currentOpportunityStateVersion ?? currentSnapshot.commercialStateVersion ?? 0),
+    currentOpportunityStateHash: String(lineage.currentOpportunityStateHash ?? ""),
+    changes,
+    materialChanges,
+    unknownChanges,
+    requiresNewProposalRevision: decision !== "NON_MATERIAL",
+    createsAuthority: false,
+  };
+}
+
 function asArray(value) {
   if (Array.isArray(value)) return value;
   if (value === undefined || value === null || value === "") return [];

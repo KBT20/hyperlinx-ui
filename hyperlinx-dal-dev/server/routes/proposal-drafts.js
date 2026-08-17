@@ -24,7 +24,7 @@ import {
 import { assembleDraftIofPackageFromProposal } from "./engineering-certification.js";
 import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 import { createCustomerReviewAuthority } from "./customer-portal-authority.js";
-import { commercialOpportunityStateHash, normalizeCommercialOpportunity, saveOpportunity } from "./commercial-opportunities.js";
+import { commercialOpportunityStateHash, evaluateOpportunityProposalMateriality, normalizeCommercialOpportunity, saveOpportunity } from "./commercial-opportunities.js";
 
 const ROLE_KEYS = ["contributors", "reviewers", "approvers", "executives", "customerReviewers", "salesEngineering"];
 const CUSTOMER_USER_BY_CUSTOMER = {
@@ -694,13 +694,13 @@ export function proposalSnapshotHash(snapshot) {
   return createHash("sha256").update(canonicalJson(snapshot)).digest("hex");
 }
 
-export async function validateOpportunityStateBinding(record, { requireCurrent = true } = {}) {
-  if (!record.opportunityId) return ["Opportunity reference is required."];
+export async function assessOpportunityStateBinding(record, { requireCurrent = true } = {}) {
+  if (!record.opportunityId) return { failures: ["Opportunity reference is required."], opportunity: null, materiality: null };
   const opportunity = await loadRecord(DIRS.commercialOpportunities, record.opportunityId).catch(() => null);
-  if (!opportunity) return [`Persisted Opportunity not found: ${record.opportunityId}.`];
+  if (!opportunity) return { failures: [`Persisted Opportunity not found: ${record.opportunityId}.`], opportunity: null, materiality: null };
   const governedByCip067 = opportunity?.commercialStateSnapshot?.schemaVersion === "CIP-067" ||
     opportunity?.commercialWorkingState?.schemaVersion === "CIP-067";
-  if (!governedByCip067) return [];
+  if (!governedByCip067) return { failures: [], opportunity, materiality: null };
   const failures = [];
   if (!record.opportunityStateVersion) failures.push("Opportunity state version is required.");
   if (!record.opportunityStateHash) failures.push("Opportunity state hash is required.");
@@ -711,9 +711,21 @@ export async function validateOpportunityStateBinding(record, { requireCurrent =
   if (record.opportunityStateSnapshot && commercialOpportunityStateHash(record.opportunityStateSnapshot) !== String(record.opportunityStateHash ?? "")) {
     failures.push("Opportunity state snapshot hash mismatch.");
   }
-  if (requireCurrent) {
-    if (Number(record.opportunityStateVersion ?? 0) !== Number(opportunity.commercialStateVersion ?? 0)) failures.push("Opportunity state version is not current.");
-    if (String(record.opportunityStateHash ?? "") !== String(opportunity.commercialStateHash ?? "")) failures.push("Opportunity state hash is not current.");
+  const currentMismatch = Number(record.opportunityStateVersion ?? 0) !== Number(opportunity.commercialStateVersion ?? 0) ||
+    String(record.opportunityStateHash ?? "") !== String(opportunity.commercialStateHash ?? "");
+  const materiality = currentMismatch && record.opportunityStateSnapshot && opportunity.commercialStateSnapshot
+    ? evaluateOpportunityProposalMateriality(record.opportunityStateSnapshot, opportunity.commercialStateSnapshot, {
+      boundOpportunityStateVersion: record.opportunityStateVersion,
+      boundOpportunityStateHash: record.opportunityStateHash,
+      currentOpportunityStateVersion: opportunity.commercialStateVersion,
+      currentOpportunityStateHash: opportunity.commercialStateHash,
+    })
+    : null;
+  if (requireCurrent && currentMismatch && materiality?.decision !== "NON_MATERIAL") {
+    failures.push("Opportunity state version is not current and Proposal-material equivalence was not proven.");
+    failures.push("Opportunity state hash is not current and Proposal-material equivalence was not proven.");
+    if (materiality?.materialChanges?.length) failures.push(`Proposal-material changes: ${materiality.materialChanges.map((item) => item.field).join(", ")}.`);
+    if (materiality?.unknownChanges?.length) failures.push(`Unclassified Opportunity changes require Proposal review: ${materiality.unknownChanges.map((item) => item.field).join(", ")}.`);
   }
   for (const [proposalField, opportunityField] of [
     ["routeRepositoryId", "routeRepositoryId"],
@@ -723,7 +735,11 @@ export async function validateOpportunityStateBinding(record, { requireCurrent =
   ]) {
     if (String(record[proposalField] ?? "") !== String(opportunity[opportunityField] ?? "")) failures.push(`${proposalField} does not match the persisted Opportunity.`);
   }
-  return failures;
+  return { failures, opportunity, materiality };
+}
+
+export async function validateOpportunityStateBinding(record, options = {}) {
+  return (await assessOpportunityStateBinding(record, options)).failures;
 }
 
 function exactCommercialApproval(record = {}) {
@@ -1431,9 +1447,9 @@ async function handleSubmitCustomer(req, res, id, user) {
     errorResponse(res, 409, `CUSTOMER SUBMISSION BLOCKED: ${lineageFailures.join(" ")}`);
     return;
   }
-  const opportunityFailures = await validateOpportunityStateBinding(existing, { requireCurrent: true });
-  if (opportunityFailures.length) {
-    errorResponse(res, 409, `CUSTOMER SUBMISSION BLOCKED: ${opportunityFailures.join(" ")}`);
+  const opportunityAssessment = await assessOpportunityStateBinding(existing, { requireCurrent: true });
+  if (opportunityAssessment.failures.length) {
+    errorResponse(res, 409, `CUSTOMER SUBMISSION BLOCKED: ${opportunityAssessment.failures.join(" ")}`);
     return;
   }
   const explicitCustomerUsers = normalizeUserIds(body.assignedCustomerUsers ?? body.customerUsers ?? body.customerReviewers);
@@ -1527,9 +1543,9 @@ async function handleInternalCommercialApproval(req, res, id, user) {
   }
   const body = await readRequestJson(req);
   const lineageFailures = submissionLineageFailures(existing, body);
-  const opportunityFailures = await validateOpportunityStateBinding(existing, { requireCurrent: true });
-  if (lineageFailures.length || opportunityFailures.length) {
-    errorResponse(res, 409, `INTERNAL COMMERCIAL REVIEW BLOCKED: ${[...lineageFailures, ...opportunityFailures].join(" ")}`);
+  const opportunityAssessment = await assessOpportunityStateBinding(existing, { requireCurrent: true });
+  if (lineageFailures.length || opportunityAssessment.failures.length) {
+    errorResponse(res, 409, `INTERNAL COMMERCIAL REVIEW BLOCKED: ${[...lineageFailures, ...opportunityAssessment.failures].join(" ")}`);
     return;
   }
   if (exactCommercialApproval(existing)) {
@@ -1544,6 +1560,15 @@ async function handleInternalCommercialApproval(req, res, id, user) {
     opportunityId: existing.opportunityId,
     opportunityStateVersion: Number(existing.opportunityStateVersion),
     opportunityStateHash: existing.opportunityStateHash,
+    currentOpportunityStateVersion: Number(opportunityAssessment.opportunity?.commercialStateVersion ?? existing.opportunityStateVersion),
+    currentOpportunityStateHash: opportunityAssessment.opportunity?.commercialStateHash ?? existing.opportunityStateHash,
+    opportunityMateriality: opportunityAssessment.materiality ?? {
+      doctrineVersion: "CIP-073",
+      decision: "EXACT_CURRENT_STATE",
+      materialCommercialState: "UNCHANGED",
+      changes: [],
+      requiresNewProposalRevision: false,
+    },
     proposalId: existing.proposalId,
     proposalRevisionId: existing.proposalRevisionId,
     proposalHash: existing.proposalHash,
@@ -1561,7 +1586,7 @@ async function handleInternalCommercialApproval(req, res, id, user) {
     comment: firstText(body.comment),
     approvedAt: timestamp,
   };
-  const approved = normalizeProposalRecord({ ...existing, internalCommercialApproval: approval }, user, existing);
+  const approved = normalizeProposalRecord({ ...existing, opportunityMateriality: approval.opportunityMateriality, internalCommercialApproval: approval }, user, existing);
   jsonResponse(res, 200, {
     proposal: await saveProposal(approved, user, "runtime.proposal.internal_commercial.approved", "Internal Commercial Review approved the exact saved Proposal Revision.", { internalCommercialApprovalId: approval.internalCommercialApprovalId }),
   });
