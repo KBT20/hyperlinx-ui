@@ -3238,7 +3238,11 @@ export default function GoogleRfpWorkspace() {
   const [accountEditorMode, setAccountEditorMode] = useState<"create" | "edit">("edit");
   const [accountDraft, setAccountDraft] = useState<AccountEditorState>(() => emptyAccountEditor(currentUserName));
   const [contactDraft, setContactDraft] = useState<ContactEditorState>(() => contactEditorDefaults());
-  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const commercialDeepLink = useMemo(() => new URLSearchParams(window.location.search), []);
+  const deepLinkedAccountId = commercialDeepLink.get("workspace") === "googleRfp" ? commercialDeepLink.get("accountId") ?? "" : "";
+  const deepLinkedOpportunityId = commercialDeepLink.get("workspace") === "googleRfp" ? commercialDeepLink.get("opportunityId") ?? "" : "";
+  const commercialDeepLinkOpenedRef = useRef(false);
+  const [selectedAccountId, setSelectedAccountId] = useState(deepLinkedAccountId);
   const [accountDealTwin, setAccountDealTwin] = useState<AccountCustomerTwin | null>(null);
   const [selectedProductId, setSelectedProductId] = useState(POINT_TO_POINT_LONG_HAUL_PRODUCT_ID);
   const [activeView, setActiveView] = useState<CommercialWorkspaceView>("networks");
@@ -3423,6 +3427,18 @@ export default function GoogleRfpWorkspace() {
       });
     return () => { cancelled = true; };
   }, [selectedAccountId, session?.token]);
+
+  useEffect(() => {
+    if (
+      commercialDeepLinkOpenedRef.current ||
+      !commercialLibraryLoaded ||
+      !deepLinkedOpportunityId ||
+      selectedAccountId !== deepLinkedAccountId ||
+      !commercialOpportunities.some((record) => record.opportunityId === deepLinkedOpportunityId)
+    ) return;
+    commercialDeepLinkOpenedRef.current = true;
+    void handleOpenCommercialOpportunity(deepLinkedOpportunityId);
+  }, [commercialLibraryLoaded, commercialOpportunities, deepLinkedAccountId, deepLinkedOpportunityId, selectedAccountId]);
 
   useEffect(() => {
     if (!session || !selectedAccountId) {

@@ -58,6 +58,14 @@ function replaceCustomerLocation(accountId: string, opportunityId = "") {
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
+function replaceCommercialLocation(accountId: string, opportunityId: string) {
+  const url = new URL(window.location.href);
+  url.searchParams.set("workspace", "googleRfp");
+  url.searchParams.set("accountId", accountId);
+  url.searchParams.set("opportunityId", opportunityId);
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 export default function CustomerWorkspace() {
   const { session } = useTeralinxAuth();
   const { setWorkspace } = useDALState();
@@ -118,6 +126,12 @@ export default function CustomerWorkspace() {
     setWorkspace("googleRfp");
   }
 
+  function continueCommercial() {
+    if (!selectedDeal) return;
+    replaceCommercialLocation(accountId, selectedDeal.opportunityId);
+    setWorkspace("googleRfp");
+  }
+
   async function sendToEngineering() {
     if (!selectedDeal?.commercial.proposalId || selectedDeal.currentState !== "ACCEPTED" || selectedDeal.artifactStates.customerAcceptance.state !== "COMPLETE") return;
     setStatus("Sending the exact accepted Proposal through the governed Engineering handoff...");
@@ -173,7 +187,7 @@ export default function CustomerWorkspace() {
             {tab === "Overview" ? <div className="customer-overview-grid">
               <article><small>PRODUCT</small><strong>{selectedDeal.customerSafe.product.name}</strong><span>{selectedDeal.customerSafe.product.description ?? "No governed description"}</span></article>
               <article><small>COMMERCIAL</small><strong>{money(selectedDeal.customerSafe.economics.nrc, selectedDeal.customerSafe.economics.currency)} NRC</strong><span>{money(selectedDeal.customerSafe.economics.mrc, selectedDeal.customerSafe.economics.currency)} MRC · {selectedDeal.customerSafe.economics.termMonths ?? "—"} months</span></article>
-              <article><small>NEXT GOVERNED STEP</small><strong>{selectedDeal.permittedActions.find((action) => action.mutation)?.label ?? (selectedDeal.currentState === "AUTHORIZED" ? "View authorized scope" : "No action required in this perspective")}</strong>{selectedDeal.permittedActions.some((action) => action.action === "SEND_TO_ENGINEERING") ? <button className="primary" type="button" onClick={() => void sendToEngineering()}>Send to Engineering</button> : null}</article>
+              <article><small>NEXT GOVERNED STEP</small><strong>{selectedDeal.permittedActions.find((action) => action.mutation)?.label ?? (selectedDeal.currentState === "AUTHORIZED" ? "View authorized scope" : "No action required in this perspective")}</strong>{selectedDeal.currentState === "DRAFT" || selectedDeal.currentState === "PROPOSED" ? <button className="primary" type="button" onClick={continueCommercial}>Continue Commercial</button> : null}{selectedDeal.permittedActions.some((action) => action.action === "SEND_TO_ENGINEERING") ? <button className="primary" type="button" onClick={() => void sendToEngineering()}>Send to Engineering</button> : null}</article>
               <article className="wide"><small>CUSTOMER-FACING SPECIFICATIONS</small><div className="customer-document-grid">{Object.entries(selectedDeal.customerSafe.specifications).map(([key, value]) => <span key={key}>{key.replaceAll(/([A-Z])/g, " $1").replaceAll("_", " ")}<strong>{Array.isArray(value) ? value.join(", ") || "Not provided" : value == null || value === "" ? "Not provided" : String(value)}</strong></span>)}</div></article>
             </div> : null}
             {tab === "Proposal" ? <article className="customer-governed-document customer-proposal-card"><header><div><small>GOVERNED PROPOSAL</small><h3>Proposal R{selectedDeal.commercial.proposalRevisionNumber ?? "—"}</h3><span>{selectedAccount.name} · {selectedDeal.title}</span></div><div><b>{label(selectedDeal.artifactStates.proposal.state)}</b></div></header><div className="customer-document-actions"><button onClick={() => window.print()}>Print / Save PDF</button>{selectedDeal.commercial.proposalId && selectedDeal.commercial.proposalRevisionId ? <button className="primary" onClick={() => void downloadRuntimeArtifact(`/api/exports/proposals/${encodeURIComponent(selectedDeal.commercial.proposalId!)}/revisions/${encodeURIComponent(selectedDeal.commercial.proposalRevisionId!)}/pdf`)}>View / Download Proposal</button> : null}</div><div className="customer-document-grid"><span>Product<strong>{selectedDeal.customerSafe.product.name}</strong></span><span>Route<strong>{selectedDeal.customerSafe.route.routeMiles?.toFixed(2) ?? "—"} miles</strong></span><span>NRC<strong>{money(selectedDeal.customerSafe.economics.nrc, selectedDeal.customerSafe.economics.currency)}</strong></span><span>MRC<strong>{money(selectedDeal.customerSafe.economics.mrc, selectedDeal.customerSafe.economics.currency)}</strong></span><span>Term<strong>{selectedDeal.customerSafe.economics.termMonths ?? "—"} months</strong></span></div><h4>Revision History</h4>{proposalDocuments.map((document) => <div className="customer-history-document" key={document.documentId}><div><b>Proposal R{document.revision ?? "—"}</b><span>{label(document.status)}</span></div><details><summary>Technical lineage</summary><code>{document.documentId}</code><code>{document.authorityHash}</code></details></div>)}</article> : null}
