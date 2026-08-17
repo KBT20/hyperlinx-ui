@@ -40,6 +40,7 @@ const TeralinxRouteWorkspace = lazy(() => import("../components/workspaces/Teral
 const TranslateWorkspace = lazy(() => import("../workspaces/TranslateWorkspace"));
 const TwinWorkspace = lazy(() => import("../workspaces/TwinWorkspace"));
 const CustomerPortalWorkspace = lazy(() => import("../workspaces/CustomerPortalWorkspace"));
+const CustomerWorkspace = lazy(() => import("../workspaces/CustomerWorkspace"));
 
 function DALWorkspaceOutlet() {
   const { workspace } = useDALState();
@@ -55,6 +56,7 @@ function DALWorkspaceOutlet() {
                   workspace === "proposedNetwork" ? <ProposedNetworkWorkspace /> :
                     workspace === "preliminaryProposal" ? <PreliminaryProposalWorkspace /> :
                       workspace === "serviceOrder" ? <ServiceOrderWorkspace /> :
+                        workspace === "customerView" ? <CustomerWorkspace /> :
                         workspace === "prism" ? <PrismWorkspace /> :
                           workspace === "siteDecision" ? <PrismSiteDecisionWorkspace /> :
                             workspace === "routeEngineering" ? <RouteEngineeringWorkspace /> :
@@ -83,6 +85,7 @@ function reasoningWorkspace(workspace: ReturnType<typeof useDALState>["workspace
   if (workspace === "proposedNetwork") return "translate";
   if (workspace === "preliminaryProposal") return "marketplace";
   if (workspace === "serviceOrder") return "marketplace";
+  if (workspace === "customerView") return "marketplace";
   if (workspace === "graphViewer" || workspace === "graphExtensions" || workspace === "inventoryRecovery") return "graph-viewer";
   if (workspace === "siteDecision") return "prism";
   if (workspace === "routeEngineering") return "prism";
@@ -110,6 +113,7 @@ function suggestedPrompts(workspace: ReturnType<typeof useDALState>["workspace"]
       "Which authority references are missing?",
       "Confirm no ScopeVersion is created",
     ];
+  if (workspace === "customerView") return ["Summarize the selected governed deal", "What does the customer currently see?", "Which customer action is pending?"];
   if (workspace === "inventory") return ["Summarize this inventory graph", "Identify graph anomalies", "What should I inspect next?"];
   if (workspace === "inventoryRecovery") return ["Which graphs are browser only?", "What should be pushed to the server?", "Summarize sync failures"];
   if (workspace === "graphViewer") return ["Explain the selected graph context", "Summarize route structure", "Suggest extension candidates"];

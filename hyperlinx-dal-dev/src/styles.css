@@ -5720,6 +5720,9 @@ textarea {
 .customer-account { align-items: end; display: grid; justify-self: end; text-align: right; }
 .customer-account small { color: #698194; }.customer-account button { background: transparent; border: 0; color: #126b98; padding: 3px 0; }
 .customer-portal-demo-banner { background: #fff4d6; border-bottom: 1px solid #e3c76d; color: #715314; font-size: 11px; font-weight: 800; letter-spacing: .12em; padding: 8px 30px; text-align: center; }
+.customer-internal-banner { background: #e9f5fb; border-bottom: 1px solid #a9d5e8; color: #124d67; font-size: 11px; font-weight: 800; letter-spacing: .12em; padding: 8px 30px; text-align: center; }
+.customer-account-selector { align-items: start; display: grid; gap: 5px; min-width: 280px; }.customer-account-selector span { color: #6a8192; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }.customer-account-selector select { background: #fff; border: 1px solid #b9cbd7; border-radius: 7px; color: #18394e; padding: 10px 12px; }
+.customer-account-entry { text-align: center; }.customer-account-entry .dal-status { margin-top: 22px; }.customer-deal-group { border: 0; display: grid; gap: 5px; padding: 12px 0 0; }.customer-deal-group > small { color: #6d8392; font-size: 10px; font-weight: 900; letter-spacing: .12em; padding: 0 15px; }.customer-deal-group button code { color: #78909e; font-size: 9px; overflow-wrap: anywhere; }.customer-new-opportunity { border: 1px dashed #6f9eb7 !important; color: #17678d !important; margin: 18px 12px; }
 .customer-portal-main { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: calc(100vh - 150px); }
 .customer-project-list { background: #ecf2f6; border-right: 1px solid #d4dfe7; padding: 24px 16px; }
 .customer-project-list > div { display: flex; justify-content: space-between; padding: 0 8px 16px; text-transform: uppercase; }

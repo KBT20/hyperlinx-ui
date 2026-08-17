@@ -4747,6 +4747,12 @@ export default function GoogleRfpWorkspace() {
         ? ` Enrollment links issued once for ${portalResult.invitations.map((item) => item.principalId).join(", ")}.`
         : "";
       setProposalRuntimeNotice(`${saved.proposalNumber} submitted to Customer View.${invitationSummary}`);
+      const customerViewUrl = new URL(window.location.href);
+      customerViewUrl.searchParams.set("workspace", "customerView");
+      customerViewUrl.searchParams.set("accountId", selectedAccount.accountId);
+      customerViewUrl.searchParams.set("opportunityId", saved.opportunityId);
+      window.history.replaceState({}, "", `${customerViewUrl.pathname}${customerViewUrl.search}${customerViewUrl.hash}`);
+      setWorkspace("customerView");
     } catch (error) {
       setProposalRuntimeNotice(`Customer review submit failed: ${error instanceof Error ? error.message : String(error)}`);
     } finally {

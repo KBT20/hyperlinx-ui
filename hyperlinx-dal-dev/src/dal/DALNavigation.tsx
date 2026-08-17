@@ -20,6 +20,7 @@ const navGroups: NavGroup[] = [
       { id: "design", label: "Commercial Design" },
       { id: "preliminaryProposal", label: "Proposal Readiness" },
       { id: "serviceOrder", label: "Service Order" },
+      { id: "customerView", label: "Customer View" },
     ],
   },
   {

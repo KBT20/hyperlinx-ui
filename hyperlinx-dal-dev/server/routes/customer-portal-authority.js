@@ -226,7 +226,7 @@ export async function createCustomerReviewAuthority(proposal = {}, input = {}, u
       principalId,
       expiresAt,
       enrollmentToken: token,
-      enrollmentPath: `/customer/enroll?token=${encodeURIComponent(token)}`,
+      enrollmentPath: `/customer/enroll?token=${encodeURIComponent(token)}&opportunityId=${encodeURIComponent(opportunityId)}`,
     });
   }
   return { reviewPackage, invitations };

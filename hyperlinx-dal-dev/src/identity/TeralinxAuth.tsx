@@ -35,7 +35,9 @@ const TeralinxAuthContext = createContext<TeralinxAuthContextValue | null>(null)
 const LEGACY_AUTH_STORAGE_KEY = "teralinx:auth-session:v1";
 
 function CustomerEnrollmentScreen() {
-  const token = new URLSearchParams(window.location.search).get("token") ?? "";
+  const enrollmentParameters = new URLSearchParams(window.location.search);
+  const token = enrollmentParameters.get("token") ?? "";
+  const opportunityId = enrollmentParameters.get("opportunityId") ?? "";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -48,7 +50,9 @@ function CustomerEnrollmentScreen() {
     try {
       const result = await enrollCustomerPortalInvitation({ token, username, password });
       setComplete(true); setStatus(`Account ready for ${result.username}. You may now sign in.`);
-      window.history.replaceState({}, "", "/");
+      const destination = new URL("/", window.location.origin);
+      if (opportunityId) destination.searchParams.set("opportunityId", opportunityId);
+      window.history.replaceState({}, "", `${destination.pathname}${destination.search}`);
     } catch (error) { setStatus(error instanceof Error ? error.message : String(error)); }
   }
   return <main className="teralinx-login-shell"><section className="teralinx-login-panel" aria-label="Customer account enrollment">
@@ -58,7 +62,7 @@ function CustomerEnrollmentScreen() {
       <label>New password<input type="password" minLength={14} value={password} onChange={(event) => setPassword(event.currentTarget.value)} autoComplete="new-password" /></label>
       <label>Confirm password<input type="password" minLength={14} value={confirm} onChange={(event) => setConfirm(event.currentTarget.value)} autoComplete="new-password" /></label>
       <button className="primary" disabled={!token || !username || password.length < 14 || !confirm}>Activate account</button>
-    </form> : <button className="primary" onClick={() => window.location.assign("/")}>Continue to sign in</button>}
+    </form> : <button className="primary" onClick={() => window.location.assign(window.location.href)}>Continue to sign in</button>}
     {status ? <div className={`dal-status ${complete ? "" : "error"}`}>{status}</div> : null}
   </section></main>;
 }

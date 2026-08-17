@@ -26,6 +26,7 @@ export type DALWorkspace =
   | "proposedNetwork"
   | "preliminaryProposal"
   | "serviceOrder"
+  | "customerView"
   | "prism"
   | "siteDecision"
   | "routeEngineering"
@@ -125,7 +126,10 @@ const DALStateContext = createContext<DALState | null>(null);
 
 export function DALStateProvider({ children }: { children: ReactNode }) {
   const { session, recordActivity } = useTeralinxAuth();
-  const [workspace, setWorkspaceState] = useState<DALWorkspace>("googleRfp");
+  const [workspace, setWorkspaceState] = useState<DALWorkspace>(() => {
+    const requested = new URLSearchParams(window.location.search).get("workspace");
+    return requested === "customerView" ? "customerView" : "googleRfp";
+  });
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
   const [selectedGraph, setSelectedGraph] = useState<InventoryGraph | null>(null);
   const [selectedScopeVersionId, setSelectedScopeVersionId] = useState("");
@@ -158,6 +162,9 @@ export function DALStateProvider({ children }: { children: ReactNode }) {
   const setWorkspace = useCallback((nextWorkspace: DALWorkspace) => {
     if (canAccessWorkspace(session?.user, nextWorkspace)) {
       setWorkspaceState(nextWorkspace);
+      const url = new URL(window.location.href);
+      url.searchParams.set("workspace", nextWorkspace);
+      window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
       return;
     }
     setWorkspaceState("googleRfp");

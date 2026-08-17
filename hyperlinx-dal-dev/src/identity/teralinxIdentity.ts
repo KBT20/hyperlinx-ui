@@ -10,14 +10,19 @@ export function canAccessWorkspace(user: TeralinxUser | null | undefined, worksp
   if (!user) return false;
   if (user.authorityClass === "DEMO" && user.organizationId === "org-demo" && user.permissions.includes("demo.tenant")) {
     const persona = getDemoPersona();
-    if (persona === "SALES") return ["translate", "teralinxRoute", "googleRfp", "design", "preliminaryProposal", "proposedNetwork", "serviceOrder"].includes(workspace);
-    if (persona === "ENGINEERING") return ["routeEngineering", "scopeVersion"].includes(workspace);
-    if (persona === "EXECUTIVE") return ["serviceOrder", "scopeVersion", "twin"].includes(workspace);
+    if (persona === "SALES") return ["translate", "teralinxRoute", "googleRfp", "design", "preliminaryProposal", "proposedNetwork", "serviceOrder", "customerView"].includes(workspace);
+    if (persona === "ENGINEERING") return ["routeEngineering", "scopeVersion", "customerView"].includes(workspace);
+    if (persona === "EXECUTIVE") return ["serviceOrder", "scopeVersion", "twin", "customerView"].includes(workspace);
     return false;
   }
   if (userHasPermission(user, "platform.admin")) return true;
   if (workspace === "googleRfp" || workspace === "design" || workspace === "serviceOrder") {
     return userHasPermission(user, "workspace.commercial") || userHasPermission(user, "workspace.proposal");
+  }
+  if (workspace === "customerView") {
+    return userHasPermission(user, "opportunity.read") || userHasPermission(user, "opportunity.manage") ||
+      userHasPermission(user, "proposal.read") || userHasPermission(user, "proposal.manage") ||
+      userHasPermission(user, "workspace.engineering.read") || userHasPermission(user, "workspace.executiveReview");
   }
   if (workspace === "translate") return userHasPermission(user, "workspace.translate");
   if (workspace === "preliminaryProposal" || workspace === "proposedNetwork") {

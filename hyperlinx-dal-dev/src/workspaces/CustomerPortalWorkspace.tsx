@@ -50,7 +50,7 @@ export default function CustomerPortalWorkspace() {
   const [context, setContext] = useState<Awaited<ReturnType<typeof loadCustomerPortalContext>> | null>(null);
   const [projects, setProjects] = useState<CustomerPortalProject[]>([]);
   const [accountTwin, setAccountTwin] = useState<AccountCustomerTwin | null>(null);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(() => new URLSearchParams(window.location.search).get("opportunityId") ?? "");
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState("Loading your projects...");
   const selected = projects.find((item) => item.projectId === selectedId) ?? projects[0] ?? null;
@@ -66,6 +66,13 @@ export default function CustomerPortalWorkspace() {
       setSelectedId((current) => nextProjects.some((item) => item.projectId === current) ? current : nextProjects[0]?.projectId ?? "");
       setStatus(nextProjects.length ? "" : "No customer projects have been assigned yet.");
     } catch (error) { setStatus(error instanceof Error ? error.message : String(error)); }
+  }
+
+  function selectProject(projectId: string) {
+    setSelectedId(projectId); setTab("Overview");
+    const url = new URL(window.location.href);
+    url.searchParams.set("opportunityId", projectId);
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
   }
 
   useEffect(() => { void refresh(); }, []);
@@ -94,8 +101,8 @@ export default function CustomerPortalWorkspace() {
       {section === "Projects" ? <main className="customer-portal-main">
         <aside className="customer-project-list">
           <div><span>Projects</span><b>{projects.length}</b></div>
-          {projects.map((project) => <button key={project.projectId} className={selected?.projectId === project.projectId ? "active" : ""} onClick={() => { setSelectedId(project.projectId); setTab("Overview"); }}><b>{project.title}</b><span>{project.status.replaceAll("_", " ")}</span></button>)}
-          {accountTwin?.tasks.length ? <div className="customer-account-tasks"><small>YOUR ACCOUNT ACTIONS</small>{accountTwin.tasks.map((task) => <button key={task.taskType} onClick={() => { if (task.dealIds[0]) setSelectedId(task.dealIds[0]); }}><b>{task.count}</b><span>{task.label}</span></button>)}</div> : null}
+          {projects.map((project) => <button key={project.projectId} className={selected?.projectId === project.projectId ? "active" : ""} onClick={() => selectProject(project.projectId)}><b>{project.title}</b><span>{project.status.replaceAll("_", " ")}</span></button>)}
+          {accountTwin?.tasks.length ? <div className="customer-account-tasks"><small>YOUR ACCOUNT ACTIONS</small>{accountTwin.tasks.map((task) => <button key={task.taskType} onClick={() => { if (task.dealIds[0]) selectProject(task.dealIds[0]); }}><b>{task.count}</b><span>{task.label}</span></button>)}</div> : null}
         </aside>
         <section className="customer-project">
           {selected ? <>
