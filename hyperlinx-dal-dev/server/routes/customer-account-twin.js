@@ -138,9 +138,6 @@ function permittedActions(state, { lens, persona, user, serviceOrder }) {
   if (["DRAFT", "PROPOSED"].includes(state) && hasPermission(user, "proposal.manage")) {
     actions.push({ action: "OPEN_PROPOSAL", label: "Open Proposal", authority: "proposal.manage", mutation: true });
   }
-  if (state === "ACCEPTED" && hasPermission(user, "commercial.lifecycle.manage")) {
-    actions.push({ action: "SEND_TO_ENGINEERING", label: "Send to Engineering", authority: "commercial.lifecycle.manage", mutation: true });
-  }
   if (state === "ENGINEERING" && hasPermission(user, "engineering.lifecycle.manage")) {
     actions.push({ action: "OPEN_ENGINEERING", label: "Open Engineering", authority: "engineering.lifecycle.manage", mutation: true });
   }

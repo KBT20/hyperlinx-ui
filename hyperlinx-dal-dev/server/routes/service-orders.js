@@ -150,7 +150,56 @@ function createServiceOrder(proposal, certified, commercialTerms, user, revision
     createdByPrincipalId: user.principalId ?? user.userId, createdByMembershipId: user.membershipId,
     createdBySessionId: user.sessionId, actorDisplayNameAtAction: user.displayName ?? user.name,
     organizationId: user.organizationId, createdAt: timestamp, updatedAt: timestamp,
+    authorityClass: user.authorityClass ?? proposal.authorityClass ?? certified.authorityClass ?? "PRODUCTION",
+    productionEligible: (user.authorityClass ?? proposal.authorityClass ?? certified.authorityClass) !== "DEMO",
   };
+}
+
+export async function ensureIssuedServiceOrderFromCertifiedIof({ proposal, certified }) {
+  if (!proposal || !acceptedProposal(proposal)) throw new Error("Automatic Service Order assembly requires the exact accepted Proposal.");
+  if (!certified || text(certified.status).toUpperCase() !== "CERTIFIED") throw new Error("Automatic Service Order assembly requires the exact Certified IOF Package.");
+  const organizationId = text(proposal.organizationId ?? certified.organizationId, "org-teralinx");
+  const authorityClass = organizationId === "org-demo"
+    ? "DEMO"
+    : text(proposal.authorityClass ?? certified.authorityClass, "PRODUCTION").toUpperCase();
+  const systemUser = {
+    userId: "system-service-order-assembler",
+    principalId: "system-service-order-assembler",
+    membershipId: "system-governed-lifecycle",
+    sessionId: "system-certification-transition",
+    name: "Teralinx Governed Lifecycle",
+    displayName: "Teralinx Governed Lifecycle",
+    role: "SYSTEM",
+    organizationId,
+    authorityClass,
+  };
+  const candidate = createServiceOrder(proposal, certified, {}, systemUser, 1);
+  const existing = await loadRecord(DIRS.serviceOrders, candidate.serviceOrderId).catch(() => null);
+  let order = existing ?? candidate;
+  if (existing && existing.documentHash !== candidate.documentHash) {
+    throw new Error("Existing Service Order revision has a different governed document hash.");
+  }
+  if (!existing) order = await persistRecord(DIRS.serviceOrders, candidate.serviceOrderId, candidate);
+  if (["ISSUED", "CUSTOMER_ACCEPTED", "COUNTERSIGNED"].includes(order.status)) return order;
+  if (order.status !== "DRAFT") throw new Error("Only the deterministic Draft Service Order may advance to issued state.");
+  verifyDocument(order);
+  const timestamp = nowIso();
+  order = {
+    ...order,
+    status: "ISSUED",
+    lifecycleState: "ISSUED",
+    authorizationStatus: "PENDING_CUSTOMER_SIGNATURE",
+    signatureStatus: "AWAITING_CUSTOMER_SIGNATURE",
+    issuedAt: timestamp,
+    issuedBy: systemUser.name,
+    issuedById: systemUser.userId,
+    issuedByPrincipalId: systemUser.principalId,
+    issuedByMembershipId: systemUser.membershipId,
+    issuedBySessionId: systemUser.sessionId,
+    systemTransition: "CERTIFIED_IOF_TO_ISSUED_SERVICE_ORDER",
+    updatedAt: timestamp,
+  };
+  return persistRecord(DIRS.serviceOrders, order.serviceOrderId, order);
 }
 
 function verifyDocument(order) {

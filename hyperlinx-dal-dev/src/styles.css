@@ -5717,6 +5717,11 @@ textarea {
 .demo-perspective-selector select, .demo-persona-bar > select { background: #071b2c; border: 1px solid #61b7e5; border-radius: 7px; color: #fff; font-size: 14px; min-width: 220px; padding: 9px 12px; }
 .demo-persona-bar { align-items: center; background: #5f4104; border-bottom: 1px solid #d89b1d; color: #fff4ce; display: flex; gap: 14px; min-height: 48px; padding: 8px 22px; }
 .demo-persona-bar span { margin-left: auto; opacity: .78; }
+.customer-artifact-history, .customer-state-control { align-items: center; background: #f7fafc; border: 1px solid #d4dfe7; border-radius: 10px; display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; padding: 14px; }
+.customer-artifact-history span { display: grid; gap: 3px; min-width: 145px; }
+.customer-artifact-history span strong { color: #0b4e78; }
+.customer-artifact-history i { color: #70889a; font-style: normal; }
+.customer-state-control { background: #eef8ff; border-color: #79bfe7; justify-content: space-between; }
 .customer-portal-shell { background: #f4f7fa; color: #162536; min-height: calc(100vh - 48px); }
 .customer-portal-header { align-items: center; background: #fff; border-bottom: 1px solid #d9e2ea; display: grid; gap: 26px; grid-template-columns: minmax(270px, 1fr) auto minmax(250px, 1fr); padding: 18px 30px; }
 .customer-portal-header h1 { color: #102b40; font-size: 20px; margin: 3px 0 0; }

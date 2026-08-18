@@ -37,6 +37,7 @@ import {
   resolveEngineeringApprovalContext,
 } from "./engineering-approvals.js";
 import { materializeCertifiedIofTwin } from "./twin-state.js";
+import { ensureIssuedServiceOrderFromCertifiedIof } from "./service-orders.js";
 import {
   commercialAuthorityDiagnosticsFrom,
   ensureCommercialRevisionForProposal,
@@ -3338,12 +3339,24 @@ async function handleCertifyPackage(req, res, user, packageId) {
         })
       : null
   )).catch(() => null);
+  const acceptedProposalForServiceOrder = await loadRecord(DIRS.proposalDrafts, draft.proposalId).catch(() => null);
+  let serviceOrder;
+  try {
+    serviceOrder = await ensureIssuedServiceOrderFromCertifiedIof({
+      proposal: acceptedProposalForServiceOrder,
+      certified: certifiedPackage,
+    });
+  } catch (error) {
+    errorResponse(res, 409, `IOF certification persisted, but automatic Service Order issuance failed closed: ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
   jsonResponse(res, 200, {
     draftPackage: frozenDraft,
     certifiedIofPackage: certifiedPackage,
     certificationLedgerEntry,
     certifiedIofTwin,
     engineeringPackage,
+    serviceOrder,
   });
 }
 
