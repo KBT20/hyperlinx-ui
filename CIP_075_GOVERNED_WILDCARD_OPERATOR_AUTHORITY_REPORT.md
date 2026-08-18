@@ -78,3 +78,29 @@ Accordingly, the following tests remain unexecuted rather than fabricated:
 - Authenticated Demo and non-allowlisted-principal activation rejections.
 
 Acceptance may resume from this deployed checkpoint when Kyle's and Ryan's existing credentials are securely staged. No code rebuild, schema reapplication, Demo reset, or Production data normalization is required.
+
+## Live acceptance resume — 2026-08-17
+
+The securely staged Kyle and Ryan credentials were detected at mode `600`. The deployed source and browser runtime remained exactly `0a7f9e80c7afdb890884acd8d8919a5483235ada`; no rebuild or migration was performed.
+
+Observed evidence before the stop:
+
+- Kyle authenticated as `teralinx-user-kyle` in `org-teralinx`.
+- Kyle began without active assumed authority.
+- A Kyle Commercial Opportunity mutation before activation was rejected by the exact CRO Commercial duty gate.
+- Kyle explicitly activated `CRO_COMMERCIAL` with reason `AUTHORIZED_TESTING`.
+- PostgreSQL persisted the exact activation as Kyle / `ADMINISTRATOR_COO` / `CRO_COMMERCIAL` / `commercial.lifecycle.manage` / `ASSUMED`.
+- The next negative test expected Engineering to reject Kyle on authority. That expectation was invalid because Kyle already owns direct Engineering authority constitutionally. Engineering correctly admitted Kyle under his direct authority and then failed closed at the unchanged Engineering Package reference predicate with `409` and its required reference list.
+- No controlled Opportunity was created before this stop.
+- The governed file checksum remained `31a382aece2ecea35f4e3639f985a48fbf37a89e24c28d46679584f0995cf6c0`.
+
+The acceptance harness stopped immediately rather than treating the strict Engineering predicate as a wildcard failure. Its mandatory cleanup shredded both staged credential files. Their absence was verified. The orphaned acceptance auth session was revoked and its wildcard session deactivated; active assumed-authority count is zero. The temporary acceptance harness was also shredded from DAL1.
+
+Still requiring a fresh credential-staged acceptance run:
+
+- Kyle governed Commercial write with complete ASSUMED actor attribution.
+- explicit Exit and post-Exit Commercial rejection.
+- logout/relogin non-survival.
+- Ryan DIRECT Commercial write and actor attribution.
+
+The corrected regression should assert that Kyle's Engineering request reaches the existing Engineering predicate under Kyle's direct `ADMINISTRATOR_COO` authority; it must not expect wildcard activation to remove Kyle's constitutional Engineering duty.
