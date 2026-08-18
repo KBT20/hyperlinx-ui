@@ -35,6 +35,22 @@ export type TeralinxPermission =
   | "close.lifecycle.manage"
   | "twin.read";
 
+export type WildcardAuthority = {
+  operator: boolean;
+  allowedAuthorities: Array<{ wildcardGrantId: string; assumedAuthority: "CRO_COMMERCIAL" | string; effectivePermission: TeralinxPermission | string }>;
+  active: null | {
+    wildcardSessionId: string;
+    constitutionalRole: string;
+    assumedAuthority: string;
+    effectivePermission: TeralinxPermission | string;
+    authorityMode: "ASSUMED";
+    reasonCode: string;
+    reasonDetail: string;
+    activatedAt: string;
+    expiresAt: string;
+  };
+};
+
 export type CustomerPortalProject = {
   projectId: string;
   customerReviewPackageId: string;
@@ -130,6 +146,8 @@ export type TeralinxUser = {
   environment?: "PRODUCTION" | "DEMO";
   productionEligible?: boolean;
   permissions: TeralinxPermission[];
+  effectivePermissions?: Array<TeralinxPermission | string>;
+  wildcard?: WildcardAuthority;
   preferences: Record<string, unknown>;
   dashboard: {
     sections: string[];
@@ -2082,6 +2100,21 @@ export async function loginTeralinxUser(username: string, password: string) {
 
 export async function loadAuthenticatedTeralinxUser() {
   return requestJson<TeralinxAuthSession & { authenticated: true }>("/api/auth/me");
+}
+
+export async function activateWildcardAuthority(assumedAuthority: string, reasonCode: string, reasonDetail = "") {
+  return requestJson<{ wildcard: WildcardAuthority }>("/api/auth/wildcard/activate", {
+    method: "POST",
+    headers: authHeaders(null, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ assumedAuthority, reasonCode, reasonDetail }),
+  });
+}
+
+export async function deactivateWildcardAuthority() {
+  return requestJson<{ wildcard: WildcardAuthority }>("/api/auth/wildcard/deactivate", {
+    method: "POST",
+    headers: authHeaders(),
+  });
 }
 
 export async function logoutTeralinxUser() {

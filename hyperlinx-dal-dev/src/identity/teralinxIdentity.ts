@@ -3,6 +3,13 @@ import type { TeralinxPermission, TeralinxUser } from "../api/teralinxRuntime";
 import { getDemoPersona } from "../api/authHeaders";
 
 export function userHasPermission(user: TeralinxUser | null | undefined, permission: TeralinxPermission) {
+  const exactLifecyclePermissions = new Set<TeralinxPermission>([
+    "commercial.lifecycle.manage", "engineering.lifecycle.manage",
+    "service_order.sign_customer", "service_order.countersign",
+  ]);
+  if (exactLifecyclePermissions.has(permission)) {
+    return Boolean(user?.effectivePermissions?.includes(permission) || user?.permissions.includes(permission));
+  }
   return Boolean(user?.permissions.includes(permission) || user?.permissions.includes("platform.admin"));
 }
 

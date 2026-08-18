@@ -16,6 +16,7 @@ import {
 } from "./_shared.js";
 import { createHash } from "node:crypto";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
+import { governedActorAuthority } from "./duty-authority.js";
 
 const ROLE_KEYS = ["contributors", "reviewers", "approvers", "executives"];
 
@@ -284,6 +285,7 @@ export function normalizeCommercialOpportunity(record = {}, user, existing = nul
     updatedByMembershipId: user.membershipId,
     updatedBySessionId: user.sessionId,
     actorDisplayNameAtAction: user.displayName ?? user.name,
+    actorAuthority: governedActorAuthority(user),
     assignedTo,
     assignment: assignmentFromAuthority(authority),
     visibility,

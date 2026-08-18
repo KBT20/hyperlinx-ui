@@ -16,6 +16,7 @@ import {
   unwrapBody,
 } from "./_shared.js";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
+import { governedActorAuthority } from "./duty-authority.js";
 import { loadCommercialDraftIofPackageForProposal } from "./commercial-iof-packages.js";
 import {
   commercialAuthorityDiagnosticsFrom,
@@ -1020,6 +1021,7 @@ export function normalizeProposalRecord(record = {}, user, existing = null, opti
     updatedByMembershipId: user.membershipId,
     updatedBySessionId: user.sessionId,
     actorDisplayNameAtAction: user.displayName ?? user.name,
+    actorAuthority: governedActorAuthority(user),
     assignedTo,
     assignedCustomerUsers,
     proposalRecipientContactIds: unique([...asArray(existing?.proposalRecipientContactIds), ...asArray(record.proposalRecipientContactIds)]),

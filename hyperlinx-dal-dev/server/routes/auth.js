@@ -32,6 +32,12 @@ const DEMO_PERSONAS = new Set([
   "CUSTOMER_AUTHORIZED_SIGNER",
   "EXECUTIVE",
 ]);
+const WILDCARD_REASONS = new Set([
+  "PLATFORM_DEVELOPMENT",
+  "COMMERCIAL_CONTINUITY",
+  "AUTHORIZED_TESTING",
+  "EMERGENCY_OPERATIONS",
+]);
 
 function digest(value) {
   return createHash("sha256").update(String(value ?? "")).digest("hex");
@@ -234,6 +240,60 @@ export function userHasPermission(user, permission) {
   return Boolean(user?.permissions?.includes(permission) || canAdministerRuntime(user));
 }
 
+async function wildcardProjection(user, session = null) {
+  if (!user?.principalId || !user?.membershipId || !user?.organizationId) return { operator: false, allowedAuthorities: [], active: null };
+  const grants = await authQuery({
+    text: `SELECT wildcard_grant_id, assumed_authority, effective_permission
+      FROM hyperlinx.wildcard_operator_grants
+      WHERE principal_id = $1 AND membership_id = $2 AND organization_id = $3 AND status = 'ACTIVE'
+      ORDER BY assumed_authority`,
+    values: [user.principalId, user.membershipId, user.organizationId],
+  });
+  let active = null;
+  if (session?.session_id) {
+    const activeResult = await authQuery({
+      text: `SELECT wildcard_session_id, constitutional_role, assumed_authority, effective_permission,
+          authority_mode, reason_code, reason_detail, activated_at, expires_at
+        FROM hyperlinx.wildcard_authority_sessions
+        WHERE auth_session_id = $1 AND principal_id = $2 AND membership_id = $3
+          AND organization_id = $4 AND deactivated_at IS NULL AND expires_at > clock_timestamp()
+        ORDER BY activated_at DESC LIMIT 1`,
+      values: [session.session_id, user.principalId, user.membershipId, user.organizationId],
+    });
+    const row = activeResult.rows[0];
+    if (row) active = {
+      wildcardSessionId: row.wildcard_session_id,
+      constitutionalRole: row.constitutional_role,
+      assumedAuthority: row.assumed_authority,
+      effectivePermission: row.effective_permission,
+      authorityMode: row.authority_mode,
+      reasonCode: row.reason_code,
+      reasonDetail: row.reason_detail,
+      activatedAt: new Date(row.activated_at).toISOString(),
+      expiresAt: new Date(row.expires_at).toISOString(),
+    };
+  }
+  return {
+    operator: grants.rows.length > 0,
+    allowedAuthorities: grants.rows.map((row) => ({
+      wildcardGrantId: row.wildcard_grant_id,
+      assumedAuthority: row.assumed_authority,
+      effectivePermission: row.effective_permission,
+    })),
+    active,
+  };
+}
+
+async function attachWildcardAuthority(user, session = null) {
+  const wildcard = await wildcardProjection(user, session);
+  user.wildcard = wildcard;
+  user.effectivePermissions = unique([
+    ...user.permissions,
+    ...(wildcard.active?.effectivePermission ? [wildcard.active.effectivePermission] : []),
+  ]);
+  return user;
+}
+
 async function auditAuth(eventType, details = {}, query = authQuery) {
   await query({
     text: `INSERT INTO hyperlinx.auth_audit_events (
@@ -347,12 +407,22 @@ export async function authenticateRuntimeRequest(req) {
     const resolved = await resolveSession(credential.token, req);
     if (!resolved) return null;
     resolved.user.sessionId = resolved.session.session_id;
+    await attachWildcardAuthority(resolved.user, resolved.session);
     resolved.user.actorAuthority = {
       principalId: resolved.user.principalId,
       membershipId: resolved.user.membershipId,
       organizationId: resolved.user.organizationId,
       sessionId: resolved.session.session_id,
       actorDisplayNameAtAction: resolved.user.displayName,
+      ...(resolved.user.wildcard?.active ? {
+        wildcard: true,
+        constitutionalRole: resolved.user.wildcard.active.constitutionalRole,
+        assumedAuthority: resolved.user.wildcard.active.assumedAuthority,
+        authorityMode: "ASSUMED",
+        reasonCode: resolved.user.wildcard.active.reasonCode,
+        activatedAt: resolved.user.wildcard.active.activatedAt,
+        effectivePermission: resolved.user.wildcard.active.effectivePermission,
+      } : { wildcard: false }),
     };
     req.authUser = resolved.user;
     if (resolved.user.principalId === "demo-principal" && resolved.user.organizationId === "org-demo" && resolved.user.authorityClass === "DEMO") {
@@ -463,6 +533,7 @@ async function handleLogin(req, res) {
   const session = await createSession(identity, req);
   setSessionCookie(res, session.token, session.absoluteExpiresAt);
   const user = { ...identity.user, passwordChangeRequired: Boolean(identity.credential.password_change_required) };
+  await attachWildcardAuthority(user, null);
   durableDirectory.set(user.userId, user);
   jsonResponse(res, 200, {
     token: "",
@@ -477,6 +548,84 @@ async function handleLogin(req, res) {
     authenticatedAt: nowIso(),
     provider: AUTH_PROVIDER,
   });
+}
+
+async function handleWildcardAuthority(req, res, normalizedPath) {
+  const user = req.authUser;
+  const authSession = req.authSession;
+  if (normalizedPath === "/api/auth/wildcard" && req.method === "GET") {
+    const wildcard = await wildcardProjection(user, authSession);
+    jsonResponse(res, 200, { wildcard });
+    return true;
+  }
+  if (normalizedPath === "/api/auth/wildcard/activate" && req.method === "POST") {
+    const body = await readRequestJson(req);
+    const assumedAuthority = String(body.assumedAuthority ?? "").trim().toUpperCase();
+    const reasonCode = String(body.reasonCode ?? "").trim().toUpperCase();
+    const reasonDetail = String(body.reasonDetail ?? "").trim().slice(0, 500);
+    if (!WILDCARD_REASONS.has(reasonCode)) {
+      errorResponse(res, 400, "A governed wildcard activation reason is required.");
+      return true;
+    }
+    const grantResult = await authQuery({
+      text: `SELECT wildcard_grant_id, assumed_authority, effective_permission
+        FROM hyperlinx.wildcard_operator_grants
+        WHERE principal_id = $1 AND membership_id = $2 AND organization_id = $3
+          AND assumed_authority = $4 AND status = 'ACTIVE'`,
+      values: [user.principalId, user.membershipId, user.organizationId, assumedAuthority],
+    });
+    const grant = grantResult.rows[0];
+    if (!grant || user.organizationId !== TERALINX_ORGANIZATION_ID || user.authorityClass === "DEMO") {
+      await auditAuth("WILDCARD_ACTIVATE", {
+        principalId: user.principalId, membershipId: user.membershipId, organizationId: user.organizationId,
+        sessionId: authSession.session_id, outcome: "FAILURE", reason: `NOT_ALLOWLISTED:${assumedAuthority}`,
+        ...requestFingerprint(req),
+      });
+      errorResponse(res, 403, "This principal is not allowlisted for the requested assumed authority.");
+      return true;
+    }
+    const expiresAt = new Date(Math.min(new Date(authSession.idle_expires_at).getTime(), new Date(authSession.absolute_expires_at).getTime()));
+    await withAuthTransaction(async (client) => {
+      await client.query(`UPDATE hyperlinx.wildcard_authority_sessions
+        SET deactivated_at = clock_timestamp(), deactivation_reason = 'REPLACED'
+        WHERE auth_session_id = $1 AND deactivated_at IS NULL`, [authSession.session_id]);
+      await client.query({
+        text: `INSERT INTO hyperlinx.wildcard_authority_sessions (
+          auth_session_id, wildcard_grant_id, principal_id, membership_id, organization_id,
+          constitutional_role, assumed_authority, effective_permission, reason_code, reason_detail, expires_at
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        values: [authSession.session_id, grant.wildcard_grant_id, user.principalId, user.membershipId,
+          user.organizationId, user.role, grant.assumed_authority, grant.effective_permission,
+          reasonCode, reasonDetail, expiresAt],
+      });
+      await auditAuth("WILDCARD_ACTIVATE", {
+        principalId: user.principalId, membershipId: user.membershipId, organizationId: user.organizationId,
+        sessionId: authSession.session_id, outcome: "SUCCESS", reason: `${grant.assumed_authority}:${reasonCode}`,
+        ...requestFingerprint(req),
+      }, (config) => client.query(config));
+    });
+    const wildcard = await wildcardProjection(user, authSession);
+    jsonResponse(res, 200, { wildcard });
+    return true;
+  }
+  if (normalizedPath === "/api/auth/wildcard/deactivate" && req.method === "POST") {
+    const result = await authQuery({
+      text: `UPDATE hyperlinx.wildcard_authority_sessions
+        SET deactivated_at = clock_timestamp(), deactivation_reason = 'USER_EXIT'
+        WHERE auth_session_id = $1 AND principal_id = $2 AND deactivated_at IS NULL
+        RETURNING assumed_authority, reason_code`,
+      values: [authSession.session_id, user.principalId],
+    });
+    await auditAuth("WILDCARD_DEACTIVATE", {
+      principalId: user.principalId, membershipId: user.membershipId, organizationId: user.organizationId,
+      sessionId: authSession.session_id, outcome: "SUCCESS",
+      reason: result.rows[0] ? `${result.rows[0].assumed_authority}:${result.rows[0].reason_code}` : "NO_ACTIVE_AUTHORITY",
+      ...requestFingerprint(req),
+    });
+    jsonResponse(res, 200, { wildcard: await wildcardProjection(user, authSession) });
+    return true;
+  }
+  return false;
 }
 
 async function handlePasswordChange(req, res) {
@@ -556,6 +705,12 @@ export async function handleAuth(req, res, pathname) {
     }
     if (normalizedPath === "/api/auth/logout" && req.method === "POST") {
       await authQuery({
+        text: `UPDATE hyperlinx.wildcard_authority_sessions
+          SET deactivated_at = clock_timestamp(), deactivation_reason = 'LOGOUT'
+          WHERE auth_session_id = $1 AND deactivated_at IS NULL`,
+        values: [req.authSession.session_id],
+      });
+      await authQuery({
         text: "UPDATE hyperlinx.auth_sessions SET revoked_at = clock_timestamp(), revoked_reason = 'LOGOUT' WHERE session_id = $1 AND revoked_at IS NULL",
         values: [req.authSession.session_id],
       });
@@ -587,6 +742,9 @@ export async function handleAuth(req, res, pathname) {
         provider: AUTH_PROVIDER,
       });
       return true;
+    }
+    if (normalizedPath.startsWith("/api/auth/wildcard")) {
+      if (await handleWildcardAuthority(req, res, normalizedPath)) return true;
     }
     if (normalizedPath === "/api/auth/workspace" && req.method === "GET") {
       jsonResponse(res, 200, { workspace: workspaceFor(req.authUser), hierarchy: { tenant: req.authUser.organizationId, principal: req.authUser.principalId, membership: req.authUser.membershipId, workspace: req.authUser.workspaceId } });

@@ -15,6 +15,7 @@ import {
   updateTransactionManifest,
 } from "./_shared.js";
 import { requireAnyPermission } from "./authority.js";
+import { governedActorAuthority } from "./duty-authority.js";
 
 export const COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT = "/api/commercial/routes";
 
@@ -88,7 +89,7 @@ function routeEndpointUsed(req) {
   return String(req.headers["x-teralinx-route-endpoint"] ?? COMMERCIAL_ROUTE_REPOSITORY_ENDPOINT);
 }
 
-function normalizeCommercialRoute(record = {}) {
+function normalizeCommercialRoute(record = {}, user = null) {
   const timestamp = nowIso();
   const routeRepositoryId = String(record.routeRepositoryId ?? record.routeSnapshotId ?? `commercial-route-${Date.now()}`);
   const commercialGeometry = Array.isArray(record.commercialGeometry) ? record.commercialGeometry : [];
@@ -133,6 +134,7 @@ function normalizeCommercialRoute(record = {}) {
     noInventoryMutation: true,
     createdAt: record.createdAt ?? timestamp,
     updatedAt: timestamp,
+    ...(user ? { actorAuthority: governedActorAuthority(user) } : {}),
   };
 }
 
@@ -223,7 +225,7 @@ export async function handleCommercialRoutes(req, res, pathname) {
         ...record,
         routeRepositoryId,
         transactionId,
-      });
+      }, req.authUser);
       await updateTransactionManifest({ transactionId, operationType: "ROUTE_OPPORTUNITY_SAVE", state: "STARTED", customerId: normalized.customerId, opportunityId: normalized.opportunityId, plannedWrites: [`commercial-routes/${normalized.routeRepositoryId}.json`, `commercial-opportunities/${normalized.opportunityId}.json`], artifactIds: [normalized.routeRepositoryId], hashes: [normalized.geometryHash].filter(Boolean) });
       try {
         saved.push(await persistRecord(DIRS.commercialRoutes, normalized.routeRepositoryId, normalized));
@@ -258,7 +260,7 @@ export async function handleCommercialRoutes(req, res, pathname) {
       ...input,
       routeRepositoryId: input?.routeRepositoryId ?? match.id,
       updatedAt: nowIso(),
-    });
+    }, req.authUser);
     const saved = await persistRecord(DIRS.commercialRoutes, normalized.routeRepositoryId, normalized);
     jsonResponse(res, 200, {
       commercialRoute: saved,

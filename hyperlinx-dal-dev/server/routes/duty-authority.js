@@ -19,7 +19,12 @@ export const DEMO_PERSONA_PERMISSIONS = Object.freeze({
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 export function hasExactPermission(user, permission) {
-  if (!Array.isArray(user?.permissions) || !user.permissions.includes(permission)) return false;
+  const direct = Array.isArray(user?.permissions) && user.permissions.includes(permission);
+  const assumed = user?.wildcard?.active?.effectivePermission === permission
+    && user?.wildcard?.active?.authorityMode === "ASSUMED"
+    && user?.organizationId === "org-teralinx"
+    && user?.authorityClass !== "DEMO";
+  if (!direct && !assumed) return false;
   if (user?.organizationId === "org-demo" && user?.principalId === "demo-principal" && user?.demoPersona) {
     if (["demo.tenant", "demo.reset"].includes(permission)) return true;
     const personaPermissions = DEMO_PERSONA_PERMISSIONS[user.demoPersona];
@@ -29,6 +34,27 @@ export function hasExactPermission(user, permission) {
     }
   }
   return true;
+}
+
+export function governedActorAuthority(user) {
+  const active = user?.wildcard?.active;
+  return {
+    principalId: user?.principalId ?? user?.userId ?? "",
+    membershipId: user?.membershipId ?? "",
+    organizationId: user?.organizationId ?? "",
+    authSessionId: user?.sessionId ?? "",
+    actorDisplayNameAtAction: user?.displayName ?? user?.name ?? "",
+    constitutionalRole: user?.role ?? "MEMBER",
+    wildcard: Boolean(active),
+    ...(active ? {
+      assumedAuthority: active.assumedAuthority,
+      authorityMode: "ASSUMED",
+      activationReason: active.reasonCode,
+      wildcardActivatedAt: active.activatedAt,
+      effectivePermission: active.effectivePermission,
+      wildcardSessionId: active.wildcardSessionId,
+    } : { authorityMode: "DIRECT" }),
+  };
 }
 
 function deny(res, message) {

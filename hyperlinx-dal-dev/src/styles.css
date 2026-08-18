@@ -906,6 +906,12 @@ textarea {
   font-size: 12px;
 }
 
+.wildcard-authority-control, .wildcard-authority-banner { align-items: center; background: #15324a; border-bottom: 2px solid #55c8ff; color: #eef9ff; display: flex; gap: 14px; min-height: 48px; padding: 9px 20px; }
+.wildcard-authority-banner { background: #573b05; border-bottom-color: #f5b942; }
+.wildcard-authority-banner > div { align-items: center; display: flex; flex-wrap: wrap; gap: 14px; }
+.wildcard-authority-control select, .wildcard-authority-control button, .wildcard-authority-banner button { background: #071b2c; border: 1px solid #61b7e5; border-radius: 6px; color: #fff; padding: 8px 11px; }
+.wildcard-authority-banner button { border-color: #f5b942; margin-left: auto; }
+
 .dal-layout {
   flex: 1;
   min-height: 0;

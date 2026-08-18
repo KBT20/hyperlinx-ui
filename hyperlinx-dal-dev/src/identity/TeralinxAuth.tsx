@@ -1,12 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   appendTeralinxActivity,
+  activateWildcardAuthority,
   changeTeralinxPassword,
   listTeralinxActivity,
   loadAuthenticatedTeralinxUser,
   loadTeralinxRuntimeInfo,
   loginTeralinxUser,
   logoutTeralinxUser,
+  deactivateWildcardAuthority,
   enrollCustomerPortalInvitation,
   type TeralinxActivityEvent,
   type TeralinxActivityInput,
@@ -29,6 +31,8 @@ type TeralinxAuthContextValue = {
   logout: () => Promise<void>;
   refreshActivity: () => Promise<void>;
   recordActivity: (input: TeralinxActivityInput) => Promise<void>;
+  assumeAuthority: (assumedAuthority: string, reasonCode: string, reasonDetail?: string) => Promise<void>;
+  exitAssumedAuthority: () => Promise<void>;
 };
 
 const TeralinxAuthContext = createContext<TeralinxAuthContextValue | null>(null);
@@ -265,6 +269,21 @@ export function TeralinxAuthProvider({ children }: { children: ReactNode }) {
 
   const can = useCallback((permission: TeralinxPermission) => userHasPermission(session?.user, permission), [session?.user]);
 
+  const refreshAuthenticatedSession = useCallback(async () => {
+    const current = await loadAuthenticatedTeralinxUser();
+    setSession(current);
+  }, []);
+
+  const assumeAuthority = useCallback(async (assumedAuthority: string, reasonCode: string, reasonDetail = "") => {
+    await activateWildcardAuthority(assumedAuthority, reasonCode, reasonDetail);
+    await refreshAuthenticatedSession();
+  }, [refreshAuthenticatedSession]);
+
+  const exitAssumedAuthority = useCallback(async () => {
+    await deactivateWildcardAuthority();
+    await refreshAuthenticatedSession();
+  }, [refreshAuthenticatedSession]);
+
   const recordActivity = useCallback(async (input: TeralinxActivityInput) => {
     if (!session) return;
     const saved = await appendTeralinxActivity(session, input);
@@ -273,8 +292,8 @@ export function TeralinxAuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<TeralinxAuthContextValue>(() => ({
     session, runtimeInfo, activity, authStatus, runtimeStatus, loginError,
-    can, login, logout, refreshActivity, recordActivity,
-  }), [activity, authStatus, can, login, loginError, logout, recordActivity, refreshActivity, runtimeInfo, runtimeStatus, session]);
+    can, login, logout, refreshActivity, recordActivity, assumeAuthority, exitAssumedAuthority,
+  }), [activity, authStatus, can, login, loginError, logout, recordActivity, refreshActivity, runtimeInfo, runtimeStatus, session, assumeAuthority, exitAssumedAuthority]);
 
   if (authStatus === "checking") {
     return <main className="teralinx-login-shell"><section className="teralinx-login-panel"><div className="dal-status">Verifying secure session...</div></section></main>;

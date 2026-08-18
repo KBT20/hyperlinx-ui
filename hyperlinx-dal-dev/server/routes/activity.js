@@ -1,4 +1,5 @@
 import { DIRS, handleJsonCollection, nowIso } from "./_shared.js";
+import { governedActorAuthority } from "./duty-authority.js";
 
 function normalizeActivity(event = {}, context = {}) {
   const timestamp = event.timestamp ?? event.createdAt ?? nowIso();
@@ -18,6 +19,7 @@ function normalizeActivity(event = {}, context = {}) {
       organizationId: user.organizationId,
       authSessionId: user.sessionId,
       actorDisplayNameAtAction: user.displayName ?? user.name,
+      actorAuthority: governedActorAuthority(user),
     } : {}),
   };
 }

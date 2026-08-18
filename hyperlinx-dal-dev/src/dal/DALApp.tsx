@@ -290,7 +290,9 @@ function RuntimeDiagnosticsDisclosure() {
 function DALShell() {
   const [reasoningHealth, setReasoningHealth] = useState<ReasoningFabricHealth>(() => getReasoningServiceSnapshot());
   const [navigationOpen, setNavigationOpen] = useState(false);
-  const { session, runtimeInfo, logout } = useTeralinxAuth();
+  const { session, runtimeInfo, logout, assumeAuthority, exitAssumedAuthority } = useTeralinxAuth();
+  const [wildcardReason, setWildcardReason] = useState("PLATFORM_DEVELOPMENT");
+  const [wildcardStatus, setWildcardStatus] = useState("");
   const [demoResetStatus, setDemoResetStatus] = useState("");
   const [demoScenarios, setDemoScenarios] = useState<Array<{ scenarioId: string; name: string }>>([]);
   const [demoScenarioId, setDemoScenarioId] = useState("DEMO-SCENARIO-DCI");
@@ -312,6 +314,21 @@ function DALShell() {
   const isDemo = session?.user.authorityClass === "DEMO" && session.user.organizationId === "org-demo";
   const externalCustomer = session?.user.authorityClass === "DEMO" && session.user.organizationId.startsWith("org-demo-customer-");
   const customerView = externalCustomer || (isDemo && demoPersona.startsWith("CUSTOMER_"));
+  const wildcard = session?.user.wildcard;
+  async function activateCommercialAuthority() {
+    setWildcardStatus("Activating governed authority...");
+    try {
+      await assumeAuthority("CRO_COMMERCIAL", wildcardReason);
+      setWildcardStatus("");
+    } catch (error) { setWildcardStatus(error instanceof Error ? error.message : String(error)); }
+  }
+  async function exitCommercialAuthority() {
+    setWildcardStatus("Exiting assumed authority...");
+    try {
+      await exitAssumedAuthority();
+      setWildcardStatus("");
+    } catch (error) { setWildcardStatus(error instanceof Error ? error.message : String(error)); }
+  }
   useEffect(() => { if (isDemo) void listDemoScenarios().then(setDemoScenarios).catch(() => setDemoScenarios([])); }, [isDemo]);
   function choosePersona(value: DemoPersona) {
     setDemoPersona(value); updateDemoPersona(value);
@@ -380,6 +397,17 @@ function DALShell() {
           <button className="dal-header-signout" type="button" onClick={() => void logout()}>Sign Out</button>
         </div>
       </header>
+      {wildcard?.active ? <section className="wildcard-authority-banner" aria-label="Active assumed authority">
+        <div><b>ASSUMED AUTHORITY ACTIVE</b><span>Actual actor: {session?.user.name} ({session?.user.role})</span><span>Effective authority: {wildcard.active.assumedAuthority}</span><span>Reason: {wildcard.active.reasonCode}</span></div>
+        <button type="button" onClick={() => void exitCommercialAuthority()}>Exit Assumed Authority</button>
+      </section> : wildcard?.operator ? <section className="wildcard-authority-control" aria-label="Governed wildcard operator authority">
+        <b>Wildcard Operator</b><span>Activate an existing duty for this authenticated session.</span>
+        <select aria-label="Wildcard activation reason" value={wildcardReason} onChange={(event) => setWildcardReason(event.currentTarget.value)}>
+          <option value="PLATFORM_DEVELOPMENT">Platform Development</option><option value="COMMERCIAL_CONTINUITY">Commercial Continuity</option><option value="AUTHORIZED_TESTING">Authorized Testing</option><option value="EMERGENCY_OPERATIONS">Emergency Operations</option>
+        </select>
+        <button type="button" onClick={() => void activateCommercialAuthority()}>Assume CRO Commercial</button>
+        {wildcardStatus ? <span>{wildcardStatus}</span> : null}
+      </section> : null}
       {isDemo ? <nav className="demo-primary-perspective" aria-label="Demo perspective navigation">
         {demoPerspectiveSelector}
         <span>Switch workflow perspective without changing the authenticated demo-principal actor.</span>
