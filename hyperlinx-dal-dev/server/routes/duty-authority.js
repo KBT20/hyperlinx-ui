@@ -5,6 +5,8 @@ export const DUTY_PERMISSIONS = Object.freeze({
   engineering: "engineering.lifecycle.manage",
   customerSignature: "service_order.sign_customer",
   teralinxCountersignature: "service_order.countersign",
+  executionAuthorization: "execution.authorize",
+  scopeVersionCreation: "scopeversion.create",
 });
 
 export const DEMO_PERSONA_PERMISSIONS = Object.freeze({
@@ -13,7 +15,7 @@ export const DEMO_PERSONA_PERMISSIONS = Object.freeze({
   CUSTOMER_VIEWER: new Set([]),
   CUSTOMER_COMMERCIAL_REVIEWER: new Set([]),
   CUSTOMER_AUTHORIZED_SIGNER: new Set(["service_order.sign_customer"]),
-  EXECUTIVE: new Set(["service_order.countersign"]),
+  EXECUTIVE: new Set(["service_order.countersign", "execution.authorize", "scopeversion.create"]),
 });
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -29,7 +31,7 @@ export function hasExactPermission(user, permission) {
     if (["demo.tenant", "demo.reset"].includes(permission)) return true;
     const personaPermissions = DEMO_PERSONA_PERMISSIONS[user.demoPersona];
     if (!personaPermissions) return false;
-    if (["commercial.lifecycle.manage", "engineering.lifecycle.manage", "service_order.sign_customer", "service_order.countersign"].includes(permission)) {
+    if (["commercial.lifecycle.manage", "engineering.lifecycle.manage", "service_order.sign_customer", "service_order.countersign", "execution.authorize", "scopeversion.create"].includes(permission)) {
       return personaPermissions.has(permission);
     }
   }
@@ -67,8 +69,10 @@ function requireDuty(req, res, permission, message) {
 }
 
 function serviceOrderAction(pathname) {
-  if (/\/record-signature\/?$/.test(pathname)) return "CUSTOMER_SIGNATURE";
+  if (/\/customer-sign\/?$/.test(pathname)) return "CUSTOMER_SIGNATURE";
   if (/\/countersign\/?$/.test(pathname)) return "TERALINX_COUNTERSIGNATURE";
+  if (/\/authorize-execution\/?$/.test(pathname)) return "EXECUTION_AUTHORIZATION";
+  if (/\/create-genesis-scopeversion\/?$/.test(pathname)) return "GENESIS_SCOPEVERSION";
   return "COMMERCIAL";
 }
 
@@ -80,9 +84,18 @@ export function enforceLifecycleSeparationOfDuties(req, res, pathname) {
   }
   const externalCustomer = String(req.authUser?.organizationId ?? "").startsWith("org-demo-customer-");
   const demoCustomerLens = demoTenant && String(req.authUser?.demoPersona ?? "").startsWith("CUSTOMER_");
-  if (externalCustomer || demoCustomerLens) {
+  const apiRequest = pathname === "/api" || pathname.startsWith("/api/");
+  if ((externalCustomer || demoCustomerLens) && apiRequest) {
     const allowed = pathname === "/api/runtime" || pathname.startsWith("/api/auth/") ||
       pathname === "/api/customer-portal" || pathname.startsWith("/api/customer-portal/") ||
+      pathname === "/api/customer-planning" || pathname.startsWith("/api/customer-planning/") ||
+      pathname === "/api/customer-requests" || pathname.startsWith("/api/customer-requests/") ||
+      pathname === "/api/customer-sites" || pathname.startsWith("/api/customer-sites/") ||
+      pathname === "/api/content-layers" || pathname.startsWith("/api/content-layers/") ||
+      pathname === "/api/site-network-analysis" ||
+      (/^\/api\/service-orders\/[^/]+\/customer-signature-eligibility\/?$/.test(pathname) && req.method === "GET") ||
+      (/^\/api\/service-orders\/[^/]+\/countersignature-eligibility\/?$/.test(pathname) && req.method === "GET") ||
+      (/^\/api\/service-orders\/[^/]+\/customer-sign\/?$/.test(pathname) && req.method === "POST") ||
       pathname === "/api/exports" || pathname.startsWith("/api/exports/");
     if (!allowed) return deny(res, "This resource is outside the bounded Customer lens.");
   }
@@ -91,9 +104,7 @@ export function enforceLifecycleSeparationOfDuties(req, res, pathname) {
   if (/^\/api\/proposals\/[^/]+\/(approve|reject|request-changes)\/?$/.test(pathname)) {
     return deny(res, "Customer Proposal decisions are accepted only through the authenticated Customer Portal lens.");
   }
-  if (/^\/api\/service-orders\/[^/]+\/record-signature\/?$/.test(pathname)) {
-    return deny(res, "Customer Service Order signatures are accepted only through the authenticated Customer Portal lens.");
-  }
+  if (/^\/api\/service-orders\/[^/]+\/record-signature\/?$/.test(pathname)) return deny(res, "Legacy customer signature mutation is disabled; use the canonical Customer Portal signing authority.");
 
   if (demoTenant) {
     const demoExecutionDuty = [
@@ -118,7 +129,13 @@ export function enforceLifecycleSeparationOfDuties(req, res, pathname) {
       return requireDuty(req, res, DUTY_PERMISSIONS.customerSignature, "Independent external customer signer authority is required.");
     }
     if (action === "TERALINX_COUNTERSIGNATURE") {
-      return requireDuty(req, res, DUTY_PERMISSIONS.teralinxCountersignature, "Only the designated Teralinx CEO countersignature authority may authorize execution.");
+      return requireDuty(req, res, DUTY_PERMISSIONS.teralinxCountersignature, "Only the designated Teralinx countersignature authority may accept the exact customer-signed Service Order.");
+    }
+    if (action === "EXECUTION_AUTHORIZATION") {
+      return requireDuty(req, res, DUTY_PERMISSIONS.executionAuthorization, "Only the designated Teralinx execution authorizer may authorize the exact fully signed Service Order.");
+    }
+    if (action === "GENESIS_SCOPEVERSION") {
+      return requireDuty(req, res, DUTY_PERMISSIONS.scopeVersionCreation, "Only the designated Teralinx ScopeVersion creator may create Genesis from the exact authorized execution chain.");
     }
     return requireDuty(req, res, DUTY_PERMISSIONS.commercial, "Only Commercial lifecycle authority may create or issue a Service Order.");
   }

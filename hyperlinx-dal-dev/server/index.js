@@ -1,4 +1,6 @@
+import { createStaticHandler } from './static-output-policy.js';
 import http from "node:http";
+import { admission, startControl } from './operations/admission-drain.js';
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { DATA_ROOT, DIRS, PORT, PROJECT_ROOT, errorResponse, handleOptions, jsonResponse, withRepositoryAuthority } from "./routes/_shared.js";
@@ -38,6 +40,7 @@ import { handleOpportunitySeeds } from "./routes/opportunity-seeds.js";
 import { handleOperationalBaselines } from "./routes/operational-baselines.js";
 import { handleProposalDrafts } from "./routes/proposal-drafts.js";
 import { handleProductFulfillment } from "./routes/product-fulfillment.js";
+import { handleProductDoctrineAuthority } from "./routes/product-doctrine-authority.js";
 import { handleRuntime } from "./routes/runtime.js";
 import { handleRuntimeFoundation } from "./routes/runtime-foundation.js";
 import { handleRuntimeLifecycleBridge } from "./routes/runtime-lifecycle-bridge.js";
@@ -48,11 +51,37 @@ import { handleTwinState } from "./routes/twin-state.js";
 import { enforceLifecycleSeparationOfDuties } from "./routes/duty-authority.js";
 import { handleDemo } from "./routes/demo.js";
 import { handleCustomerPortal } from "./routes/customer-portal.js";
+import { handleCustomerPlanning } from "./routes/customer-planning.js";
+import { handleCustomerIdentityAuthority } from "./routes/customer-identity-authority.js";
+import { handleCustomerEnrollmentReissue } from "./routes/customer-enrollment-reissue-authority.js";
+import { handleCustomerInfrastructureRequests } from "./routes/customer-infrastructure-requests.js";
+import { handleContentRegistry } from "./routes/content-registry.js";
+import { handleContentIngestion } from "./routes/content-ingestion.js";
+import { handleCustomerSites } from "./routes/customer-sites.js";
+import { handleContentLayers } from "./routes/content-layers.js";
+import { handleSiteNetworkAnalysis } from "./routes/site-network-analysis.js";
+import { handleFluidstackWorkingPlanner } from "./routes/fluidstack-working-planner.js";
+import { handleNetworkPlanner } from "./routes/network-planner.js";
+import { handleNetworkUniverse } from "./routes/network-universe.js";
+import { handlePlannerVnext } from "./routes/planner-vnext.js";
 
 export const REGISTERED_API_ROUTES = [
   { basePath: "/api/auth", handler: "handleAuth" },
   { basePath: "/api/demo", handler: "handleDemo" },
   { basePath: "/api/customer-portal", handler: "handleCustomerPortal" },
+  { basePath: "/api/customer-planning", handler: "handleCustomerPlanning", canonical: true, authority: "TENANT_SCOPED_CUSTOMER_PLANNING_AND_COLLABORATION" },
+  { basePath: "/api/customer-identity", handler: "handleCustomerIdentityAuthority", canonical: true },
+  { basePath: "/api/customer-access", handler: "handleCustomerEnrollmentReissue", canonical: true, authority: "CUSTOMER_SIGNER_ENROLLMENT_ADMIN" },
+  { basePath: "/api/customer-requests", handler: "handleCustomerInfrastructureRequests", canonical: true, authority: "CUSTOMER_INTENT" },
+  { basePath: "/api/content-registry", handler: "handleContentRegistry", canonical: true, authority: "BOUNDED_CONTENT_READ" },
+  { basePath: "/api/content-ingestion", handler: "handleContentIngestion", canonical: true, authority: "INTERNAL_CONTENT_DATA_STEWARD" },
+  { basePath: "/api/customer-sites", handler: "handleCustomerSites", canonical: true, authority: "CUSTOMER_SITE_PLANNING" },
+  { basePath: "/api/content-layers", handler: "handleContentLayers", canonical: true, authority: "AUTHORIZED_VIEWPORT_CONTENT_READ" },
+  { basePath: "/api/site-network-analysis", handler: "handleSiteNetworkAnalysis", canonical: true, authority: "EPHEMERAL_DETERMINISTIC_PLANNING_ANALYSIS" },
+  { basePath: "/api/network-planning/fluidstack", handler: "handleFluidstackWorkingPlanner", canonical: true, authority: "NON_GOVERNED_INTERNAL_EXACT_WORKING_ANALYSIS" },
+  { basePath: "/api/network-planning/planner", handler: "handleNetworkPlanner", canonical: true, authority: "OPPORTUNITY_BOUND_PLANNER_ARTIFACT_HANDOFF" },
+  { basePath: "/api/network-planning/universe", handler: "handleNetworkUniverse", canonical: true, authority: "GOVERNED_NETWORK_UNIVERSE_RIGHTS_AND_REVISION_AUTHORITY" },
+  { basePath: "/api/network-planning/vnext", handler: "handlePlannerVnext", canonical: true, authority: "PRE_GOVERNED_PLANNER_SOLUTION_SYNTHESIS" },
   { basePath: "/api/runtime", handler: "handleRuntime" },
   { basePath: "/api/accounts", handler: "handleAccounts" },
   { basePath: "/api/accounts/contacts", handler: "handleAccounts" },
@@ -84,6 +113,7 @@ export const REGISTERED_API_ROUTES = [
   { basePath: "/api/proposals", handler: "handleProposalDrafts" },
   { basePath: "/api/service-orders", handler: "handleServiceOrders" },
   { basePath: "/api/products", handler: "handleProductFulfillment" },
+  { basePath: "/api/product-authority", handler: "handleProductDoctrineAuthority", canonical: true, authority: "PRODUCT_DOCTRINE_DRAFT_ONLY" },
   { basePath: "/api/fulfillment/plans", handler: "handleProductFulfillment" },
   { basePath: "/api/runtime/lifecycle", handler: "handleRuntimeLifecycleBridge" },
   { basePath: "/api/runtime/workspace-session", handler: "handleRuntimeWorkspaceSession" },
@@ -123,6 +153,19 @@ const routes = [
   handleAuth,
   handleDemo,
   handleCustomerPortal,
+  handleCustomerPlanning,
+  handleCustomerIdentityAuthority,
+  handleCustomerEnrollmentReissue,
+  handleCustomerInfrastructureRequests,
+  handleContentRegistry,
+  handleContentIngestion,
+  handleCustomerSites,
+  handleContentLayers,
+  handleSiteNetworkAnalysis,
+  handleFluidstackWorkingPlanner,
+  handleNetworkPlanner,
+  handleNetworkUniverse,
+  handlePlannerVnext,
   handleRuntime,
   handleAccounts,
   handleActivity,
@@ -147,6 +190,7 @@ const routes = [
   handleProposalDrafts,
   handleServiceOrders,
   handleProductFulfillment,
+  handleProductDoctrineAuthority,
   handleRuntimeLifecycleBridge,
   handleRuntimeWorkspaceSession,
   handleRuntimeFoundation,
@@ -165,47 +209,11 @@ const routes = [
 const STATIC_ROOT = process.env.DAL_STATIC_ROOT
   ? path.resolve(process.env.DAL_STATIC_ROOT)
   : path.join(PROJECT_ROOT, "dist-dal");
-const CONTENT_TYPES = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".json": "application/json; charset=utf-8",
-};
+const serveStaticApp = createStaticHandler(STATIC_ROOT);
 
-function isInsideStaticRoot(resolvedPath) {
-  const relative = path.relative(STATIC_ROOT, resolvedPath);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
+import { pollPlanningRequests } from "./network-planning/planning-request-runtime.js";
 
-async function serveStaticApp(req, res, pathname) {
-  if (req.method !== "GET" && req.method !== "HEAD") return false;
-  if (pathname === "/api" || pathname.startsWith("/api/") || pathname === "/health") return false;
-  const requestedPath = pathname === "/" ? "/index.html" : pathname;
-  const resolvedPath = path.resolve(STATIC_ROOT, `.${decodeURIComponent(requestedPath)}`);
-  if (!isInsideStaticRoot(resolvedPath)) return false;
-  const hasFileExtension = Boolean(path.extname(requestedPath));
-  const candidates = hasFileExtension ? [resolvedPath] : [resolvedPath, path.join(STATIC_ROOT, "index.html")];
-  for (const candidate of candidates) {
-    try {
-      const body = await readFile(candidate);
-      const isHtml = path.extname(candidate) === ".html";
-      res.writeHead(200, {
-        "Content-Type": CONTENT_TYPES[path.extname(candidate)] ?? "application/octet-stream",
-        "Cache-Control": isHtml ? "no-cache, no-store, must-revalidate" : "public, max-age=31536000, immutable",
-      });
-      if (req.method !== "HEAD") res.end(body);
-      else res.end();
-      return true;
-    } catch {
-      // Try the next static fallback.
-    }
-  }
-  return false;
-}
-
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => { void admission.request(req, res, async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", `https://${req.headers.host ?? "runtime.invalid"}`);
     if (handleOptions(req, res)) return;
@@ -269,6 +277,9 @@ const server = http.createServer(async (req, res) => {
           accountLibrary: true,
           contactLibrary: true,
           customerDesignImports: true,
+          contentRegistry: true,
+          contentIngestion: true,
+          customerSites: true,
           commercialOpportunities: true,
           commercialRoutes: true,
           commercialRevisions: true,
@@ -307,9 +318,15 @@ const server = http.createServer(async (req, res) => {
     const status = Number(err?.status);
     errorResponse(res, Number.isInteger(status) && status >= 400 && status <= 599 ? status : 500, err instanceof Error ? err.message : String(err));
   }
-});
+}).catch(() => { if (!res.destroyed) res.destroy(); }); });
 
+await startControl();
 await initializeAuthenticationAuthority();
+admission.markReady();
+// Signals close admission but never report an interrupted writer as drained.
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => { admission.close(); });
+const planningRequestTimer = setInterval(() => { void pollPlanningRequests().catch(() => console.error("[planning-request] WORKER_FAILED")); }, 60000);
+planningRequestTimer.unref();
 
 server.listen(PORT, () => {
   const address = server.address();

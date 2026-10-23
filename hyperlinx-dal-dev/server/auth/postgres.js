@@ -1,7 +1,15 @@
 import pg from "pg";
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 const { Pool } = pg;
 let authPool;
+const lockedQueryClient = new AsyncLocalStorage();
+
+// Administrative enrollment callbacks keep their reads on the lock-owning client.
+// Waiting lock holders must not exhaust the pool needed by that callback.
+export function withLockedAuthClient(client, operation) {
+  return lockedQueryClient.run(client, operation);
+}
 
 function authDatabaseUrl() {
   return String(process.env.AUTH_DATABASE_URL ?? "").trim();
@@ -32,7 +40,7 @@ export function getAuthPool() {
 }
 
 export async function authQuery(config, values) {
-  return getAuthPool().query(config, values);
+  return (lockedQueryClient.getStore() || getAuthPool()).query(config, values);
 }
 
 export async function withAuthTransaction(operation) {

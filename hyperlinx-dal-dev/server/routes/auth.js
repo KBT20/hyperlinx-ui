@@ -28,9 +28,20 @@ const DEMO_PERSONAS = new Set([
   "SALES",
   "ENGINEERING",
   "CUSTOMER_VIEWER",
+  "CUSTOMER_PLANNER",
   "CUSTOMER_COMMERCIAL_REVIEWER",
   "CUSTOMER_AUTHORIZED_SIGNER",
   "EXECUTIVE",
+]);
+const DEMO_CUSTOMER_ORGANIZATIONS = new Set([
+  "org-demo-customer-a",
+  "org-demo-customer-b",
+  "org-demo-customer-demo-1",
+  "org-demo-customer-amazon",
+  "org-demo-customer-google",
+  "org-demo-customer-microsoft",
+  "org-demo-customer-meta",
+  "org-demo-customer-fluidstack",
 ]);
 const WILDCARD_REASONS = new Set([
   "PLATFORM_DEVELOPMENT",
@@ -202,7 +213,17 @@ async function directoryRows(where = "", values = []) {
 }
 
 async function identityForRow(row) {
-  return identityFromRow(row, await personalStateFor(row.membership_id));
+  const user = identityFromRow(row, await personalStateFor(row.membership_id));
+  if ((user.roles || []).some(role => role.startsWith("CUSTOMER_"))) {
+    const customers = await authQuery({ text: "SELECT customer_id FROM hyperlinx.customers WHERE organization_id=$1 AND status='ACTIVE'", values: [user.organizationId] });
+    if (customers.rows.length === 1) user.customerPlanningTenant = { organizationId: user.organizationId, customerId: customers.rows[0].customer_id, name: user.organization };
+  }
+  return user;
+}
+
+export async function loadPlanningRequesterIdentity(principalId, membershipId, organizationId) {
+  const rows = await directoryRows("WHERE p.principal_id=$1 AND m.membership_id=$2 AND m.organization_id=$3 AND p.status='ACTIVE' AND m.status='ACTIVE' AND o.status='ACTIVE'", [principalId, membershipId, organizationId]);
+  return rows.length === 1 ? identityForRow(rows[0]) : null;
 }
 
 export async function refreshDurableDirectory() {
@@ -220,6 +241,10 @@ export async function initializeAuthenticationAuthority() {
 
 export function findAlphaUserById(userId) {
   return durableDirectory.get(String(userId ?? "")) ?? null;
+}
+
+export function listActiveAlphaUsers() {
+  return [...durableDirectory.values()];
 }
 
 export const ALPHA_USERS = Object.freeze([]);
@@ -429,7 +454,7 @@ export async function authenticateRuntimeRequest(req) {
       const requestedPersona = String(req.headers["x-hyperlinx-demo-persona"] ?? "SALES").trim().toUpperCase();
       resolved.user.demoPersona = DEMO_PERSONAS.has(requestedPersona) ? requestedPersona : "SALES";
       const requestedCustomerOrganization = String(req.headers["x-hyperlinx-demo-customer-organization"] ?? "org-demo-customer-a").trim();
-      resolved.user.demoCustomerOrganizationId = ["org-demo-customer-a", "org-demo-customer-b"].includes(requestedCustomerOrganization)
+      resolved.user.demoCustomerOrganizationId = DEMO_CUSTOMER_ORGANIZATIONS.has(requestedCustomerOrganization)
         ? requestedCustomerOrganization
         : "org-demo-customer-a";
     }

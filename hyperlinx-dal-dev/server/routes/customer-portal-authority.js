@@ -1,8 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
-  DIRS, createId, listRecords, nowIso, persistRecord,
+  DIRS, createId, currentRepositoryAuthority, listRecords, nowIso, persistRecord,
 } from "./_shared.js";
 import { authQuery } from "../auth/postgres.js";
+import { withInvitationAdministration } from '../auth/invitation-administration.js';
+import { canonicalCustomerFields, resolveCanonicalCustomerIdentity } from "./customer-identity-authority.js";
 
 const array = (value) => Array.isArray(value) ? value : value == null || value === "" ? [] : [value];
 const record = (value) => value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -14,6 +16,12 @@ const idPart = (value) => String(value ?? "UNKNOWN").replace(/[^A-Za-z0-9_-]+/g,
 export const CUSTOMER_ORGANIZATIONS = Object.freeze({
   "org-demo-customer-a": { customerId: "customer-demo-a", name: "Northstar Cloud Infrastructure" },
   "org-demo-customer-b": { customerId: "customer-demo-b", name: "Blue Mesa Digital Systems" },
+  "org-demo-customer-demo-1": { customerId: "customer-account-3", accountId: "account-3", name: "Demo 1" },
+  "org-demo-customer-amazon": { customerId: "customer-demo-amazon", name: "Amazon" },
+  "org-demo-customer-google": { customerId: "customer-demo-google", name: "Google" },
+  "org-demo-customer-microsoft": { customerId: "customer-demo-microsoft", name: "Microsoft" },
+  "org-demo-customer-meta": { customerId: "customer-demo-meta", name: "Meta" },
+  "org-demo-customer-fluidstack": { customerId: "customer-demo-fluidstack", name: "Fluidstack" },
 });
 
 export function exactProposalRevision(proposal = {}) {
@@ -50,6 +58,10 @@ function customerSafeCommercialTerms(proposal = {}) {
 }
 
 export async function createCustomerReviewAuthority(proposal = {}, input = {}, user = {}) {
+  return withInvitationAdministration(text(input.customerOrganizationId), () => createCustomerReviewAuthorityLocked(proposal, input, user));
+}
+
+async function createCustomerReviewAuthorityLocked(proposal = {}, input = {}, user = {}) {
   const lineage = exactProposalRevision(proposal);
   const customerOrganizationId = text(input.customerOrganizationId);
   const customerOrganization = CUSTOMER_ORGANIZATIONS[customerOrganizationId];
@@ -61,13 +73,25 @@ export async function createCustomerReviewAuthority(proposal = {}, input = {}, u
   }
   const accountId = text(proposal.accountId);
   const opportunityId = text(proposal.opportunityId);
+  const identity = await resolveCanonicalCustomerIdentity({
+    environment: currentRepositoryAuthority().authorityClass,
+    organizationId: currentRepositoryAuthority().organizationId,
+    accountId,
+    customerId: proposal.customerId,
+    opportunityId,
+    customerOrganizationId,
+    assertedCustomerNames: [proposal.customerName, proposal.accountName, record(proposal.executiveSummary).customer],
+  });
+  const platformDemoOperator = user.principalId === "demo-principal" && user.organizationId === "org-demo" &&
+    user.authorityClass === "DEMO" && customerOrganizationId === "org-demo-customer-demo-1";
   const [account, opportunity] = await Promise.all([
     (await listRecords(DIRS.accounts)).find((item) => text(item.accountId) === accountId),
     (await listRecords(DIRS.commercialOpportunities)).find((item) => text(item.opportunityId) === opportunityId),
   ]);
   const accountScopeExact = Boolean(account && opportunity &&
-    text(account.customerId) === customerOrganization.customerId &&
-    text(account.customerOrganizationId) === customerOrganizationId &&
+    text(account.customerId) === identity.customerId && customerOrganization.customerId === identity.customerId &&
+    (!text(customerOrganization.accountId) || text(customerOrganization.accountId) === identity.accountId) &&
+    (text(account.customerOrganizationId) === customerOrganizationId || (platformDemoOperator && !text(account.customerOrganizationId))) &&
     text(opportunity.accountId) === accountId &&
     text(opportunity.organizationId) === text(proposal.organizationId) &&
     text(opportunity.customerId) === text(proposal.customerId));
@@ -84,7 +108,9 @@ export async function createCustomerReviewAuthority(proposal = {}, input = {}, u
     error.code = "NAMED_CUSTOMER_RECIPIENT_REQUIRED";
     throw error;
   }
-  const recipientAuthority = await authQuery({
+  const recipientAuthority = platformDemoOperator && recipientPrincipalIds.length === 1 && recipientPrincipalIds[0] === "demo-principal"
+    ? { rows: [{ principal_id: "demo-principal", username: "demo", email: "", organization_id: customerOrganizationId, role_key: "CUSTOMER_COMMERCIAL_REVIEWER" }] }
+    : await authQuery({
     text: `SELECT p.principal_id, p.username, p.email, m.organization_id, r.role_key
       FROM hyperlinx.principals p
       JOIN hyperlinx.memberships m USING (principal_id)
@@ -92,7 +118,7 @@ export async function createCustomerReviewAuthority(proposal = {}, input = {}, u
       JOIN hyperlinx.roles r USING (role_id)
       WHERE p.principal_id = ANY($1::text[]) AND p.status = 'ACTIVE' AND m.status = 'ACTIVE'`,
     values: [recipientPrincipalIds],
-  });
+    });
   const recipientRows = new Map(recipientAuthority.rows.map((item) => [item.principal_id, item]));
   const invalidRecipient = recipientPrincipalIds.find((principalId) => {
     const recipient = recipientRows.get(principalId);
@@ -133,10 +159,8 @@ export async function createCustomerReviewAuthority(proposal = {}, input = {}, u
     authority: "BOUNDED_CUSTOMER_PROJECTION",
     sourceAuthority: "PROPOSAL_REPOSITORY",
     ...lineage,
-    accountId,
+    ...canonicalCustomerFields(identity),
     opportunityId,
-    customerId: customerOrganization.customerId,
-    customerOrganizationId,
     recipientPrincipalIds,
     product: {
       productId: text(proposal.productId),
@@ -184,6 +208,7 @@ export async function createCustomerReviewAuthority(proposal = {}, input = {}, u
     securityDomain: "DEMO",
     productionEligible: false,
     immutableSourceRevision: true,
+    demoOperatorPersonaAuthority: platformDemoOperator,
     directAuthorityMutation: false,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -191,7 +216,7 @@ export async function createCustomerReviewAuthority(proposal = {}, input = {}, u
   await persistRecord(DIRS.customerReviewPackages, reviewPackageId, reviewPackage);
 
   const invitations = [];
-  for (const principalId of recipientPrincipalIds) {
+  for (const principalId of platformDemoOperator ? [] : recipientPrincipalIds) {
     const recipient = recipientRows.get(principalId);
     const role = recipient.role_key;
     const accessId = `CUSTOMER-ACCESS-DEMO-${idPart(customerOrganizationId)}-${idPart(opportunityId)}-${idPart(principalId)}`;

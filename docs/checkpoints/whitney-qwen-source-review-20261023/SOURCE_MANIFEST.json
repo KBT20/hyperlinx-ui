@@ -1,0 +1,227 @@
+[
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-research-provider.js",
+    "sha256": "f2e8df524c5bf380e6370c6600d4abe9ec750da2578ce97368eb1609d79ebb66",
+    "bytes": 6402
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-research-http.js",
+    "sha256": "7d49d02057c5306ac421d5b670335dffe901512069f12a1511ee92e46c43f18b",
+    "bytes": 3959
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-research-tools.js",
+    "sha256": "6bd8a2b21a44a9f1c8c0c35de98d6d95eaa0db2e41f5d3d15b6df35c9f72f15f",
+    "bytes": 6612
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-research.js",
+    "sha256": "eb31aef1e66ef5e1a718e21b7f50c4d44b92c93cf642736439063829aea57729",
+    "bytes": 11564
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-research-store.js",
+    "sha256": "0d8829c985dea08bfa1bacac8c74c19e7cc06bd2133959b6f4afd4e69ea7334f",
+    "bytes": 8121
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-enrichment.js",
+    "sha256": "5c818d32fce4bf54933bc0c8b0f51a91b839168249a3362cfe1bd4095efccb73",
+    "bytes": 13798
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-enrichment-store.js",
+    "sha256": "d370a6d63aef66872162e902fe1ccdae2d8c6de532e645c549944cc55730f557",
+    "bytes": 11741
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-rich-enrichment.js",
+    "sha256": "a7ad60fbe9c277748bbee40993993165929887487a6929e8c3fae04a5dbf48d2",
+    "bytes": 7739
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-spatial-integration.js",
+    "sha256": "8260e23f79f8abc712361462701445074332ad4ccca6b9bb1df708ef1dee07c6",
+    "bytes": 3935
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-spatial-relationships.js",
+    "sha256": "b068cf4c044b70be4ad3c94b40e66817779dc9f6b7d2f18fe3e51418eae60116",
+    "bytes": 12810
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-package-repository.js",
+    "sha256": "bcc912dcca8297f3646b0ce954ac613f96cf49ec3b52533c7cd9f29137665162",
+    "bytes": 22218
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-financial-enrichment-contract.js",
+    "sha256": "3154140cd4f3cf91aa1a08a948ec79482ddbcefd2f38a080ae5734b67fcfcf5b",
+    "bytes": 6334
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/network-planning/iof-financial-enrichment-store.js",
+    "sha256": "bcd9002d50f397bafede0def2575a019dde3b56f4e7418ef3856f3a98b9d8d89",
+    "bytes": 13518
+  },
+  {
+    "file": "hyperlinx-dal-dev/scripts/iof-qwen-saved-object-validation.mjs",
+    "sha256": "7202d814b7a9e5a596e058461ac9e010b8b72738c8f31dfaf2cfac4639142dd5",
+    "bytes": 27520
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/content/content-registry-authority.js",
+    "sha256": "5faf36512476fcb514517f0f39b0c4cb4694552709b2716e632415709ec2914a",
+    "bytes": 18335
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/routes/content-registry.js",
+    "sha256": "a42cd7b9c82429f386e4523979c822a93c359a9cd3275c90f87f11e00f1b516b",
+    "bytes": 14137
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/routes/auth.js",
+    "sha256": "6c1654498faf9c038da292dabac9989b72c54c140819a28716c4e627607b1bf1",
+    "bytes": 38852
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/auth/postgres.js",
+    "sha256": "bfcf14cfce843ec9751df95b23e099bb27c8b2bbb44deebb1772947c92bda75d",
+    "bytes": 2502
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/auth/password.js",
+    "sha256": "8f4d0a6308829f552587e09cee852382c22c6510a9ca4a67eb7434d2e6d78191",
+    "bytes": 1728
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/auth/invitation-consumption.js",
+    "sha256": "0a8a2a0792013cd5927e34d8ca0f35a7e6f9de69d4a99d42cd51431c8f52f33b",
+    "bytes": 7585
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/auth/invitation-administration.js",
+    "sha256": "5e0caf01ba891d0f6670991306923998b52bcc8ecc50f14937d84d315fafb61f",
+    "bytes": 1084
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/routes/_shared.js",
+    "sha256": "68d9b44c38d399cb6b4bed8408d393e8f1a617e3b6b74a89fcfb21a0d1367fbb",
+    "bytes": 69937
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/routes/duty-authority.js",
+    "sha256": "a14766c72db3444926095dbb4cbaee346140831e8097cb29af88e8b971189a2c",
+    "bytes": 8593
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/routes/customer-identity-authority.js",
+    "sha256": "1800242435d5da47b9b5df9ae30377a891922838ae56f1cd559a51a76363ef23",
+    "bytes": 7347
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/routes/customer-portal.js",
+    "sha256": "f86d8ca7019600fa75b1620c7b08576b376ddd5733fec9577f6b3f847c90d556",
+    "bytes": 49317
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/routes/customer-portal-authority.js",
+    "sha256": "1ec30e72cf4b6f5dc6322d7d1cc78c9467de64778300558ba5d5f5d6ad3ca201",
+    "bytes": 14961
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/routes/customer-exports.js",
+    "sha256": "065fb4b00be534bde41b28ee30ae45caade3a6fadebc19646872dd756dd6af7d",
+    "bytes": 34873
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/routes/proposal-drafts.js",
+    "sha256": "5260c1277d52f3b8857ab709ed4ec6134516096f21c39491c2650ce640a8b277",
+    "bytes": 117945
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/routes/commercial-revisions.js",
+    "sha256": "32640fae2fd0354382a69f8925edccb0b63ce7a4e3296ff85f2941964a6b1dd9",
+    "bytes": 31912
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/routes/commercial-opportunities.js",
+    "sha256": "d55ec3e29792324287a3db83e2f881123e499f311debb0416fd4045262684221",
+    "bytes": 38566
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/persistence/repositoryCatalog.js",
+    "sha256": "76a4e9c5a2d4a024e5c796a0b60050864d4d2ada4fa9f70a6cd609b098ac804c",
+    "bytes": 6685
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/persistence/postgres/client.js",
+    "sha256": "7a70263dc9e51a9472b9dd779f00adeee015009b826d895342aeb84eead46f88",
+    "bytes": 2266
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/persistence/postgres/repositoryAdapter.js",
+    "sha256": "bf406cee1ea8e529086e7ccbfb51a0d36bc49b2548650ad814a07dc1751956ba",
+    "bytes": 3767
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/persistence/postgres/schema.sql",
+    "sha256": "12c0c7f264b3d9f1360295ca46d0158a5fafae6ad5836cf442d06201736efc48",
+    "bytes": 22826
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/persistence/postgres/0004_durable_auth_authority.sql",
+    "sha256": "853907b010caaf7e32efeea75f303af2b546aa58081b081d02c497fdd9291e84",
+    "bytes": 3492
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/persistence/postgres/0007_customer_portal_authority.sql",
+    "sha256": "20fee5924b8cff92de2261a2373b8b3156b224c9ea95b2a5f1317482fbc1d2fb",
+    "bytes": 7676
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/persistence/postgres/0024_p1a_invitation_consumption.sql",
+    "sha256": "f2b86052facf85e43584c09a442f22cd893db7f9c801cc562ba8548dffca1c45",
+    "bytes": 1334
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/index.js",
+    "sha256": "b0b99634f56da394e2865d559ca7de3cd5820388b4a7848efde69cbf3dca126c",
+    "bytes": 18542
+  },
+  {
+    "file": "hyperlinx-dal-dev/server/routes/network-planner.js",
+    "sha256": "916acab04ecde3b600dd1cd2e8997c09f2b48e866fd39d83b4e4e116e6a9532c",
+    "bytes": 73198
+  },
+  {
+    "file": "hyperlinx-dal-dev/src/api/plannerIof.ts",
+    "sha256": "9ffe6670aaa4e8da8339ed632d3b55e797337fa902df1f73261f957a2c403274",
+    "bytes": 20829
+  },
+  {
+    "file": "hyperlinx-dal-dev/src/workspaces/PlannerIofResearch.tsx",
+    "sha256": "9ec527e14c877c2be1cd98bea97b7bfb02b1b7f05215f7ca85b1324b2381433a",
+    "bytes": 6886
+  },
+  {
+    "file": "hyperlinx-dal-dev/src/workspaces/PlannerIofEnrichment.tsx",
+    "sha256": "200962afd98a6d2c91bcfd2af966c0854db9fc6da640c0f348c52cf57331b2c8",
+    "bytes": 11860
+  },
+  {
+    "file": "hyperlinx-dal-dev/ecosystem.config.cjs",
+    "sha256": "4b5fbc331bedef23a406f05a2c5be356bacf1c160cab4418d249e77d767a79af",
+    "bytes": 271
+  },
+  {
+    "file": "hyperlinx-dal-dev/scripts/local-dev.mjs",
+    "sha256": "387b81dd13dc03e7a9513c0df8d4445798b429bcc3800f61d995211d10c07a04",
+    "bytes": 3026
+  },
+  {
+    "file": "hyperlinx-dal-dev/package.json",
+    "sha256": "bb442b0299e04fe22e7ae3452f0a1c26e67b94d53c18253e031fdd33540701da",
+    "bytes": 4887
+  }
+]

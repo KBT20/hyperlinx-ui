@@ -1,6 +1,7 @@
 import {
   DIRS,
   createId,
+  currentRepositoryAuthority,
   errorResponse,
   handleOptions,
   jsonResponse,
@@ -17,6 +18,7 @@ import {
 import { createHash } from "node:crypto";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
 import { governedActorAuthority } from "./duty-authority.js";
+import { canonicalCustomerFields, resolveCanonicalCustomerIdentity } from "./customer-identity-authority.js";
 
 const ROLE_KEYS = ["contributors", "reviewers", "approvers", "executives"];
 
@@ -192,6 +194,10 @@ function authorityIncludes(record, userId) {
 
 function canReadOpportunity(record, user) {
   if (!record || !user) return false;
+  // The selected repository root supplies runtime tenancy. Historical records in
+  // the isolated Demo root retain their original domain bytes and are not rewritten
+  // merely to make their organization/owner fields resemble the active session.
+  if (currentRepositoryAuthority().authorityClass === "DEMO") return true;
   if (record.organizationId !== user.organizationId) return false;
   if (record.visibility === "PUBLIC") return true;
   if (record.visibility === "ORGANIZATION") return true;
@@ -270,7 +276,7 @@ export function normalizeCommercialOpportunity(record = {}, user, existing = nul
     objectId: opportunityId,
     runtimeObjectId,
     objectType: "OPPORTUNITY",
-    customerId: record.customerId ?? existing?.customerId ?? (record.accountId === "google" ? "customer-google" : record.accountId),
+    customerId: record.customerId ?? existing?.customerId ?? "",
     organization: record.organization ?? existing?.organization ?? "Teralinx",
     organizationId: existing?.organizationId ?? user.organizationId,
     workspace: record.workspace ?? existing?.workspace ?? user.workspaceId,
@@ -341,7 +347,7 @@ async function persistRuntimeMirror(record) {
     workspace: record.workspaceId,
     workspaceId: record.workspaceId,
     accountId: record.accountId,
-    customerId: record.customerId ?? (record.accountId === "google" ? "customer-google" : record.accountId),
+    customerId: record.customerId,
     visibility: record.visibility,
     authority: "COMMERCIAL_REVIEW",
     authorityGrants: record.authority,
@@ -356,7 +362,7 @@ async function persistRuntimeMirror(record) {
     updatedAt: record.updatedAt,
     metadata: {
       accountId: record.accountId,
-      customerId: record.customerId ?? (record.accountId === "google" ? "customer-google" : record.accountId),
+      customerId: record.customerId,
       status: record.status,
       selectedScopeId: record.selectedScopeId,
       activityHistory: record.activityHistory,
@@ -368,7 +374,27 @@ async function persistRuntimeMirror(record) {
 }
 
 export async function readOpportunity(id) {
-  return loadRecord(DIRS.commercialOpportunities, id);
+  // Commercial domain authority must be read byte-faithfully. Repository/session
+  // authority is evaluated separately and must never be folded into Proposal material.
+  return loadRecord(DIRS.commercialOpportunities, id, { projectRepositoryAuthority: false });
+}
+
+function projectCommercialOpportunityRead(record, user) {
+  const repository = currentRepositoryAuthority();
+  return {
+    ...record,
+    runtimeAuthorityContext: {
+      authorityClass: repository.authorityClass,
+      repositoryOrganizationId: repository.organizationId,
+      effectivePrincipalId: user.principalId ?? user.userId,
+      effectiveUserId: user.userId,
+      workspaceId: user.workspaceId,
+      sessionId: user.sessionId,
+      canRead: true,
+      createsAuthority: false,
+      persistsDomainMutation: false,
+    },
+  };
 }
 
 function runtimeHistoryEvent(record, user, eventType, details = "") {
@@ -382,7 +408,7 @@ function runtimeHistoryEvent(record, user, eventType, details = "") {
     objectId: record.opportunityId,
     objectName: record.name,
     accountId: record.accountId,
-    customerId: record.customerId ?? (record.accountId === "google" ? "customer-google" : record.accountId),
+    customerId: record.customerId,
     organizationId: record.organizationId,
     workspaceId: record.workspaceId,
     timestamp,
@@ -394,13 +420,26 @@ function runtimeHistoryEvent(record, user, eventType, details = "") {
       lifecycleState: record.lifecycleState,
       version: record.version,
       accountId: record.accountId,
-      customerId: record.customerId ?? (record.accountId === "google" ? "customer-google" : record.accountId),
+      customerId: record.customerId,
       authority: record.authority,
     },
   };
 }
 
 export async function saveOpportunity(record, user, eventType = "runtime.opportunity.saved", details = "Opportunity saved to the governed Runtime Object Library.") {
+  const existing = await readOpportunity(record.opportunityId).catch(() => null);
+  const identity = await resolveCanonicalCustomerIdentity({
+    environment: currentRepositoryAuthority().authorityClass,
+    organizationId: currentRepositoryAuthority().organizationId,
+    accountId: record.accountId,
+    customerId: record.customerId,
+    opportunityId: record.opportunityId,
+    customerName: record.customerName,
+    accountName: record.accountName,
+    customerOrganizationName: record.customerOrganizationName,
+    customerOrganizationId: record.customerOrganizationId,
+  }, { allowOpportunityCreate: !existing });
+  record = { ...record, ...canonicalCustomerFields(identity) };
   const transactionId = String(record.transactionId ?? createId("opportunity-save"));
   await updateTransactionManifest({ transactionId, operationType: "ROUTE_OPPORTUNITY_SAVE", state: "STARTED", tenantId: record.organizationId, customerId: record.customerId ?? record.accountId, opportunityId: record.opportunityId, plannedWrites: [`runtime-history/${record.opportunityId}.json`, `commercial-opportunities/${record.opportunityId}.json`, `runtime-objects/${record.runtimeObjectId}.json`], artifactIds: [record.opportunityId, record.runtimeObjectId].filter(Boolean) });
   const history = runtimeHistoryEvent(record, user, eventType, details);
@@ -424,6 +463,88 @@ export async function saveOpportunity(record, user, eventType = "runtime.opportu
   }
 }
 
+export async function requirePlannerArtifactOpportunity(opportunityId, accountId, user) {
+  const existing = await readOpportunity(opportunityId).catch(() => null);
+  if (!existing) throw Object.assign(new Error("PLANNER_OPPORTUNITY_NOT_FOUND"), { code: "PLANNER_OPPORTUNITY_NOT_FOUND", status: 404 });
+  if ((accountId && existing.accountId !== accountId) || !canReadOpportunity(existing, user) || !canWriteOpportunity(existing, user) || !userHasPermission(user, "opportunity.manage")) {
+    throw Object.assign(new Error("PLANNER_COMMERCIAL_HANDOFF_NOT_AUTHORIZED"), { code: "PLANNER_COMMERCIAL_HANDOFF_NOT_AUTHORIZED", status: 403 });
+  }
+  await resolveCanonicalCustomerIdentity({ accountId: existing.accountId, opportunityId, customerId: existing.customerId });
+  return existing;
+}
+
+export async function attachPlannerArtifactToOpportunity({ opportunityId, accountId, plannerArtifactId, plannerArtifactHash, commercialPlanningIntakeId }, user) {
+  const existing = await requirePlannerArtifactOpportunity(opportunityId, accountId, user);
+  const reference = Object.freeze({
+    plannerArtifactId: String(plannerArtifactId),
+    plannerArtifactHash: String(plannerArtifactHash),
+    commercialPlanningIntakeId: String(commercialPlanningIntakeId),
+    relationship: "PLANNER_ARTIFACT_SOURCE_EVIDENCE",
+    authority: "PLANNING_INPUT_NOT_COMMERCIAL_TRUTH",
+  });
+  const prior = asArray(existing.plannerArtifactReferences);
+  const conflicting = prior.find((item) => String(item?.plannerArtifactId) === reference.plannerArtifactId && String(item?.plannerArtifactHash) !== reference.plannerArtifactHash);
+  if (conflicting) throw Object.assign(new Error("PLANNER_ARTIFACT_REFERENCE_IMMUTABLE_CONFLICT"), { code: "PLANNER_ARTIFACT_REFERENCE_IMMUTABLE_CONFLICT", status: 409 });
+  if (prior.some(item => item.plannerArtifactId === reference.plannerArtifactId && item.commercialPlanningIntakeId === reference.commercialPlanningIntakeId)) return existing;
+  const references = prior.some((item) => String(item?.plannerArtifactId) === reference.plannerArtifactId) ? prior : [...prior, reference];
+  const normalized = normalizeCommercialOpportunity({
+    ...existing,
+    plannerArtifactReferences: references,
+    evidenceLinks: unique([...asArray(existing.evidenceLinks), reference.plannerArtifactId, reference.commercialPlanningIntakeId]),
+  }, user, existing);
+  return saveOpportunity(normalized, user, "runtime.opportunity.planner-intake.received", `Planner Artifact ${reference.plannerArtifactId} received as non-authoritative Commercial Planning input.`);
+}
+
+export async function promotePlanningOpportunityThroughGovernedAuthority(planningOpportunity, account, user, promotion = {}) {
+  if (!userHasPermission(user, "opportunity.manage")) throw Object.assign(new Error("PLANNING_OPPORTUNITY_PROMOTION_NOT_AUTHORIZED"), { code: "PLANNING_OPPORTUNITY_PROMOTION_NOT_AUTHORIZED", status: 403 });
+  if (!planningOpportunity?.plannerOpportunityId || planningOpportunity.lifecycleStatus !== "PLANNING_OPPORTUNITY" || planningOpportunity.commercialTruth !== false) {
+    throw Object.assign(new Error("PLANNING_OPPORTUNITY_PROMOTION_SOURCE_INVALID"), { code: "PLANNING_OPPORTUNITY_PROMOTION_SOURCE_INVALID", status: 409 });
+  }
+  const name = String(planningOpportunity.opportunityName ?? "").trim();
+  const opportunities = await listRecords(DIRS.commercialOpportunities, { projectRepositoryAuthority: false });
+  const sameIdentity = opportunities.filter((item) => item.accountId === account.accountId && String(item.name ?? "").trim().toLocaleLowerCase("en-US") === name.toLocaleLowerCase("en-US"));
+  const linked = sameIdentity.find((item) => item.planningPromotionLineage?.planningOpportunityId === planningOpportunity.plannerOpportunityId);
+  if (linked) {
+    if (promotion.promotionEventId && linked.planningPromotionLineage?.promotionEventId !== promotion.promotionEventId) {
+      const repaired = normalizeCommercialOpportunity({ ...linked, planningPromotionLineage: { ...linked.planningPromotionLineage, promotionEventId: promotion.promotionEventId, recoveredFromInterruptedPromotion: true } }, user, linked);
+      return { opportunity: await saveOpportunity(repaired, user, "runtime.opportunity.promotion-lineage-recovered", `Recovered interrupted Planning Opportunity promotion lineage for ${planningOpportunity.plannerOpportunityId}.`), idempotent: true };
+    }
+    return { opportunity: linked, idempotent: true };
+  }
+  if (sameIdentity.length) throw Object.assign(new Error("GOVERNED_OPPORTUNITY_ASSOCIATION_REQUIRED"), { code: "GOVERNED_OPPORTUNITY_ASSOCIATION_REQUIRED", status: 409 });
+  const timestamp = nowIso();
+  const lineage = {
+    relationship: "PROMOTED_TO",
+    planningOpportunityId: planningOpportunity.plannerOpportunityId,
+    planningAccountId: planningOpportunity.plannerAccountId,
+    canonicalAccountId: account.accountId,
+    promotionEventId: String(promotion.promotionEventId ?? ""),
+    promotionAuthority: "COMMERCIAL_OPPORTUNITY_REPOSITORY_PLANNING_PROMOTION",
+    sourceWorkflow: "CIP-P05A_NETWORK_PLANNER",
+    promotedAt: timestamp,
+    promotedByPrincipalId: user.principalId,
+    promotedByMembershipId: user.membershipId,
+  };
+  const normalized = normalizeCommercialOpportunity({
+    opportunityId: createId("commercial-opportunity"),
+    accountId: account.accountId,
+    accountName: account.name,
+    customerId: account.customerId,
+    customerOrganizationId: account.customerOrganizationId || account.customerId,
+    customerOrganizationName: account.name,
+    name,
+    productId: planningOpportunity.selectedProductId,
+    productDoctrineId: planningOpportunity.productDoctrineId || null,
+    status: "SAVED",
+    state: "SAVED",
+    lifecycleState: "GOVERNED_OPPORTUNITY",
+    visibility: "PRIVATE",
+    planningPromotionLineage: lineage,
+    relationshipLinks: [`PROMOTED_FROM:${planningOpportunity.plannerOpportunityId}`],
+  }, user, null, { timestamp });
+  return { opportunity: await saveOpportunity(normalized, user, "runtime.opportunity.promoted", `Planning Opportunity ${planningOpportunity.plannerOpportunityId} promoted through Commercial Opportunity authority.`), idempotent: false };
+}
+
 function requireUser(req, res) {
   const user = userFromBearerToken(req);
   if (!user) {
@@ -434,20 +555,44 @@ function requireUser(req, res) {
 }
 
 async function handleList(req, res, user) {
-  const records = sortedByUpdated((await listRecords(DIRS.commercialOpportunities))
-    .map((record) => normalizeCommercialOpportunity(record, user, record, { bumpVersion: false }))
-    .filter((record) => canReadOpportunity(record, user)));
-  jsonResponse(res, 200, { opportunities: records });
+  const url = new URL(req.url ?? "/", `https://${req.headers.host ?? "runtime.invalid"}`);
+  const selection = Object.fromEntries(["environment", "organizationId", "tenantId", "accountId", "opportunityId"].map((field) => [field, String(url.searchParams.get(field) ?? "").trim()]));
+  const hasSelection = Object.values(selection).some(Boolean);
+  if (hasSelection) {
+    const missing = ["environment", "organizationId", "tenantId", "accountId"].filter((field) => !selection[field]);
+    if (missing.length) {
+      errorResponse(res, 409, `CUSTOMER_IDENTITY_AUTHORITY_REQUIRED: Account directory authority is missing ${missing.join(", ")}.`);
+      return;
+    }
+    const repository = currentRepositoryAuthority();
+    if (selection.environment.toUpperCase() !== repository.authorityClass || selection.organizationId !== repository.organizationId || selection.tenantId !== repository.organizationId) {
+      errorResponse(res, 409, "CUSTOMER_IDENTITY_LINEAGE_MISMATCH: selected environment/organization/tenant does not match repository authority.");
+      return;
+    }
+    if (selection.opportunityId) {
+      try {
+        await resolveCanonicalCustomerIdentity(selection);
+      } catch (error) {
+        errorResponse(res, error?.status ?? 409, error instanceof Error ? error.message : String(error));
+        return;
+      }
+    }
+  }
+  const records = sortedByUpdated((await listRecords(DIRS.commercialOpportunities, { projectRepositoryAuthority: false }))
+    .filter((record) => !hasSelection || (String(record.accountId ?? "") === selection.accountId && (!selection.opportunityId || String(record.opportunityId ?? "") === selection.opportunityId)))
+    .filter((record) => canReadOpportunity(record, user))
+    .map((record) => projectCommercialOpportunityRead(record, user)));
+  jsonResponse(res, 200, { opportunities: records, selection: hasSelection ? { mode: selection.opportunityId ? "EXACT_GOVERNED_LINEAGE" : "EXACT_ACCOUNT_DIRECTORY", ...selection } : { mode: "INTERNAL_DIRECTORY" } });
 }
 
 async function handleGet(req, res, id, user) {
   try {
-    const record = normalizeCommercialOpportunity(await readOpportunity(id), user, await readOpportunity(id), { bumpVersion: false });
+    const record = await readOpportunity(id);
     if (!canReadOpportunity(record, user)) {
       errorResponse(res, 403, "You do not have authority to open this opportunity.");
       return;
     }
-    jsonResponse(res, 200, { opportunity: record });
+    jsonResponse(res, 200, { opportunity: projectCommercialOpportunityRead(record, user) });
   } catch {
     errorResponse(res, 404, `Opportunity not found: ${id}`);
   }
@@ -482,21 +627,11 @@ async function handleOpen(req, res, id, user) {
     errorResponse(res, 404, `Opportunity not found: ${id}`);
     return;
   }
-  const record = normalizeCommercialOpportunity(existing, user, existing, { bumpVersion: false });
-  if (!canReadOpportunity(record, user)) {
+  if (!canReadOpportunity(existing, user)) {
     errorResponse(res, 403, "You do not have authority to open this opportunity.");
     return;
   }
-  const opened = {
-    ...record,
-    status: record.status === "ARCHIVED" ? "ARCHIVED" : "RECENT",
-    lastOpenedBy: user.name,
-    lastOpenedById: user.userId,
-    lastOpenedAt: nowIso(),
-    updatedAt: nowIso(),
-    modifiedDate: nowIso(),
-  };
-  jsonResponse(res, 200, { opportunity: await saveOpportunity(opened, user, "runtime.opportunity.opened", "Opportunity opened from the governed Runtime Object Library.") });
+  jsonResponse(res, 200, { opportunity: projectCommercialOpportunityRead(existing, user) });
 }
 
 async function handleArchive(req, res, id, user) {

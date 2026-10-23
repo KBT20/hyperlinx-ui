@@ -1,0 +1,49 @@
+{
+  "sourceFiles": 45,
+  "sourceBytes": 801490,
+  "secretScan": {
+    "status": "PASS_NO_PATTERN_CANDIDATES",
+    "scope": "45 selected source files and 3 clean review artifacts",
+    "rules": [
+      "private-key",
+      "github-token",
+      "openai-key",
+      "aws-key",
+      "jwt",
+      "credential-url",
+      "literal-secret",
+      "bearer-literal"
+    ],
+    "externalScanner": "NOT_AVAILABLE",
+    "qualification": "Not comprehensive security assurance; customer/business files excluded by explicit source allowlist."
+  },
+  "syntax": {
+    "status": "PASS",
+    "JavaScriptChecks": 37
+  },
+  "offlineProviderTests": {
+    "status": "PASS",
+    "tests": 7,
+    "failures": 0,
+    "networkRequests": 0,
+    "inferenceRequests": 0,
+    "command": "node --test docs/checkpoints/whitney-qwen-source-review-20261023/provider-offline.test.mjs",
+    "evidence": "Observed TAP exit 0; all seven subtests passed."
+  },
+  "historicalGroundingReplay": "NOT_RUN_PRIVATE_EVIDENCE_EXCLUDED",
+  "browserOrHostedWhitney": "NOT_RUN",
+  "deployment": "NOT_RUN",
+  "exclusions": [
+    ".env and credentials",
+    "runtime/customer/business data",
+    "captured IOF requests and responses",
+    "historical operational checkpoints",
+    "logs",
+    "model weights",
+    "build outputs",
+    "unrelated local history and dirty files"
+  ],
+  "localSourceHead": "0e288fab0bc2238b61b85dc070ca6efc478ad021",
+  "publishedParent": "873d94d6a2fca91929dd6dda55cab4ec24c02e09",
+  "reviewBranch": "checkpoint/whitney-qwen-source-review-20261023"
+}

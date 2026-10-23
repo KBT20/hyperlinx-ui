@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import {
   DIRS,
   createId,
+  currentRepositoryAuthority,
+  deleteRecord,
   errorResponse,
   handleOptions,
   jsonResponse,
@@ -17,21 +19,16 @@ import {
 } from "./_shared.js";
 import { findAlphaUserById, userFromBearerToken, userHasPermission } from "./auth.js";
 import { governedActorAuthority } from "./duty-authority.js";
-import { loadCommercialDraftIofPackageForProposal } from "./commercial-iof-packages.js";
 import {
   commercialAuthorityDiagnosticsFrom,
   ensureCommercialRevisionForProposal,
 } from "./commercial-revisions.js";
-import { assembleDraftIofPackageFromProposal } from "./engineering-certification.js";
-import { updateRuntimeWorkspaceSession } from "./runtime-workspace-session.js";
 import { createCustomerReviewAuthority } from "./customer-portal-authority.js";
 import { commercialOpportunityStateHash, evaluateOpportunityProposalMateriality, normalizeCommercialOpportunity, saveOpportunity } from "./commercial-opportunities.js";
+import { canonicalCustomerFields, resolveCanonicalCustomerIdentity } from "./customer-identity-authority.js";
+import { denyExternalCustomerRepositoryRead } from "./customer-read-authority.js";
 
 const ROLE_KEYS = ["contributors", "reviewers", "approvers", "executives", "customerReviewers", "salesEngineering"];
-const CUSTOMER_USER_BY_CUSTOMER = {
-  google: "google-participant-001",
-  "customer-google": "google-participant-001",
-};
 const PROPOSAL_REPOSITORY_DRAFT_STATUS = "DRAFT";
 const PROPOSAL_REPOSITORY_WAITING_CUSTOMER_REVIEW_STATUS = "WAITING_CUSTOMER_REVIEW";
 const PROPOSAL_REPOSITORY_CUSTOMER_REVIEW_STATUS = "CUSTOMER_REVIEW";
@@ -65,6 +62,10 @@ function asRecord(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 
+function nonEmptyArray(value, fallback = []) {
+  return Array.isArray(value) && value.length ? value : fallback;
+}
+
 function firstText(...values) {
   for (const value of values) {
     const text = String(value ?? "").trim();
@@ -78,10 +79,6 @@ function safeIdPart(value, fallback = "UNKNOWN") {
     .replace(/[^A-Za-z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 120) || fallback;
-}
-
-function nonEmptyArray(value, fallback = []) {
-  return Array.isArray(value) && value.length ? value : fallback;
 }
 
 function resolveUserId(value) {
@@ -107,15 +104,7 @@ function normalizeUserIds(value) {
 }
 
 function normalizeCustomerId(record = {}) {
-  const raw = String(record.customerId ?? record.accountId ?? record.customer ?? "").trim();
-  if (!raw) return "customer-unknown";
-  if (raw.toLowerCase() === "google") return "customer-google";
-  if (raw.startsWith("customer-")) return raw;
-  return raw;
-}
-
-function defaultCustomerUserIds(customerId) {
-  return unique([CUSTOMER_USER_BY_CUSTOMER[String(customerId ?? "").toLowerCase()]]);
+  return String(record.customerId ?? "").trim();
 }
 
 function normalizeAuthority(record = {}, ownerId, assignedCustomerUsers = []) {
@@ -161,6 +150,7 @@ function isCustomerUser(user) {
 
 function canReadProposal(record, user) {
   if (!record || !user) return false;
+  if (currentRepositoryAuthority().authorityClass === "DEMO") return true;
   if (record.organizationId !== user.organizationId) return false;
   if (userHasPermission(user, "platform.admin")) return true;
   if (record.visibility === "PUBLIC") return true;
@@ -515,7 +505,7 @@ function stationAwareDraftPackageFromRepositories(draftPackage, routeRepository,
 async function enrichDraftPackageWithProposalAuthorityReferences(draftPackage, proposal, user) {
   if (!draftPackage?.packageId || !proposal?.proposalId) return draftPackage;
   const opportunity = proposal.opportunityId
-    ? await loadRecord(DIRS.commercialOpportunities, proposal.opportunityId).catch(() => null)
+    ? await loadRecord(DIRS.commercialOpportunities, proposal.opportunityId, { projectRepositoryAuthority: false }).catch(() => null)
     : null;
   if (!opportunity) return draftPackage;
 
@@ -697,7 +687,7 @@ export function proposalSnapshotHash(snapshot) {
 
 export async function assessOpportunityStateBinding(record, { requireCurrent = true } = {}) {
   if (!record.opportunityId) return { failures: ["Opportunity reference is required."], opportunity: null, materiality: null };
-  const opportunity = await loadRecord(DIRS.commercialOpportunities, record.opportunityId).catch(() => null);
+  const opportunity = await loadRecord(DIRS.commercialOpportunities, record.opportunityId, { projectRepositoryAuthority: false }).catch(() => null);
   if (!opportunity) return { failures: [`Persisted Opportunity not found: ${record.opportunityId}.`], opportunity: null, materiality: null };
   const governedByCip067 = opportunity?.commercialStateSnapshot?.schemaVersion === "CIP-067" ||
     opportunity?.commercialWorkingState?.schemaVersion === "CIP-067";
@@ -944,8 +934,7 @@ export function normalizeProposalRecord(record = {}, user, existing = null, opti
   const createdById = String(existing?.createdById ?? user.userId);
   const requestedCustomerUsers = normalizeUserIds(record.assignedCustomerUsers ?? record.customerReviewers ?? record.customerUsers);
   const priorCustomerUsers = normalizeUserIds(existing?.assignedCustomerUsers);
-  const autoCustomerUsers = options.assignDefaultCustomerUser ? defaultCustomerUserIds(customerId) : [];
-  const assignedCustomerUsers = unique([...priorCustomerUsers, ...requestedCustomerUsers, ...autoCustomerUsers]);
+  const assignedCustomerUsers = unique([...priorCustomerUsers, ...requestedCustomerUsers]);
   const authority = normalizeAuthority({
     ...existing,
     ...record,
@@ -1190,6 +1179,21 @@ function runtimeHistoryEvent(record, user, eventType, details = "", metadata = {
 }
 
 export async function saveProposal(record, user, eventType = "runtime.proposal.saved", details = "Proposal saved to the governed Runtime Object Library.", metadata = {}) {
+  const identity = await resolveCanonicalCustomerIdentity({
+    environment: currentRepositoryAuthority().authorityClass,
+    organizationId: currentRepositoryAuthority().organizationId,
+    accountId: record.accountId,
+    customerId: record.customerId,
+    opportunityId: record.opportunityId,
+    customerOrganizationId: record.customerOrganizationId,
+    assertedCustomerNames: [
+      record.customerName,
+      record.accountName,
+      typeof record.customer === "string" && record.customer !== record.customerId ? record.customer : "",
+      record.executiveSummary && typeof record.executiveSummary === "object" ? record.executiveSummary.customer : "",
+    ],
+  });
+  record = { ...record, ...canonicalCustomerFields(identity), customer: identity.customerOrganizationName };
   logProposalRepositoryState("Proposal save input", record, {
     eventType,
     valueWrittenToProposalRepository: record.status,
@@ -1275,21 +1279,99 @@ function requireUser(req, res) {
 }
 
 export async function readProposal(id) {
-  return loadRecord(DIRS.proposalDrafts, id);
+  return loadRecord(DIRS.proposalDrafts, id, { projectRepositoryAuthority: false });
 }
 
-async function handleList(_req, res, user) {
-  const records = sortedByUpdated((await listRecords(DIRS.proposalDrafts))
-    .map((record) => {
-      const normalized = normalizeProposalRecord(record, user, record);
+async function projectCanonicalProposalIdentity(record, user) {
+  const identity = await resolveCanonicalCustomerIdentity({
+    environment: currentRepositoryAuthority().authorityClass,
+    organizationId: currentRepositoryAuthority().organizationId,
+    accountId: record.accountId,
+    customerId: record.customerId,
+    opportunityId: record.opportunityId,
+    customerOrganizationId: record.customerOrganizationId,
+  });
+  const projected = normalizeProposalRecord(record, user, record);
+  const priorNames = [
+    record.customerName,
+    record.accountName,
+    typeof record.customer === "string" && record.customer !== record.customerId ? record.customer : "",
+    record.executiveSummary && typeof record.executiveSummary === "object" ? record.executiveSummary.customer : "",
+  ].filter((value) => typeof value === "string" && value.trim());
+  const historicalConflict = priorNames.some((value) => value.trim().toLocaleLowerCase("en-US") !== identity.accountName.toLocaleLowerCase("en-US"));
+  return {
+    ...projected,
+    ...canonicalCustomerFields(identity),
+    customer: identity.customerOrganizationName,
+    executiveSummary: projected.executiveSummary && typeof projected.executiveSummary === "object"
+      ? { ...projected.executiveSummary, customer: identity.customerOrganizationName }
+      : projected.executiveSummary,
+    customerIdentityProjection: {
+      ...identity,
+      historicalDescriptiveConflict: historicalConflict,
+      historicalDescriptionIsAuthority: false,
+    },
+  };
+}
+
+async function handleList(req, res, user) {
+  const url = new URL(req.url ?? "/api/proposals", `https://${req.headers.host ?? "runtime.invalid"}`);
+  const selection = {
+    environment: firstText(url.searchParams.get("environment")),
+    organizationId: firstText(url.searchParams.get("organizationId")),
+    tenantId: firstText(url.searchParams.get("tenantId")),
+    accountId: firstText(url.searchParams.get("accountId")),
+    opportunityId: firstText(url.searchParams.get("opportunityId")),
+    proposalId: firstText(url.searchParams.get("proposalId")),
+    proposalRevisionId: firstText(url.searchParams.get("proposalRevisionId")),
+    proposalHash: firstText(url.searchParams.get("proposalHash")),
+  };
+  if (Boolean(selection.accountId) !== Boolean(selection.opportunityId)) {
+    errorResponse(res, 409, "PROPOSAL_EXACT_LINEAGE_SELECTORS_REQUIRED: accountId and opportunityId must be supplied together.");
+    return;
+  }
+  const hasClientAuthority = Boolean(selection.environment || selection.organizationId || selection.tenantId);
+  if (hasClientAuthority) {
+    if (!selection.environment || !selection.organizationId || !selection.tenantId) {
+      errorResponse(res, 409, "CUSTOMER_IDENTITY_AUTHORITY_REQUIRED: environment, organizationId, and tenantId must accompany exact Proposal selectors.");
+      return;
+    }
+    const repository = currentRepositoryAuthority();
+    if (selection.environment.toUpperCase() !== repository.authorityClass || selection.organizationId !== repository.organizationId || selection.tenantId !== repository.organizationId) {
+      errorResponse(res, 409, "CUSTOMER_IDENTITY_LINEAGE_MISMATCH: selected Proposal authority does not match repository authority.");
+      return;
+    }
+  }
+  if (selection.accountId) {
+    try {
+      await resolveCanonicalCustomerIdentity({
+        environment: currentRepositoryAuthority().authorityClass,
+        organizationId: currentRepositoryAuthority().organizationId,
+        accountId: selection.accountId,
+        opportunityId: selection.opportunityId,
+      });
+    } catch (error) {
+      errorResponse(res, error?.status ?? 409, error instanceof Error ? error.message : String(error));
+      return;
+    }
+  }
+  const source = (await listRecords(DIRS.proposalDrafts)).filter((record) => !selection.accountId || (
+    firstText(record.accountId) === selection.accountId &&
+    firstText(record.opportunityId) === selection.opportunityId &&
+    (!selection.proposalId || firstText(record.proposalId ?? record.proposalRecordId) === selection.proposalId) &&
+    (!selection.proposalRevisionId || firstText(record.proposalRevisionId) === selection.proposalRevisionId) &&
+    (!selection.proposalHash || firstText(record.proposalHash) === selection.proposalHash)
+  ));
+  const projected = await Promise.all(source.map(async (record) => {
+      const normalized = await projectCanonicalProposalIdentity(record, user);
       logProposalRepositoryState("Proposal Repository restore:list", normalized, {
         valueWrittenToProposalRepository: record.status,
         valueRestoredFromProposalRepository: normalized.status,
       });
       return normalized;
-    })
-    .filter((record) => canReadProposal(record, user)));
-  jsonResponse(res, 200, { proposals: records, proposalDrafts: records });
+    }));
+  const records = sortedByUpdated(projected.filter((record) => canReadProposal(record, user)));
+  jsonResponse(res, 200, { proposals: records, proposalDrafts: records, selection: selection.accountId ? { mode: "EXACT_GOVERNED_LINEAGE", ...selection } : { mode: "INTERNAL_DIRECTORY" } });
 }
 
 async function handleGet(res, id, user) {
@@ -1298,7 +1380,13 @@ async function handleGet(res, id, user) {
     errorResponse(res, 404, `Proposal not found: ${id}`);
     return;
   }
-  const record = normalizeProposalRecord(existing, user, existing);
+  let record;
+  try {
+    record = await projectCanonicalProposalIdentity(existing, user);
+  } catch (error) {
+    errorResponse(res, error?.status ?? 409, error instanceof Error ? error.message : String(error));
+    return;
+  }
   logProposalRepositoryState("Proposal Repository restore:get", record, {
     valueWrittenToProposalRepository: existing.status,
     valueRestoredFromProposalRepository: record.status,
@@ -1363,7 +1451,7 @@ async function handleOpen(res, id, user) {
     errorResponse(res, 404, `Proposal not found: ${id}`);
     return;
   }
-  const record = normalizeProposalRecord(existing, user, existing);
+  const record = existing;
   logProposalRepositoryState("Proposal Repository restore:open", record, {
     valueWrittenToProposalRepository: existing.status,
     valueRestoredFromProposalRepository: record.status,
@@ -1374,11 +1462,14 @@ async function handleOpen(res, id, user) {
   }
   const opened = {
     ...record,
-    lastOpenedBy: user.name,
-    lastOpenedById: user.userId,
-    lastOpenedAt: nowIso(),
+    runtimeAuthorityContext: {
+      authorityClass: currentRepositoryAuthority().authorityClass,
+      repositoryOrganizationId: currentRepositoryAuthority().organizationId,
+      effectivePrincipalId: user.principalId ?? user.userId,
+      persistsDomainMutation: false,
+    },
   };
-  jsonResponse(res, 200, { proposal: await saveProposal(opened, user, "runtime.proposal.opened", "Proposal opened from the governed Proposal Runtime Library.") });
+  jsonResponse(res, 200, { proposal: opened });
 }
 
 async function handleAssign(req, res, id, user) {
@@ -1455,7 +1546,7 @@ async function handleSubmitCustomer(req, res, id, user) {
     return;
   }
   const explicitCustomerUsers = normalizeUserIds(body.assignedCustomerUsers ?? body.customerUsers ?? body.customerReviewers);
-  const customerUsers = unique([...asArray(existing.assignedCustomerUsers), ...explicitCustomerUsers, ...defaultCustomerUserIds(existing.customerId)]);
+  const customerUsers = unique([...asArray(existing.assignedCustomerUsers), ...explicitCustomerUsers]);
   const proposalRecipientContactIds = unique([...asArray(existing.proposalRecipientContactIds), ...asArray(body.proposalRecipientContactIds)]);
   const customerReviewContactIds = unique([...asArray(existing.customerReviewContactIds), ...asArray(body.customerReviewContactIds)]);
   const approvalAuthorityContactIds = unique([...asArray(existing.approvalAuthorityContactIds), ...asArray(body.approvalAuthorityContactIds)]);
@@ -1490,7 +1581,7 @@ async function handleSubmitCustomer(req, res, id, user) {
         read: false,
       })),
     ],
-  }, user, existing, { assignDefaultCustomerUser: true });
+  }, user, existing);
   let customerPortal = null;
   if (user.authorityClass === "DEMO") {
     customerPortal = await createCustomerReviewAuthority(submitted, {
@@ -1502,7 +1593,7 @@ async function handleSubmitCustomer(req, res, id, user) {
     assignedCustomerUsers: customerUsers,
     customerReviewPackageId: customerPortal?.reviewPackage?.customerReviewPackageId,
   });
-  const opportunity = await loadRecord(DIRS.commercialOpportunities, saved.opportunityId).catch(() => null);
+  const opportunity = await loadRecord(DIRS.commercialOpportunities, saved.opportunityId, { projectRepositoryAuthority: false }).catch(() => null);
   let savedOpportunity = null;
   if (opportunity?.commercialWorkingState?.schemaVersion === "CIP-067") {
     savedOpportunity = await saveOpportunity(normalizeCommercialOpportunity({
@@ -1856,6 +1947,33 @@ export async function handleRequestChanges(req, res, id, user) {
   jsonResponse(res, 200, { proposal: await saveProposal(requested, user, "runtime.proposal.customer.requested_changes", "Customer requested proposal changes.", { commentId: comment.commentId }) });
 }
 
+function customerAcceptanceLineageFailures(record = {}, body = {}) {
+  const failures = [];
+  for (const [field, expected, aliases = []] of [
+    ["accountId", record.accountId],
+    ["customerId", record.customerId],
+    ["opportunityId", record.opportunityId],
+    ["proposalId", record.proposalId],
+    ["proposalRevisionId", record.proposalRevisionId],
+    ["proposalHash", record.proposalHash, ["proposalRevisionHash"]],
+    ["routeRepositoryId", record.routeRepositoryId, ["routeId"]],
+    ["routeGeometryId", record.routeGeometryId, ["geometryId"]],
+    ["geometryHash", record.routeGeometryHash, ["routeGeometryHash"]],
+  ]) {
+    const supplied = firstText(body[field], ...aliases.map((alias) => body[alias]));
+    if (!supplied || supplied !== firstText(expected)) failures.push(`${field} must identify the exact submitted Proposal lineage.`);
+  }
+  for (const [field, expected] of [
+    ["proposalRevisionNumber", record.revisionNumber ?? record.version],
+    ["routeRevision", record.routeRevision],
+  ]) {
+    if (!Number.isFinite(Number(body[field])) || Number(body[field]) !== Number(expected)) {
+      failures.push(`${field} must identify the exact submitted Proposal lineage.`);
+    }
+  }
+  return failures;
+}
+
 export async function handleApprove(req, res, id, user) {
   const existing = await readProposal(id).catch(() => null);
   if (!existing) {
@@ -1869,6 +1987,12 @@ export async function handleApprove(req, res, id, user) {
     return;
   }
   const record = normalizeProposalRecord(existing, user, existing);
+  const body = req.customerPortalBody ?? await readRequestJson(req);
+  const alreadyAccepted = APPROVED_PROPOSAL_STATUSES.has(record.status) || record.approvalState === "APPROVED";
+  if (alreadyAccepted) {
+    errorResponse(res, 409, "CUSTOMER_ACCEPTANCE_ALREADY_EXISTS: this exact Proposal Revision already has governed customer acceptance evidence.");
+    return;
+  }
   if (record.proposalRevisionId && (
     record.revisionStatus !== "SAVED" ||
     !asArray(record.proposalRevisions).some((revision) =>
@@ -1888,18 +2012,65 @@ export async function handleApprove(req, res, id, user) {
     proposalApprovalDenied(res, decisionTrace, 403);
     return;
   }
+  if (!canCustomerReviewProposal(record, user)) {
+    errorResponse(res, 403, "CUSTOMER_APPROVAL_AUTHORITY_REQUIRED: only the assigned governed customer reviewer may accept this Proposal.");
+    return;
+  }
+  const lineageFailures = customerAcceptanceLineageFailures(record, body);
+  const opportunityAssessment = await assessOpportunityStateBinding(record, { requireCurrent: true });
+  if (opportunityAssessment.failures.length) lineageFailures.push(...opportunityAssessment.failures);
+  if (lineageFailures.length) {
+    errorResponse(res, 409, `CUSTOMER_ACCEPTANCE_LINEAGE_MISMATCH: ${lineageFailures.join(" ")}`);
+    return;
+  }
   logProposalApprovalDecisionTrace(decisionTrace);
-  const body = req.customerPortalBody ?? await readRequestJson(req);
+  const priorRuntimeMirror = record.runtimeObjectId
+    ? await loadRecord(DIRS.runtimeObjects, record.runtimeObjectId).catch(() => null)
+    : null;
+  const restorePreAcceptanceAuthority = async () => {
+    await persistRecord(DIRS.proposalDrafts, record.proposalRecordId ?? record.proposalId, existing);
+    if (record.runtimeObjectId) {
+      if (priorRuntimeMirror) await persistRecord(DIRS.runtimeObjects, record.runtimeObjectId, priorRuntimeMirror);
+      else await deleteRecord(DIRS.runtimeObjects, record.runtimeObjectId);
+    }
+  };
   const timestamp = nowIso();
+  const repositoryAuthority = currentRepositoryAuthority();
+  const acceptanceEvidenceId = `CUSTOMER-ACCEPTANCE-${safeIdPart(record.proposalRevisionId)}`;
+  const acceptanceBasis = {
+    schemaVersion: "CIP-096-CUSTOMER-ACCEPTANCE-V1",
+    environment: repositoryAuthority.authorityClass,
+    tenantId: repositoryAuthority.organizationId,
+    organizationId: record.organizationId,
+    customerOrganizationId: firstText(user.customerOrganizationId, user.demoCustomerOrganizationId),
+    accountId: record.accountId,
+    customerId: record.customerId,
+    opportunityId: record.opportunityId,
+    proposalId: record.proposalId,
+    proposalRevisionId: record.proposalRevisionId,
+    proposalRevisionNumber: Number(record.revisionNumber ?? record.version),
+    proposalHash: record.proposalHash,
+    routeRepositoryId: record.routeRepositoryId,
+    routeRevision: Number(record.routeRevision),
+    routeGeometryId: record.routeGeometryId,
+    geometryHash: record.routeGeometryHash,
+    acceptingPrincipalId: user.principalId ?? user.userId,
+    acceptingMembershipId: user.membershipId,
+    acceptingSessionId: user.sessionId,
+    acceptingCustomerId: user.customerId,
+    acceptedAt: timestamp,
+  };
+  const acceptanceEvidenceHash = createHash("sha256").update(canonicalJson(acceptanceBasis)).digest("hex");
   const approval = {
-    approvalId: createId("proposal-approval"),
+    approvalId: acceptanceEvidenceId,
+    acceptanceEvidenceId,
+    acceptanceEvidenceHash,
+    acceptanceBasis,
+    ...acceptanceBasis,
     approverId: user.userId,
     approver: user.name,
-    customerId: user.customerId,
     decision: "APPROVED",
-    proposalRevisionId: record.proposalRevisionId ?? `${record.proposalId}-legacy-v${record.version}`,
-    proposalHash: record.proposalHash ?? "LEGACY-PROPOSAL-HASH-NOT-AVAILABLE",
-    revisionNumber: record.revisionNumber ?? record.version,
+    revisionNumber: Number(record.revisionNumber ?? record.version),
     comment: body.comment ?? "",
     createdAt: timestamp,
   };
@@ -1919,47 +2090,30 @@ export async function handleApprove(req, res, id, user) {
     approvedAt: timestamp,
     visibility: "SHARED",
   }, user, record);
-  const saved = await saveProposal(approved, user, "runtime.proposal.customer.approved", "Customer approved the commercial proposal. Draft IOF readiness may now be evaluated.", { approvalId: approval.approvalId });
-  const lifecycleApproval = runtimeHistoryEvent(saved, user, "CUSTOMER_APPROVED", "Customer approval advanced the Runtime lifecycle bridge.", { approvalId: approval.approvalId });
-  await persistRecord(DIRS.runtimeHistory, lifecycleApproval.historyId, lifecycleApproval);
-  let draftPackage = null;
-  let draftIofAssemblyError = "";
-  let draftIofAssemblyPredicate = "";
+  let saved;
   try {
-    draftPackage = await loadCommercialDraftIofPackageForProposal(saved.proposalId);
-    if (!draftPackage) {
-      const assembly = await assembleDraftIofPackageFromProposal({ proposalId: saved.proposalId }, user, { idempotent: true });
-      draftPackage = assembly.draftPackage ?? assembly.iofPackage ?? null;
-    }
-    if (draftPackage) draftPackage = await enrichDraftPackageWithProposalAuthorityReferences(draftPackage, saved, user);
-    if (!draftPackage) draftIofAssemblyError = "Draft IOF Package has not been assembled for this Proposal.";
+    saved = await saveProposal(approved, user, "runtime.proposal.customer.approved", "Customer approved the commercial proposal. Draft IOF readiness may now be evaluated.", { approvalId: approval.approvalId });
   } catch (error) {
-    draftIofAssemblyError = error instanceof Error ? error.message : String(error);
-    draftIofAssemblyPredicate = String(error?.code ?? "");
+    const partiallySaved = await readProposal(id).catch(() => null);
+    if (asArray(partiallySaved?.approvals).some((item) => item?.approvalId === approval.approvalId)) await restorePreAcceptanceAuthority();
+    errorResponse(res, error?.status ?? 500, `CUSTOMER_ACCEPTANCE_ATOMIC_COMMIT_ABORTED: ${error instanceof Error ? error.message : String(error)}`);
+    return;
   }
-  const workspaceSession = await updateRuntimeWorkspaceSession({
-    accountId: saved.accountId,
-    customerId: saved.customerId,
-    sessionUserId: saved.commercialOwnerId ?? saved.ownerId,
-    sessionUserName: saved.commercialOwner ?? saved.owner,
-    workspaceId: saved.workspaceId,
-    organizationId: saved.organizationId,
-    opportunityId: saved.opportunityId,
-    productId: saved.productId,
-    fulfillmentPlanId: saved.fulfillmentPlanId,
-    proposalId: saved.proposalId,
-    packageId: draftPackage?.packageId,
-    currentRuntimeObject: draftPackage?.packageId ?? saved.runtimeObjectId,
-    currentAuthority: draftPackage ? "ENGINEERING_REVIEW" : "CUSTOMER_REVIEW",
-    currentLifecycleStage: draftPackage ? "ENGINEERING_REVIEW_QUEUED" : "CUSTOMER_APPROVED",
-    selectedRoute: asArray(saved.geometryReferences)[0],
-    selectedGraph: asArray(saved.runtimeObjectIds)[0],
-    selectedPackage: draftPackage?.packageId,
-    selectedProposalRevision: saved.version,
-    sessionState: "ACTIVE",
-    lastActivity: "CUSTOMER_APPROVED",
-  }, user, "AUTHORITY_TRANSFER_CUSTOMER_TO_ENGINEERING", "Customer approval persisted WorkspaceSession authority transfer.");
-  jsonResponse(res, 200, { proposal: saved, draftPackage, iofPackage: draftPackage, draftIofAssemblyError, draftIofAssemblyPredicate, workspaceSession });
+  const lifecycleApproval = runtimeHistoryEvent(saved, user, "CUSTOMER_APPROVED", "Customer approval advanced the Runtime lifecycle bridge.", { approvalId: approval.approvalId });
+  let lifecycleProjectionError = "";
+  try {
+    await persistRecord(DIRS.runtimeHistory, lifecycleApproval.historyId, lifecycleApproval);
+  } catch (error) {
+    lifecycleProjectionError = error instanceof Error ? error.message : String(error);
+  }
+  jsonResponse(res, 200, {
+    proposal: saved,
+    approval,
+    acceptanceEvidence: approval,
+    lifecycleProjectionError,
+    constitutionalCommitStatus: "ACCEPTED",
+    downstreamAuthorityCreated: false,
+  });
 }
 
 export async function handleReject(req, res, id, user) {
@@ -2112,6 +2266,8 @@ export async function handleProposalDrafts(req, res, pathname) {
 
   const user = requireUser(req, res);
   if (!user) return true;
+
+  if (req.method === "GET" && denyExternalCustomerRepositoryRead(req, res, "Raw Proposal Repository reads")) return true;
 
   if (match.base && req.method === "GET") {
     await handleList(req, res, user);

@@ -16,6 +16,7 @@ import {
   unwrapBody,
 } from "./_shared.js";
 import { requireAnyPermission } from "./authority.js";
+import { denyExternalCustomerRepositoryRead } from "./customer-read-authority.js";
 import {
   commercialChangeSetsForRevision,
   projectCommercialRevisionFromChangeSets,
@@ -244,6 +245,31 @@ function estimateIdFrom(...sources) {
       estimate.estimateId,
     );
     if (value) return value;
+  }
+  return "";
+}
+
+export function governedEstimateIdFromAcceptedProposal(proposal = {}) {
+  const proposalRevisionId = firstText(proposal.proposalRevisionId);
+  const proposalHash = firstText(proposal.proposalHash);
+  const acceptedRevision = asArray(proposal.proposalRevisions).find((candidate) => {
+    const revision = asRecord(candidate);
+    return firstText(revision.proposalRevisionId) === proposalRevisionId
+      && firstText(revision.proposalHash) === proposalHash
+      && firstText(revision.revisionStatus).toUpperCase() === "SAVED";
+  });
+  const sources = [asRecord(acceptedRevision).snapshot, proposal];
+  for (const source of sources.map(asRecord)) {
+    const opportunitySnapshot = asRecord(source.opportunityStateSnapshot);
+    const workingState = asRecord(opportunitySnapshot.commercialWorkingState);
+    const estimateStates = [
+      asRecord(workingState.estimate),
+      asRecord(opportunitySnapshot.estimate),
+    ];
+    for (const estimateState of estimateStates) {
+      const estimateId = firstText(asRecord(estimateState.transparentEstimate).estimateId);
+      if (estimateId) return estimateId;
+    }
   }
   return "";
 }
@@ -499,6 +525,8 @@ export function commercialAuthorityDiagnosticsFrom({ revision = null, releasePac
 
 export async function persistCommercialRevision(record = {}, user = {}) {
   const normalized = commercialRevisionRecordForRepository({ ...record, user, timestamp: record.updatedAt ?? nowIso() });
+  const existing = await loadRecord(DIRS.commercialRevisions, normalized.commercialRevisionId).catch(() => null);
+  if (existing?.revisionHash === normalized.revisionHash) return existing;
   const saved = await persistRecord(DIRS.commercialRevisions, normalized.commercialRevisionId, normalized);
   console.info("[CommercialRevisionAuthority] persisted", {
     commercialRevisionId: saved.commercialRevisionId,
@@ -514,6 +542,8 @@ export async function persistCommercialRevision(record = {}, user = {}) {
 
 export async function persistCommercialReleasePackage(record = {}, user = {}) {
   const normalized = commercialReleasePackageRecordForRepository({ ...record, user, timestamp: record.updatedAt ?? nowIso() });
+  const existing = await loadRecord(DIRS.commercialReleasePackages, normalized.commercialReleasePackageId).catch(() => null);
+  if (existing?.releaseHash === normalized.releaseHash) return existing;
   const started = await updateTransactionManifest({
     transactionId: record.transactionId,
     operationType: "COMMERCIAL_RELEASE",
@@ -526,7 +556,6 @@ export async function persistCommercialReleasePackage(record = {}, user = {}) {
     hashes: [normalized.releaseHash].filter(Boolean),
   });
   try {
-    const existing = await loadRecord(DIRS.commercialReleasePackages, normalized.commercialReleasePackageId).catch(() => null);
     if (existing && existing.releaseHash && existing.releaseHash !== normalized.releaseHash) {
       const error = new Error(`Commercial Release Package ${normalized.commercialReleasePackageId} already exists with a different immutable release hash.`);
       error.status = 409;
@@ -574,11 +603,12 @@ export async function loadCommercialReleasePackage(commercialReleasePackageId) {
 
 export async function ensureCommercialRevisionForProposal(proposal = {}, user = {}, options = {}) {
   const opportunityId = firstText(options.opportunityId, proposal.opportunityId);
-  const opportunity = options.opportunity ?? (opportunityId ? await loadRecord(DIRS.commercialOpportunities, opportunityId).catch(() => null) : null);
+  const opportunity = options.opportunity ?? (opportunityId ? await loadRecord(DIRS.commercialOpportunities, opportunityId, { projectRepositoryAuthority: false }).catch(() => null) : null);
   const revision = commercialRevisionRecordForRepository({
     proposal,
     opportunity,
     draftPackage: options.draftPackage,
+    estimateId: firstText(options.estimateId, governedEstimateIdFromAcceptedProposal(proposal)),
     user,
     timestamp: options.timestamp ?? nowIso(),
     parentRevision: options.parentRevision,
@@ -608,7 +638,7 @@ export async function ensureCommercialRevisionForProposal(proposal = {}, user = 
 
 export async function ensureCommercialReleasePackageForDraft(draftPackage = {}, proposal = {}, user = {}, options = {}) {
   const opportunityId = firstText(options.opportunityId, draftPackage.opportunityId, proposal.opportunityId);
-  const opportunity = options.opportunity ?? (opportunityId ? await loadRecord(DIRS.commercialOpportunities, opportunityId).catch(() => null) : null);
+  const opportunity = options.opportunity ?? (opportunityId ? await loadRecord(DIRS.commercialOpportunities, opportunityId, { projectRepositoryAuthority: false }).catch(() => null) : null);
   const revision = options.revision
     ? commercialRevisionRecordForRepository(options.revision)
     : await ensureCommercialRevisionForProposal(proposal, user, {
@@ -653,13 +683,7 @@ async function handleRevisionCollection(req, res, match, user) {
     return true;
   }
   if (!match.base && req.method === "POST" && match.action === "freeze-release") {
-    const revision = await loadCommercialRevision(match.id).catch(() => null);
-    if (!revision) {
-      errorResponse(res, 404, `Commercial Revision not found: ${match.id}`);
-      return true;
-    }
-    const releasePackage = await persistCommercialReleasePackage({ revision, user }, user);
-    jsonResponse(res, 201, { commercialRevision: revision, commercialReleasePackage: releasePackage });
+    errorResponse(res, 409, "CANONICAL_IOF_ASSEMBLY_AUTHORITY_REQUIRED: Commercial Release is frozen only inside the accepted Proposal to Draft IOF transaction.");
     return true;
   }
   return false;
@@ -678,13 +702,7 @@ async function handleReleaseCollection(req, res, match, user) {
     return true;
   }
   if (match.base && req.method === "POST") {
-    const body = await readRequestJson(req);
-    const input = unwrapBody(body, "commercialReleasePackage", ["commercialReleasePackages", "items", "data"]) ?? {};
-    const records = Array.isArray(input) ? input : [input];
-    const saved = [];
-    for (const item of records) saved.push(await persistCommercialReleasePackage(item, user));
-    if (Array.isArray(input)) jsonResponse(res, 201, { commercialReleasePackages: saved, items: saved });
-    else jsonResponse(res, 201, { commercialReleasePackage: saved[0] });
+    errorResponse(res, 409, "CANONICAL_IOF_ASSEMBLY_AUTHORITY_REQUIRED: Commercial Release Packages are created only inside the accepted Proposal to Draft IOF transaction.");
     return true;
   }
   return false;
@@ -696,6 +714,7 @@ export async function handleCommercialRevisionAuthority(req, res, pathname) {
   const match = revisionMatch ?? releaseMatch;
   if (!match) return false;
   if (handleOptions(req, res)) return true;
+  if (req.method === "GET" && denyExternalCustomerRepositoryRead(req, res, "Raw Commercial Revisions")) return true;
 
   const readOnly = req.method === "GET";
   const user = readOnly

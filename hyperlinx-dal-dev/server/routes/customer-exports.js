@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
 import JSZip from "jszip";
-import { DIRS, corsHeaders, errorResponse, handleOptions, hydrateIofProjectionArtifacts, listRecords, loadRecord } from "./_shared.js";
+import { DIRS, corsHeaders, currentRepositoryAuthority, errorResponse, handleOptions, hydrateIofProjectionArtifacts, listRecords, loadRecord } from "./_shared.js";
 import { requireRuntimeUser } from "./authority.js";
 import { CUSTOMER_ORGANIZATIONS, customerProjectAccessRecords } from "./customer-portal-authority.js";
+import { resolveCanonicalCustomerIdentity } from "./customer-identity-authority.js";
+import { loadSupersessionForOrder } from "./service-order-supersession.js";
+import { exactCustomerProjectGrant, isExternalCustomerPrincipal } from "./customer-read-authority.js";
 
 const BASE = "/api/exports";
 const rec = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
@@ -17,9 +20,22 @@ const xml = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").
 const ascii = (v) => String(v ?? "").normalize("NFKD").replace(/[^\x20-\x7E]/g, " ").replace(/\s+/g, " ").trim();
 
 function hasPermission(user, permission) { return arr(user?.permissions).includes(permission); }
-async function canExport(authority, user) {
+async function canExport(authority, user, exactRevision = {}) {
   if (!authority || !user) return false;
   if ((!authority.organizationId || authority.organizationId === user.organizationId) && (hasPermission(user, "platform.admin") || hasPermission(user, "proposal.manage"))) return true;
+  if (isExternalCustomerPrincipal(user)) {
+    const [grants, reviewPackages] = await Promise.all([customerProjectAccessRecords(), listRecords(DIRS.customerReviewPackages)]);
+    const grant = exactCustomerProjectGrant(user, grants, authority);
+    if (!grant) return false;
+    const reviewPackage = reviewPackages.find((item) => item.customerReviewPackageId === grant.customerReviewPackageId && item.status !== "SUPERSEDED");
+    return Boolean(reviewPackage &&
+      reviewPackage.customerOrganizationId === user.organizationId &&
+      reviewPackage.customerId === authority.customerId &&
+      reviewPackage.opportunityId === authority.opportunityId &&
+      reviewPackage.proposalId === authority.proposalId &&
+      (!exactRevision.proposalRevisionId || reviewPackage.proposalRevisionId === exactRevision.proposalRevisionId) &&
+      (!exactRevision.proposalHash || reviewPackage.proposalHash === exactRevision.proposalHash));
+  }
   const customerOrganizationId = user.principalId === "demo-principal" ? user.demoCustomerOrganizationId : user.organizationId;
   const customerOrganization = CUSTOMER_ORGANIZATIONS[customerOrganizationId];
   if (!customerOrganization || customerOrganization.customerId !== authority.customerId) return false;
@@ -32,12 +48,22 @@ async function canExport(authority, user) {
 }
 
 async function certifiedForProposal(proposalId) {
-  return (await listRecords(DIRS.certifiedIofPackages)).find((item) => item.proposalId === proposalId) ?? null;
+  const matches = (await listRecords(DIRS.certifiedIofPackages)).filter((item) => item.proposalId === proposalId);
+  return matches.length === 1 ? matches[0] : null;
 }
 
 async function contextFrom({ proposal, serviceOrder, certified, scopeVersion } = {}) {
   const resolvedProposal = proposal ?? (serviceOrder?.proposalId ? await loadRecord(DIRS.proposalDrafts, serviceOrder.proposalId).catch(() => null) : null);
   const resolvedCertified = certified ?? (serviceOrder?.certifiedPackageId ? await loadRecord(DIRS.certifiedIofPackages, serviceOrder.certifiedPackageId).catch(() => null) : resolvedProposal ? await certifiedForProposal(resolvedProposal.proposalId) : null);
+  if (!resolvedProposal) throw Object.assign(new Error("CUSTOMER_IDENTITY_AUTHORITY_REQUIRED: exact governed Proposal is required for export."), { status: 409 });
+  const identity = await resolveCanonicalCustomerIdentity({
+    environment: currentRepositoryAuthority().authorityClass,
+    organizationId: currentRepositoryAuthority().organizationId,
+    accountId: resolvedProposal.accountId,
+    customerId: resolvedProposal.customerId,
+    opportunityId: resolvedProposal.opportunityId,
+    customerOrganizationId: resolvedProposal.customerOrganizationId,
+  });
   const sourceId = txt(resolvedCertified?.sourceDraftPackageId ?? resolvedCertified?.certifiedDraftIofPackageId ?? resolvedProposal?.draftIofPackageId);
   const source = sourceId ? await hydrateIofProjectionArtifacts(await loadRecord(DIRS.iofPackages, sourceId).catch(() => null)) : null;
   const routeId = txt(resolvedCertified?.routeRepositoryId ?? source?.routeRepositoryId ?? resolvedProposal?.routeRepositoryId ?? serviceOrder?.routeSummary?.routeRepositoryId);
@@ -49,7 +75,7 @@ async function contextFrom({ proposal, serviceOrder, certified, scopeVersion } =
   if (expectedRevision !== num(route.routeRevision, -2) || expectedGeometryHash !== txt(route.geometryHash) || expectedGeometryId !== txt(route.routeGeometryId)) {
     throw Object.assign(new Error("The current Commercial Route no longer matches the exact selected Proposal Revision spine. Export is blocked."), { status: 409 });
   }
-  return { proposal: resolvedProposal, serviceOrder, certified: resolvedCertified, scopeVersion, source, route };
+  return { proposal: resolvedProposal, serviceOrder, certified: resolvedCertified, scopeVersion, source, route, identity };
 }
 
 function endpoint(route, role) {
@@ -90,7 +116,7 @@ function wrap(value, width = 88) {
 }
 
 function pdfEscape(value) { return ascii(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)"); }
-function textPage(title, sections) {
+export function textPage(title, sections) {
   const commands = ["BT", "/F1 20 Tf", `48 748 Td (${pdfEscape(title)}) Tj`, "ET"];
   let y = 718;
   for (const section of sections) {
@@ -125,7 +151,7 @@ function mapPage(title, context, q) {
   ].join("\n");
 }
 
-function buildPdf(pages, metadata) {
+export function buildPdf(pages, metadata, image = null) {
   const objects = [];
   const pageIds = pages.map((_, i) => 3 + i * 2);
   const fontId = 3 + pages.length * 2;
@@ -133,10 +159,11 @@ function buildPdf(pages, metadata) {
   objects[2] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages.length} >>`;
   pages.forEach((content, i) => {
     const pageId = pageIds[i], contentId = pageId + 1;
-    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`;
+    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R >>${image?` /XObject << /Logo ${fontId+1} 0 R >>`:''} >> /Contents ${contentId} 0 R >>`;
     objects[contentId] = `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`;
   });
   objects[fontId] = `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>`;
+  if(image)objects[fontId+1]=`<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /ASCIIHexDecode /Length ${image.hex.length+1} >>\nstream\n${image.hex}>\nendstream`;
   let output = "%PDF-1.4\n%TERALINX-GOVERNED-EXPORT\n"; const offsets = [0];
   for (let i = 1; i < objects.length; i += 1) { offsets[i] = Buffer.byteLength(output); output += `${i} 0 obj\n${objects[i]}\nendobj\n`; }
   const xref = Buffer.byteLength(output);
@@ -150,7 +177,7 @@ function proposalPdf(context) {
   const config = rec(p.projectConfiguration);
   const sections = [
     ...(p.environment === "DEMO" ? [{ heading: "DEMO DOCUMENT", lines: ["Demonstration projection only. Not production eligible. Placeholder contract language is not approved Teralinx legal terms."] }] : []),
-    { heading: "PROPOSAL", lines: [`Customer: ${txt(p.customerName ?? p.executiveSummary?.customer,"Customer")}`, `Opportunity: ${txt(p.title ?? p.opportunityId)}`, `Product: ${txt(p.productName ?? context.certified?.productName,"Point-to-Point Fiber Infrastructure")}`, `Proposal Revision: ${txt(p.proposalRevisionId)}`, `Proposal Date: ${txt(p.updatedAt ?? p.createdAt)}`] },
+    { heading: "PROPOSAL", lines: [`Customer: ${context.identity.customerOrganizationName}`, `Opportunity: ${txt(p.title ?? p.opportunityId)}`, `Product: ${txt(p.productName ?? context.certified?.productName,"Point-to-Point Fiber Infrastructure")}`, `Proposal Revision: ${txt(p.proposalRevisionId)}`, `Proposal Date: ${txt(p.updatedAt ?? p.createdAt)}`] },
     { heading: "PROJECT OVERVIEW", lines: [`A Location: ${a.name} (${a.coordinate.join(", ")})`, `Z Location: ${z.name} (${z.coordinate.join(", ")})`, `Route Length: ${q.routeMiles.toFixed(2)} miles (${Math.round(q.routeFeet).toLocaleString("en-US")} feet)`, `Route Type: Governed commercial route alignment`] },
     { heading: "CUSTOMER SOLUTION", lines: [`${q.ductCount} x ${q.ductDiameter || config.ductDiameter || 1.25}-inch ${q.ductMaterial} ducts`, `${q.fiberCount}-count ${txt(config.fiberCableType,"shielded fiber cable")}`, `Fiber placement: ${txt(config.fiberPlacementPolicy,"BLOWN")}`, `ILA configuration: ${q.ilaSites ? `${q.ilaSites} governed facility locations` : "No certified ILA/regeneration facility objects"}`] },
     { heading: "CONSTRUCTION ASSUMPTIONS", lines: [`Civil mix: ${num(civil.plowPercent)}% plow, ${num(civil.directionalBoreDirtPercent)}% dirt bore, ${num(civil.directionalBoreRockPercent)}% rock bore, ${num(civil.openTrenchPercent)}% open trench`, `Stationing: A to Z, 0+00 through ${station(q.routeFeet)}; routine station rows omitted from this customer document.`] },
@@ -161,15 +188,17 @@ function proposalPdf(context) {
   return buildPdf([textPage("TERALINX", sections.slice(0,4)), textPage("PROPOSAL - SCOPE & TERMS", sections.slice(4)), mapPage("GOVERNED OPPORTUNITY MAP", context, q)], { title: `Teralinx Proposal ${p.proposalRevisionId}`, subject: `Governed Proposal projection ${p.proposalHash}` });
 }
 
-function serviceOrderPdf(context, signature, countersignature) {
+function serviceOrderPdf(context, signature, countersignature, supersession) {
   const so = context.serviceOrder, q = quantities(context), a = endpoint(context.route,"A"), z = endpoint(context.route,"Z"), price = rec(so.pricingSummary), terms = rec(so.commercialTerms);
+  const signedBasis = rec(so.documentBasis), signedParties = rec(signedBasis.parties), signedCustomer = rec(signedParties.customer);
+  const signedCustomerName = txt(signedCustomer.name ?? so.customer?.name, "MISSING FROM SIGNED DOCUMENT");
   const executed = Boolean(countersignature && so.scopeVersionId); const customerSigned = Boolean(signature);
-  const status = executed ? "EXECUTED" : customerSigned ? "CUSTOMER SIGNED" : `${so.status} / AWAITING SIGNATURE`;
+  const status = supersession ? "CUSTOMER SIGNED / SUPERSEDED / NOT EXECUTION AUTHORITY" : executed ? "EXECUTED" : customerSigned ? "CUSTOMER SIGNED" : `${so.status} / AWAITING SIGNATURE`;
   const conditions = arr(context.source?.engineeringConstraints); const unresolved = conditions.filter((v) => !["ACCEPTED","RESOLVED"].includes(txt(v.status).toUpperCase()));
   const major = q.objects.filter((o) => /ILA|REGEN|VAULT|SPLICE/i.test(txt(o.objectType))).slice(0, 12);
   const sections = [
     ...(so.environment === "DEMO" ? [{ heading: "DEMO DOCUMENT", lines: ["Demonstration projection only. Not production eligible. Placeholder contract language is not approved Teralinx legal terms."] }] : []),
-    { heading: "STATEMENT OF WORK / SERVICE ORDER", lines: [`Status: ${status}`, `Customer: ${txt(so.customer?.name,"Google")} | Opportunity: ${so.opportunityId}`, `Product: ${txt(so.serviceDescription?.productName)}`, `Service Order: ${so.serviceOrderId} | Revision ${so.documentRevision}`, `Document Hash: ${so.documentHash}`] },
+    { heading: "STATEMENT OF WORK / SERVICE ORDER", lines: [`Status: ${status}`, `Signed document customer: ${signedCustomerName} | Opportunity: ${so.opportunityId}`, `Current governed customer projection: ${context.identity.customerOrganizationName}`, `Signed document title: ${txt(signedBasis.title, "MISSING")}`, `Product: ${txt(so.serviceDescription?.productName)}`, `Service Order: ${so.serviceOrderId} | Revision ${so.documentRevision}`, `Document Hash: ${so.documentHash}`] },
     { heading: "CERTIFIED TECHNICAL BASIS", lines: [`Certified IOF: ${so.certifiedPackageId}`, `Certification date: ${txt(context.certified?.certifiedAt)}`, `Engineering Revision: ${txt(context.certified?.engineeringRevisionId)} | Approval: ${txt(context.certified?.engineeringApprovalId)}`] },
     { heading: "PROJECT OVERVIEW / SCOPE OF WORK", lines: [`A Location: ${a.name} (${a.coordinate.join(", ")})`, `Z Location: ${z.name} (${z.coordinate.join(", ")})`, `Route Length: ${q.routeMiles.toFixed(2)} miles`, `Teralinx will deliver the governed point-to-point duct and fiber infrastructure represented by the exact Certified IOF.`] },
     { heading: "INFRASTRUCTURE & QUANTITIES", lines: [`${q.ductCount} x ${q.ductDiameter}-inch ${q.ductMaterial} duct package | ${q.fiberCount}-count fiber`, `Conduit: ${Math.round(q.conduitFeet).toLocaleString("en-US")} feet | Purchased fiber: ${Math.round(q.purchasedFiberFeet).toLocaleString("en-US")} feet`, `Handholes: ${q.handholes} | Vaults: ${q.vaults} | Splice cases: ${q.spliceCases} | ILA/regeneration: ${q.ilaSites}`, `Other certified point facilities: ${q.markerPosts} marker posts and ${q.slackLoops} slack loops`] },
@@ -229,9 +258,9 @@ export async function handleCustomerExports(req, res, pathname) {
     if (parts[0] === "proposals" && parts[1] && parts[2] === "revisions" && parts[3] && parts[4] === "pdf") {
       const proposal = await loadRecord(DIRS.proposalDrafts,parts[1]).catch(()=>null);
       if (!proposal) { errorResponse(res,404,"Proposal not found."); return true; }
-      if (!await canExport(proposal,user)) { errorResponse(res,403,"Proposal export is outside your organization/customer/opportunity scope."); return true; }
       const revision = arr(proposal.proposalRevisions).find((item) => item.proposalRevisionId === parts[3]);
       if (!revision?.snapshot || !revision?.proposalHash) { errorResponse(res,404,"Immutable Proposal Revision not found."); return true; }
+      if (!await canExport(proposal,user,{ proposalRevisionId: revision.proposalRevisionId, proposalHash: revision.proposalHash })) { errorResponse(res,403,"Proposal export is outside your organization/customer/opportunity scope."); return true; }
       const revisionProposal = { ...proposal, ...revision.snapshot, proposalRevisionId: revision.proposalRevisionId, proposalHash: revision.proposalHash, revisionNumber: revision.revisionNumber, version: revision.revisionNumber, updatedAt: revision.createdAt };
       const context = await contextFrom({proposal:revisionProposal}); const label=safe(context.route.routeName ?? proposal.opportunityId,"Route");
       const buffer=proposalPdf(context); send(res,buffer,"application/pdf",`Teralinx_${label}_Proposal_R${num(revision.revisionNumber,1)}.pdf`,txt(revision.proposalHash),{"X-Teralinx-Proposal-Revision":revision.proposalRevisionId,"X-Teralinx-Route-Revision":String(context.route.routeRevision),"X-Teralinx-Geometry-Hash":txt(context.route.geometryHash)}); return true;
@@ -239,22 +268,22 @@ export async function handleCustomerExports(req, res, pathname) {
     if (parts[0] === "proposals" && parts[1] && ["pdf","route.kmz"].includes(parts[2])) {
       const proposal = await loadRecord(DIRS.proposalDrafts,parts[1]).catch(()=>null);
       if (!proposal) { errorResponse(res,404,"Proposal not found."); return true; }
-      if (!await canExport(proposal,user)) { errorResponse(res,403,"Proposal export is outside your organization/customer/opportunity scope."); return true; }
+      if (!await canExport(proposal,user,{ proposalRevisionId: proposal.proposalRevisionId, proposalHash: proposal.proposalHash })) { errorResponse(res,403,"Proposal export is outside your organization/customer/opportunity scope."); return true; }
       const context = await contextFrom({proposal}); const label=safe(context.route.routeName ?? proposal.opportunityId,"Route");
       if (parts[2] === "pdf") { const buffer=proposalPdf(context); send(res,buffer,"application/pdf",`Teralinx_${label}_Proposal_R${num(proposal.version,1)}.pdf`,txt(proposal.proposalHash),{"X-Teralinx-Route-Revision":String(context.route.routeRevision),"X-Teralinx-Geometry-Hash":txt(context.route.geometryHash)}); return true; }
       const artifact=await kmz(context,context.scopeVersion?"AUTHORIZED":"CERTIFIED"); send(res,artifact.buffer,"application/vnd.google-earth.kmz",`Teralinx_${label}_Route_R${context.route.routeRevision}.kmz`,txt(proposal.proposalHash),{"X-Teralinx-Geometry-Hash":txt(context.route.geometryHash)}); return true;
     }
     if (parts[0] === "service-orders" && parts[1] && parts[2] === "pdf") {
       const serviceOrder=await loadRecord(DIRS.serviceOrders,parts[1]).catch(()=>null); if(!serviceOrder){errorResponse(res,404,"Service Order not found.");return true;}
-      if(!await canExport(serviceOrder,user)){errorResponse(res,403,"Service Order export is outside your organization/customer/opportunity scope.");return true;}
-      const context=await contextFrom({serviceOrder}); const signature=serviceOrder.customerSignatureId?await loadRecord(DIRS.customerSignatures,serviceOrder.customerSignatureId).catch(()=>null):null; const countersignature=serviceOrder.countersignatureId?await loadRecord(DIRS.teralinxCountersignatures,serviceOrder.countersignatureId).catch(()=>null):null;
-      const buffer=serviceOrderPdf(context,signature,countersignature); send(res,buffer,"application/pdf",`Teralinx_${safe(context.route.routeName ?? serviceOrder.opportunityId,"Route")}_Service_Order_R${serviceOrder.documentRevision}.pdf`,serviceOrder.documentHash,{"X-Teralinx-Geometry-Hash":txt(context.route.geometryHash)}); return true;
+      if(!await canExport(serviceOrder,user,{ proposalRevisionId: serviceOrder.proposalRevisionId, proposalHash: serviceOrder.proposalHash })){errorResponse(res,403,"Service Order export is outside your organization/customer/opportunity scope.");return true;}
+      const context=await contextFrom({serviceOrder}); const signature=serviceOrder.customerSignatureId?await loadRecord(DIRS.customerSignatures,serviceOrder.customerSignatureId).catch(()=>null):null; const countersignature=serviceOrder.countersignatureId?await loadRecord(DIRS.teralinxCountersignatures,serviceOrder.countersignatureId).catch(()=>null):null; const supersession=await loadSupersessionForOrder(serviceOrder.serviceOrderId);
+      const buffer=serviceOrderPdf(context,signature,countersignature,supersession); send(res,buffer,"application/pdf",`Teralinx_${safe(context.route.routeName ?? serviceOrder.opportunityId,"Route")}_Service_Order_R${serviceOrder.documentRevision}.pdf`,serviceOrder.documentHash,{"X-Teralinx-Geometry-Hash":txt(context.route.geometryHash),"X-Teralinx-Service-Order-Supersession":supersession?"SUPERSEDED":"ACTIVE"}); return true;
     }
     if (["certified-iof","scopeversions"].includes(parts[0]) && parts[1] && parts[2] === "route.kmz") {
       const scopeVersion=parts[0] === "scopeversions"?await loadRecord(DIRS.scopeVersions,parts[1]).catch(()=>null):null;
       const certifiedId=parts[0] === "certified-iof"?parts[1]:txt(scopeVersion?.certifiedIofPackageId); const certified=certifiedId?await loadRecord(DIRS.certifiedIofPackages,certifiedId).catch(()=>null):null;
       if(!certified){errorResponse(res,404,"Certified IOF authority not found.");return true;} const proposal=await loadRecord(DIRS.proposalDrafts,certified.proposalId).catch(()=>null);
-      if(!await canExport(proposal,user)){errorResponse(res,403,"Route export is outside your organization/customer/opportunity scope.");return true;}
+      if(!await canExport(proposal,user,{ proposalRevisionId: proposal.proposalRevisionId, proposalHash: proposal.proposalHash })){errorResponse(res,403,"Route export is outside your organization/customer/opportunity scope.");return true;}
       const context=await contextFrom({proposal,certified,scopeVersion}); const lifecycle=scopeVersion?"AUTHORIZED":"CERTIFIED"; const artifact=await kmz(context,lifecycle); const suffix=scopeVersion?`${safe(scopeVersion.scopeVersionId,"SV")}_Authorized_Route`:`Certified_Route`;
       send(res,artifact.buffer,"application/vnd.google-earth.kmz",`Teralinx_${safe(context.route.routeName ?? proposal.opportunityId,"Route")}_${suffix}.kmz`,scopeVersion?.executionAuthorizationCertificateId??certified.certificationHash,{"X-Teralinx-Geometry-Hash":txt(context.route.geometryHash),"X-Teralinx-Execution-State":scopeVersion?"AUTHORIZED":"NOT_AUTHORIZED"}); return true;
     }
